@@ -55,7 +55,7 @@ public sealed class PrimeTester(bool useInternal = false)
             else
             {
                 var smallPrimeDivisorsLength = PrimesGenerator.SmallPrimes.Length;
-				ulong[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
+				uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
 				ulong[] smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2;
                 for (int i = 0; i < smallPrimeDivisorsLength; i++)
                 {
@@ -128,8 +128,8 @@ public sealed class PrimeTester(bool useInternal = false)
     // Per-accelerator GPU state for prime sieve (kernel + uploaded primes).
     private sealed class KernelState
     {
-        public Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> Kernel { get; }
-        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimes { get; }
+        public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>> Kernel { get; }
+        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimes { get; }
         private readonly Accelerator _accel;
         private readonly System.Collections.Concurrent.ConcurrentBag<ScratchBuffers> _scratchPool = new();
 
@@ -137,10 +137,10 @@ public sealed class PrimeTester(bool useInternal = false)
         {
             _accel = accelerator;
             // Compile once per accelerator and upload primes once.
-            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(SmallPrimeSieveKernel);
+            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>>(SmallPrimeSieveKernel);
 
             var primes = PrimesGenerator.SmallPrimes;
-            DevicePrimes = accelerator.Allocate1D<ulong>(primes.Length);
+            DevicePrimes = accelerator.Allocate1D<uint>(primes.Length);
             DevicePrimes.View.CopyFromCPU(primes);
         }
 
@@ -232,7 +232,7 @@ public sealed class PrimeTester(bool useInternal = false)
 
     // GPU kernel: small-prime sieve only. Returns 1 if passes sieve (probable prime), 0 otherwise.
     // TODO: Follow-up: consider integration with MR rounds for bases {2,3,5,7,11,13} to make it deterministic for 64-bit.
-    private static void SmallPrimeSieveKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<ulong> smallPrimes, ArrayView<byte> results)
+    private static void SmallPrimeSieveKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<uint> smallPrimes, ArrayView<byte> results)
     {
         ulong n = numbers[index];
         if (n <= 3UL)
@@ -256,9 +256,9 @@ public sealed class PrimeTester(bool useInternal = false)
         }
 
         long len = smallPrimes.Length;
-        for (long i = 0; i < len; i++)
+        for (int i = 0; i < len; i++)
         {
-            ulong p = smallPrimes[(int)i];
+            ulong p = smallPrimes[i];
 			if (p * p > n)
 			{
 				break;

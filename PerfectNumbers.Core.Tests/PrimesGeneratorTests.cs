@@ -12,9 +12,9 @@ public class PrimesGeneratorTests
         var primes = PrimesGenerator.SmallPrimes;
         var squares = PrimesGenerator.SmallPrimesPow2;
 
-        primes[..5].Should().Equal(new ulong[] { 2UL, 3UL, 5UL, 7UL, 11UL });
+        primes[..5].Should().Equal([2, 3, 5, 7, 11]);
 
-        squares[..5].Should().Equal(new ulong[] { 4UL, 9UL, 25UL, 49UL, 121UL });
+        squares[..5].Should().Equal([4UL, 9UL, 25UL, 49UL, 121UL]);
 
         for (int i = 0; i < 5; i++)
         {

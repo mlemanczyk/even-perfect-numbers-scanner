@@ -12,23 +12,22 @@ public static class ULongExtensions
 			return 0UL;
 		}
 
-		ulong order = q - 1UL;
-		ulong[] smallPrimes = PrimesGenerator.SmallPrimes;
+		ulong order = q - 1UL, prime, temp;
+		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
 		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
 
 		int i = 0, primesLength = smallPrimes.Length;
-		ulong prime, temp;
 		UInt128 q128 = q,
 				cycle = MersenneDivisorCycles.GetCycle(q128);
 
 		for (; i < primesLength; i++)
 		{
-			prime = smallPrimes[i];
 			if (smallPrimesPow2[i] > order)
 			{
 				break;
 			}
 
+			prime = smallPrimes[i];
 			while (order % prime == 0UL)
 			{
 				temp = order / prime;
@@ -63,7 +62,7 @@ public static class ULongExtensions
 	{
 		int i = 0;
 		ulong p;
-		ulong[] smallPrimes = PrimesGenerator.SmallPrimes;
+		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
 		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
 		int len = smallPrimes.Length;
 		for (; i < len; i++)
@@ -388,7 +387,7 @@ public static class ULongExtensions
 	{
 		ulong value = exponent - 1UL;
 		value >>= BitOperations.TrailingZeroCount(value);
-		ulong[] smallPrimes = PrimesGenerator.SmallPrimes;
+		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
 		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
 		int i = 1, smallPrimesLength = smallPrimes.Length;
 		ulong prime;

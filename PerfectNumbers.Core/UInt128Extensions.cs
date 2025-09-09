@@ -52,8 +52,8 @@ public static class UInt128Extensions
 		}
 
 		ulong order = (ulong)phi;
-		ulong[] smallPrimes = PrimesGenerator.SmallPrimes,
-				smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
+		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
+		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
 
 		int i = 0, primesLength = smallPrimes.Length;
 		UInt128 cycle = MersenneDivisorCycles.GetCycle(q);
@@ -100,7 +100,7 @@ public static class UInt128Extensions
 	{
 		UInt128 p, zero = UInt128.Zero;
 
-		ulong[] smallPrimes = PrimesGenerator.SmallPrimes;
+		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
 		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
 		ulong i, smallPrimesCount = (ulong)smallPrimes.Length;
 		for (i = 0UL; i < smallPrimesCount; i++)
