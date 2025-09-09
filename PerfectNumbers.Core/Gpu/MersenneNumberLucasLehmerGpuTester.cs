@@ -55,30 +55,39 @@ public class MersenneNumberLucasLehmerGpuTester
             return false;
         }
 
-        using var limiter = GpuPrimeWorkLimiter.Acquire();
+        var limiter = GpuPrimeWorkLimiter.Acquire();
+        bool result;
         if (exponent >= 128UL)
         {
             if (!TryGetNttParameters(exponent, out var nttMod, out var primitiveRoot))
             {
+                limiter.Dispose();
                 throw new NotSupportedException("NTT parameters for the given exponent are not available.");
             }
 
-            return IsMersennePrimeNtt(exponent, nttMod, primitiveRoot, runOnGpu);
+            result = IsMersennePrimeNtt(exponent, nttMod, primitiveRoot, runOnGpu);
+        }
+        else
+        {
+            var gpu = GpuContextPool.RentPreferred(preferCpu: !runOnGpu);
+            var accelerator = gpu.Accelerator;
+            var kernel = GetKernel(accelerator);
+            var modulus = new GpuUInt128(((UInt128)1 << (int)exponent) - 1UL);
+            var buffer = accelerator.Allocate1D<GpuUInt128>(1);
+            kernel(1, exponent, modulus, buffer.View);
+            accelerator.Synchronize();
+            result = buffer.GetAsArray1D()[0].IsZero;
+            buffer.Dispose();
+            gpu.Dispose();
         }
 
-        using var gpu = GpuContextPool.RentPreferred(preferCpu: !runOnGpu);
-        var accelerator = gpu.Accelerator;
-        var kernel = GetKernel(accelerator);
-        var modulus = new GpuUInt128(((UInt128)1 << (int)exponent) - 1UL);
-        using var buffer = accelerator.Allocate1D<GpuUInt128>(1);
-        kernel(1, exponent, modulus, buffer.View);
-        accelerator.Synchronize();
-        return buffer.GetAsArray1D()[0].IsZero;
+        limiter.Dispose();
+        return result;
     }
 
     private bool IsMersennePrimeNtt(ulong exponent, GpuUInt128 nttMod, GpuUInt128 primitiveRoot, bool runOnGpu)
     {
-        using var gpu = GpuContextPool.RentPreferred(preferCpu: !runOnGpu);
+        var gpu = GpuContextPool.RentPreferred(preferCpu: !runOnGpu);
         var accelerator = gpu.Accelerator;
         var addKernel = GetAddSmallKernel(accelerator);
         var subKernel = GetSubSmallKernel(accelerator);
@@ -92,7 +101,7 @@ public class MersenneNumberLucasLehmerGpuTester
         {
             transformLength <<= 1;
         }
-        using var stateBuffer = accelerator.Allocate1D<GpuUInt128>(transformLength);
+        var stateBuffer = accelerator.Allocate1D<GpuUInt128>(transformLength);
         stateBuffer.MemSetToZero();
         addKernel(1, 4UL, stateBuffer.View);
 
@@ -121,12 +130,16 @@ public class MersenneNumberLucasLehmerGpuTester
 
         reduceKernel(1, exponent, stateBuffer.View);
 
-        using var resultBuffer = accelerator.Allocate1D<byte>(1);
+        var resultBuffer = accelerator.Allocate1D<byte>(1);
         zeroKernel(1, stateBuffer.View, resultBuffer.View);
         accelerator.Synchronize();
         byte[] result = new byte[1];
         resultBuffer.View.CopyToCPU(result);
-        return result[0] != 0;
+        bool isPrime = result[0] != 0;
+        resultBuffer.Dispose();
+        stateBuffer.Dispose();
+        gpu.Dispose();
+        return isPrime;
     }
 
     private static readonly ConcurrentDictionary<int, (GpuUInt128 Modulus, GpuUInt128 PrimitiveRoot)> NttParameterCache = new()

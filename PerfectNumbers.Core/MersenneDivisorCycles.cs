@@ -223,15 +223,15 @@ public class MersenneDivisorCycles
 		int count = (int)Math.Min(batchSizeUL, maxDivisor), i, idx;
 		ulong[] divisors, outCycles, validDivisors;
 
-		divisors = pool.Rent(count);
-		outCycles = pool.Rent(count);
-		using var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
-		var accelerator = lease.Accelerator;
-		using var stream = accelerator.CreateStream();
-		var kernel = accelerator.LoadAutoGroupedStreamKernel<
-			Index1D,
-			ArrayView1D<ulong, Stride1D.Dense>,
-			ArrayView1D<ulong, Stride1D.Dense>>(GpuDivisorCycleKernel);
+                divisors = pool.Rent(count);
+                outCycles = pool.Rent(count);
+                var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+                var accelerator = lease.Accelerator;
+                var stream = accelerator.CreateStream();
+                var kernel = accelerator.LoadAutoGroupedStreamKernel<
+                        Index1D,
+                        ArrayView1D<ulong, Stride1D.Dense>,
+                        ArrayView1D<ulong, Stride1D.Dense>>(GpuDivisorCycleKernel);
 
 
 		using Stream outputStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, BufferSize10M, useAsync: true);
@@ -309,12 +309,16 @@ public class MersenneDivisorCycles
 				start = end + 1UL;
 			}
 		}
-		finally
-		{
-			pool.Return(divisors, clearArray: false);
-			pool.Return(outCycles, clearArray: false);
-		}
-	}
+                finally
+                {
+                        pool.Return(divisors, clearArray: false);
+                        pool.Return(outCycles, clearArray: false);
+                }
+
+                stream.Dispose();
+                lease.Dispose();
+
+        }
 
 	const byte ByteZero = 0;
 	const byte ByteOne = 1;

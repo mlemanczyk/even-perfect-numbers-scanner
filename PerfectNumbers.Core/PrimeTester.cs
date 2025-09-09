@@ -81,8 +81,8 @@ public sealed class PrimeTester(bool useInternal = false)
     public static void IsPrimeBatchGpu(ReadOnlySpan<ulong> values, Span<byte> results)
     {
         // Limit concurrency and declare variables outside loops for performance and reuse
-        using var limiter = GpuPrimeWorkLimiter.Acquire();
-        using var gpu = GpuContextPool.Rent();
+        var limiter = GpuPrimeWorkLimiter.Acquire();
+        var gpu = GpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
 
         // Get per-accelerator cached kernel and device primes buffer.
@@ -123,6 +123,8 @@ public sealed class PrimeTester(bool useInternal = false)
 
         ArrayPool<ulong>.Shared.Return(temp);
         state.ReturnScratch(scratch);
+        gpu.Dispose();
+        limiter.Dispose();
     }
 
     // Per-accelerator GPU state for prime sieve (kernel + uploaded primes).
@@ -283,13 +285,13 @@ public sealed class PrimeTester(bool useInternal = false)
 
     internal static void SharesFactorWithMaxExponentBatch(ReadOnlySpan<ulong> values, Span<byte> results)
     {
-        using var gpu = GpuContextPool.Rent();
+        var gpu = GpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
         var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(SharesFactorKernel);
 
         int length = values.Length;
-        using var inputBuffer = accelerator.Allocate1D<ulong>(length);
-        using var resultBuffer = accelerator.Allocate1D<byte>(length);
+        var inputBuffer = accelerator.Allocate1D<ulong>(length);
+        var resultBuffer = accelerator.Allocate1D<byte>(length);
 
         ulong[] temp = ArrayPool<ulong>.Shared.Rent(length);
         values.CopyTo(temp);
@@ -298,6 +300,9 @@ public sealed class PrimeTester(bool useInternal = false)
         accelerator.Synchronize();
         resultBuffer.View.CopyToCPU(ref results[0], length);
         ArrayPool<ulong>.Shared.Return(temp);
+        resultBuffer.Dispose();
+        inputBuffer.Dispose();
+        gpu.Dispose();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

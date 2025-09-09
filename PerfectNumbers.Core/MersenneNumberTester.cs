@@ -141,20 +141,20 @@ public sealed class MersenneNumberTester(
 
                 UInt128[] qs = qsBuffer;
 
-                using var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder);
+                var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder);
                 var accelerator = gpuLease.Accelerator;
         var orderKernel = gpuLease.OrderKernel!;
 
-		// Guard long-running kernels by chunking the warm-up across batches.
-		// Reuse the same ScanBatchSize knob used for scanning.
-		int batchSize = GpuConstants.ScanBatchSize;
-		ulong divMul = (ulong)((((UInt128)1 << 64) - 1UL) / exponent) + 1UL;
-		int offset = 0;
-		while (offset < idx)
-		{
+                // Guard long-running kernels by chunking the warm-up across batches.
+                // Reuse the same ScanBatchSize knob used for scanning.
+                int batchSize = GpuConstants.ScanBatchSize;
+                ulong divMul = (ulong)((((UInt128)1 << 64) - 1UL) / exponent) + 1UL;
+                int offset = 0;
+                while (offset < idx)
+                {
             int count = Math.Min(batchSize, idx - offset);
-            using var qBuffer = accelerator.Allocate1D<PerfectNumbers.Core.Gpu.GpuUInt128>(count);
-            using var orderBuffer = accelerator.Allocate1D<ulong>(count);
+            var qBuffer = accelerator.Allocate1D<PerfectNumbers.Core.Gpu.GpuUInt128>(count);
+            var orderBuffer = accelerator.Allocate1D<ulong>(count);
             // Convert to device-friendly GpuUInt128 on the fly
             var tmp = System.Buffers.ArrayPool<PerfectNumbers.Core.Gpu.GpuUInt128>.Shared.Rent(count);
             for (int i = 0; i < count; i++)
@@ -167,25 +167,28 @@ public sealed class MersenneNumberTester(
             orderKernel(count, exponent, divMul, qBuffer.View, orderBuffer.View);
             accelerator.Synchronize();
 
-			ulong[] orders = orderBuffer.GetAsArray1D();
-			for (int i = 0; i < count; i++)
-			{
-				ulong order = orders[i];
-				if (order == 0UL)
-				{
-					order = qs[offset + i].CalculateOrder();
-				}
+                        ulong[] orders = orderBuffer.GetAsArray1D();
+                        for (int i = 0; i < count; i++)
+                        {
+                                ulong order = orders[i];
+                                if (order == 0UL)
+                                {
+                                        order = qs[offset + i].CalculateOrder();
+                                }
 
-				if (useOrderCache)
-				{
-					OrderCache[qs[offset + i]] = order;
-				}
-			}
+                                if (useOrderCache)
+                                {
+                                        OrderCache[qs[offset + i]] = order;
+                                }
+                        }
 
-			offset += count;
-		}
+                        offset += count;
+            orderBuffer.Dispose();
+            qBuffer.Dispose();
+                }
 
-		ArrayPool<UInt128>.Shared.Return(qs);
+                gpuLease.Dispose();
+                ArrayPool<UInt128>.Shared.Return(qs);
 	}
 
     public bool IsMersennePrime(ulong exponent)

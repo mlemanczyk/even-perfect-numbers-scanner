@@ -804,19 +804,22 @@ public static class NttGpuMath
     {
         int n = values.Length;
         int bits = (int)Math.Log2(n);
-        using var gpu = GpuContextPool.Rent();
+        var gpu = GpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
         var kernel = GetBitReverseKernel(accelerator);
         var pool = ArrayPool<GpuUInt128>.Shared;
         var array = pool.Rent(n);
         values.CopyTo(array);
-        using var buffer = accelerator.Allocate1D<GpuUInt128>(n);
+        var buffer = accelerator.Allocate1D<GpuUInt128>(n);
         buffer.View.CopyFromCPU(ref array[0], n);
         kernel(n, buffer.View, bits);
         accelerator.Synchronize();
         buffer.View.CopyToCPU(ref array[0], n);
         array.AsSpan(0, n).CopyTo(values);
         pool.Return(array, clearArray: true);
+        buffer.Dispose();
+        gpu.Dispose();
+
     }
 
     public static void Forward(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
@@ -863,15 +866,15 @@ public static class NttGpuMath
     private static void ForwardGpuReference(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = (int)values.Length;
-        using var gpu = GpuContextPool.Rent();
+        var gpu = GpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
         var kernel = GetForwardKernel(accelerator);
         var pool = ArrayPool<GpuUInt128>.Shared;
         var inputArray = pool.Rent(n);
         var outputArray = pool.Rent(n);
         values.CopyTo(inputArray);
-        using var inputBuffer = accelerator.Allocate1D<GpuUInt128>(n);
-        using var outputBuffer = accelerator.Allocate1D<GpuUInt128>(n);
+        var inputBuffer = accelerator.Allocate1D<GpuUInt128>(n);
+        var outputBuffer = accelerator.Allocate1D<GpuUInt128>(n);
         inputBuffer.View.CopyFromCPU(ref inputArray[0], n);
         UInt128 modValue = modulus;
         UInt128 expBase = (modValue - 1UL) / (ulong)n;
@@ -883,6 +886,10 @@ public static class NttGpuMath
         outputArray.AsSpan(0, n).CopyTo(values);
         pool.Return(inputArray, clearArray: true);
         pool.Return(outputArray, clearArray: true);
+        outputBuffer.Dispose();
+        inputBuffer.Dispose();
+        gpu.Dispose();
+
     }
 
     public static void Inverse(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
@@ -954,15 +961,15 @@ public static class NttGpuMath
     private static void InverseGpuReference(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = values.Length;
-        using var gpu = GpuContextPool.Rent();
+        var gpu = GpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
         var kernel = GetInverseKernel(accelerator);
         var pool = ArrayPool<GpuUInt128>.Shared;
         var inputArray = pool.Rent(n);
         var outputArray = pool.Rent(n);
         values.CopyTo(inputArray);
-        using var inputBuffer = accelerator.Allocate1D<GpuUInt128>(n);
-        using var outputBuffer = accelerator.Allocate1D<GpuUInt128>(n);
+        var inputBuffer = accelerator.Allocate1D<GpuUInt128>(n);
+        var outputBuffer = accelerator.Allocate1D<GpuUInt128>(n);
         inputBuffer.View.CopyFromCPU(ref inputArray[0], n);
         UInt128 modValue = modulus;
         UInt128 expBase = (modValue - 1UL) / (ulong)n;
@@ -993,30 +1000,40 @@ public static class NttGpuMath
         outputArray.AsSpan(0, n).CopyTo(values);
         pool.Return(inputArray, clearArray: true);
         pool.Return(outputArray, clearArray: true);
+        outputBuffer.Dispose();
+        inputBuffer.Dispose();
+        gpu.Dispose();
+
     }
 
     private static void ForwardGpuStaged(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = values.Length;
-        using var gpu = GpuContextPool.Rent();
+        var gpu = GpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
-        using var buffer = accelerator.Allocate1D<GpuUInt128>(n);
+        var buffer = accelerator.Allocate1D<GpuUInt128>(n);
         buffer.View.CopyFromCPU(ref values[0], n);
         var cache = GetSquareCache(accelerator, n, modulus, primitiveRoot);
         ForwardDevice(accelerator, buffer.View, n, modulus, cache);
         buffer.View.CopyToCPU(ref values[0], n);
+        buffer.Dispose();
+        gpu.Dispose();
+
     }
 
     private static void InverseGpuStaged(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = values.Length;
-        using var gpu = GpuContextPool.Rent();
+        var gpu = GpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
-        using var buffer = accelerator.Allocate1D<GpuUInt128>(n);
+        var buffer = accelerator.Allocate1D<GpuUInt128>(n);
         buffer.View.CopyFromCPU(ref values[0], n);
         var cache = GetSquareCache(accelerator, n, modulus, primitiveRoot);
         InverseDevice(accelerator, buffer.View, n, modulus, cache);
         buffer.View.CopyToCPU(ref values[0], n);
+        buffer.Dispose();
+        gpu.Dispose();
+
     }
 
     private static void ForwardDevice(Accelerator accelerator, ArrayView<GpuUInt128> data, int length, GpuUInt128 modulus, SquareCacheEntry cache)
@@ -1221,7 +1238,7 @@ public static class NttGpuMath
 
     public static void PointwiseMultiply(Span<GpuUInt128> left, Span<GpuUInt128> right, GpuUInt128 modulus)
     {
-        using var gpu = GpuContextPool.Rent();
+        var gpu = GpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
         var kernel = GetMulKernel(accelerator);
         var pool = ArrayPool<GpuUInt128>.Shared;
@@ -1229,8 +1246,8 @@ public static class NttGpuMath
         var rightArray = pool.Rent(right.Length);
         left.CopyTo(leftArray);
         right.CopyTo(rightArray);
-        using var leftBuffer = accelerator.Allocate1D<GpuUInt128>(left.Length);
-        using var rightBuffer = accelerator.Allocate1D<GpuUInt128>(right.Length);
+        var leftBuffer = accelerator.Allocate1D<GpuUInt128>(left.Length);
+        var rightBuffer = accelerator.Allocate1D<GpuUInt128>(right.Length);
         leftBuffer.View.CopyFromCPU(ref leftArray[0], left.Length);
         rightBuffer.View.CopyFromCPU(ref rightArray[0], right.Length);
         kernel(left.Length, leftBuffer.View, rightBuffer.View, modulus);
@@ -1241,6 +1258,10 @@ public static class NttGpuMath
         rightArray.AsSpan(0, right.Length).CopyTo(right);
         pool.Return(leftArray, clearArray: true);
         pool.Return(rightArray, clearArray: true);
+        rightBuffer.Dispose();
+        leftBuffer.Dispose();
+        gpu.Dispose();
+
     }
 
     private static ulong[] GenerateSmallPrimes(int limit)
