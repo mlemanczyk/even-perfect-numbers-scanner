@@ -150,15 +150,35 @@ public static class UInt128Extensions
 			high >>= 64;
 		}
 
-		mod10 = result % 10UL;
-	}
+                mod10 = result % 10UL;
+        }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static UInt128 ModPow(this UInt128 value, UInt128 exponent, UInt128 modulus)
-	{
-		UInt128 result, one = result = UInt128.One,
-				zero = UInt128.Zero,
-				baseValue = value % modulus;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static UInt128 Pow(this UInt128 value, ulong exponent)
+        {
+                UInt128 result = UInt128.One;
+                UInt128 baseValue = value;
+
+                while (exponent != 0UL)
+                {
+                        if ((exponent & 1UL) != 0UL)
+                        {
+                                result *= baseValue;
+                        }
+
+                        baseValue *= baseValue;
+                        exponent >>= 1;
+                }
+
+                return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static UInt128 ModPow(this UInt128 value, UInt128 exponent, UInt128 modulus)
+        {
+                UInt128 result, one = result = UInt128.One,
+                                zero = UInt128.Zero,
+                                baseValue = value % modulus;
 
 		while (exponent != zero)
 		{

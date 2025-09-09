@@ -214,7 +214,7 @@ public sealed class MersenneNumberTester(
 		bool prePrime = true;
         UInt128 twoP = (UInt128)exponent << 1; // 2 * p
         // UInt128 maxDivisor = new(ulong.MaxValue, ulong.MaxValue);
-        UInt128 maxK = (UInt128Numbers.Two ^ exponent) / 2 + 1;
+        UInt128 maxK = UInt128Numbers.Two.Pow(exponent) / 2 + 1;
         bool lastIsSeven = (exponent & 3UL) == 3UL;
 
 		// This is how maxK was for residue test before changes UInt128 maxK = maxKOverride ?? ResidueMaxK;

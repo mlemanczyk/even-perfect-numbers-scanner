@@ -114,6 +114,40 @@ public class UInt128ExtensionsTests
 
     [Theory]
     [Trait("Category", "Fast")]
+    [InlineData(2UL, 0UL)]
+    [InlineData(2UL, 1UL)]
+    [InlineData(2UL, 63UL)]
+    [InlineData(2UL, 127UL)]
+    [InlineData(3UL, 5UL)]
+    public void Pow_matches_BigInteger(ulong value, ulong exponent)
+    {
+        UInt128 v = value;
+        UInt128 expected = (UInt128)BigPow(value, exponent);
+
+        v.Pow(exponent).Should().Be(expected);
+    }
+
+    private static BigInteger BigPow(ulong value, ulong exponent)
+    {
+        BigInteger result = BigInteger.One;
+        BigInteger baseValue = value;
+
+        while (exponent != 0UL)
+        {
+            if ((exponent & 1UL) != 0UL)
+            {
+                result *= baseValue;
+            }
+
+            baseValue *= baseValue;
+            exponent >>= 1;
+        }
+
+        return result;
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
     [InlineData(2UL, 10UL, 17UL)]
     [InlineData(123456789UL, 3UL, 97UL)]
     public void ModPow_matches_BigInteger(ulong value, ulong exponent, ulong modulus)
