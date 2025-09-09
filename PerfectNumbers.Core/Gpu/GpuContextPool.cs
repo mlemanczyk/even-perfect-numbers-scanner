@@ -114,11 +114,14 @@ public static class GpuContextPool
 			}
 		}
 
-		else
-		{
-			ctx.Dispose();
-		}
-	}
+                else
+                {
+                        lock (CreationLock)
+                        {
+                                ctx.Dispose();
+                        }
+                }
+        }
 
     public struct GpuContextLease : IDisposable
     {
