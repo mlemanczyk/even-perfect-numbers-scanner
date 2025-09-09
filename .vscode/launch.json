@@ -1,0 +1,70 @@
+{
+  "version": "0.2.0",
+  "inputs": [
+    {
+      "id": "projectName",
+      "type": "pickString",
+      "description": "Select project to run",
+      "options": [
+        "EvenPerfectBitScanner",
+      ],
+      "default": "EvenPerfectBitScanner"
+    }
+  ],
+  "configurations": [
+    {
+      "name": "Debug selected project (F5)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build Debug",
+      "program": "${workspaceFolder}/${input:projectName}/bin/Debug/net8.0/${input:projectName}.dll",
+      "args": [
+		"--increment=add --mersenne=residue --threads=128 --gpu-scan-batch=512000 --primes-device=gpu --mersenne-device=gpu --mod-reduction=barrett128 --block-size=10000000 --gpu-prime-threads=32 --write-batch-size=10000 --divisor-cycles-device=gpu"
+      ],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "internalConsole"
+    },
+    {
+      "name": "Run selected project (Alt+F5)",
+      "type": "coreclr",
+      "request": "launch",
+      "noDebug": true,
+      "preLaunchTask": "Build Release",
+      "program": "${workspaceFolder}/${input:projectName}/bin/Release/net8.0/${input:projectName}.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "internalConsole",
+      "internalConsoleOptions": "neverOpen",
+      "justMyCode": false
+    },
+    {
+      "name": "Run EvenPerfectBitScanner",
+      "type": "coreclr",
+      "request": "launch",
+      "noDebug": true,
+      "preLaunchTask": "Build EvenPerfectBitScanner Release",
+      "program": "${workspaceFolder}/EvenPerfectBitScanner/bin/Release/net8.0/EvenPerfectBitScanner.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "justMyCode": false
+    },
+    {
+      "name": "Debug EvenPerfectBitScanner",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build EvenPerfectBitScanner Debug",
+      "program": "${workspaceFolder}/EvenPerfectBitScanner/bin/Debug/net8.0/EvenPerfectBitScanner.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "justMyCode": false
+    }
+  ]
+}

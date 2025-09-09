@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12.0</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="PeterO.Numbers" Version="1.8.1" />
+    <PackageReference Include="Open.Numeric.Primes" Version="4.0.4" />
+    <PackageReference Include="ILGPU" Version="1.5.3" />
+    <PackageReference Include="ILGPU.Algorithms" Version="1.5.3" />
+    <PackageReference Include="lz4" Version="1.3.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EvenPerfectBitScanner.Tests" />
+    <InternalsVisibleTo Include="PerfectNumbers.Core.Tests" />
+  </ItemGroup>
+
+</Project>

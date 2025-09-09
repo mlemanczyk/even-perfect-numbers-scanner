@@ -1,0 +1,7 @@
+{
+	"dotnet.defaultSolution": "FlexiCoder.sln",
+	"chatgpt.openOnStartup": true,
+	"cSpell.words": [
+		"ILGPU"
+	]
+}

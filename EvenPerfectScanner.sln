@@ -1,0 +1,40 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PerfectNumbers.Core", "PerfectNumbers.Core\PerfectNumbers.Core.csproj", "{FFD557C9-12AE-4D8D-A21A-44CEE197BFB6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PerfectNumbers.Core.Tests", "PerfectNumbers.Core.Tests\PerfectNumbers.Core.Tests.csproj", "{FA4063F7-CB3C-4A66-BE70-4C6535D90197}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EvenPerfectBitScanner", "EvenPerfectBitScanner\EvenPerfectBitScanner.csproj", "{553D1735-214B-4097-B647-D73DB2CB9ADA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EvenPerfectBitScanner.Tests", "EvenPerfectBitScanner.Tests\EvenPerfectBitScanner.Tests.csproj", "{65ED9CC9-BB94-4FA5-940E-B84B3EE87DA7}"
+EndProject
+Global
+    GlobalSection(SolutionConfigurationPlatforms) = preSolution
+        Debug|Any CPU = Debug|Any CPU
+        Release|Any CPU = Release|Any CPU
+    EndGlobalSection
+    GlobalSection(SolutionProperties) = preSolution
+        HideSolutionNode = FALSE
+    EndGlobalSection
+    GlobalSection(ProjectConfigurationPlatforms) = postSolution
+        {FFD557C9-12AE-4D8D-A21A-44CEE197BFB6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {FFD557C9-12AE-4D8D-A21A-44CEE197BFB6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {FFD557C9-12AE-4D8D-A21A-44CEE197BFB6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {FFD557C9-12AE-4D8D-A21A-44CEE197BFB6}.Release|Any CPU.Build.0 = Release|Any CPU
+        {FA4063F7-CB3C-4A66-BE70-4C6535D90197}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {FA4063F7-CB3C-4A66-BE70-4C6535D90197}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {FA4063F7-CB3C-4A66-BE70-4C6535D90197}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {FA4063F7-CB3C-4A66-BE70-4C6535D90197}.Release|Any CPU.Build.0 = Release|Any CPU
+        {553D1735-214B-4097-B647-D73DB2CB9ADA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {553D1735-214B-4097-B647-D73DB2CB9ADA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {553D1735-214B-4097-B647-D73DB2CB9ADA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {553D1735-214B-4097-B647-D73DB2CB9ADA}.Release|Any CPU.Build.0 = Release|Any CPU
+        {65ED9CC9-BB94-4FA5-940E-B84B3EE87DA7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {65ED9CC9-BB94-4FA5-940E-B84B3EE87DA7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {65ED9CC9-BB94-4FA5-940E-B84B3EE87DA7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {65ED9CC9-BB94-4FA5-940E-B84B3EE87DA7}.Release|Any CPU.Build.0 = Release|Any CPU
+    EndGlobalSection
+EndGlobal
+
