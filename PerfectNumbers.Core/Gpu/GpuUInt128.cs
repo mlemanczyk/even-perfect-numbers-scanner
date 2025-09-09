@@ -246,7 +246,7 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
     public GpuUInt128 Sub(GpuUInt128 other)
     {
         ulong borrow = Low < other.Low ? 1UL : 0UL;
-        return new(High - other.High + borrow, Low - other.Low);
+        return new(High - other.High - borrow, Low - other.Low);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
