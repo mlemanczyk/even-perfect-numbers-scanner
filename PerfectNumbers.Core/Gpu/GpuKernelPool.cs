@@ -542,9 +542,12 @@ public class GpuKernelPool
 	/// <param name="action">Action to run with (Accelerator, Stream).</param>
     public static void Run(Action<Accelerator, AcceleratorStream> action)
     {
-        using var lease = GetKernel(useGpuOrder: true);
+        var lease = GetKernel(useGpuOrder: true);
         var accelerator = lease.Accelerator;
-        using var stream = accelerator.CreateStream();
+        var stream = accelerator.CreateStream();
         action(accelerator, stream);
+        stream.Dispose();
+        lease.Dispose();
+
     }
 }
