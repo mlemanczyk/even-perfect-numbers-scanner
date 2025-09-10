@@ -195,6 +195,7 @@ public sealed class PrimeTester(bool useInternal = false)
             {
                 sb.Dispose();
             }
+
             DevicePrimes.Dispose();
         }
     }
