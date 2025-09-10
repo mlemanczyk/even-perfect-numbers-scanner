@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Collections.Generic;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 
@@ -29,6 +30,7 @@ internal static class Program
         private static bool _useDivisor;
         private static ulong _divisor;
         private static MersenneNumberDivisorGpuTester? _divisorTester;
+        private static (ulong divisor, uint cycle)[]? _divisorCandidates;
 	private static ulong? _orderWarmupLimitOverride;
 	private static unsafe delegate*<ulong, ref ulong, ulong> _transformP;
 	private static long _state;
@@ -357,14 +359,8 @@ internal static class Program
                         return;
                 }
 
-                if (useDivisor && divisor == 0UL)
-                {
-                        Console.WriteLine("Divisor mode requires --divisor=<value>.");
-                        return;
-                }
-
-		// Apply GPU prime sieve runtime configuration
-		GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
+                // Apply GPU prime sieve runtime configuration
+                GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
 		PerfectNumbers.Core.PrimeTester.GpuBatchSize = Math.Max(1, gpuPrimeBatch);
 
 		MersenneDivisorCycles mersenneDivisorCycles = new();
@@ -444,6 +440,10 @@ internal static class Program
                 else
                 {
                         _divisorTester = new MersenneNumberDivisorGpuTester();
+                        if (divisor == 0UL)
+                        {
+                                _divisorCandidates = BuildDivisorCandidates();
+                        }
                 }
 
 		// Load RLE blacklist (optional)
@@ -690,7 +690,7 @@ internal static class Program
 		Console.WriteLine("  --threads=<value>      number of worker threads");
 		Console.WriteLine("  --block-size=<value>   values processed per thread batch");
                 Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor  Mersenne test method");
-                Console.WriteLine("  --divisor=<value>     divisor for --mersenne=divisor mode");
+                Console.WriteLine("  --divisor=<value>     optional divisor for --mersenne=divisor mode");
                 Console.WriteLine("  --residue-max-k=<value>  max k for residue Mersenne test (q = 2*p*k + 1)");
                 Console.WriteLine("  --mersenne-device=cpu|gpu  Device for Mersenne method (default gpu)");
                 Console.WriteLine("  --primes-device=cpu|gpu    Device for prime-scan kernels (default gpu)");
@@ -875,9 +875,9 @@ internal static class Program
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static ulong TransformPAdd(ulong value, ref ulong remainder)
-	{
-		ulong next = value;
+        internal static ulong TransformPAdd(ulong value, ref ulong remainder)
+        {
+                ulong next = value;
 		value = remainder switch
 		{
 			0UL => 1UL,
@@ -897,8 +897,29 @@ internal static class Program
 		remainder += value;
 		remainder -= (remainder >= 6UL) ? 6UL : 0UL;
 
-		return next + value;
-	}
+                return next + value;
+        }
+
+        private static (ulong divisor, uint cycle)[] BuildDivisorCandidates()
+        {
+                uint[] snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
+                List<(ulong divisor, uint cycle)> list = new(snapshot.Length / 2);
+                ulong d;
+                uint cycle;
+                for (int i = 3; i < snapshot.Length; i += 2)
+                {
+                        cycle = snapshot[i];
+                        if (cycle == 0U)
+                        {
+                                continue;
+                        }
+
+                        d = (ulong)i;
+                        list.Add((d, cycle));
+                }
+
+                return list.ToArray();
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static bool IsEvenPerfectCandidate(ulong p)
@@ -972,8 +993,30 @@ internal static class Program
                 searchedMersenne = true;
                 if (_useDivisor)
                 {
-                        detailedCheck = _divisorTester!.IsDivisible(p, _divisor);
-                        return detailedCheck;
+                        if (_divisor != 0UL)
+                        {
+                                detailedCheck = _divisorTester!.IsDivisible(p, _divisor);
+                                return detailedCheck;
+                        }
+
+                        var candidates = _divisorCandidates!;
+                        int len = candidates.Length;
+                        for (int i = 0; i < len; i++)
+                        {
+                                var (d, cycle) = candidates[i];
+                                if (p % cycle != 0UL)
+                                {
+                                        continue;
+                                }
+
+                                if (_divisorTester!.IsDivisible(p, d))
+                                {
+                                        detailedCheck = true;
+                                        return true;
+                                }
+                        }
+
+                        return false;
                 }
 
                 detailedCheck = MersenneTesters.Value!.IsMersennePrime(p);
