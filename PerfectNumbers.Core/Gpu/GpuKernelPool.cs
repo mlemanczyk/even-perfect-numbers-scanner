@@ -326,7 +326,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                 return;
             }
         }
-        if (GpuUInt128.Pow2Mod(exponent, q) != GpuUInt128.One)
+        if (GpuUInt128.Pow2Minus1Mod(exponent, q) != GpuUInt128.Zero)
         {
             orders[index] = 0UL;
             return;
