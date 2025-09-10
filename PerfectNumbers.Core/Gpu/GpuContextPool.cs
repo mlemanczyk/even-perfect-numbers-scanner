@@ -6,7 +6,7 @@ namespace PerfectNumbers.Core.Gpu;
 
 public static class GpuContextPool
 {
-	private static readonly bool PoolingEnabled = false;
+	private static readonly bool PoolingEnabled = true;
 	// Default device preference for generic GPU kernels (prime scans, NTT, etc.)
 	public static bool ForceCpu { get; set; } = false;
 
