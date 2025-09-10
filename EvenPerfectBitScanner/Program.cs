@@ -517,7 +517,7 @@ private static ulong? _orderWarmupLimitOverride;
 		}
 		else
 		{
-			File.WriteAllText(ResultsFileName, "p,searchedMersenne,detailedCheck,isPerfect");
+			File.WriteAllText(ResultsFileName, $"p,searchedMersenne,detailedCheck,isPerfect{Environment.NewLine}");
 		}
 
 		bool useFilter = !string.IsNullOrEmpty(filterFile);
