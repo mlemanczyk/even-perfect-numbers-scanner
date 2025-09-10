@@ -232,12 +232,10 @@ public sealed class MersenneNumberTester(
 				_residueCpuTester!.Scan(exponent, twoP, lastIsSeven, maxK, ref prePrime);
 			}
 
-			return prePrime;
-
-			// if (!prePrime)
-			// {
-			// 	return false;
-			// }
+			if (!prePrime)
+			{
+				return false;
+			}
 		}
 
 		if (!_useIncremental)
