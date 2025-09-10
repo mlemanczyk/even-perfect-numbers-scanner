@@ -74,14 +74,13 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 
                                 kStart += batchSize128;
                         }
-                }
-                finally
-                {
-                        ArrayPool<ulong>.Shared.Return(orderArray);
-                }
-
+        }
+        finally
+        {
+                ArrayPool<ulong>.Shared.Return(orderArray);
                 orderBuffer.Dispose();
                 gpuLease.Dispose();
+        }
 
     }
 }
