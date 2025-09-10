@@ -64,7 +64,7 @@ public static class PrimesGenerator
 			if (isPrime)
 			{
 				primes[primeIndex] = i;
-				primesPow2[primeIndex] = checked(i * i);
+				primesPow2[primeIndex] = checked((ulong)i * i);
 				primeIndex++;
 			}
 		}
