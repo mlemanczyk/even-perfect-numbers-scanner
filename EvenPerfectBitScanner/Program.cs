@@ -26,13 +26,12 @@ internal static class Program
 	private static int _primeCount;
 	private static bool _primeFoundAfterInit;
 	private static bool _useGcdFilter;
-        private static bool _useResidue;
-        private static bool _useDivisor;
-        private static ulong _divisor;
-private static MersenneNumberDivisorGpuTester? _divisorTester;
-private static (ulong divisor, uint cycle)[]? _divisorCandidates;
-private const int ExtraDivisorCycleSearchLimit = 32;
-private static ulong? _orderWarmupLimitOverride;
+	private static bool _useResidue;
+	private static bool _useDivisor;
+	private static ulong _divisor;
+	private static MersenneNumberDivisorGpuTester? _divisorTester;
+	private static (ulong divisor, uint cycle)[]? _divisorCandidates;
+	private static ulong? _orderWarmupLimitOverride;
 	private static unsafe delegate*<ulong, ref ulong, ulong> _transformP;
 	private static long _state;
 	private static bool _limitReached;
@@ -62,11 +61,11 @@ private static ulong? _orderWarmupLimitOverride;
 		bool useOrder = false;
 		bool showHelp = false;
 		bool useBitTransform = false;
-                bool useLucas = false;
-                bool useResidue = false;    // M_p test via residue divisors (replaces LL/incremental)
-                bool useDivisor = false;     // M_p divisibility by specific divisor
-                ulong divisor = 0UL;
-									// Device routing
+		bool useLucas = false;
+		bool useResidue = false;    // M_p test via residue divisors (replaces LL/incremental)
+		bool useDivisor = false;     // M_p divisibility by specific divisor
+		ulong divisor = 0UL;
+		// Device routing
 		bool useGpuCycles = true;
 		bool mersenneOnGpu = true;   // controls Lucas/incremental/pow2mod device
 		bool orderOnGpu = true;      // controls order computations device
@@ -76,6 +75,7 @@ private static ulong? _orderWarmupLimitOverride;
 		string cyclesPath = DefaultCyclesPath;
 		int cyclesBatchSize = 512;
 		bool continueCyclesGeneration = false;
+		int divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
 
 		// NTT backend selection (GPU): reference vs staged
 		for (int i = 0; i < args.Length; i++)
@@ -108,35 +108,40 @@ private static ulong? _orderWarmupLimitOverride;
 			{
 				int eq = arg.IndexOf('=');
 				ReadOnlySpan<char> value = arg.AsSpan(eq + 1);
-                                if (value.Equals("pow2mod", StringComparison.OrdinalIgnoreCase))
-                                {
-                                        kernelType = GpuKernelType.Pow2Mod;
-                                }
-                                else if (value.Equals("lucas", StringComparison.OrdinalIgnoreCase))
-                                {
-                                        useLucas = true;
-                                }
-                                else if (value.Equals("residue", StringComparison.OrdinalIgnoreCase))
-                                {
-                                        useResidue = true;
-                                        useLucas = false;
-                                }
-                                else if (value.Equals("divisor", StringComparison.OrdinalIgnoreCase))
-                                {
-                                        useDivisor = true;
-                                        useLucas = false;
-                                        useResidue = false;
-                                }
-                                else
-                                {
-                                        kernelType = GpuKernelType.Incremental;
-                                }
-                        }
-                        else if (arg.StartsWith("--divisor=", StringComparison.OrdinalIgnoreCase))
-                        {
-                                int eq = arg.IndexOf('=');
-                                divisor = ulong.Parse(arg.AsSpan(eq + 1));
-                        }
+				if (value.Equals("pow2mod", StringComparison.OrdinalIgnoreCase))
+				{
+					kernelType = GpuKernelType.Pow2Mod;
+				}
+				else if (value.Equals("lucas", StringComparison.OrdinalIgnoreCase))
+				{
+					useLucas = true;
+				}
+				else if (value.Equals("residue", StringComparison.OrdinalIgnoreCase))
+				{
+					useResidue = true;
+					useLucas = false;
+				}
+				else if (value.Equals("divisor", StringComparison.OrdinalIgnoreCase))
+				{
+					useDivisor = true;
+					useLucas = false;
+					useResidue = false;
+				}
+				else
+				{
+					kernelType = GpuKernelType.Incremental;
+				}
+			}
+			else if (arg.StartsWith("--divisor=", StringComparison.OrdinalIgnoreCase))
+			{
+				int eq = arg.IndexOf('=');
+				divisor = ulong.Parse(arg.AsSpan(eq + 1));
+			}
+			else if (arg.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
+			{
+				int eq = arg.IndexOf('=');
+				divisorCyclesSearchLimit = int.Parse(arg.AsSpan(eq + 1));
+			}
 			else if (arg.StartsWith("--residue-max-k=", StringComparison.OrdinalIgnoreCase))
 			{
 				int eq = arg.IndexOf('=');
@@ -354,14 +359,14 @@ private static ulong? _orderWarmupLimitOverride;
 			}
 		}
 
-                if (showHelp)
-                {
-                        PrintHelp();
-                        return;
-                }
+		if (showHelp)
+		{
+			PrintHelp();
+			return;
+		}
 
-                // Apply GPU prime sieve runtime configuration
-                GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
+		// Apply GPU prime sieve runtime configuration
+		GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
 		PerfectNumbers.Core.PrimeTester.GpuBatchSize = Math.Max(1, gpuPrimeBatch);
 
 		MersenneDivisorCycles mersenneDivisorCycles = new();
@@ -404,48 +409,48 @@ private static ulong? _orderWarmupLimitOverride;
 		{
 			MersenneDivisorCycles.Shared.LoadFrom(cyclesPath);
 		}
-		
-                Console.WriteLine("Divisor cycles are ready");
 
-                _useResidue = useResidue;
-                _useDivisor = useDivisor;
-                _divisor = divisor;
-                _transformP = useBitTransform ? &TransformPBit : &TransformPAdd;
-                PResidue = new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, initialNumber: currentP, initialized: true), trackAllValues: true);
-                PrimeTesters = new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true);
-                // Note: --primes-device controls default device for library kernels; p primality remains CPU here.
-                // Initialize per-thread p residue tracker (Identity model) at currentP
-                if (!useDivisor)
-                {
-                        MersenneTesters = new ThreadLocal<MersenneNumberTester>(() =>
-                        {
-                                var tester = new MersenneNumberTester(
-                                        useIncremental: !useLucas,
-                                        useOrderCache: false,
-                                        kernelType: kernelType,
-                                        useModuloWorkaround: useModuloWorkaround,
-                                        useOrder: useOrder,
-                                        useGpuLucas: mersenneOnGpu,
-                                        useGpuScan: mersenneOnGpu,
-                                        useGpuOrder: orderOnGpu,
-                                        useResidue: useResidue,
-                                        maxK: residueKMax);
-                                if (!useLucas)
-                                {
-                                        tester.WarmUpOrders(currentP, _orderWarmupLimitOverride ?? 5_000_000UL);
-                                }
+		Console.WriteLine("Divisor cycles are ready");
 
-                                return tester;
-                        }, trackAllValues: true);
-                }
-                else
-                {
-                        _divisorTester = new MersenneNumberDivisorGpuTester();
-                        if (divisor == 0UL)
-                        {
-                                _divisorCandidates = BuildDivisorCandidates();
-                        }
-                }
+		_useResidue = useResidue;
+		_useDivisor = useDivisor;
+		_divisor = divisor;
+		_transformP = useBitTransform ? &TransformPBit : &TransformPAdd;
+		PResidue = new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, initialNumber: currentP, initialized: true), trackAllValues: true);
+		PrimeTesters = new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true);
+		// Note: --primes-device controls default device for library kernels; p primality remains CPU here.
+		// Initialize per-thread p residue tracker (Identity model) at currentP
+		if (!useDivisor)
+		{
+			MersenneTesters = new ThreadLocal<MersenneNumberTester>(() =>
+			{
+				var tester = new MersenneNumberTester(
+									useIncremental: !useLucas,
+									useOrderCache: false,
+									kernelType: kernelType,
+									useModuloWorkaround: useModuloWorkaround,
+									useOrder: useOrder,
+									useGpuLucas: mersenneOnGpu,
+									useGpuScan: mersenneOnGpu,
+									useGpuOrder: orderOnGpu,
+									useResidue: useResidue,
+									maxK: residueKMax);
+				if (!useLucas)
+				{
+					tester.WarmUpOrders(currentP, _orderWarmupLimitOverride ?? 5_000_000UL);
+				}
+
+				return tester;
+			}, trackAllValues: true);
+		}
+		else
+		{
+			_divisorTester = new MersenneNumberDivisorGpuTester();
+			if (divisor == 0UL)
+			{
+				_divisorCandidates = BuildDivisorCandidates();
+			}
+		}
 
 		// Load RLE blacklist (optional)
 		if (!string.IsNullOrEmpty(_rleBlacklistPath))
@@ -471,26 +476,26 @@ private static ulong? _orderWarmupLimitOverride;
 
 		Console.WriteLine("Initialization...");
 		// Compose a results file name that encodes configuration (before opening file)
-                var builtName = BuildResultsFileName(
-                        useBitTransform,
-                        threadCount,
-                        blockSize,
-                        kernelType,
-                        useLucas,
-                        useDivisor,
-                        mersenneOnGpu,
-                        useOrder,
-                        useModuloWorkaround,
-                        _useGcdFilter,
-                        NttGpuMath.GpuTransformBackend,
-                        gpuPrimeThreads,
-                        sliceSize,
-                        scanBatchSize,
-                        _orderWarmupLimitOverride ?? 5_000_000UL,
-                        NttGpuMath.ReductionMode,
-                        mersenneOnGpu ? "gpu" : "cpu",
-                        (GpuContextPool.ForceCpu ? "cpu" : "gpu"),
-                        orderOnGpu ? "gpu" : "cpu");
+		var builtName = BuildResultsFileName(
+				useBitTransform,
+				threadCount,
+				blockSize,
+				kernelType,
+				useLucas,
+				useDivisor,
+				mersenneOnGpu,
+				useOrder,
+				useModuloWorkaround,
+				_useGcdFilter,
+				NttGpuMath.GpuTransformBackend,
+				gpuPrimeThreads,
+				sliceSize,
+				scanBatchSize,
+				_orderWarmupLimitOverride ?? 5_000_000UL,
+				NttGpuMath.ReductionMode,
+				mersenneOnGpu ? "gpu" : "cpu",
+				(GpuContextPool.ForceCpu ? "cpu" : "gpu"),
+				orderOnGpu ? "gpu" : "cpu");
 
 		if (!string.IsNullOrEmpty(_resultsPrefix))
 		{
@@ -550,38 +555,38 @@ private static ulong? _orderWarmupLimitOverride;
 		PerfectNumbers.Core.PrimeTester.GpuBatchSize = gpuPrimeBatch;
 
 		// Compose a results file name that encodes configuration
-                ResultsFileName = BuildResultsFileName(
-                        useBitTransform,
-                        threadCount,
-                        blockSize,
-                        kernelType,
-                        useLucas,
-                        useDivisor,
-                        mersenneOnGpu,
-                        useOrder,
-                        useModuloWorkaround,
-                        _useGcdFilter,
-                        NttGpuMath.GpuTransformBackend,
-                        gpuPrimeThreads,
-                        sliceSize,
-                        scanBatchSize,
-                        _orderWarmupLimitOverride ?? 5_000_000UL,
-                        NttGpuMath.ReductionMode,
-                        mersenneOnGpu ? "gpu" : "cpu",
-                        GpuContextPool.ForceCpu ? "cpu" : "gpu",
-                        orderOnGpu ? "gpu" : "cpu");
+		ResultsFileName = BuildResultsFileName(
+				useBitTransform,
+				threadCount,
+				blockSize,
+				kernelType,
+				useLucas,
+				useDivisor,
+				mersenneOnGpu,
+				useOrder,
+				useModuloWorkaround,
+				_useGcdFilter,
+				NttGpuMath.GpuTransformBackend,
+				gpuPrimeThreads,
+				sliceSize,
+				scanBatchSize,
+				_orderWarmupLimitOverride ?? 5_000_000UL,
+				NttGpuMath.ReductionMode,
+				mersenneOnGpu ? "gpu" : "cpu",
+				GpuContextPool.ForceCpu ? "cpu" : "gpu",
+				orderOnGpu ? "gpu" : "cpu");
 
-                if (!useDivisor)
-                {
-                        Console.WriteLine("Warming up orders...");
+		if (!useDivisor)
+		{
+			Console.WriteLine("Warming up orders...");
 
-                        threadCount = Math.Max(1, threadCount);
-                        _ = MersenneTesters.Value;
-                        if (!useLucas)
-                        {
-                                MersenneTesters.Value!.WarmUpOrders(currentP, _orderWarmupLimitOverride ?? 5_000_000UL);
-                        }
-                }
+			threadCount = Math.Max(1, threadCount);
+			_ = MersenneTesters.Value;
+			if (!useLucas)
+			{
+				MersenneTesters.Value!.WarmUpOrders(currentP, _orderWarmupLimitOverride ?? 5_000_000UL);
+			}
+		}
 
 		Console.WriteLine("Starting scan...");
 		_state = ((long)currentP << 3) | (long)remainder;
@@ -690,12 +695,12 @@ private static ulong? _orderWarmupLimitOverride;
 		Console.WriteLine("  --increment=bit|add    exponent increment method");
 		Console.WriteLine("  --threads=<value>      number of worker threads");
 		Console.WriteLine("  --block-size=<value>   values processed per thread batch");
-                Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor  Mersenne test method");
-                Console.WriteLine("  --divisor=<value>     optional divisor for --mersenne=divisor mode");
-                Console.WriteLine("  --residue-max-k=<value>  max k for residue Mersenne test (q = 2*p*k + 1)");
-                Console.WriteLine("  --mersenne-device=cpu|gpu  Device for Mersenne method (default gpu)");
-                Console.WriteLine("  --primes-device=cpu|gpu    Device for prime-scan kernels (default gpu)");
-                Console.WriteLine("  --gpu-prime-batch=<n>      Batch size for GPU primality sieve (default 262144)");
+		Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor  Mersenne test method");
+		Console.WriteLine("  --divisor=<value>     optional divisor for --mersenne=divisor mode");
+		Console.WriteLine("  --residue-max-k=<value>  max k for residue Mersenne test (q = 2*p*k + 1)");
+		Console.WriteLine("  --mersenne-device=cpu|gpu  Device for Mersenne method (default gpu)");
+		Console.WriteLine("  --primes-device=cpu|gpu    Device for prime-scan kernels (default gpu)");
+		Console.WriteLine("  --gpu-prime-batch=<n>      Batch size for GPU primality sieve (default 262144)");
 		Console.WriteLine("  --order-device=cpu|gpu     Device for order computations (default gpu)");
 		Console.WriteLine("  --ntt=reference|staged GPU NTT backend (default staged)");
 		Console.WriteLine("  --mod-reduction=auto|uint128|mont64|barrett128  staged NTT reduction (default auto)");
@@ -708,12 +713,13 @@ private static ulong? _orderWarmupLimitOverride;
 		Console.WriteLine("  --rle-only-last7=true|false  apply RLE only when p % 10 == 7 (default true)");
 		Console.WriteLine("  --zero-hard=<f>         hard reject if zero_fraction(p) > f (default off)");
 		Console.WriteLine("  --zero-conj=<f>:<r>     hard reject if zero_fraction(p) > f AND max_zero_block >= r (default off)");
-                Console.WriteLine("  --results-dir=<path>   directory for results file");
-                Console.WriteLine("  --results-prefix=<text> prefix to prepend to results filename");
-                Console.WriteLine("  --divisor-cycles=<path>       divisor cycles data file");
-                Console.WriteLine("  --divisor-cycles-device=cpu|gpu  device for cycles generation (default gpu)");
-                Console.WriteLine("  --divisor-cycles-batch-size=<value> batch size for cycles generation (default 512)");
-                Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
+		Console.WriteLine("  --results-dir=<path>   directory for results file");
+		Console.WriteLine("  --results-prefix=<text> prefix to prepend to results filename");
+		Console.WriteLine("  --divisor-cycles=<path>       divisor cycles data file");
+		Console.WriteLine("  --divisor-cycles-device=cpu|gpu  device for cycles generation (default gpu)");
+		Console.WriteLine("  --divisor-cycles-batch-size=<value> batch size for cycles generation (default 512)");
+		Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
+		Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor");
 
 		Console.WriteLine("  --use-order            test primality via q order");
 		Console.WriteLine("  --workaround-mod       avoid '%' operator on the GPU");
@@ -724,10 +730,10 @@ private static ulong? _orderWarmupLimitOverride;
 		Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
 	}
 
-        private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useModWorkaround, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
-        {
-                string inc = bitInc ? "bit" : "add";
-                string mers = useDivisorFlag ? "divisor" : (useLucasFlag ? "lucas" : (kernelType == GpuKernelType.Pow2Mod ? "pow2mod" : "incremental"));
+	private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useModWorkaround, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
+	{
+		string inc = bitInc ? "bit" : "add";
+		string mers = useDivisorFlag ? "divisor" : (useLucasFlag ? "lucas" : (kernelType == GpuKernelType.Pow2Mod ? "pow2mod" : "incremental"));
 		string ntt = nttBackend == NttBackend.Staged ? "staged" : "reference";
 		string red = reduction switch { ModReductionMode.Mont64 => "mont64", ModReductionMode.Barrett128 => "barrett128", ModReductionMode.GpuUInt128 => "uint128", _ => "auto" };
 		string order = useOrder ? "order-on" : "order-off";
@@ -876,9 +882,9 @@ private static ulong? _orderWarmupLimitOverride;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static ulong TransformPAdd(ulong value, ref ulong remainder)
-        {
-                ulong next = value;
+	internal static ulong TransformPAdd(ulong value, ref ulong remainder)
+	{
+		ulong next = value;
 		value = remainder switch
 		{
 			0UL => 1UL,
@@ -898,49 +904,49 @@ private static ulong? _orderWarmupLimitOverride;
 		remainder += value;
 		remainder -= (remainder >= 6UL) ? 6UL : 0UL;
 
-                return next + value;
-        }
+		return next + value;
+	}
 
-        private static (ulong divisor, uint cycle)[] BuildDivisorCandidates()
-        {
-                uint[] snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
-                List<(ulong divisor, uint cycle)> list = new(snapshot.Length / 2);
-                ulong d;
-                uint cycle;
-                for (int i = 3; i < snapshot.Length; i += 2)
-                {
-                        cycle = snapshot[i];
-                        if (cycle == 0U)
-                        {
-                                continue;
-                        }
+	private static (ulong divisor, uint cycle)[] BuildDivisorCandidates()
+	{
+		uint[] snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
+		List<(ulong divisor, uint cycle)> list = new(snapshot.Length / 2);
+		ulong d;
+		uint cycle;
+		for (int i = 3; i < snapshot.Length; i += 2)
+		{
+			cycle = snapshot[i];
+			if (cycle == 0U)
+			{
+				continue;
+			}
 
-                        d = (ulong)i;
-                        list.Add((d, cycle));
-                }
+			d = (ulong)i;
+			list.Add((d, cycle));
+		}
 
-                return list.ToArray();
-        }
+		return list.ToArray();
+	}
 
-        private static bool IsDivisible(ulong exponent, ulong divisor)
-        {
-                if (_divisorTester is not null)
-                {
-                        return _divisorTester.IsDivisible(exponent, divisor);
-                }
+	private static bool IsDivisible(ulong exponent, ulong divisor)
+	{
+		if (_divisorTester is not null)
+		{
+			return _divisorTester.IsDivisible(exponent, divisor);
+		}
 
-                ulong remainder = 1UL;
-                for (ulong i = 0; i < exponent; i++)
-                {
-                        remainder <<= 1;
-                        if (remainder >= divisor)
-                        {
-                                remainder -= divisor;
-                        }
-                }
+		ulong remainder = 1UL;
+		for (ulong i = 0; i < exponent; i++)
+		{
+			remainder <<= 1;
+			if (remainder >= divisor)
+			{
+				remainder -= divisor;
+			}
+		}
 
-                return remainder == 1UL;
-        }
+		return remainder == 1UL;
+	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static bool IsEvenPerfectCandidate(ulong p)
@@ -948,7 +954,7 @@ private static ulong? _orderWarmupLimitOverride;
 		return IsEvenPerfectCandidate(p, out _, out _);
 	}
 
-	internal static bool IsEvenPerfectCandidate(ulong p, out bool searchedMersenne, out bool detailedCheck)
+	internal static bool IsEvenPerfectCandidate(ulong p, int divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck)
 	{
 		searchedMersenne = false;
 		detailedCheck = false;
@@ -1011,67 +1017,67 @@ private static ulong? _orderWarmupLimitOverride;
 			return false;
 		}
 
-                searchedMersenne = true;
-                if (_useDivisor)
-                {
-                        if (_divisor != 0UL)
-                        {
-                                if (IsDivisible(p, _divisor))
-                                {
-                                        detailedCheck = true;
-                                        return false;
-                                }
+		searchedMersenne = true;
+		if (_useDivisor)
+		{
+			if (_divisor != 0UL)
+			{
+				if (IsDivisible(p, _divisor))
+				{
+					detailedCheck = true;
+					return false;
+				}
 
-                                detailedCheck = false;
-                                return true;
-                        }
+				detailedCheck = false;
+				return true;
+			}
 
-                        var candidates = _divisorCandidates!;
-                        int len = candidates.Length;
-                        for (int i = 0; i < len; i++)
-                        {
-                                var (d, cycle) = candidates[i];
-                                if (p % cycle != 0UL)
-                                {
-                                        continue;
-                                }
+			var candidates = _divisorCandidates!;
+			int len = candidates.Length;
+			for (int i = 0; i < len; i++)
+			{
+				var (d, cycle) = candidates[i];
+				if (p % cycle != 0UL)
+				{
+					continue;
+				}
 
-                                if (IsDivisible(p, d))
-                                {
-                                        detailedCheck = true;
-                                        return false;
-                                }
-                        }
+				if (IsDivisible(p, d))
+				{
+					detailedCheck = true;
+					return false;
+				}
+			}
 
-                        for (int k = 1; k <= ExtraDivisorCycleSearchLimit; k++)
-                        {
-                                ulong kMul2 = 2UL * (ulong)k;
-                                if (p > ulong.MaxValue / kMul2)
-                                {
-                                        break;
-                                }
+			for (int k = 1; k <= divisorCyclesSearchLimit; k++)
+			{
+				ulong kMul2 = 2UL * (ulong)k;
+				if (p > ulong.MaxValue / kMul2)
+				{
+					break;
+				}
 
-                                ulong d = kMul2 * p + 1UL;
-                                ulong cycle = MersenneDivisorCycles.Shared.GetCycle(d);
-                                if (p % cycle != 0UL)
-                                {
-                                        continue;
-                                }
+				ulong d = kMul2 * p + 1UL;
+				ulong cycle = MersenneDivisorCycles.Shared.GetCycle(d);
+				if (p % cycle != 0UL)
+				{
+					continue;
+				}
 
-                                if (IsDivisible(p, d))
-                                {
-                                        detailedCheck = true;
-                                        return false;
-                                }
-                        }
+				if (IsDivisible(p, d))
+				{
+					detailedCheck = true;
+					return false;
+				}
+			}
 
-                        detailedCheck = false;
-                        return true;
-                }
+			detailedCheck = false;
+			return true;
+		}
 
-                detailedCheck = MersenneTesters.Value!.IsMersennePrime(p);
-                return detailedCheck;
-        }
+		detailedCheck = MersenneTesters.Value!.IsMersennePrime(p);
+		return detailedCheck;
+	}
 
 	// Use ModResidueTracker with a small set of primes to prefilter composite p.
 	private static bool IsCompositeByResidues(ulong p)
