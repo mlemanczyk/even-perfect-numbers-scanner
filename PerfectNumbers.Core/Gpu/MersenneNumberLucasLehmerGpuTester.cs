@@ -319,30 +319,6 @@ public class MersenneNumberLucasLehmerGpuTester
         }
     }
 
-    private static readonly ulong[] SmallPrimes = GenerateSmallPrimes(1000);
-
-    private static ulong[] GenerateSmallPrimes(int limit)
-    {
-        var isComposite = new bool[limit + 1];
-        var primes = new List<ulong>();
-        for (int p = 2; p <= limit; p++)
-        {
-            if (isComposite[p])
-            {
-                continue;
-            }
-
-            primes.Add((ulong)p);
-            long square = (long)p * p;
-            for (long multiple = square; multiple <= limit; multiple += p)
-            {
-                isComposite[(int)multiple] = true;
-            }
-        }
-
-        return primes.ToArray();
-    }
-
     private static bool GenerateNttParameters(int length, out GpuUInt128 modulus, out GpuUInt128 primitiveRoot)
     {
         ulong foundCandidate = 0UL;
@@ -367,17 +343,7 @@ public class MersenneNumberLucasLehmerGpuTester
                     break;
                 }
 
-                bool divisible = false;
-                foreach (ulong p in SmallPrimes)
-                {
-                    if (candidate % p == 0UL)
-                    {
-                        divisible = true;
-                        break;
-                    }
-                }
-
-                if (!divisible && IsPrime(candidate))
+                if (IsPrime(candidate))
                 {
                     ulong root = FindPrimitiveRoot(candidate, (ulong)length);
                     lock (sync)
@@ -462,40 +428,14 @@ public class MersenneNumberLucasLehmerGpuTester
             return false;
         }
 
-        ulong[] bases = [2UL, 3UL, 5UL, 7UL, 11UL, 13UL];
-        ulong d = n - 1UL;
-        int s = 0;
-        while ((d & 1UL) == 0UL)
+        if ((n & 1UL) == 0UL)
         {
-            d >>= 1;
-            s++;
+            return n == 2UL;
         }
 
-        foreach (ulong a in bases)
+        for (ulong divisor = 3UL; divisor * divisor <= n; divisor += 2UL)
         {
-            if (a >= n)
-            {
-                continue;
-            }
-
-            ulong x = ModPow(a, d, n);
-            if (x == 1UL || x == n - 1UL)
-            {
-                continue;
-            }
-
-            bool cont = false;
-            for (int r = 1; r < s; r++)
-            {
-                x = MulMod(x, x, n);
-                if (x == n - 1UL)
-                {
-                    cont = true;
-                    break;
-                }
-            }
-
-            if (!cont)
+            if (n % divisor == 0UL)
             {
                 return false;
             }
