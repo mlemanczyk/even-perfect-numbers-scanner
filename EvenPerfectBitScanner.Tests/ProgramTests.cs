@@ -68,7 +68,7 @@ public class ProgramTests
     }
 
     [Fact]
-    public void Divisor_mode_checks_all_candidates_when_none_specified()
+    public void Divisor_mode_scans_dynamic_cycles_when_none_specified()
     {
         var useDivisorField = typeof(Program).GetField("_useDivisor", BindingFlags.NonPublic | BindingFlags.Static)!;
         var divisorField = typeof(Program).GetField("_divisor", BindingFlags.NonPublic | BindingFlags.Static)!;
@@ -80,7 +80,7 @@ public class ProgramTests
 
         useDivisorField.SetValue(null, true);
         divisorField.SetValue(null, 0UL);
-        testerField.SetValue(null, new MersenneNumberDivisorGpuTester());
+        testerField.SetValue(null, null);
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
         candidatesField.SetValue(null, new (ulong, uint)[] { (7UL, 3U), (23UL, 11U) });
@@ -88,8 +88,8 @@ public class ProgramTests
 
         try
         {
-            Program.IsEvenPerfectCandidate(11UL).Should().BeTrue();
-            Program.IsEvenPerfectCandidate(5UL).Should().BeFalse();
+            Program.IsEvenPerfectCandidate(11UL).Should().BeFalse();
+            Program.IsEvenPerfectCandidate(5UL).Should().BeTrue();
         }
         finally
         {
