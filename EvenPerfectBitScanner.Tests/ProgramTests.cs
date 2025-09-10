@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Xunit;
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Gpu;
 using System.Reflection;
 
 namespace EvenPerfectBitScanner.Tests;
@@ -64,6 +65,41 @@ public class ProgramTests
     {
         Program.IsCompositeByGcd(15UL).Should().BeTrue();
         Program.IsCompositeByGcd(5UL).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Divisor_mode_checks_all_candidates_when_none_specified()
+    {
+        var useDivisorField = typeof(Program).GetField("_useDivisor", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var divisorField = typeof(Program).GetField("_divisor", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var testerField = typeof(Program).GetField("_divisorTester", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var candidatesField = typeof(Program).GetField("_divisorCandidates", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var residueField = typeof(Program).GetField("PResidue", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
+
+        useDivisorField.SetValue(null, true);
+        divisorField.SetValue(null, 0UL);
+        testerField.SetValue(null, new MersenneNumberDivisorGpuTester());
+        primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
+        residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
+        candidatesField.SetValue(null, new (ulong, uint)[] { (7UL, 3U), (23UL, 11U) });
+        forceCpuProp!.SetValue(null, true);
+
+        try
+        {
+            Program.IsEvenPerfectCandidate(11UL).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(5UL).Should().BeFalse();
+        }
+        finally
+        {
+            useDivisorField.SetValue(null, false);
+            testerField.SetValue(null, null);
+            candidatesField.SetValue(null, null);
+            primeField.SetValue(null, null);
+            residueField.SetValue(null, null);
+            forceCpuProp!.SetValue(null, false);
+        }
     }
 
     [Fact]
