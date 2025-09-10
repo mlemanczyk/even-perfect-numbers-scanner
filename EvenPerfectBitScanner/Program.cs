@@ -29,9 +29,10 @@ internal static class Program
         private static bool _useResidue;
         private static bool _useDivisor;
         private static ulong _divisor;
-        private static MersenneNumberDivisorGpuTester? _divisorTester;
-        private static (ulong divisor, uint cycle)[]? _divisorCandidates;
-	private static ulong? _orderWarmupLimitOverride;
+private static MersenneNumberDivisorGpuTester? _divisorTester;
+private static (ulong divisor, uint cycle)[]? _divisorCandidates;
+private const int ExtraDivisorCycleSearchLimit = 32;
+private static ulong? _orderWarmupLimitOverride;
 	private static unsafe delegate*<ulong, ref ulong, ulong> _transformP;
 	private static long _state;
 	private static bool _limitReached;
@@ -921,6 +922,26 @@ internal static class Program
                 return list.ToArray();
         }
 
+        private static bool IsDivisible(ulong exponent, ulong divisor)
+        {
+                if (_divisorTester is not null)
+                {
+                        return _divisorTester.IsDivisible(exponent, divisor);
+                }
+
+                ulong remainder = 1UL;
+                for (ulong i = 0; i < exponent; i++)
+                {
+                        remainder <<= 1;
+                        if (remainder >= divisor)
+                        {
+                                remainder -= divisor;
+                        }
+                }
+
+                return remainder == 1UL;
+        }
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static bool IsEvenPerfectCandidate(ulong p)
 	{
@@ -995,8 +1016,14 @@ internal static class Program
                 {
                         if (_divisor != 0UL)
                         {
-                                detailedCheck = _divisorTester!.IsDivisible(p, _divisor);
-                                return detailedCheck;
+                                if (IsDivisible(p, _divisor))
+                                {
+                                        detailedCheck = true;
+                                        return false;
+                                }
+
+                                detailedCheck = false;
+                                return true;
                         }
 
                         var candidates = _divisorCandidates!;
@@ -1009,14 +1036,37 @@ internal static class Program
                                         continue;
                                 }
 
-                                if (_divisorTester!.IsDivisible(p, d))
+                                if (IsDivisible(p, d))
                                 {
                                         detailedCheck = true;
-                                        return true;
+                                        return false;
                                 }
                         }
 
-                        return false;
+                        for (int k = 1; k <= ExtraDivisorCycleSearchLimit; k++)
+                        {
+                                ulong kMul2 = 2UL * (ulong)k;
+                                if (p > ulong.MaxValue / kMul2)
+                                {
+                                        break;
+                                }
+
+                                ulong d = kMul2 * p + 1UL;
+                                ulong cycle = MersenneDivisorCycles.Shared.GetCycle(d);
+                                if (p % cycle != 0UL)
+                                {
+                                        continue;
+                                }
+
+                                if (IsDivisible(p, d))
+                                {
+                                        detailedCheck = true;
+                                        return false;
+                                }
+                        }
+
+                        detailedCheck = false;
+                        return true;
                 }
 
                 detailedCheck = MersenneTesters.Value!.IsMersennePrime(p);
