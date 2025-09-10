@@ -1,7 +1,9 @@
+using System.Buffers;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
-using System.Runtime.CompilerServices;
+using UInt128 = System.UInt128;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -12,6 +14,7 @@ public class MersenneNumberLucasLehmerGpuTester
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<GpuUInt128>>> SubSmallKernelCache = new();
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<GpuUInt128>>> ReduceKernelCache = new();
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<byte>>> IsZeroKernelCache = new();
+    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>>> BatchKernelCache = new();
 
     private Action<Index1D, ulong, GpuUInt128, ArrayView<GpuUInt128>> GetKernel(Accelerator accelerator)
     {
@@ -29,6 +32,9 @@ public class MersenneNumberLucasLehmerGpuTester
 
     private Action<Index1D, ArrayView<GpuUInt128>, ArrayView<byte>> GetIsZeroKernel(Accelerator accelerator) =>
         IsZeroKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<byte>>(IsZeroKernel));
+
+    private Action<Index1D, ArrayView<ulong>, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>> GetBatchKernel(Accelerator accelerator) =>
+        BatchKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>>(KernelBatch));
 
     // Configurable LL slice size to keep kernels short. Default 32.
     public int SliceSize = 32;
@@ -83,6 +89,76 @@ public class MersenneNumberLucasLehmerGpuTester
 
         limiter.Dispose();
         return result;
+    }
+
+    public void ComputeResidues(ReadOnlySpan<ulong> exponents, Span<GpuUInt128> residues)
+    {
+        int count = exponents.Length;
+        if (residues.Length < count)
+        {
+            throw new ArgumentException("Result span too small", nameof(residues));
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            if (exponents[i] >= 128UL)
+            {
+                throw new NotSupportedException("Batch residue calculation supports exponents < 128 only.");
+            }
+        }
+
+        var gpu = GpuContextPool.RentPreferred(preferCpu: false);
+        var accelerator = gpu.Accelerator;
+        var kernel = GetBatchKernel(accelerator);
+
+        var expBuffer = accelerator.Allocate1D<ulong>(count);
+        ulong[] expArray = ArrayPool<ulong>.Shared.Rent(count);
+        exponents.CopyTo(expArray);
+        expBuffer.View.CopyFromCPU(ref expArray[0], count);
+
+        GpuUInt128[] modulusArray = ArrayPool<GpuUInt128>.Shared.Rent(count);
+        for (int i = 0; i < count; i++)
+        {
+            modulusArray[i] = new GpuUInt128(((UInt128)1 << (int)exponents[i]) - 1UL);
+        }
+
+        var modBuffer = accelerator.Allocate1D<GpuUInt128>(count);
+        modBuffer.View.CopyFromCPU(ref modulusArray[0], count);
+
+        var stateBuffer = accelerator.Allocate1D<GpuUInt128>(count);
+        kernel(count, expBuffer.View, modBuffer.View, stateBuffer.View);
+        accelerator.Synchronize();
+        stateBuffer.View.CopyToCPU(ref residues[0], count);
+
+        stateBuffer.Dispose();
+        modBuffer.Dispose();
+        expBuffer.Dispose();
+        ArrayPool<GpuUInt128>.Shared.Return(modulusArray);
+        ArrayPool<ulong>.Shared.Return(expArray);
+        gpu.Dispose();
+    }
+
+    public void IsMersennePrimeBatch(ReadOnlySpan<ulong> exponents, Span<bool> results)
+    {
+        int count = exponents.Length;
+        if (results.Length < count)
+        {
+            throw new ArgumentException("Result span too small", nameof(results));
+        }
+
+        GpuUInt128[] buffer = ArrayPool<GpuUInt128>.Shared.Rent(count);
+        try
+        {
+            ComputeResidues(exponents, buffer.AsSpan(0, count));
+            for (int i = 0; i < count; i++)
+            {
+                results[i] = buffer[i].IsZero;
+            }
+        }
+        finally
+        {
+            ArrayPool<GpuUInt128>.Shared.Return(buffer);
+        }
     }
 
     private bool IsMersennePrimeNtt(ulong exponent, GpuUInt128 nttMod, GpuUInt128 primitiveRoot, bool runOnGpu)
@@ -729,6 +805,21 @@ public class MersenneNumberLucasLehmerGpuTester
         {
             value[i] = new GpuUInt128(0UL, 0UL);
         }
+    }
+
+    private static void KernelBatch(Index1D index, ArrayView<ulong> exponents, ArrayView<GpuUInt128> moduli, ArrayView<GpuUInt128> states)
+    {
+        int idx = index.X;
+        ulong exponent = exponents[idx];
+        GpuUInt128 modulus = moduli[idx];
+        var s = new GpuUInt128(0UL, 4UL);
+        ulong limit = exponent - 2UL;
+        for (ulong i = 0UL; i < limit; i++)
+        {
+            s = SquareModMersenne128(s, exponent).SubMod(2UL, modulus);
+        }
+
+        states[idx] = s;
     }
 
     private static void Kernel(Index1D index, ulong exponent, GpuUInt128 modulus, ArrayView<GpuUInt128> state)

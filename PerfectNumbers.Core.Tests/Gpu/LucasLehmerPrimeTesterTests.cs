@@ -29,6 +29,18 @@ public class LucasLehmerPrimeTesterTests
         tester.IsMersennePrime(exponent).Should().BeFalse();
     }
 
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void IsMersennePrimeBatch_matches_individual()
+    {
+        ulong[] exponents = new ulong[] { 3UL, 5UL, 7UL, 11UL, 13UL, 17UL, 19UL, 23UL };
+        bool[] expected = new bool[] { true, true, true, false, true, true, true, false };
+        var tester = new MersenneNumberLucasLehmerGpuTester();
+        bool[] results = new bool[exponents.Length];
+        tester.IsMersennePrimeBatch(exponents, results);
+        results.Should().Equal(expected);
+    }
+
     [Theory]
     [InlineData(132UL)]
     [InlineData(1000UL)]
