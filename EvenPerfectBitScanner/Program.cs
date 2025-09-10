@@ -453,7 +453,7 @@ internal static class Program
 		}
 
 		ulong remainder = currentP % 6UL;
-		if (currentP == InitialP)
+		if (currentP == InitialP && string.IsNullOrEmpty(filterFile))
 		{
 			// bool isPerfect = IsEvenPerfectCandidate(InitialP, out bool searchedMersenne, out bool detailedCheck);
 			// Skip the already processed range below 138 million
@@ -973,7 +973,7 @@ internal static class Program
 		}
 
 		// Fast residue-based composite check for p using small primes
-		if (IsCompositeByResidues(p))
+		if (!_useDivisor && IsCompositeByResidues(p))
 		{
 			searchedMersenne = false;
 			detailedCheck = false;
