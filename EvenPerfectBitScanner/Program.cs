@@ -589,39 +589,33 @@ internal static class Program
 		}
 
 		Console.WriteLine("Starting scan...");
-		_state = ((long)currentP << 3) | (long)remainder;
-		Task[] tasks = new Task[threadCount];
+                _state = ((long)currentP << 3) | (long)remainder;
+                Task[] tasks = new Task[threadCount];
 
-		for (int i = 0; i < threadCount; i++)
-		{
-			tasks[i] = Task.Run(() =>
-			{
-				ulong[] buffer = new ulong[blockSize];
-				while (!Volatile.Read(ref _limitReached))
-				{
-					int count = 0;
-					while (count < blockSize && !Volatile.Read(ref _limitReached))
-					{
-						buffer[count] = ReserveNextP();
-						count++;
-					}
+                for (int i = 0; i < threadCount; i++)
+                {
+                        tasks[i] = Task.Run(() =>
+                        {
+                                ulong[] buffer = new ulong[blockSize];
+                                while (!Volatile.Read(ref _limitReached))
+                                {
+                                        int count = ReserveBlock(buffer, blockSize);
+                                        if (count == 0)
+                                        {
+                                                break;
+                                        }
 
-					if (count == 0)
-					{
-						break;
-					}
-
-					for (int j = 0; j < count && !Volatile.Read(ref _limitReached); j++)
-					{
-						ulong p = buffer[j];
-						if (useFilter && !filter.Contains(p))
-						{
-							continue;
-						}
-						else if (useFilter)
-						{
-							Console.WriteLine($"Testing {p}");
-						}
+                                        for (int j = 0; j < count && !Volatile.Read(ref _limitReached); j++)
+                                        {
+                                                ulong p = buffer[j];
+                                                if (useFilter && !filter.Contains(p))
+                                                {
+                                                        continue;
+                                                }
+                                                else if (useFilter)
+                                                {
+                                                        Console.WriteLine($"Testing {p}");
+                                                }
 
 						bool isPerfect = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck);
 						PrintResult(p, searchedMersenne, detailedCheck, isPerfect);
@@ -742,24 +736,36 @@ internal static class Program
 		return $"even_perfect_bit_scan_inc-{inc}_thr-{threads}_blk-{block}_mers-{mers}_mersdev-{mersenneDevice}_ntt-{ntt}_red-{red}_primesdev-{primesDevice}_{order}_orderdev-{orderDevice}_{gcd}_{work}_gputh-{gpuPrimeThreads}_llslice-{llSlice}_scanb-{gpuScanBatch}_warm-{warmupLimit}.csv";
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static unsafe ulong ReserveNextP()
-	{
-		while (true)
-		{
-			long state = Volatile.Read(ref _state);
-			ulong current = (ulong)state >> 3;
-			ulong remainder = ((ulong)state) & 7UL;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe int ReserveBlock(ulong[] buffer, int blockSize)
+        {
+                while (true)
+                {
+                        long state = Volatile.Read(ref _state);
+                        ulong current = (ulong)state >> 3;
+                        ulong remainder = ((ulong)state) & 7UL;
 
-			ulong next = _transformP(current, ref remainder);
-			long newState = ((long)next << 3) | (long)remainder;
-			long original = Interlocked.CompareExchange(ref _state, newState, state);
-			if (original == state)
-			{
-				return current;
-			}
-		}
-	}
+                        ulong p = current;
+                        int count = 0;
+                        while (count < blockSize && !Volatile.Read(ref _limitReached))
+                        {
+                                buffer[count++] = p;
+                                p = _transformP(p, ref remainder);
+                        }
+
+                        if (count == 0)
+                        {
+                                return 0;
+                        }
+
+                        long newState = ((long)p << 3) | (long)remainder;
+                        long original = Interlocked.CompareExchange(ref _state, newState, state);
+                        if (original == state)
+                        {
+                                return count;
+                        }
+                }
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void PrintResult(ulong currentP, bool searchedMersenne, bool detailedCheck, bool isPerfect)

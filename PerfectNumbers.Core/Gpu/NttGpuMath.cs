@@ -77,14 +77,24 @@ public static class NttGpuMath
             Buffer = accelerator.Allocate1D<GpuUInt128>(length);
             Root = new GpuUInt128(primitiveRoot);
             RootInv = new GpuUInt128(primitiveRoot);
-            RootInv = modulus.High == 0UL
-                ? RootInv.ModInv(modulus.Low)
-                : RootInv.ModInv(modulus);
+            if (modulus.High == 0UL)
+            {
+                RootInv.ModInv(modulus.Low);
+            }
+            else
+            {
+                RootInv.ModInv(modulus);
+            }
 
             NInv = new GpuUInt128((UInt128)length);
-            NInv = modulus.High == 0UL
-                ? NInv.ModInv(modulus.Low)
-                : NInv.ModInv(modulus);
+            if (modulus.High == 0UL)
+            {
+                NInv.ModInv(modulus.Low);
+            }
+            else
+            {
+                NInv.ModInv(modulus);
+            }
             
             // Precompute stage twiddle factors (forward and inverse) and upload to GPU.
             Bits = (int)Math.Log2(length);
@@ -102,20 +112,20 @@ public static class NttGpuMath
                 StageOffsets[stage - 1] = offset;
                 UInt128 exp = (modValue - 1UL) / (ulong)len;
                 var wLen = new GpuUInt128(Root);
-                wLen = wLen.ModPow((ulong)exp, modulus);
+                wLen.ModPow((ulong)exp, modulus);
                 var w = new GpuUInt128(0UL, 1UL);
                 for (int j = 0; j < half; j++)
                 {
                     forward[offset + j] = w;
-                    w = w.MulMod(wLen, modulus);
+                    w.MulMod(wLen, modulus);
                 }
                 var wLenInv = new GpuUInt128(RootInv);
-                wLenInv = wLenInv.ModPow((ulong)exp, modulus);
+                wLenInv.ModPow((ulong)exp, modulus);
                 var wi = new GpuUInt128(0UL, 1UL);
                 for (int j = 0; j < half; j++)
                 {
                     inverse[offset + j] = wi;
-                    wi = wi.MulMod(wLenInv, modulus);
+                    wi.MulMod(wLenInv, modulus);
                 }
                 offset += half;
             }
@@ -393,7 +403,9 @@ public static class NttGpuMath
 
     private static void MulKernel(Index1D index, ArrayView<GpuUInt128> a, ArrayView<GpuUInt128> b, GpuUInt128 modulus)
     {
-        a[index] = a[index].MulMod(b[index], modulus);
+        var val = a[index];
+        val.MulMod(b[index], modulus);
+        a[index] = val;
     }
 
     private static void StageKernel(Index1D index, ArrayView<GpuUInt128> data, int len, int half, int stageOffset, ArrayView<GpuUInt128> twiddles, GpuUInt128 modulus)
@@ -410,10 +422,10 @@ public static class NttGpuMath
         var u = data[i1];
         var v = data[i2];
         var w = twiddles[stageOffset + j];
-        v = v.MulMod(w, modulus);
+        v.MulMod(w, modulus);
         var sum = new GpuUInt128(u);
-        sum = sum.AddMod(v, modulus);
-        u = u.SubMod(v, modulus);
+        sum.AddMod(v, modulus);
+        u.SubMod(v, modulus);
         data[i1] = sum;
         data[i2] = u;
     }
@@ -421,7 +433,7 @@ public static class NttGpuMath
     private static void ScaleKernel(Index1D index, ArrayView<GpuUInt128> data, GpuUInt128 scale, GpuUInt128 modulus)
     {
         var v = data[index];
-        v = v.MulMod(scale, modulus);
+        v.MulMod(scale, modulus);
         data[index] = v;
     }
 
@@ -515,8 +527,8 @@ public static class NttGpuMath
 
         var sum = new GpuUInt128(u);
         var mulred = new GpuUInt128(resHigh, resLow);
-        sum = sum.AddMod(mulred, new GpuUInt128(modHigh, modLow));
-        u = u.SubMod(mulred, new GpuUInt128(modHigh, modLow));
+        sum.AddMod(mulred, new GpuUInt128(modHigh, modLow));
+        u.SubMod(mulred, new GpuUInt128(modHigh, modLow));
         data[i1] = sum;
         data[i2] = u;
     }
@@ -735,9 +747,9 @@ public static class NttGpuMath
         {
             var term = input[i];
             var power = new GpuUInt128(root);
-            power = power.ModPow((ulong)index.X * (ulong)i, modulus);
-            term = term.MulMod(power, modulus);
-            sum = sum.AddMod(term, modulus);
+            power.ModPow((ulong)index.X * (ulong)i, modulus);
+            term.MulMod(power, modulus);
+            sum.AddMod(term, modulus);
         }
 
         output[index] = sum;
@@ -753,12 +765,12 @@ public static class NttGpuMath
         {
             var term = input[i];
             var power = new GpuUInt128(rootInv);
-            power = power.ModPow((ulong)index.X * (ulong)i, modulus);
-            term = term.MulMod(power, modulus);
-            sum = sum.AddMod(term, modulus);
+            power.ModPow((ulong)index.X * (ulong)i, modulus);
+            term.MulMod(power, modulus);
+            sum.AddMod(term, modulus);
         }
 
-        sum = sum.MulMod(nInv, modulus);
+        sum.MulMod(nInv, modulus);
         output[index] = sum;
     }
 
@@ -831,7 +843,7 @@ public static class NttGpuMath
         {
             UInt128 expBase = (modValue - 1UL) / (ulong)len;
             var wLen = new GpuUInt128(primitiveRoot);
-            wLen = wLen.ModPow((ulong)expBase, modulus);
+            wLen.ModPow((ulong)expBase, modulus);
             for (int i = 0; i < n; i += len)
             {
                 var w = new GpuUInt128(0UL, 1UL);
@@ -840,13 +852,13 @@ public static class NttGpuMath
                 {
                     var u = values[i + j];
                     var v = values[i + j + half];
-                    v = v.MulMod(w, modulus);
+                    v.MulMod(w, modulus);
                     var sum = new GpuUInt128(u);
-                    sum = sum.AddMod(v, modulus);
-                    u = u.SubMod(v, modulus);
+                    sum.AddMod(v, modulus);
+                    u.SubMod(v, modulus);
                     values[i + j] = sum;
                     values[i + j + half] = u;
-                    w = w.MulMod(wLen, modulus);
+                    w.MulMod(wLen, modulus);
                 }
             }
         }
@@ -879,7 +891,7 @@ public static class NttGpuMath
         UInt128 modValue = modulus;
         UInt128 expBase = (modValue - 1UL) / (ulong)n;
         var root = new GpuUInt128(primitiveRoot);
-        root = root.ModPow((ulong)expBase, modulus);
+        root.ModPow((ulong)expBase, modulus);
         kernel(n, inputBuffer.View, outputBuffer.View, n, modulus, root);
         accelerator.Synchronize();
         outputBuffer.View.CopyToCPU(ref outputArray[0], n);
@@ -900,33 +912,33 @@ public static class NttGpuMath
         var root = new GpuUInt128(primitiveRoot);
         if (modulus.High == 0UL)
         {
-            root = root.ModInv(modulus.Low);
+            root.ModInv(modulus.Low);
         }
         else
         {
-            root = root.ModInv(modulus);
+            root.ModInv(modulus);
         }
 		
         for (int len = 2; len <= n; len <<= 1)
 		{
-			UInt128 expBase = (modValue - 1UL) / (ulong)len;
-			var wLen = new GpuUInt128(root);
-			wLen = wLen.ModPow((ulong)expBase, modulus);
+                        UInt128 expBase = (modValue - 1UL) / (ulong)len;
+                        var wLen = new GpuUInt128(root);
+                        wLen.ModPow((ulong)expBase, modulus);
 			for (int i = 0; i < n; i += len)
 			{
 				var w = new GpuUInt128(0UL, 1UL);
 				int half = len >> 1;
 				for (int j = 0; j < half; j++)
 				{
-					var u = values[i + j];
-					var v = values[i + j + half];
-					v = v.MulMod(w, modulus);
-					var sum = new GpuUInt128(u);
-					sum = sum.AddMod(v, modulus);
-					u = u.SubMod(v, modulus);
-					values[i + j] = sum;
-					values[i + j + half] = u;
-					w = w.MulMod(wLen, modulus);
+                                        var u = values[i + j];
+                                        var v = values[i + j + half];
+                                        v.MulMod(w, modulus);
+                                        var sum = new GpuUInt128(u);
+                                        sum.AddMod(v, modulus);
+                                        u.SubMod(v, modulus);
+                                        values[i + j] = sum;
+                                        values[i + j + half] = u;
+                                        w.MulMod(wLen, modulus);
 				}
 			}
 		}
@@ -934,16 +946,18 @@ public static class NttGpuMath
         var nInv = new GpuUInt128((UInt128)n);
         if (modulus.High == 0UL)
         {
-            nInv = nInv.ModInv(modulus.Low);
+            nInv.ModInv(modulus.Low);
         }
         else
         {
-            nInv = nInv.ModInv(modulus);
+            nInv.ModInv(modulus);
         }
 
         for (int i = 0; i < n; i++)
         {
-            values[i] = values[i].MulMod(nInv, modulus);
+            var val = values[i];
+            val.MulMod(nInv, modulus);
+            values[i] = val;
         }
     }
 
@@ -974,25 +988,25 @@ public static class NttGpuMath
         UInt128 modValue = modulus;
         UInt128 expBase = (modValue - 1UL) / (ulong)n;
         var root = new GpuUInt128(primitiveRoot);
-        root = root.ModPow((ulong)expBase, modulus);
+        root.ModPow((ulong)expBase, modulus);
         var rootInv = new GpuUInt128(root);
         if (modulus.High == 0UL)
         {
-            rootInv = rootInv.ModInv(modulus.Low);
+            rootInv.ModInv(modulus.Low);
         }
         else
         {
-            rootInv = rootInv.ModInv(modulus);
+            rootInv.ModInv(modulus);
         }
 
         var nInv = new GpuUInt128((UInt128)n);
         if (modulus.High == 0UL)
         {
-            nInv = nInv.ModInv(modulus.Low);
+            nInv.ModInv(modulus.Low);
         }
         else
         {
-            nInv = nInv.ModInv(modulus);
+            nInv.ModInv(modulus);
         }
         kernel(n, inputBuffer.View, outputBuffer.View, n, modulus, rootInv, nInv);
         accelerator.Synchronize();

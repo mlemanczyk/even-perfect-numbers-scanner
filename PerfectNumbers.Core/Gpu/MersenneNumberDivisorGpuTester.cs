@@ -48,10 +48,11 @@ public sealed class MersenneNumberDivisorGpuTester
 		ulong pow2x = 1UL << x;
 		ulong y = divisor - pow2x;
 		var modVal = new GpuUInt128(0UL, divisor);
-		var baseVal = new GpuUInt128(0UL, pow2x); // 2^x ≡ -y (mod divisor)
-		var part1 = baseVal.ModPow(q, modVal);
-		var part2 = GpuUInt128.Pow2Mod(r, modVal);
-		var rem = part1.MulMod(part2, modVal);
-		result[0] = rem.High == 0UL && rem.Low == 1UL ? (byte)1 : (byte)0;
+                var baseVal = new GpuUInt128(0UL, pow2x); // 2^x ≡ -y (mod divisor)
+                var part1 = baseVal;
+                part1.ModPow(q, modVal);
+                var part2 = GpuUInt128.Pow2Mod(r, modVal);
+                part1.MulMod(part2, modVal);
+                result[0] = part1.High == 0UL && part1.Low == 1UL ? (byte)1 : (byte)0;
 	}
 }
