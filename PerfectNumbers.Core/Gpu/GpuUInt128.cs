@@ -3,11 +3,11 @@ using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core.Gpu;
 
-public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
+public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 {
-    public readonly ulong High;
+    public ulong High;
 
-    public readonly ulong Low;
+    public ulong Low;
 
     public static readonly GpuUInt128 Zero = new(0UL, 0UL);
     public static readonly GpuUInt128 One = new(0UL, 1UL);
@@ -129,7 +129,11 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
     public static bool operator >=(GpuUInt128 left, GpuUInt128 right) => left.CompareTo(right) >= 0;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static GpuUInt128 operator ++(GpuUInt128 value) => value.Add(1UL);
+        public static GpuUInt128 operator ++(GpuUInt128 value)
+        {
+            value.Add(1UL);
+            return value;
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int CompareTo(GpuUInt128 other)
@@ -167,51 +171,51 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
     public override readonly int GetHashCode() => HashCode.Combine(High, Low);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 Add(GpuUInt128 other)
+    public void Add(GpuUInt128 other)
     {
         ulong low = Low + other.Low;
-        return new(High + other.High + (low < Low ? 1UL : 0UL), low);
+        High = High + other.High + (low < Low ? 1UL : 0UL);
+        Low = low;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 Add(ulong value)
+    public void Add(ulong value)
     {
-        var low = Low + value;
-        return new(High + (low < Low ? 1UL : 0UL), low);
+        ulong low = Low + value;
+        High = High + (low < Low ? 1UL : 0UL);
+        Low = low;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 AddMod(GpuUInt128 value, GpuUInt128 modulus)
-    {
-        if (modulus.High == 0UL)
-        {
-            return AddMod(value, modulus.Low);
-        }
-
-        value = Add(value);
-        if (value.CompareTo(modulus) >= 0)
-        {
-            value = value.Sub(modulus);
-        }
-
-        return value;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 AddMod(ulong value, GpuUInt128 modulus)
+    public void AddMod(GpuUInt128 value, GpuUInt128 modulus)
     {
         if (modulus.High == 0UL)
         {
-            return AddMod(value, modulus.Low);
+            AddMod(value, modulus.Low);
+            return;
         }
 
-        var result = Add(value);
-        if (result.CompareTo(modulus) >= 0)
+        Add(value);
+        if (CompareTo(modulus) >= 0)
         {
-            result = result.Sub(modulus);
+            Sub(modulus);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AddMod(ulong value, GpuUInt128 modulus)
+    {
+        if (modulus.High == 0UL)
+        {
+            AddMod(value, modulus.Low);
+            return;
         }
 
-        return result;
+        Add(value);
+        if (CompareTo(modulus) >= 0)
+        {
+            Sub(modulus);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -336,7 +340,7 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 AddMod(GpuUInt128 value, ulong modulus)
+    public void AddMod(GpuUInt128 value, ulong modulus)
     {
         ulong a = Low % modulus;
         ulong b = value.Low % modulus;
@@ -346,11 +350,12 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             sum -= modulus;
         }
 
-        return new(0UL, sum);
+        High = 0UL;
+        Low = sum;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 AddMod(ulong value, ulong modulus)
+    public void AddMod(ulong value, ulong modulus)
     {
         ulong a = Low % modulus;
         ulong b = value % modulus;
@@ -360,14 +365,16 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             sum -= modulus;
         }
 
-        return new(0UL, sum);
+        High = 0UL;
+        Low = sum;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 Sub(GpuUInt128 other)
+    public void Sub(GpuUInt128 other)
     {
         ulong borrow = Low < other.Low ? 1UL : 0UL;
-        return new(High - other.High - borrow, Low - other.Low);
+        High = High - other.High - borrow;
+        Low -= other.Low;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -400,10 +407,10 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GpuUInt128 AddMod(GpuUInt128 a, GpuUInt128 b, GpuUInt128 modulus)
     {
-        a = a.Add(b);
+        a.Add(b);
         if (a >= modulus)
         {
-            a = a.Sub(modulus);
+            a.Sub(modulus);
         }
 
         return a;
@@ -424,7 +431,7 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             a <<= 1;
             if (a >= modulus)
             {
-                a = a.Sub(modulus);
+                a.Sub(modulus);
             }
 
             // b >>= 1
@@ -516,76 +523,95 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
     }
 
 
-    public GpuUInt128 Sub(ulong value)
+    public void Sub(ulong value)
     {
         ulong borrow = Low < value ? 1UL : 0UL;
-        return new(High - borrow, Low - value);
+        High -= borrow;
+        Low -= value;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 SubMod(GpuUInt128 value, GpuUInt128 modulus)
+    public void SubMod(GpuUInt128 value, GpuUInt128 modulus)
     {
         if (CompareTo(value) >= 0)
         {
-            return Sub(value);
+            Sub(value);
         }
         else
         {
-            return Add(modulus).Sub(value);
+            Add(modulus);
+            Sub(value);
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 SubMod(ulong value, GpuUInt128 modulus)
+    public void SubMod(ulong value, GpuUInt128 modulus)
     {
-		ulong low, high;
-		if (High == 0UL && Low < value)
-		{
-			low = Low + modulus.Low;
-			ulong carry = low < Low ? 1UL : 0UL;
-			high = High + modulus.High + carry;
-		}
-		else
-		{
-			high = High;
-			low = Low;
-		}
+        ulong low, high;
+        if (High == 0UL && Low < value)
+        {
+            low = Low + modulus.Low;
+            ulong carry = low < Low ? 1UL : 0UL;
+            high = High + modulus.High + carry;
+        }
+        else
+        {
+            high = High;
+            low = Low;
+        }
 
         ulong borrow = low < value ? 1UL : 0UL;
-        return new (high - borrow, low - value);
+        High = high - borrow;
+        Low = low - value;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 Mul(GpuUInt128 other)
+    public void Mul(GpuUInt128 other)
     {
         Multiply(this, other, out var high, out var low);
-        return new(high, low);
+        High = high;
+        Low = low;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 Mul(ulong value)
+    public void Mul(ulong value)
     {
         var (highPart, lowPart) = Mul64(Low, value);
-        return new(highPart + High * value, lowPart);
+        High = highPart + High * value;
+        Low = lowPart;
     }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public GpuUInt128 Xor(GpuUInt128 other) => new(High ^ other.High, Low ^ other.Low);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Xor(GpuUInt128 other)
+    {
+        High ^= other.High;
+        Low ^= other.Low;
+    }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public GpuUInt128 Xor(ulong value) => new(High, Low ^ value);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Xor(ulong value)
+    {
+        Low ^= value;
+    }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public GpuUInt128 ShiftLeft(int shift) => this << shift;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ShiftLeft(int shift)
+    {
+        this = this << shift;
+    }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public GpuUInt128 ShiftRight(int shift) => this >> shift;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ShiftRight(int shift)
+    {
+        this = this >> shift;
+    }
 
-	public GpuUInt128 MulMod(GpuUInt128 other, GpuUInt128 modulus)
+    public void MulMod(GpuUInt128 other, GpuUInt128 modulus)
     {
         if (modulus.High == 0UL)
         {
-            return MulMod(other, modulus.Low);
+            MulMod(other, modulus.Low);
+            return;
         }
 
         MultiplyFull(this, other, out var p3, out var p2, out var p1, out var p0);
@@ -598,7 +624,7 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             remainder = new(remainder.High, remainder.Low | ((p3 >> bit) & 1UL));
             if (remainder.CompareTo(modulus) >= 0)
             {
-                remainder = remainder.Sub(modulus);
+                remainder.Sub(modulus);
             }
         }
 
@@ -608,7 +634,7 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             remainder = new(remainder.High, remainder.Low | ((p2 >> bit) & 1UL));
             if (remainder.CompareTo(modulus) >= 0)
             {
-                remainder = remainder.Sub(modulus);
+                remainder.Sub(modulus);
             }
         }
 
@@ -618,7 +644,7 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             remainder = new(remainder.High, remainder.Low | ((p1 >> bit) & 1UL));
             if (remainder.CompareTo(modulus) >= 0)
             {
-                remainder = remainder.Sub(modulus);
+                remainder.Sub(modulus);
             }
         }
 
@@ -628,11 +654,12 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             remainder = new(remainder.High, remainder.Low | ((p0 >> bit) & 1UL));
             if (remainder.CompareTo(modulus) >= 0)
             {
-                remainder = remainder.Sub(modulus);
+                remainder.Sub(modulus);
             }
         }
 
-        return remainder;
+        High = remainder.High;
+        Low = remainder.Low;
         // TODO(MOD-OPT): Replace this bitwise long-division style reduction
         // with a faster algorithm suitable for GPU kernels without '%' support.
         // Options:
@@ -653,13 +680,14 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
     /// method is intended for validation only and should not be used inside
     /// GPU kernels.
     /// </summary>
-    internal GpuUInt128 MulModBigInteger(GpuUInt128 other, GpuUInt128 modulus)
+    internal void MulModBigInteger(GpuUInt128 other, GpuUInt128 modulus)
     {
         var left = (BigInteger)(UInt128)this;
         var right = (BigInteger)(UInt128)other;
         var mod = (BigInteger)(UInt128)modulus;
         var reduced = (UInt128)((left * right) % mod);
-        return new((ulong)(reduced >> 64), (ulong)reduced);
+        High = (ulong)(reduced >> 64);
+        Low = (ulong)reduced;
     }
 
     /// <summary>
@@ -667,14 +695,14 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
     /// repeated subtractions and becomes extremely slow for large remainders.
     /// Kept for future optimization work.
     /// </summary>
-    internal GpuUInt128 MulModByLimb(GpuUInt128 other, GpuUInt128 modulus)
+    internal void MulModByLimb(GpuUInt128 other, GpuUInt128 modulus)
     {
         MultiplyFull(this, other, out var p3, out var p2, out var p1, out var p0);
 
         GpuUInt128 remainder = new(p3, p2);
         while (remainder.CompareTo(modulus) >= 0)
         {
-            remainder = remainder.Sub(modulus);
+            remainder.Sub(modulus);
         }
 
         ulong limb = p1;
@@ -684,33 +712,32 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             remainder = new(remainder.High, limb);
             while (remainder.CompareTo(modulus) >= 0)
             {
-                remainder = remainder.Sub(modulus);
+                remainder.Sub(modulus);
             }
 
             limb = p0;
         }
 
-        return remainder;
+        High = remainder.High;
+        Low = remainder.Low;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 MulMod(ulong value, GpuUInt128 modulus)
+    public void MulMod(ulong value, GpuUInt128 modulus)
     {
         if (modulus.High == 0UL)
         {
-            return MulMod(value, modulus.Low);
+            MulMod(value, modulus.Low);
+            return;
         }
 
         GpuUInt128 other = new(0UL, value);
-        return MulMod(other, modulus);
+        MulMod(other, modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 MulMod(GpuUInt128 other, ulong modulus)
+    public void MulMod(GpuUInt128 other, ulong modulus)
     {
-        // Fast-path: use single 64-bit multiply when it cannot overflow
-        // (enabled by ILGPU support for 64-bit % in kernels). Otherwise fall
-        // back to the generic branchless double-and-add implementation.
         ulong a = Low % modulus;
         ulong b = other.Low % modulus;
         ulong result;
@@ -720,7 +747,6 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
         }
         else if (b <= ulong.MaxValue / a)
         {
-            // Safe to multiply without overflow
             result = (a * b) % modulus;
         }
         else
@@ -728,13 +754,13 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             result = MulMod64(a, b, modulus);
         }
 
-        return new(0UL, result);
+        High = 0UL;
+        Low = result;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 MulMod(ulong value, ulong modulus)
+    public void MulMod(ulong value, ulong modulus)
     {
-        // Same fast-path as above for 64-bit operands
         ulong a = Low % modulus;
         ulong b = value % modulus;
         ulong result;
@@ -751,57 +777,59 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             result = MulMod64(a, b, modulus);
         }
 
-        return new(0UL, result);
+        High = 0UL;
+        Low = result;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 MulModMontgomery64(GpuUInt128 other, ulong modulus, ulong nPrime, ulong r2)
+    public void MulModMontgomery64(GpuUInt128 other, ulong modulus, ulong nPrime, ulong r2)
     {
-        // Montgomery-based 64-bit modular multiplication without division.
-        // Computes (this * other) % modulus using:
-        // aR = MontMul(a, R^2), bR = MontMul(b, R^2), cR = MontMul(aR, bR), c = MontMul(cR, 1)
-        // where R = 2^64, nPrime = -mod^{-1} mod 2^64, r2 = R^2 mod mod.
         ulong a = Low % modulus;
         ulong b = other.Low % modulus;
         if (a == 0UL || b == 0UL)
         {
-			return Zero;
+            High = 0UL;
+            Low = 0UL;
+            return;
         }
 
         ulong aR = MontMul64(a, r2, modulus, nPrime);
         ulong bR = MontMul64(b, r2, modulus, nPrime);
         ulong cR = MontMul64(aR, bR, modulus, nPrime);
         ulong c = MontMul64(cR, 1UL, modulus, nPrime);
-        return new(0UL, c);
+        High = 0UL;
+        Low = c;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 MulModMontgomery64(ulong other, ulong modulus, ulong nPrime, ulong r2)
+    public void MulModMontgomery64(ulong other, ulong modulus, ulong nPrime, ulong r2)
     {
         ulong a = Low % modulus;
         ulong b = other % modulus;
         if (a == 0UL || b == 0UL)
         {
-			return Zero; 
+            High = 0UL;
+            Low = 0UL;
+            return;
         }
 
         ulong aR = MontMul64(a, r2, modulus, nPrime);
         ulong bR = MontMul64(b, r2, modulus, nPrime);
         ulong cR = MontMul64(aR, bR, modulus, nPrime);
         ulong c = MontMul64(cR, 1UL, modulus, nPrime);
-        return new(0UL, c);
+        High = 0UL;
+        Low = c;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 SquareMod(GpuUInt128 modulus)
+    public void SquareMod(GpuUInt128 modulus)
     {
         if (modulus.High == 0UL)
         {
-            // Use fast 64-bit path.
-            return MulMod(Low, modulus.Low);
+            MulMod(Low, modulus.Low);
+            return;
         }
 
-        // Specialized 128-bit squaring with bitwise reduction (faster than generic multiply).
         SquareFull(this, out var p3, out var p2, out var p1, out var p0);
 
         GpuUInt128 remainder = new(0UL, 0UL);
@@ -812,7 +840,7 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             remainder = new(remainder.High, remainder.Low | ((p3 >> bit) & 1UL));
             if (remainder.CompareTo(modulus) >= 0)
             {
-                remainder = remainder.Sub(modulus);
+                remainder.Sub(modulus);
             }
         }
 
@@ -822,7 +850,7 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             remainder = new(remainder.High, remainder.Low | ((p2 >> bit) & 1UL));
             if (remainder.CompareTo(modulus) >= 0)
             {
-                remainder = remainder.Sub(modulus);
+                remainder.Sub(modulus);
             }
         }
 
@@ -832,7 +860,7 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             remainder = new(remainder.High, remainder.Low | ((p1 >> bit) & 1UL));
             if (remainder.CompareTo(modulus) >= 0)
             {
-                remainder = remainder.Sub(modulus);
+                remainder.Sub(modulus);
             }
         }
 
@@ -842,14 +870,15 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
             remainder = new(remainder.High, remainder.Low | ((p0 >> bit) & 1UL));
             if (remainder.CompareTo(modulus) >= 0)
             {
-                remainder = remainder.Sub(modulus);
+                remainder.Sub(modulus);
             }
         }
 
-		return remainder;
+        High = remainder.High;
+        Low = remainder.Low;
     }
 
-    public GpuUInt128 ModPow(GpuUInt128 exponent, GpuUInt128 modulus)
+    public void ModPow(GpuUInt128 exponent, GpuUInt128 modulus)
     {
         GpuUInt128 result = new(0UL, 1UL);
         GpuUInt128 baseValue = this;
@@ -858,17 +887,18 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
         {
             if ((exponent.Low & 1UL) != 0UL)
             {
-                result = result.MulMod(baseValue, modulus);
+                result.MulMod(baseValue, modulus);
             }
 
             exponent >>= 1;
-            baseValue = baseValue.MulMod(baseValue, modulus);
+            baseValue.MulMod(baseValue, modulus);
         }
 
-		return result;
+        High = result.High;
+        Low = result.Low;
     }
 
-    public GpuUInt128 ModPow(ulong exponent, GpuUInt128 modulus)
+    public void ModPow(ulong exponent, GpuUInt128 modulus)
     {
         GpuUInt128 result = new(0UL, 1UL);
         GpuUInt128 baseValue = this;
@@ -877,29 +907,35 @@ public readonly struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt1
         {
             if ((exponent & 1UL) != 0UL)
             {
-                result = result.MulMod(baseValue, modulus);
+                result.MulMod(baseValue, modulus);
             }
 
             exponent >>= 1;
-            baseValue = baseValue.MulMod(baseValue, modulus);
+            baseValue.MulMod(baseValue, modulus);
         }
 
-        return result;
+        High = result.High;
+        Low = result.Low;
     }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public GpuUInt128 ModInv(ulong modulus) => ModPow(modulus - 2UL, new GpuUInt128(0UL, modulus));
+        public void ModInv(ulong modulus)
+    {
+        ModPow(modulus - 2UL, new GpuUInt128(0UL, modulus));
+    }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public GpuUInt128 ModInv(GpuUInt128 modulus)
+    public void ModInv(GpuUInt128 modulus)
     {
         if (modulus.High == 0UL)
         {
-            return ModInv(modulus.Low);
+            ModInv(modulus.Low);
+            return;
         }
 
-        var exponent = new GpuUInt128(modulus).Sub(2UL);
-        return ModPow(exponent, modulus);
+        var exponent = new GpuUInt128(modulus);
+        exponent.Sub(2UL);
+        ModPow(exponent, modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

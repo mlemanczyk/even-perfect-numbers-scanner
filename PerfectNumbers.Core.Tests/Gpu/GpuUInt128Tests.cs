@@ -18,7 +18,7 @@ public class GpuUInt128Tests
             var a = new GpuUInt128(high1, low1);
             var b = new GpuUInt128(high2, low2);
             var expected = (UInt128)new GpuUInt128(high1, low1) * (UInt128)new GpuUInt128(high2, low2);
-            a = a.Mul(b);
+            a.Mul(b);
             ((UInt128)a).Should().Be(expected);
         }
     }
@@ -39,7 +39,7 @@ public class GpuUInt128Tests
             var a = new GpuUInt128((UInt128)new GpuUInt128(high1, low1) % (UInt128)modulus);
             var b = new GpuUInt128((UInt128)new GpuUInt128(high2, low2) % (UInt128)modulus);
             var expected = MulModReference((UInt128)a, (UInt128)b, (UInt128)modulus);
-            a = a.MulMod(b, modulus);
+            a.MulMod(b, modulus);
             ((UInt128)a).Should().Be(expected);
         }
     }
@@ -60,7 +60,7 @@ public class GpuUInt128Tests
             UInt128 bBig = (UInt128)bRaw % (UInt128)modulus;
             ulong b = (ulong)bBig;
             var expected = MulModReference((UInt128)a, bBig, (UInt128)modulus);
-            a = a.MulMod(b, modulus);
+            a.MulMod(b, modulus);
             ((UInt128)a).Should().Be(expected);
         }
     }
@@ -79,7 +79,7 @@ public class GpuUInt128Tests
             var a = new GpuUInt128(aVal);
             var b = new GpuUInt128(bVal);
             UInt128 expected = ((UInt128)aVal * bVal) % modulus;
-            a = a.MulMod(b, modulus);
+            a.MulMod(b, modulus);
             ((UInt128)a).Should().Be(expected);
         }
     }
@@ -101,7 +101,7 @@ public class GpuUInt128Tests
             var b = new GpuUInt128((UInt128)new GpuUInt128(high2, low2) % (UInt128)modulus);
             var expected = MulModReference((UInt128)a, (UInt128)b, (UInt128)modulus);
             var result = new GpuUInt128(a.High, a.Low);
-            result = result.MulModBigInteger(b, modulus);
+            result.MulModBigInteger(b, modulus);
             ((UInt128)result).Should().Be(expected);
         }
     }
@@ -119,7 +119,7 @@ public class GpuUInt128Tests
             var modulus = new GpuUInt128(modHigh, modLow);
             var a = new GpuUInt128((UInt128)new GpuUInt128(valueHigh, valueLow) % (UInt128)modulus);
             var expected = MulModReference((UInt128)a, (UInt128)a, (UInt128)modulus);
-            a = a.SquareMod(modulus);
+            a.SquareMod(modulus);
             ((UInt128)a).Should().Be(expected);
         }
     }
@@ -142,7 +142,7 @@ public class GpuUInt128Tests
             var exponent = new GpuUInt128(expHigh, expLow);
 
             var expected = (UInt128)System.Numerics.BigInteger.ModPow((System.Numerics.BigInteger)(UInt128)value, (System.Numerics.BigInteger)(UInt128)exponent, (System.Numerics.BigInteger)(UInt128)modulus);
-            value = value.ModPow(exponent, modulus);
+            value.ModPow(exponent, modulus);
             ((UInt128)value).Should().Be(expected);
         }
     }
@@ -163,7 +163,7 @@ public class GpuUInt128Tests
             var value = new GpuUInt128((UInt128)new GpuUInt128(baseHigh, baseLow) % (UInt128)modulus);
 
             var expected = (UInt128)System.Numerics.BigInteger.ModPow((System.Numerics.BigInteger)(UInt128)value, exponent, (System.Numerics.BigInteger)(UInt128)modulus);
-            value = value.ModPow(exponent, modulus);
+            value.ModPow(exponent, modulus);
             ((UInt128)value).Should().Be(expected);
         }
     }
@@ -184,7 +184,7 @@ public class GpuUInt128Tests
             var a = new GpuUInt128((UInt128)new GpuUInt128(valueHigh, valueLow) % (UInt128)modulus);
             var b = new GpuUInt128((UInt128)new GpuUInt128(subHigh, subLow) % (UInt128)modulus);
             UInt128 expected = ((UInt128)a + (UInt128)modulus - (UInt128)b) % (UInt128)modulus;
-            a = a.SubMod(b, modulus);
+            a.SubMod(b, modulus);
             ((UInt128)a).Should().Be(expected);
         }
     }
@@ -205,7 +205,7 @@ public class GpuUInt128Tests
             UInt128 bBig = (UInt128)subRaw % (UInt128)modulus;
             ulong b = (ulong)bBig;
             UInt128 expected = ((UInt128)a + (UInt128)modulus - bBig) % (UInt128)modulus;
-            a = a.SubMod(b, modulus);
+            a.SubMod(b, modulus);
             ((UInt128)a).Should().Be(expected);
         }
     }
@@ -226,7 +226,7 @@ public class GpuUInt128Tests
             var a = new GpuUInt128((UInt128)new GpuUInt128(valueHigh, valueLow) % (UInt128)modulus);
             var b = new GpuUInt128((UInt128)new GpuUInt128(addHigh, addLow) % (UInt128)modulus);
             UInt128 expected = ((UInt128)a + (UInt128)b) % (UInt128)modulus;
-            a = a.AddMod(b, modulus);
+            a.AddMod(b, modulus);
             ((UInt128)a).Should().Be(expected);
         }
     }
@@ -245,7 +245,7 @@ public class GpuUInt128Tests
             var a = new GpuUInt128(aVal);
             var b = new GpuUInt128(bVal);
             UInt128 expected = ((UInt128)aVal + bVal) % modulus;
-            a = a.AddMod(b, modulus);
+            a.AddMod(b, modulus);
             ((UInt128)a).Should().Be(expected);
         }
     }
@@ -263,7 +263,7 @@ public class GpuUInt128Tests
             ulong bVal = bRaw % modulus;
             var a = new GpuUInt128(aVal);
             UInt128 expected = ((UInt128)aVal + bVal) % modulus;
-            a = a.AddMod(bVal, modulus);
+            a.AddMod(bVal, modulus);
             ((UInt128)a).Should().Be(expected);
         }
     }
@@ -282,11 +282,11 @@ public class GpuUInt128Tests
             var value = new GpuUInt128((UInt128)new GpuUInt128(valueHigh, valueLow) % (UInt128)modulus);
             if (value.IsZero)
             {
-                value = value.Add(1UL);
+                value.Add(1UL);
             }
 
             var expected = (UInt128)System.Numerics.BigInteger.ModPow((System.Numerics.BigInteger)(UInt128)value, (System.Numerics.BigInteger)(UInt128)modulus - 2, (System.Numerics.BigInteger)(UInt128)modulus);
-            value = value.ModInv(modulus);
+            value.ModInv(modulus);
             ((UInt128)value).Should().Be(expected);
         }
     }
@@ -302,11 +302,11 @@ public class GpuUInt128Tests
             var value = new GpuUInt128((UInt128)(raw % modulus));
             if (value.IsZero)
             {
-                value = value.Add(1UL);
+                value.Add(1UL);
             }
 
             var expected = (UInt128)System.Numerics.BigInteger.ModPow((System.Numerics.BigInteger)(UInt128)value, (System.Numerics.BigInteger)modulus - 2, (System.Numerics.BigInteger)modulus);
-            value = value.ModInv(modulus);
+            value.ModInv(modulus);
             ((UInt128)value).Should().Be(expected);
         }
     }
