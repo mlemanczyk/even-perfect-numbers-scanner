@@ -916,10 +916,10 @@ internal static class Program
 	private static (ulong divisor, uint cycle)[] BuildDivisorCandidates()
 	{
 		uint[] snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
-		List<(ulong divisor, uint cycle)> list = new(snapshot.Length / 2);
-		ulong d;
+		Span<(ulong divisor, uint cycle)> list = stackalloc (ulong divisor, uint cycle)[snapshot.Length / 2];// new(snapshot.Length / 2);
 		uint cycle;
-		for (int i = 3; i < snapshot.Length; i += 2)
+		int count = 0, i, snapshotLength = snapshot.Length;
+		for (i = 3; i < snapshotLength; i += 2)
 		{
 			cycle = snapshot[i];
 			if (cycle == 0U)
@@ -927,11 +927,10 @@ internal static class Program
 				continue;
 			}
 
-			d = (ulong)i;
-			list.Add((d, cycle));
+			list[count++] = ((ulong)i, cycle);
 		}
 
-		return list.ToArray();
+		return list[..count].ToArray();
 	}
 
 	private static bool IsDivisible(ulong exponent, ulong divisor)
