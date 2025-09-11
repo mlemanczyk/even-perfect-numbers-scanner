@@ -623,7 +623,7 @@ internal static class Program
 							Console.WriteLine($"Testing {p}");
 						}
 
-						bool isPerfect = IsEvenPerfectCandidate(p, out bool searchedMersenne, out bool detailedCheck);
+						bool isPerfect = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck);
 						PrintResult(p, searchedMersenne, detailedCheck, isPerfect);
 					}
 				}
@@ -949,9 +949,9 @@ internal static class Program
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static bool IsEvenPerfectCandidate(ulong p)
+	internal static bool IsEvenPerfectCandidate(ulong p, int divisorCyclesSearchLimit)
 	{
-		return IsEvenPerfectCandidate(p, out _, out _);
+		return IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out _, out _);
 	}
 
 	internal static bool IsEvenPerfectCandidate(ulong p, int divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck)
