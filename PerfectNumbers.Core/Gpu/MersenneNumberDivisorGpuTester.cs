@@ -17,10 +17,11 @@ public sealed class MersenneNumberDivisorGpuTester
 		var gpu = GpuContextPool.RentPreferred(preferCpu: false);
 		var accelerator = gpu.Accelerator;
 		var kernel = GetKernel(accelerator);
-		using var resultBuffer = accelerator.Allocate1D<byte>(1);
+		var resultBuffer = accelerator.Allocate1D<byte>(1);
 		kernel(1, exponent, divisor, resultBuffer.View);
 		accelerator.Synchronize();
 		bool divisible = resultBuffer.GetAsArray1D()[0] != 0;
+		resultBuffer.Dispose();
 		gpu.Dispose();
 		return divisible;
 	}
@@ -33,26 +34,23 @@ public sealed class MersenneNumberDivisorGpuTester
 			return;
 		}
 
+		GpuUInt128 baseVal, mod;
 		int x = 63 - XMath.LeadingZeroCount(divisor);
 		if (x == 0)
 		{
-			var mod = new GpuUInt128(0UL, divisor);
-			var temp = GpuUInt128.Pow2Mod(exponent, mod);
-			result[0] = temp.High == 0UL && temp.Low == 1UL ? (byte)1 : (byte)0;
+			mod = new GpuUInt128(0UL, divisor);
+			// baseVal is temp value here. We're reusing existing variable in a different meaning for the best performance.
+			baseVal = GpuUInt128.Pow2Mod(exponent, mod);
+			result[0] = baseVal.High == 0UL && baseVal.Low == 1UL ? (byte)1 : (byte)0;
 			return;
 		}
 
 		ulong ux = (ulong)x;
-		ulong q = exponent / ux;
-		ulong r = exponent % ux;
-		ulong pow2x = 1UL << x;
-		ulong y = divisor - pow2x;
-		var modVal = new GpuUInt128(0UL, divisor);
-                var baseVal = new GpuUInt128(0UL, pow2x); // 2^x ≡ -y (mod divisor)
-                var part1 = baseVal;
-                part1.ModPow(q, modVal);
-                var part2 = GpuUInt128.Pow2Mod(r, modVal);
-                part1.MulMod(part2, modVal);
-                result[0] = part1.High == 0UL && part1.Low == 1UL ? (byte)1 : (byte)0;
+		mod = new GpuUInt128(0UL, divisor);
+		baseVal = new GpuUInt128(0UL, 1UL << x); // 2^x ≡ -y (mod divisor)
+		baseVal.ModPow(exponent / ux, mod);
+		var part2 = GpuUInt128.Pow2Mod(exponent % ux, mod);
+		baseVal.MulMod(part2, mod);
+		result[0] = baseVal.High == 0UL && baseVal.Low == 1UL ? (byte)1 : (byte)0;
 	}
 }
