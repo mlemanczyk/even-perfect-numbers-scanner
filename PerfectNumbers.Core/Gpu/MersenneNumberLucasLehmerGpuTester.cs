@@ -526,7 +526,7 @@ public class MersenneNumberLucasLehmerGpuTester
             int target = i - limbCount;
             var sum = value[target];
             var original = sum;
-            sum = sum.Add(limb);
+            sum.Add(limb);
             value[target] = sum;
             value[i] = new GpuUInt128(0UL, 0UL);
             if (sum.CompareTo(original) < 0)
@@ -536,7 +536,7 @@ public class MersenneNumberLucasLehmerGpuTester
                 {
                     var next = value[j];
                     var nextOriginal = next;
-                    next = next.Add(1UL);
+                    next.Add(1UL);
                     value[j] = next;
                     if (next.CompareTo(nextOriginal) >= 0)
                     {
@@ -569,7 +569,7 @@ public class MersenneNumberLucasLehmerGpuTester
             {
                 var cur = value[j];
                 var curOriginal = cur;
-                cur = cur.Add(carryBits);
+                cur.Add(carryBits);
                 value[j] = cur;
                 carryBits = cur.CompareTo(curOriginal) < 0 ? new GpuUInt128(0UL, 1UL) : new GpuUInt128(0UL, 0UL);
                 j++;
@@ -756,7 +756,8 @@ public class MersenneNumberLucasLehmerGpuTester
         ulong limit = exponent - 2UL;
         for (ulong i = 0UL; i < limit; i++)
         {
-            s = SquareModMersenne128(s, exponent).SubMod(2UL, modulus);
+            s = SquareModMersenne128(s, exponent);
+            s.SubMod(2UL, modulus);
         }
 
         states[idx] = s;
@@ -773,14 +774,16 @@ public class MersenneNumberLucasLehmerGpuTester
         {
             for (; i < limit; i++)
             {
-                s = SquareModMersenne128(s, exponent).SubMod(2UL, modulus);
+                s = SquareModMersenne128(s, exponent);
+                s.SubMod(2UL, modulus);
             }
         }
         else
         {
             for (; i < limit; i++)
             {
-                s = s.SquareMod(modulus).SubMod(2UL, modulus);
+                s.SquareMod(modulus);
+                s.SubMod(2UL, modulus);
             }
         }
 
@@ -797,7 +800,7 @@ public class MersenneNumberLucasLehmerGpuTester
         // v = low128 + high128 (fold by 128 bits once)
         var vHigh = new GpuUInt128(q3, q2);
         var vLow = new GpuUInt128(q1, q0);
-        vLow = vLow.Add(vHigh);
+        vLow.Add(vHigh);
 
         // Mask to keep only p low bits and fold the carry bits (v >> p)
         int topBits = (int)(p % 128UL);
@@ -817,7 +820,7 @@ public class MersenneNumberLucasLehmerGpuTester
         while (!carryBits.IsZero)
 		{
 			before = vLow;
-			vLow = vLow.Add(carryBits);
+                    vLow.Add(carryBits);
 			carryBits = vLow.CompareTo(before) < 0 ? GpuUInt128.One : GpuUInt128.Zero;
 		}
 

@@ -13,7 +13,17 @@ public class GpuUInt128Pow2Minus1ModTests
         ulong exponent = 23UL;
         GpuUInt128 modulus = new(0UL, 97UL);
         var pow = GpuUInt128.Pow2Mod(exponent, modulus);
-        var expected = pow.IsZero ? modulus.Sub(GpuUInt128.One) : pow.Sub(GpuUInt128.One);
+        GpuUInt128 expected;
+        if (pow.IsZero)
+        {
+            expected = modulus;
+            expected.Sub(GpuUInt128.One);
+        }
+        else
+        {
+            expected = pow;
+            expected.Sub(GpuUInt128.One);
+        }
         var actual = GpuUInt128.Pow2Minus1Mod(exponent, modulus);
         actual.Should().Be(expected);
     }
