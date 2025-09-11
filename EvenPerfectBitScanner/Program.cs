@@ -26,11 +26,9 @@ internal static class Program
 	private static int _primeCount;
 	private static bool _primeFoundAfterInit;
 	private static bool _useGcdFilter;
-	private static bool _useResidue;
 	private static bool _useDivisor;
 	private static ulong _divisor;
 	private static MersenneNumberDivisorGpuTester? _divisorTester;
-	private static (ulong divisor, uint cycle)[]? _divisorCandidates;
 	private static ulong? _orderWarmupLimitOverride;
 	private static unsafe delegate*<ulong, ref ulong, ulong> _transformP;
 	private static long _state;
@@ -367,7 +365,7 @@ internal static class Program
 
 		// Apply GPU prime sieve runtime configuration
 		GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
-		PerfectNumbers.Core.PrimeTester.GpuBatchSize = Math.Max(1, gpuPrimeBatch);
+		PrimeTester.GpuBatchSize = Math.Max(1, gpuPrimeBatch);
 
 		MersenneDivisorCycles mersenneDivisorCycles = new();
 		if (!File.Exists(cyclesPath) || continueCyclesGeneration)
@@ -412,7 +410,6 @@ internal static class Program
 
 		Console.WriteLine("Divisor cycles are ready");
 
-		_useResidue = useResidue;
 		_useDivisor = useDivisor;
 		_divisor = divisor;
 		_transformP = useBitTransform ? &TransformPBit : &TransformPAdd;
@@ -445,17 +442,18 @@ internal static class Program
 		}
 		else
 		{
-			_divisorTester = new MersenneNumberDivisorGpuTester();
 			if (divisor == 0UL)
 			{
-				_divisorCandidates = BuildDivisorCandidates();
+				MersenneNumberDivisorGpuTester.BuildDivisorCandidates();
 			}
+
+			_divisorTester = new MersenneNumberDivisorGpuTester();
 		}
 
 		// Load RLE blacklist (optional)
 		if (!string.IsNullOrEmpty(_rleBlacklistPath))
 		{
-			PerfectNumbers.Core.RleBlacklist.Load(_rleBlacklistPath!);
+			RleBlacklist.Load(_rleBlacklistPath!);
 		}
 
 		ulong remainder = currentP % 6UL;
@@ -552,7 +550,7 @@ internal static class Program
 		// Limit GPU concurrency only for prime checks (LL/NTT & GPU order scans).
 		GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
 		// Configure batch size for GPU primality sieve
-		PerfectNumbers.Core.PrimeTester.GpuBatchSize = gpuPrimeBatch;
+		PrimeTester.GpuBatchSize = gpuPrimeBatch;
 
 		// Compose a results file name that encodes configuration
 		ResultsFileName = BuildResultsFileName(
@@ -589,33 +587,33 @@ internal static class Program
 		}
 
 		Console.WriteLine("Starting scan...");
-                _state = ((long)currentP << 3) | (long)remainder;
-                Task[] tasks = new Task[threadCount];
+		_state = ((long)currentP << 3) | (long)remainder;
+		Task[] tasks = new Task[threadCount];
 
-                for (int i = 0; i < threadCount; i++)
-                {
-                        tasks[i] = Task.Run(() =>
-                        {
-                                ulong[] buffer = new ulong[blockSize];
-                                while (!Volatile.Read(ref _limitReached))
-                                {
-                                        int count = ReserveBlock(buffer, blockSize);
-                                        if (count == 0)
-                                        {
-                                                break;
-                                        }
+		for (int i = 0; i < threadCount; i++)
+		{
+			tasks[i] = Task.Run(() =>
+			{
+				ulong[] buffer = new ulong[blockSize];
+				while (!Volatile.Read(ref _limitReached))
+				{
+					int count = ReserveBlock(buffer, blockSize);
+					if (count == 0)
+					{
+						break;
+					}
 
-                                        for (int j = 0; j < count && !Volatile.Read(ref _limitReached); j++)
-                                        {
-                                                ulong p = buffer[j];
-                                                if (useFilter && !filter.Contains(p))
-                                                {
-                                                        continue;
-                                                }
-                                                else if (useFilter)
-                                                {
-                                                        Console.WriteLine($"Testing {p}");
-                                                }
+					for (int j = 0; j < count && !Volatile.Read(ref _limitReached); j++)
+					{
+						ulong p = buffer[j];
+						if (useFilter && !filter.Contains(p))
+						{
+							continue;
+						}
+						else if (useFilter)
+						{
+							Console.WriteLine($"Testing {p}");
+						}
 
 						bool isPerfect = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck);
 						PrintResult(p, searchedMersenne, detailedCheck, isPerfect);
@@ -736,36 +734,39 @@ internal static class Program
 		return $"even_perfect_bit_scan_inc-{inc}_thr-{threads}_blk-{block}_mers-{mers}_mersdev-{mersenneDevice}_ntt-{ntt}_red-{red}_primesdev-{primesDevice}_{order}_orderdev-{orderDevice}_{gcd}_{work}_gputh-{gpuPrimeThreads}_llslice-{llSlice}_scanb-{gpuScanBatch}_warm-{warmupLimit}.csv";
 	}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe int ReserveBlock(ulong[] buffer, int blockSize)
-        {
-                while (true)
-                {
-                        long state = Volatile.Read(ref _state);
-                        ulong current = (ulong)state >> 3;
-                        ulong remainder = ((ulong)state) & 7UL;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static unsafe int ReserveBlock(ulong[] buffer, int blockSize)
+	{
+		Span<ulong> bufferSpan = new(buffer);
+		ulong p, remainder;
+		long state, newState, original;
+		int count;
+		while (true)
+		{
+			state = Volatile.Read(ref _state);
+			p = (ulong)state >> 3;
+			remainder = ((ulong)state) & 7UL;
 
-                        ulong p = current;
-                        int count = 0;
-                        while (count < blockSize && !Volatile.Read(ref _limitReached))
-                        {
-                                buffer[count++] = p;
-                                p = _transformP(p, ref remainder);
-                        }
+			count = 0;
+			while (count < blockSize && !Volatile.Read(ref _limitReached))
+			{
+				bufferSpan[count++] = p;
+				p = _transformP(p, ref remainder);
+			}
 
-                        if (count == 0)
-                        {
-                                return 0;
-                        }
+			if (count == 0)
+			{
+				return 0;
+			}
 
-                        long newState = ((long)p << 3) | (long)remainder;
-                        long original = Interlocked.CompareExchange(ref _state, newState, state);
-                        if (original == state)
-                        {
-                                return count;
-                        }
-                }
-        }
+			newState = ((long)p << 3) | (long)remainder;
+			original = Interlocked.CompareExchange(ref _state, newState, state);
+			if (original == state)
+			{
+				return count;
+			}
+		}
+	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void PrintResult(ulong currentP, bool searchedMersenne, bool detailedCheck, bool isPerfect)
@@ -913,46 +914,6 @@ internal static class Program
 		return next + value;
 	}
 
-	private static (ulong divisor, uint cycle)[] BuildDivisorCandidates()
-	{
-		uint[] snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
-		Span<(ulong divisor, uint cycle)> list = stackalloc (ulong divisor, uint cycle)[snapshot.Length / 2];// new(snapshot.Length / 2);
-		uint cycle;
-		int count = 0, i, snapshotLength = snapshot.Length;
-		for (i = 3; i < snapshotLength; i += 2)
-		{
-			cycle = snapshot[i];
-			if (cycle == 0U)
-			{
-				continue;
-			}
-
-			list[count++] = ((ulong)i, cycle);
-		}
-
-		return list[..count].ToArray();
-	}
-
-	private static bool IsDivisible(ulong exponent, ulong divisor)
-	{
-		if (_divisorTester is not null)
-		{
-			return _divisorTester.IsDivisible(exponent, divisor);
-		}
-
-		ulong remainder = 1UL;
-		for (ulong i = 0; i < exponent; i++)
-		{
-			remainder <<= 1;
-			if (remainder >= divisor)
-			{
-				remainder -= divisor;
-			}
-		}
-
-		return remainder == 1UL;
-	}
-
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static bool IsEvenPerfectCandidate(ulong p, int divisorCyclesSearchLimit)
 	{
@@ -974,7 +935,7 @@ internal static class Program
 		{
 			if (!_rleOnlyLast7 || (p % 10UL) == 7UL)
 			{
-				if (PerfectNumbers.Core.RleBlacklist.IsLoaded() && PerfectNumbers.Core.RleBlacklist.Matches(p))
+				if (RleBlacklist.IsLoaded() && RleBlacklist.Matches(p))
 				{
 					return false;
 				}
@@ -1025,59 +986,7 @@ internal static class Program
 		searchedMersenne = true;
 		if (_useDivisor)
 		{
-			if (_divisor != 0UL)
-			{
-				if (IsDivisible(p, _divisor))
-				{
-					detailedCheck = true;
-					return false;
-				}
-
-				detailedCheck = false;
-				return true;
-			}
-
-			var candidates = _divisorCandidates!;
-			int len = candidates.Length;
-			for (int i = 0; i < len; i++)
-			{
-				var (d, cycle) = candidates[i];
-				if (p % cycle != 0UL)
-				{
-					continue;
-				}
-
-				if (IsDivisible(p, d))
-				{
-					detailedCheck = true;
-					return false;
-				}
-			}
-
-			for (int k = 1; k <= divisorCyclesSearchLimit; k++)
-			{
-				ulong kMul2 = 2UL * (ulong)k;
-				if (p > ulong.MaxValue / kMul2)
-				{
-					break;
-				}
-
-				ulong d = kMul2 * p + 1UL;
-				ulong cycle = MersenneDivisorCycles.Shared.GetCycle(d);
-				if (p % cycle != 0UL)
-				{
-					continue;
-				}
-
-				if (IsDivisible(p, d))
-				{
-					detailedCheck = true;
-					return false;
-				}
-			}
-
-			detailedCheck = false;
-			return true;
+			return _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out detailedCheck);
 		}
 
 		detailedCheck = MersenneTesters.Value!.IsMersennePrime(p);

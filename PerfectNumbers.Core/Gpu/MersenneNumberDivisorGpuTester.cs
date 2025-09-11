@@ -12,6 +12,26 @@ public sealed class MersenneNumberDivisorGpuTester
 	private Action<Index1D, ulong, ulong, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
 		_kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ulong, ArrayView<byte>>(Kernel));
 
+	public static void BuildDivisorCandidates()
+	{
+		uint[] snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
+		Span<(ulong divisor, uint cycle)> list = stackalloc (ulong divisor, uint cycle)[snapshot.Length / 2];
+		uint cycle;
+		int count = 0, i, snapshotLength = snapshot.Length;
+		for (i = 3; i < snapshotLength; i += 2)
+		{
+			cycle = snapshot[i];
+			if (cycle == 0U)
+			{
+				continue;
+			}
+
+			list[count++] = ((ulong)i, cycle);
+		}
+
+		_divisorCandidates = list[..count].ToArray();
+	}
+
 	public bool IsDivisible(ulong exponent, ulong divisor)
 	{
 		var gpu = GpuContextPool.RentPreferred(preferCpu: false);
@@ -24,6 +44,71 @@ public sealed class MersenneNumberDivisorGpuTester
 		resultBuffer.Dispose();
 		gpu.Dispose();
 		return divisible;
+	}
+
+	private static (ulong divisor, uint cycle)[]? _divisorCandidates;
+
+	public bool IsPrime(ulong p, ulong d, int divisorCyclesSearchLimit, out bool detailedCheck)
+	{
+		if (d != 0UL)
+		{
+			if (IsDivisible(p, d))
+			{
+				detailedCheck = true;
+				return false;
+			}
+
+			detailedCheck = false;
+			return true;
+		}
+
+		var candidates = _divisorCandidates!;
+		int k, len = candidates.Length;
+		uint cycle;
+		
+		// k is simple iterator here
+		for (k = 0; k < len; k++)
+		{
+			(d, cycle) = candidates[k];
+			if (p % cycle != 0UL)
+			{
+				continue;
+			}
+
+			if (IsDivisible(p, d))
+			{
+				detailedCheck = true;
+				return false;
+			}
+		}
+
+		ulong kMul2;
+		var divisorCycles = MersenneDivisorCycles.Shared;
+		for (k = 1; k <= divisorCyclesSearchLimit; k++)
+		{
+			kMul2 = (ulong)k << 1;
+			if (p > ulong.MaxValue / kMul2)
+			{
+				break;
+			}
+
+			d = kMul2 * p + 1UL;
+			// kkMul2 now becomes cycle. We're reusing existing variable for the best performance
+			kMul2 = divisorCycles.GetCycle(d);
+			if (p % kMul2 != 0UL)
+			{
+				continue;
+			}
+
+			if (IsDivisible(p, d))
+			{
+				detailedCheck = true;
+				return false;
+			}
+		}
+
+		detailedCheck = false;
+		return true;
 	}
 
 	private static void Kernel(Index1D _, ulong exponent, ulong divisor, ArrayView<byte> result)
