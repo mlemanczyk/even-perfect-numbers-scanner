@@ -1,5 +1,3 @@
-using PeterO.Numbers;
-
 namespace PerfectNumbers.Core;
 
 public class MersenneNumberLucasLehmerCpuTester

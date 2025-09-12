@@ -4,7 +4,6 @@ using PerfectNumbers.Core.Gpu;
 using ILGPU;
 using ILGPU.Runtime;
 using System.Runtime.CompilerServices;
-using Open.Collections.Synchronized;
 
 namespace PerfectNumbers.Core;
 

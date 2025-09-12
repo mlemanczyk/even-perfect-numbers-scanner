@@ -1,7 +1,6 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Collections.Generic;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 
@@ -524,7 +523,7 @@ internal static class Program
 		}
 
 		bool useFilter = !string.IsNullOrEmpty(filterFile);
-		List<ulong> filter = [];
+		HashSet<ulong> filter = [];
 		if (useFilter)
 		{
 			Console.WriteLine("Loading filter...");
@@ -536,8 +535,6 @@ internal static class Program
 					filter.Add(p);
 				}
 			});
-
-			filter.Sort();
 		}
 
 		if (_primeCount >= 2)
