@@ -15,7 +15,7 @@ public sealed class MersenneNumberDivisorGpuTester
 	public static void BuildDivisorCandidates()
 	{
 		uint[] snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
-		Span<(ulong divisor, uint cycle)> list = stackalloc (ulong divisor, uint cycle)[snapshot.Length / 2];
+		(ulong divisor, uint cycle)[] list = new (ulong divisor, uint cycle)[snapshot.Length / 2];
 		uint cycle;
 		int count = 0, i, snapshotLength = snapshot.Length;
 		for (i = 3; i < snapshotLength; i += 2)
@@ -65,7 +65,7 @@ public sealed class MersenneNumberDivisorGpuTester
 		var candidates = _divisorCandidates!;
 		int k, len = candidates.Length;
 		uint cycle;
-		
+
 		// k is simple iterator here
 		for (k = 0; k < len; k++)
 		{
