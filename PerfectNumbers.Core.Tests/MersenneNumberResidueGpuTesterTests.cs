@@ -19,6 +19,7 @@ public class MersenneNumberResidueGpuTesterTests
 
         RunCase(tester, 23UL, 2UL, expectedPrime: false);
         RunCase(tester, 29UL, 37UL, expectedPrime: false);
+        RunCase(tester, 31UL, 1_000UL, expectedPrime: true);
         RunCase(tester, 89UL, 1_001UL, expectedPrime: true);
         RunCase(tester, 127UL, 1_001UL, expectedPrime: true);
     }
