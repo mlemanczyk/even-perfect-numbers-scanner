@@ -10,6 +10,7 @@ You're allowed to use the source code for education purposes, only.
 What I'm asking you **not** to do, without license:
 
 * You're **not** allowed to copy / paste or integrate my code and / or assemblies with your code.
+* You're **not** allowed to replicate it 1 : 1 in your project. Please write your own implementation with the understanding how it works. We may end up with the same solution.
 
 
 ### **Please play fair and don't use it to claim your success in the area.**
