@@ -280,10 +280,10 @@ public class MersenneDivisorCycles
 				var bufferDiv = accelerator.Allocate1D(validDivisors);
 				var bufferCycle = accelerator.Allocate1D<ulong>(idx);
 
-				kernel(
-					count,
-					bufferDiv.View,
-					bufferCycle.View);
+                                kernel(
+                                        idx,
+                                        bufferDiv.View,
+                                        bufferCycle.View);
 
 				accelerator.Synchronize();
 
