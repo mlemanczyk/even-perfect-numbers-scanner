@@ -27,9 +27,9 @@ public sealed class MersenneNumberTester(
 	bool useResidue = true,
     ulong maxK = 5_000_000UL)
 {
-    private readonly bool _useIncremental = useIncremental;
     private readonly bool _useResidue = useResidue;
-	private readonly ulong _maxK = maxK;
+    private readonly bool _useIncremental = useIncremental && !useResidue;
+        private readonly ulong _maxK = maxK;
 	private readonly GpuKernelType _kernelType = kernelType;
     private readonly bool _useModuloWorkaround = useModuloWorkaround;
     private readonly bool _useGpuLucas = useGpuLucas;
@@ -217,26 +217,25 @@ public sealed class MersenneNumberTester(
         UInt128 maxK = UInt128Numbers.Two.Pow(exponent) / 2 + 1;
         bool lastIsSeven = (exponent & 3UL) == 3UL;
 
-		// This is how maxK was for residue test before changes UInt128 maxK = maxKOverride ?? ResidueMaxK;
-		if (_useResidue)
-		{
-			// Disable this is if we don't want to hard limit maxK
-			// maxK = _maxK > maxK ? maxK : _maxK;
+        // In residue mode the residue scan is the final primality check.
+        if (_useResidue)
+        {
+            if ((UInt128)_maxK < maxK)
+            {
+                maxK = _maxK;
+            }
 
-			if (_useGpuScan)
-			{
-				_residueGpuTester!.Scan(exponent, twoP, lastIsSeven, maxK, ref prePrime);
-			}
-			else
-			{
-				_residueCpuTester!.Scan(exponent, twoP, lastIsSeven, maxK, ref prePrime);
-			}
+            if (_useGpuScan)
+            {
+                _residueGpuTester!.Scan(exponent, twoP, lastIsSeven, maxK, ref prePrime);
+            }
+            else
+            {
+                _residueCpuTester!.Scan(exponent, twoP, lastIsSeven, maxK, ref prePrime);
+            }
 
-			if (!prePrime)
-			{
-				return false;
-			}
-		}
+            return prePrime;
+        }
 
 		if (!_useIncremental)
 		{
