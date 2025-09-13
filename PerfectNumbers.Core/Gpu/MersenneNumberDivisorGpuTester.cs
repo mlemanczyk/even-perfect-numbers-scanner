@@ -7,10 +7,11 @@ namespace PerfectNumbers.Core.Gpu;
 
 public sealed class MersenneNumberDivisorGpuTester
 {
-	private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ulong, ArrayView<byte>>> _kernelCache = new();
+        private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ulong, ArrayView<byte>>> _kernelCache = new();
+        private readonly ConcurrentDictionary<Accelerator, MemoryBuffer1D<byte, Stride1D.Dense>> _resultBuffers = new();
 
-	private Action<Index1D, ulong, ulong, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
-		_kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ulong, ArrayView<byte>>(Kernel));
+        private Action<Index1D, ulong, ulong, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
+                _kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ulong, ArrayView<byte>>(Kernel));
 
 	public static void BuildDivisorCandidates()
 	{
@@ -36,15 +37,14 @@ public sealed class MersenneNumberDivisorGpuTester
 	{
 		var gpu = GpuContextPool.RentPreferred(preferCpu: false);
 		var accelerator = gpu.Accelerator;
-		var kernel = GetKernel(accelerator);
-		var resultBuffer = accelerator.Allocate1D<byte>(1);
-		kernel(1, exponent, divisor, resultBuffer.View);
-		accelerator.Synchronize();
-		bool divisible = resultBuffer.GetAsArray1D()[0] != 0;
-		resultBuffer.Dispose();
-		gpu.Dispose();
-		return divisible;
-	}
+                var kernel = GetKernel(accelerator);
+                var resultBuffer = _resultBuffers.GetOrAdd(accelerator, acc => acc.Allocate1D<byte>(1));
+                kernel(1, exponent, divisor, resultBuffer.View);
+                accelerator.Synchronize();
+                bool divisible = resultBuffer.GetAsArray1D()[0] != 0;
+                gpu.Dispose();
+                return divisible;
+        }
 
 	private static (ulong divisor, uint cycle)[]? _divisorCandidates;
 
@@ -92,9 +92,13 @@ public sealed class MersenneNumberDivisorGpuTester
 				break;
 			}
 
-			d = kMul2 * p + 1UL;
-			// kkMul2 now becomes cycle. We're reusing existing variable for the best performance
-			kMul2 = divisorCycles.GetCycle(d);
+                        d = kMul2 * p + 1UL;
+                        if (p < 64UL && d == ((1UL << (int)p) - 1UL))
+                        {
+                                continue;
+                        }
+                        // kkMul2 now becomes cycle. We're reusing existing variable for the best performance
+                        kMul2 = divisorCycles.GetCycle(d);
 			if (p % kMul2 != 0UL)
 			{
 				continue;

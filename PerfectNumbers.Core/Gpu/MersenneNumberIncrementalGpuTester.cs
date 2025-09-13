@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Runtime.InteropServices;
+using ILGPU;
 using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
@@ -18,9 +19,20 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
                 ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
                 byte last = lastIsSeven ? (byte)1 : (byte)0; // ILGPU kernels do not support bool parameters
 
-        var kernel = (_kernelType == GpuKernelType.Pow2Mod)
-            ? gpuLease.Pow2ModKernel
-            : gpuLease.IncrementalKernel;
+                var pow2Kernel = gpuLease.Pow2ModKernel;
+                var incKernel = gpuLease.IncrementalKernel;
+                ulong step10 = ((exponent % 10UL) << 1) % 10UL;
+                ulong step8 = ((exponent & 7UL) << 1) & 7UL;
+                ulong step3 = ((exponent % 3UL) << 1) % 3UL;
+                ulong step5 = ((exponent % 5UL) << 1) % 5UL;
+                GpuUInt128 twoPGpu = (GpuUInt128)twoP;
+                var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
+                ArrayView1D<uint, Stride1D.Dense> smallPrimesView = default;
+                ArrayView1D<ulong, Stride1D.Dense> smallPrimesPow2View = default;
+                if (_kernelType == GpuKernelType.Pow2Mod)
+                {
+                        (smallPrimesView, smallPrimesPow2View) = GpuKernelPool.EnsureSmallPrimesOnDevice(accelerator);
+                }
 
                 var orderBuffer = accelerator.Allocate1D<ulong>(batchSize);
                 // Avoid giant stack allocations that can trigger StackOverflow when batchSize is large.
@@ -39,27 +51,39 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
                                 Span<ulong> orders = orderArray.AsSpan(0, currentSize);
                                 // Precompute residue automaton bases for this batch
                                 UInt128 q0 = twoP * kStart + UInt128.One;
-                                ulong q0m10 = q0.Mod10();
-                                ulong q0m8 = q0.Mod8();
-                                ulong q0m3 = q0.Mod3();
-                                ulong q0m5 = q0.Mod5();
-                                ulong step10 = ((exponent % 10UL) << 1) % 10UL;
-                                ulong step8 = ((exponent & 7UL) << 1) & 7UL;
-                                ulong step3 = ((exponent % 3UL) << 1) % 3UL;
-                                ulong step5 = ((exponent % 5UL) << 1) % 5UL;
-
-                var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
-                kernel(currentSize, exponent, (GpuUInt128)twoP, (GpuUInt128)kStart, last, divMul,
-                    q0m10, q0m8, q0m3, q0m5, orderBuffer.View, smallCyclesView);
+                                if (_kernelType == GpuKernelType.Pow2Mod)
+                                {
+                                        q0.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
+                                        var ra = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
+                                        pow2Kernel(currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, divMul,
+                                                ra, orderBuffer.View, smallCyclesView, smallPrimesView, smallPrimesPow2View);
+                                }
+                                else
+                                {
+                                        q0.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
+                                        incKernel(currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, divMul,
+                                                q0m10, q0m8, q0m3, q0m5, orderBuffer.View, smallCyclesView);
+                                }
 
                                 accelerator.Synchronize();
                                 orderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(orders), currentSize);
-                                q = twoP * kStart + UInt128.One;
-                                for (i = 0; i < currentSize && Volatile.Read(ref isPrime); i++, q += twoP)
+                                if (_kernelType == GpuKernelType.Pow2Mod)
                                 {
-                                        if (orders[i] != 0UL)
+                                        for (i = 0; i < currentSize; i++)
                                         {
-                                                if (q.IsPrimeCandidate())
+                                                if (orders[i] != 0UL)
+                                                {
+                                                        Volatile.Write(ref isPrime, false);
+                                                        break;
+                                                }
+                                        }
+                                }
+                                else
+                                {
+                                        q = twoP * kStart + UInt128.One;
+                                        for (i = 0; i < currentSize && Volatile.Read(ref isPrime); i++, q += twoP)
+                                        {
+                                                if (orders[i] != 0UL && q.IsPrimeCandidate())
                                                 {
                                                         Volatile.Write(ref isPrime, false);
                                                 }
