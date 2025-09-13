@@ -42,7 +42,7 @@ public sealed class PrimeTester(bool useInternal = false)
         {
             result = false;
         }
-        else if (n % 5 == 0)
+        else if (n > 5UL && (n % 5UL) == 0UL)
         {
             result = false;
         }

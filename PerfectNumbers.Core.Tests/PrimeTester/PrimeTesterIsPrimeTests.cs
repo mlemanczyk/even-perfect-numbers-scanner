@@ -12,6 +12,7 @@ public class PrimeTesterIsPrimeTests
     [InlineData(2UL, true)]
     [InlineData(3UL, true)]
     [InlineData(4UL, false)]
+    [InlineData(5UL, true)]
     [InlineData(7UL, true)]
     [InlineData(97UL, true)]
     [InlineData(121UL, false)]

@@ -73,14 +73,14 @@ public class ProgramTests
         var useDivisorField = typeof(Program).GetField("_useDivisor", BindingFlags.NonPublic | BindingFlags.Static)!;
         var divisorField = typeof(Program).GetField("_divisor", BindingFlags.NonPublic | BindingFlags.Static)!;
         var testerField = typeof(Program).GetField("_divisorTester", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var candidatesField = typeof(Program).GetField("_divisorCandidates", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var candidatesField = typeof(MersenneNumberDivisorGpuTester).GetField("_divisorCandidates", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var residueField = typeof(Program).GetField("PResidue", BindingFlags.NonPublic | BindingFlags.Static)!;
         var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
 
         useDivisorField.SetValue(null, true);
         divisorField.SetValue(null, 0UL);
-        testerField.SetValue(null, null);
+        testerField.SetValue(null, new MersenneNumberDivisorGpuTester());
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
         candidatesField.SetValue(null, new (ulong, uint)[] { (7UL, 3U), (23UL, 11U) });
@@ -90,6 +90,7 @@ public class ProgramTests
         {
             Program.IsEvenPerfectCandidate(11UL, 32).Should().BeFalse();
             Program.IsEvenPerfectCandidate(5UL, 32).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(127UL, 32).Should().BeTrue();
         }
         finally
         {
