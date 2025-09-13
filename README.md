@@ -11,7 +11,7 @@ What I'm asking you **not** to do, without license:
 
 * You're **not** allowed to copy/paste or integrate my code and / or assemblies with your code.
 
-\
+
 ### **Please play fair and don't use it to claim your success in the area.**
 \
 \
