@@ -18,6 +18,8 @@ What I'm asking you **not** to do, without license:
 Any other use requires the payment of the licensing fee, which can be done using the links below.
 
 In case of any concerns or questions, please feel free to reach out using my [LinkedIn account](https://www.linkedin.com/in/marek-lemanczyk-432819154).
+\
+
 
 * Personal License - $10
 https://buymeacoffee.com/mlemanczyk/e/455507
