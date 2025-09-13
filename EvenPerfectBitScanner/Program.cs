@@ -529,12 +529,15 @@ internal static class Program
 			Console.WriteLine("Loading filter...");
 			LoadResultsFile(filterFile, (p, detailedCheck, isPerfect) =>
 			{
-				if (detailedCheck && isPerfect)
+				if (isPerfect)
 				{
 					Console.WriteLine($"Adding {p}");
 					filter.Add(p);
 				}
 			});
+
+			// Restore this if you want to use List<ulong> instead of HashSet<ulong>
+			// filter.Sort();
 		}
 
 		if (_primeCount >= 2)
