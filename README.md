@@ -17,7 +17,7 @@ What I'm asking you **not** to do, without license:
 ### **Please play fair and don't use it to claim your success in the area.**
 \
 \
-Any other use requires the payment of the licensing fee, which can be done using the links below.
+Any other use requires the payment of the licensing fee, which can be done using the links below. The payment is one-time payment and includes all future updates, if any.
 
 In case of any concerns or questions, please feel free to reach out using my [LinkedIn account](https://www.linkedin.com/in/marek-lemanczyk-432819154).
 
