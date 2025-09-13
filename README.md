@@ -5,7 +5,7 @@ You're allowed to use the source code for education purposes, only.
 * You can run it to learn how it works,
 * You can run it to learn if it works,
 * You can use it for learning how certain operations can be done, optimized etc.,
-* You can use it to search and announce new perfect numbers, but please always include the information that you used my scanner.
+* You can use it to search and announce new perfect numbers, but please always include the information that you used my scanner. I have family and I need to bring money to the house.
 
 \
 What I'm asking you **not** to do, without license:
