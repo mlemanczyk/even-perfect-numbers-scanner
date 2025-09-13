@@ -1,5 +1,23 @@
 # License
-You're allowed to use the source code for education purposes, only. Any other use requires the payment of the licensing fee, which can be done using the links below.
+You're allowed to use the source code for education purposes, only.
+* You can download it,
+* You can review it,
+* You can run it to learn how it works,
+* You can run it to learn if it works,
+* You can use it for learning how certain operations can be done, optimized etc.
+
+\
+What I'm asking you **not** to do, without license:
+
+* You're **not** allowed to copy/paste or integrate my code and / or assemblies with your code.
+
+\
+### **Please play fair and don't use it to claim your success in the area.**
+\
+\
+Any other use requires the payment of the licensing fee, which can be done using the links below.
+
+In case of any concerns or questions, please feel free to reach out using my [LinkedIn account](https://www.linkedin.com/in/marek-lemanczyk-432819154).
 
 * Personal License - $10
 https://buymeacoffee.com/mlemanczyk/e/455507
@@ -123,7 +141,7 @@ I’ll walk you through what happens for a single candidate exponent `p`. The ex
 
   * **Short-circuit**: as soon as we find any valid divisor `q | M_p` in the scanned window, we stop.
 
-➡ If scanning completes up to `k 2^p / 2 + 1` and no divisor was found → `IsMersennePrime(p)` returns true and the CSV line has `isPerfect=true`. This means that `p` passed all the tests and is a candidate for constructing a perfect number, which requires testing with other methods.
+➡ If scanning completes up to `k 2^p / 2 + 1` and no divisor was found → `IsMersennePrime(p)` returns true and the CSV line has `isPerfect=true`. This means that `p` passed all the tests and is a **candidate** for constructing a perfect number, which requires testing with other methods.
 
 ---
 
