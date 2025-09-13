@@ -552,28 +552,6 @@ internal static class Program
 		// Configure batch size for GPU primality sieve
 		PrimeTester.GpuBatchSize = gpuPrimeBatch;
 
-		// Compose a results file name that encodes configuration
-		ResultsFileName = BuildResultsFileName(
-				useBitTransform,
-				threadCount,
-				blockSize,
-				kernelType,
-				useLucas,
-				useDivisor,
-				mersenneOnGpu,
-				useOrder,
-				useModuloWorkaround,
-				_useGcdFilter,
-				NttGpuMath.GpuTransformBackend,
-				gpuPrimeThreads,
-				sliceSize,
-				scanBatchSize,
-				_orderWarmupLimitOverride ?? 5_000_000UL,
-				NttGpuMath.ReductionMode,
-				mersenneOnGpu ? "gpu" : "cpu",
-				GpuContextPool.ForceCpu ? "cpu" : "gpu",
-				orderOnGpu ? "gpu" : "cpu");
-
 		if (!useDivisor)
 		{
 			Console.WriteLine("Warming up orders...");
@@ -594,29 +572,44 @@ internal static class Program
 		{
 			tasks[i] = Task.Run(() =>
 			{
+				int count, j;
+				ulong p;
+				bool isPerfect, searchedMersenne, detailedCheck;
 				ulong[] buffer = new ulong[blockSize];
 				while (!Volatile.Read(ref _limitReached))
 				{
-					int count = ReserveBlock(buffer, blockSize);
+					count = ReserveBlock(buffer, blockSize);
 					if (count == 0)
 					{
 						break;
 					}
 
-					for (int j = 0; j < count && !Volatile.Read(ref _limitReached); j++)
+					if (!useFilter)
 					{
-						ulong p = buffer[j];
-						if (useFilter && !filter.Contains(p))
+						for (j = 0; j < count && !Volatile.Read(ref _limitReached); j++)
 						{
-							continue;
+							p = buffer[j];
+							isPerfect = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
+							PrintResult(p, searchedMersenne, detailedCheck, isPerfect);
 						}
-						else if (useFilter)
+					}
+					else
+					{
+						for (j = 0; j < count && !Volatile.Read(ref _limitReached); j++)
 						{
-							Console.WriteLine($"Testing {p}");
-						}
+							p = buffer[j];
+							if (useFilter && !filter.Contains(p))
+							{
+								continue;
+							}
+							else
+							{
+								Console.WriteLine($"Testing {p}");
+							}
 
-						bool isPerfect = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck);
-						PrintResult(p, searchedMersenne, detailedCheck, isPerfect);
+							isPerfect = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
+							PrintResult(p, searchedMersenne, detailedCheck, isPerfect);
+						}
 					}
 				}
 			});
