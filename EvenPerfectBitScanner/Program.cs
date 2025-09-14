@@ -518,7 +518,7 @@ internal static class Program
 		}
 		else
 		{
-			File.WriteAllText(ResultsFileName, $"p,searchedMersenne,detailedCheck,isPerfect{Environment.NewLine}");
+			File.WriteAllText(ResultsFileName, $"p,searchedMersenne,detailedCheck,passedAllTests{Environment.NewLine}");
 		}
 
 		bool useFilter = !string.IsNullOrEmpty(filterFile);
