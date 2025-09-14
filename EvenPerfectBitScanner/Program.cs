@@ -17,7 +17,7 @@ internal static class Program
 	private const int WriteBatchSize = 100;
 	private const string DefaultCyclesPath = "divisor_cycles.bin";
 	private static string ResultsFileName = "even_perfect_bit_scan_results.csv";
-	private const string PrimeFoundSuffix = " (PRIME FOUND)";
+	private const string PrimeFoundSuffix = " (FOUND VALID CANDIDATES)";
 	private static StringBuilder? _outputBuilder;
 	private static readonly object Sync = new();
 	private static int _consoleCounter;
