@@ -35,7 +35,6 @@ internal static class Program
 	private static string? _resultsDir;
 	private static string? _resultsPrefix;
 
-	private static long _lastProfileMs;
 	// RLE/bit-pattern filtering options
 	private static string? _rleBlacklistPath;
 	private static ulong _rleHardMaxP = ulong.MaxValue;

@@ -133,7 +133,7 @@ public sealed class PrimeTester(bool useInternal = false)
         public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>> Kernel { get; }
         public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimes { get; }
         private readonly Accelerator _accel;
-        private readonly System.Collections.Concurrent.ConcurrentBag<ScratchBuffers> _scratchPool = new();
+        private readonly System.Collections.Concurrent.ConcurrentBag<ScratchBuffers> _scratchPool = [];
 
         public KernelState(Accelerator accelerator)
         {
