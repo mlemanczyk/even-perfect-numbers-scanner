@@ -908,10 +908,7 @@ internal static class Program
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static bool IsEvenPerfectCandidate(ulong p, int divisorCyclesSearchLimit)
-	{
-		return IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out _, out _);
-	}
+	internal static bool IsEvenPerfectCandidate(ulong p, int divisorCyclesSearchLimit) => IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out _, out _);
 
 	internal static bool IsEvenPerfectCandidate(ulong p, int divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck)
 	{
