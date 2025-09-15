@@ -12,4 +12,8 @@
       <_Parameter1>EvenPerfectBitScanner.Tests</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Open.Numeric" Version="3.0.1" />
+    <PackageReference Include="Open.Numeric.Primes" Version="4.0.4" />
+  </ItemGroup>
 </Project>
