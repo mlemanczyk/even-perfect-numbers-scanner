@@ -1,7 +1,6 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
-using Open.Numeric.Primes;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 
@@ -10,9 +9,9 @@ namespace EvenPerfectBitScanner;
 internal static class Program
 {
 	private static ThreadLocal<PrimeTester> PrimeTesters = null!;
-        private static ThreadLocal<MersenneNumberTester> MersenneTesters = null!;
-        private static ThreadLocal<ModResidueTracker> PResidue = null!;      // p mod d tracker (per-thread)
-        private const ulong InitialP = PerfectNumberConstants.BiggestKnownEvenPerfectP;
+	private static ThreadLocal<MersenneNumberTester> MersenneTesters = null!;
+	private static ThreadLocal<ModResidueTracker> PResidue = null!;      // p mod d tracker (per-thread)
+	private const ulong InitialP = PerfectNumberConstants.BiggestKnownEvenPerfectP;
 
 	private const int ConsoleInterval = 100_000;
 	private const int WriteBatchSize = 100;
@@ -28,16 +27,10 @@ internal static class Program
 	private static bool _useGcdFilter;
 	private static bool _useDivisor;
 	private static UInt128 _divisor;
-        private static MersenneNumberDivisorGpuTester? _divisorTester;
-        private static ulong? _orderWarmupLimitOverride;
-        private static unsafe delegate*<ulong, ref ulong, ulong> _transformP;
-        private static readonly object PrimeMergeSync = new();
-        private static readonly TrialDivision.U64.Memoized PrimeGenerator = new();
-        private static IEnumerator<ulong>? _primeEnumerator;
-        private static bool _hasNextPrime;
-        private static ulong _nextPrime;
-        private static ulong _currentCandidate;
-        private static ulong _currentRemainder;
+	private static MersenneNumberDivisorGpuTester? _divisorTester;
+	private static ulong? _orderWarmupLimitOverride;
+	private static unsafe delegate*<ulong, ref ulong, ulong> _transformP;
+	private static long _state;
 	private static bool _limitReached;
 	private static string? _resultsDir;
 	private static string? _resultsPrefix;
@@ -575,9 +568,9 @@ internal static class Program
 			}
 		}
 
-                Console.WriteLine("Starting scan...");
-                InitializePrimeMerge(currentP, remainder);
-                Task[] tasks = new Task[threadCount];
+		Console.WriteLine("Starting scan...");
+		_state = ((long)currentP << 3) | (long)remainder;
+		Task[] tasks = new Task[threadCount];
 
 		for (int i = 0; i < threadCount; i++)
 		{
@@ -731,116 +724,51 @@ internal static class Program
 		Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
 	}
 
-        private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useModWorkaround, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
-        {
-                string inc = bitInc ? "bit" : "add";
-                string mers = useDivisorFlag ? "divisor" : (useLucasFlag ? "lucas" : (kernelType == GpuKernelType.Pow2Mod ? "pow2mod" : "incremental"));
-                string ntt = nttBackend == NttBackend.Staged ? "staged" : "reference";
-                string red = reduction switch { ModReductionMode.Mont64 => "mont64", ModReductionMode.Barrett128 => "barrett128", ModReductionMode.GpuUInt128 => "uint128", _ => "auto" };
-                string order = useOrder ? "order-on" : "order-off";
-                string gcd = useGcd ? "gcd-on" : "gcd-off";
-                string work = useModWorkaround ? "modfix-on" : "modfix-off";
-                return $"even_perfect_bit_scan_inc-{inc}_thr-{threads}_blk-{block}_mers-{mers}_mersdev-{mersenneDevice}_ntt-{ntt}_red-{red}_primesdev-{primesDevice}_{order}_orderdev-{orderDevice}_{gcd}_{work}_gputh-{gpuPrimeThreads}_llslice-{llSlice}_scanb-{gpuScanBatch}_warm-{warmupLimit}.csv";
-        }
+	private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useModWorkaround, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
+	{
+		string inc = bitInc ? "bit" : "add";
+		string mers = useDivisorFlag ? "divisor" : (useLucasFlag ? "lucas" : (kernelType == GpuKernelType.Pow2Mod ? "pow2mod" : "incremental"));
+		string ntt = nttBackend == NttBackend.Staged ? "staged" : "reference";
+		string red = reduction switch { ModReductionMode.Mont64 => "mont64", ModReductionMode.Barrett128 => "barrett128", ModReductionMode.GpuUInt128 => "uint128", _ => "auto" };
+		string order = useOrder ? "order-on" : "order-off";
+		string gcd = useGcd ? "gcd-on" : "gcd-off";
+		string work = useModWorkaround ? "modfix-on" : "modfix-off";
+		return $"even_perfect_bit_scan_inc-{inc}_thr-{threads}_blk-{block}_mers-{mers}_mersdev-{mersenneDevice}_ntt-{ntt}_red-{red}_primesdev-{primesDevice}_{order}_orderdev-{orderDevice}_{gcd}_{work}_gputh-{gpuPrimeThreads}_llslice-{llSlice}_scanb-{gpuScanBatch}_warm-{warmupLimit}.csv";
+	}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void InitializePrimeMerge(ulong startCandidate, ulong startRemainder)
-        {
-                lock (PrimeMergeSync)
-                {
-                        _currentCandidate = startCandidate;
-                        _currentRemainder = startRemainder;
-                        InitializePrimeEnumerator(startCandidate);
-                }
-        }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static unsafe int ReserveBlock(ulong[] buffer, int blockSize)
+	{
+		Span<ulong> bufferSpan = new(buffer);
+		ulong p, remainder;
+		long state, newState, original;
+		int count;
+		while (true)
+		{
+			state = Volatile.Read(ref _state);
+			p = (ulong)state >> 3;
+			remainder = ((ulong)state) & 7UL;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void InitializePrimeEnumerator(ulong startValue)
-        {
-                (_primeEnumerator as IDisposable)?.Dispose();
-                ulong begin = startValue;
-                _primeEnumerator = PrimeGenerator.StartingAt(in begin).GetEnumerator();
-                _hasNextPrime = MoveToNextPrime();
-        }
+			count = 0;
+			while (count < blockSize && !Volatile.Read(ref _limitReached))
+			{
+				bufferSpan[count++] = p;
+				p = _transformP(p, ref remainder);
+			}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool MoveToNextPrime()
-        {
-                if (_primeEnumerator is null)
-                {
-                        return false;
-                }
+			if (count == 0)
+			{
+				return 0;
+			}
 
-                if (_primeEnumerator.MoveNext())
-                {
-                        _nextPrime = _primeEnumerator.Current;
-                        return true;
-                }
-
-                Volatile.Write(ref _limitReached, true);
-                return false;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool EnsurePrimeForCandidate(ulong candidate)
-        {
-                if (!_hasNextPrime)
-                {
-                        return false;
-                }
-
-                while (_hasNextPrime && _nextPrime < candidate)
-                {
-                        _hasNextPrime = MoveToNextPrime();
-                }
-
-                return _hasNextPrime;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe int ReserveBlock(ulong[] buffer, int blockSize)
-        {
-                Span<ulong> bufferSpan = new(buffer);
-                int count = 0;
-
-                lock (PrimeMergeSync)
-                {
-                        if (!_hasNextPrime && !MoveToNextPrime())
-                        {
-                                return 0;
-                        }
-
-                        while (count < blockSize && !Volatile.Read(ref _limitReached))
-                        {
-                                ulong candidate = _currentCandidate;
-
-                                if (!EnsurePrimeForCandidate(candidate))
-                                {
-                                        break;
-                                }
-
-                                if (_hasNextPrime && _nextPrime == candidate)
-                                {
-                                        bufferSpan[count++] = candidate;
-                                        _hasNextPrime = MoveToNextPrime();
-                                        if (!_hasNextPrime)
-                                        {
-                                                _currentCandidate = _transformP(candidate, ref _currentRemainder);
-                                                break;
-                                        }
-                                }
-
-                                _currentCandidate = _transformP(candidate, ref _currentRemainder);
-
-                                if (Volatile.Read(ref _limitReached))
-                                {
-                                        break;
-                                }
-                        }
-                }
-
-                return count;
-        }
+			newState = ((long)p << 3) | (long)remainder;
+			original = Interlocked.CompareExchange(ref _state, newState, state);
+			if (original == state)
+			{
+				return count;
+			}
+		}
+	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void PrintResult(ulong currentP, bool searchedMersenne, bool detailedCheck, bool isPerfect)
