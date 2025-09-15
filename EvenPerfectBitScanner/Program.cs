@@ -25,8 +25,8 @@ internal static class Program
 	private static int _primeCount;
 	private static bool _primeFoundAfterInit;
 	private static bool _useGcdFilter;
-        private static bool _useDivisor;
-        private static UInt128 _divisor;
+	private static bool _useDivisor;
+	private static UInt128 _divisor;
 	private static MersenneNumberDivisorGpuTester? _divisorTester;
 	private static ulong? _orderWarmupLimitOverride;
 	private static unsafe delegate*<ulong, ref ulong, ulong> _transformP;
@@ -58,9 +58,9 @@ internal static class Program
 		bool showHelp = false;
 		bool useBitTransform = false;
 		bool useLucas = false;
-                bool useResidue = false;    // M_p test via residue divisors (replaces LL/incremental)
-                bool useDivisor = false;     // M_p divisibility by specific divisor
-                UInt128 divisor = UInt128.Zero;
+		bool useResidue = false;    // M_p test via residue divisors (replaces LL/incremental)
+		bool useDivisor = false;     // M_p divisibility by specific divisor
+		UInt128 divisor = UInt128.Zero;
 		// Device routing
 		bool useGpuCycles = true;
 		bool mersenneOnGpu = true;   // controls Lucas/incremental/pow2mod device
@@ -69,9 +69,9 @@ internal static class Program
 		ulong residueKMax = 5_000_000UL;
 		string filterFile = string.Empty;
 		string cyclesPath = DefaultCyclesPath;
-                int cyclesBatchSize = 512;
-                bool continueCyclesGeneration = false;
-                ulong divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
+		int cyclesBatchSize = 512;
+		bool continueCyclesGeneration = false;
+		ulong divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
 
 		// NTT backend selection (GPU): reference vs staged
 		for (int i = 0; i < args.Length; i++)
@@ -128,16 +128,16 @@ internal static class Program
 					kernelType = GpuKernelType.Incremental;
 				}
 			}
-                        else if (arg.StartsWith("--divisor=", StringComparison.OrdinalIgnoreCase))
-                        {
-                                int eq = arg.IndexOf('=');
-                                divisor = UInt128.Parse(arg.AsSpan(eq + 1));
-                        }
-                        else if (arg.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
-                        {
-                                int eq = arg.IndexOf('=');
-                                divisorCyclesSearchLimit = ulong.Parse(arg.AsSpan(eq + 1));
-                        }
+			else if (arg.StartsWith("--divisor=", StringComparison.OrdinalIgnoreCase))
+			{
+				int eq = arg.IndexOf('=');
+				divisor = UInt128.Parse(arg.AsSpan(eq + 1));
+			}
+			else if (arg.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
+			{
+				int eq = arg.IndexOf('=');
+				divisorCyclesSearchLimit = ulong.Parse(arg.AsSpan(eq + 1));
+			}
 			else if (arg.StartsWith("--residue-max-k=", StringComparison.OrdinalIgnoreCase))
 			{
 				int eq = arg.IndexOf('=');
@@ -438,15 +438,15 @@ internal static class Program
 				return tester;
 			}, trackAllValues: true);
 		}
-                else
-                {
-                        if (divisor == UInt128.Zero)
-                        {
-                                MersenneNumberDivisorGpuTester.BuildDivisorCandidates();
-                        }
+		else
+		{
+			if (divisor == UInt128.Zero)
+			{
+				MersenneNumberDivisorGpuTester.BuildDivisorCandidates();
+			}
 
-                        _divisorTester = new MersenneNumberDivisorGpuTester();
-                }
+			_divisorTester = new MersenneNumberDivisorGpuTester();
+		}
 
 		// Load RLE blacklist (optional)
 		if (!string.IsNullOrEmpty(_rleBlacklistPath))
@@ -916,10 +916,10 @@ internal static class Program
 		return next + value;
 	}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit) => IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out _, out _);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit) => IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out _, out _);
 
-        internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck)
+	internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck)
 	{
 		searchedMersenne = false;
 		detailedCheck = false;
@@ -982,15 +982,15 @@ internal static class Program
 			return false;
 		}
 
-                searchedMersenne = true;
-                if (_useDivisor)
-                {
-                        return _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out detailedCheck);
-                }
+		searchedMersenne = true;
+		if (_useDivisor)
+		{
+			return _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out detailedCheck);
+		}
 
-                detailedCheck = MersenneTesters.Value!.IsMersennePrime(p);
-                return detailedCheck;
-        }
+		detailedCheck = MersenneTesters.Value!.IsMersennePrime(p);
+		return detailedCheck;
+	}
 
 	// Use ModResidueTracker with a small set of primes to pre-filter composite p.
 	private static bool IsCompositeByResidues(ulong p)
