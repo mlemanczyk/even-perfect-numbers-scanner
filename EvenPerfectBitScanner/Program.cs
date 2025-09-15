@@ -233,9 +233,9 @@ internal static class Program
 			else if (arg.StartsWith("--rle-hard-max=", StringComparison.OrdinalIgnoreCase))
 			{
 				int eq = arg.IndexOf('=');
-				if (ulong.TryParse(arg.AsSpan(eq + 1), out var maxP))
+				if (ulong.TryParse(arg.AsSpan(eq + 1), out var rleMaxP))
 				{
-					_rleHardMaxP = maxP;
+					_rleHardMaxP = rleMaxP;
 				}
 			}
 			else if (arg.StartsWith("--rle-only-last7=", StringComparison.OrdinalIgnoreCase))
