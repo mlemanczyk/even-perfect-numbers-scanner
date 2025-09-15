@@ -982,7 +982,7 @@ internal static class Program
 		return detailedCheck;
 	}
 
-	// Use ModResidueTracker with a small set of primes to prefilter composite p.
+	// Use ModResidueTracker with a small set of primes to pre-filter composite p.
 	private static bool IsCompositeByResidues(ulong p)
 	{
 		var tracker = PResidue.Value!;
