@@ -523,6 +523,7 @@ internal static class Program
 
 		bool useFilter = !string.IsNullOrEmpty(filterFile);
 		HashSet<ulong> filter = [];
+		ulong maxP = 0UL;
 		if (useFilter)
 		{
 			Console.WriteLine("Loading filter...");
@@ -532,6 +533,10 @@ internal static class Program
 				{
 					Console.WriteLine($"Adding {p}");
 					filter.Add(p);
+					if (p > maxP)
+					{
+						maxP = p;
+					}
 				}
 			});
 
@@ -608,6 +613,11 @@ internal static class Program
 
 							isPerfect = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
 							PrintResult(p, searchedMersenne, detailedCheck, isPerfect);
+							if (p == maxP)
+							{
+								Volatile.Write(ref _limitReached, true);
+								break;
+							}
 						}
 					}
 				}
