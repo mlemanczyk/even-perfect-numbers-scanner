@@ -763,7 +763,7 @@ internal static class Program
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void PrintResult(ulong currentP, bool searchedMersenne, bool detailedCheck, bool isPerfect)
 	{
-		if (isPerfect && detailedCheck)
+		if (isPerfect)
 		{
 			int newCount = Interlocked.Increment(ref _primeCount);
 			if (newCount >= 2)
