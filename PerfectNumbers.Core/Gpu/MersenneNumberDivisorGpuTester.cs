@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Numerics;
 using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;
@@ -7,11 +8,11 @@ namespace PerfectNumbers.Core.Gpu;
 
 public sealed class MersenneNumberDivisorGpuTester
 {
-        private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ulong, ArrayView<byte>>> _kernelCache = new();
+        private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, GpuUInt128, ArrayView<byte>>> _kernelCache = new();
         private readonly ConcurrentDictionary<Accelerator, MemoryBuffer1D<byte, Stride1D.Dense>> _resultBuffers = new();
 
-        private Action<Index1D, ulong, ulong, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
-                _kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ulong, ArrayView<byte>>(Kernel));
+        private Action<Index1D, ulong, GpuUInt128, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
+                _kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, ArrayView<byte>>(Kernel));
 
 	public static void BuildDivisorCandidates()
 	{
@@ -33,13 +34,13 @@ public sealed class MersenneNumberDivisorGpuTester
 		_divisorCandidates = list[..count].ToArray();
 	}
 
-	public bool IsDivisible(ulong exponent, ulong divisor)
-	{
-		var gpu = GpuContextPool.RentPreferred(preferCpu: false);
-		var accelerator = gpu.Accelerator;
+        public bool IsDivisible(ulong exponent, UInt128 divisor)
+        {
+                var gpu = GpuContextPool.RentPreferred(preferCpu: false);
+                var accelerator = gpu.Accelerator;
                 var kernel = GetKernel(accelerator);
                 var resultBuffer = _resultBuffers.GetOrAdd(accelerator, acc => acc.Allocate1D<byte>(1));
-                kernel(1, exponent, divisor, resultBuffer.View);
+                kernel(1, exponent, (GpuUInt128)divisor, resultBuffer.View);
                 accelerator.Synchronize();
                 bool divisible = resultBuffer.GetAsArray1D()[0] != 0;
                 gpu.Dispose();
@@ -48,98 +49,109 @@ public sealed class MersenneNumberDivisorGpuTester
 
 	private static (ulong divisor, uint cycle)[]? _divisorCandidates;
 
-	public bool IsPrime(ulong p, ulong d, int divisorCyclesSearchLimit, out bool detailedCheck)
-	{
-		if (d != 0UL)
-		{
-			if (IsDivisible(p, d))
-			{
-				detailedCheck = true;
-				return false;
-			}
+        public bool IsPrime(ulong p, UInt128 d, ulong divisorCyclesSearchLimit, out bool divisorsExhausted)
+        {
+                if (d != UInt128.Zero)
+                {
+                        if (IsDivisible(p, d))
+                        {
+                                divisorsExhausted = true;
+                                return false;
+                        }
 
-			detailedCheck = false;
-			return true;
-		}
+                        divisorsExhausted = false;
+                        return true;
+                }
 
-		var candidates = _divisorCandidates!;
-		int k, len = candidates.Length;
-		uint cycle;
+                var candidates = _divisorCandidates!;
+                int k, len = candidates.Length;
+                uint cycle;
 
-		// k is simple iterator here
-		for (k = 0; k < len; k++)
-		{
-			(d, cycle) = candidates[k];
-			if (p % cycle != 0UL)
-			{
-				continue;
-			}
-
-			if (IsDivisible(p, d))
-			{
-				detailedCheck = true;
-				return false;
-			}
-		}
-
-		ulong kMul2;
-		var divisorCycles = MersenneDivisorCycles.Shared;
-		for (k = 1; k <= divisorCyclesSearchLimit; k++)
-		{
-			kMul2 = (ulong)k << 1;
-			if (p > ulong.MaxValue / kMul2)
-			{
-				break;
-			}
-
-                        d = kMul2 * p + 1UL;
-                        if (p < 64UL && d == ((1UL << (int)p) - 1UL))
+                for (k = 0; k < len; k++)
+                {
+                        (ulong dSmall, cycle) = candidates[k];
+                        if (p % cycle != 0UL)
                         {
                                 continue;
                         }
-                        // kkMul2 now becomes cycle. We're reusing existing variable for the best performance
-                        kMul2 = divisorCycles.GetCycle(d);
-			if (p % kMul2 != 0UL)
-			{
-				continue;
-			}
 
-			if (IsDivisible(p, d))
-			{
-				detailedCheck = true;
-				return false;
-			}
-		}
+                        if (IsDivisible(p, dSmall))
+                        {
+                                divisorsExhausted = true;
+                                return false;
+                        }
+                }
 
-		detailedCheck = false;
-		return true;
-	}
+                UInt128 kMul2;
+                var divisorCycles = MersenneDivisorCycles.Shared;
+                UInt128 maxK2 = UInt128.MaxValue / ((UInt128)p << 1);
+                ulong limit = divisorCyclesSearchLimit;
+                if ((UInt128)limit > maxK2)
+                {
+                        limit = (ulong)maxK2;
+                }
 
-	private static void Kernel(Index1D _, ulong exponent, ulong divisor, ArrayView<byte> result)
-	{
-		if (divisor <= 1UL)
-		{
-			result[0] = 0;
-			return;
-		}
+                ulong k2;
+                for (k2 = 1UL; k2 <= limit; k2++)
+                {
+                        kMul2 = (UInt128)k2 << 1;
+                        d = kMul2 * p + UInt128.One;
+                        if (p < 64UL && d == ((UInt128)1 << (int)p) - UInt128.One)
+                        {
+                                continue;
+                        }
 
-		GpuUInt128 baseVal, mod;
-		int x = 63 - XMath.LeadingZeroCount(divisor);
-		if (x == 0)
-		{
-			mod = new GpuUInt128(0UL, divisor);
-			// baseVal is temp value here. We're reusing existing variable in a different meaning for the best performance.
-			baseVal = GpuUInt128.Pow2Mod(exponent, mod);
-			result[0] = baseVal.High == 0UL && baseVal.Low == 1UL ? (byte)1 : (byte)0;
-			return;
-		}
+                        UInt128 cycle128 = MersenneDivisorCycles.GetCycle(d);
+                        if ((UInt128)p % cycle128 != UInt128.Zero)
+                        {
+                                continue;
+                        }
 
-		ulong ux = (ulong)x;
-		mod = new GpuUInt128(0UL, divisor);
-		baseVal = new GpuUInt128(0UL, 1UL << x); // 2^x ≡ -y (mod divisor)
-		baseVal.ModPow(exponent / ux, mod);
-		var part2 = GpuUInt128.Pow2Mod(exponent % ux, mod);
-		baseVal.MulMod(part2, mod);
-		result[0] = baseVal.High == 0UL && baseVal.Low == 1UL ? (byte)1 : (byte)0;
-	}
+                        if (IsDivisible(p, d))
+                        {
+                                divisorsExhausted = true;
+                                return false;
+                        }
+                }
+
+                divisorsExhausted = (UInt128)divisorCyclesSearchLimit >= maxK2;
+                return true;
+        }
+
+        private static void Kernel(Index1D _, ulong exponent, GpuUInt128 divisor, ArrayView<byte> result)
+        {
+                if (divisor.High == 0UL && divisor.Low <= 1UL)
+                {
+                        result[0] = 0;
+                        return;
+                }
+
+                GpuUInt128 baseVal, mod;
+                int x = divisor.High == 0UL
+                        ? 63 - XMath.LeadingZeroCount(divisor.Low)
+                        : 127 - XMath.LeadingZeroCount(divisor.High);
+                mod = divisor;
+                if (x == 0)
+                {
+                        baseVal = GpuUInt128.Pow2Mod(exponent, mod);
+                        result[0] = baseVal.High == 0UL && baseVal.Low == 1UL ? (byte)1 : (byte)0;
+                        return;
+                }
+
+                ulong ux = (ulong)x;
+                if (x >= 64)
+                {
+                        baseVal = new GpuUInt128(1UL << (x - 64), 0UL);
+                }
+                else
+                {
+                        baseVal = new GpuUInt128(0UL, 1UL << x);
+                }
+
+                baseVal.ModPow(exponent / ux, mod);
+                var part2 = GpuUInt128.Pow2Mod(exponent % ux, mod);
+                baseVal.MulMod(part2, mod);
+                result[0] = baseVal.High == 0UL && baseVal.Low == 1UL ? (byte)1 : (byte)0;
+        }
 }
+

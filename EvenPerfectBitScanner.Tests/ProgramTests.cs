@@ -2,6 +2,8 @@ using FluentAssertions;
 using Xunit;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
+using System;
+using System.Numerics;
 using System.Reflection;
 
 namespace EvenPerfectBitScanner.Tests;
@@ -79,7 +81,7 @@ public class ProgramTests
         var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
 
         useDivisorField.SetValue(null, true);
-        divisorField.SetValue(null, 0UL);
+        divisorField.SetValue(null, UInt128.Zero);
         testerField.SetValue(null, new MersenneNumberDivisorGpuTester());
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
@@ -88,15 +90,84 @@ public class ProgramTests
 
         try
         {
-            Program.IsEvenPerfectCandidate(11UL, 32).Should().BeFalse();
-            Program.IsEvenPerfectCandidate(5UL, 32).Should().BeTrue();
-            Program.IsEvenPerfectCandidate(127UL, 32).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(11UL, 32UL).Should().BeFalse();
+            Program.IsEvenPerfectCandidate(5UL, 32UL).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(127UL, 32UL).Should().BeTrue();
         }
         finally
         {
             useDivisorField.SetValue(null, false);
             testerField.SetValue(null, null);
             candidatesField.SetValue(null, null);
+            primeField.SetValue(null, null);
+            residueField.SetValue(null, null);
+            forceCpuProp!.SetValue(null, false);
+        }
+    }
+
+    [Fact]
+    public void Divisor_mode_sets_detailedCheck_based_on_exhaustion()
+    {
+        var useDivisorField = typeof(Program).GetField("_useDivisor", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var divisorField = typeof(Program).GetField("_divisor", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var testerField = typeof(Program).GetField("_divisorTester", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var candidatesField = typeof(MersenneNumberDivisorGpuTester).GetField("_divisorCandidates", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var residueField = typeof(Program).GetField("PResidue", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
+
+        useDivisorField.SetValue(null, true);
+        divisorField.SetValue(null, UInt128.Zero);
+        testerField.SetValue(null, new MersenneNumberDivisorGpuTester());
+        primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
+        residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
+        candidatesField.SetValue(null, Array.Empty<(ulong, uint)>());
+        forceCpuProp!.SetValue(null, true);
+
+        try
+        {
+            Program.IsEvenPerfectCandidate(11UL, 0UL, out bool searched, out bool detailedCheck).Should().BeTrue();
+            searched.Should().BeTrue();
+            detailedCheck.Should().BeFalse();
+        }
+        finally
+        {
+            useDivisorField.SetValue(null, false);
+            testerField.SetValue(null, null);
+            candidatesField.SetValue(null, null);
+            primeField.SetValue(null, null);
+            residueField.SetValue(null, null);
+            forceCpuProp!.SetValue(null, false);
+        }
+    }
+
+    [Fact]
+    public void Divisor_mode_accepts_large_search_limit()
+    {
+        var useDivisorField = typeof(Program).GetField("_useDivisor", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var divisorField = typeof(Program).GetField("_divisor", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var testerField = typeof(Program).GetField("_divisorTester", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var residueField = typeof(Program).GetField("PResidue", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
+
+        useDivisorField.SetValue(null, true);
+        divisorField.SetValue(null, (UInt128)7);
+        testerField.SetValue(null, new MersenneNumberDivisorGpuTester());
+        primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
+        residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
+        forceCpuProp!.SetValue(null, true);
+
+        try
+        {
+            Program.IsEvenPerfectCandidate(3UL, 4_000_000_000UL, out bool searched, out bool detailed).Should().BeFalse();
+            searched.Should().BeTrue();
+            detailed.Should().BeTrue();
+        }
+        finally
+        {
+            useDivisorField.SetValue(null, false);
+            testerField.SetValue(null, null);
             primeField.SetValue(null, null);
             residueField.SetValue(null, null);
             forceCpuProp!.SetValue(null, false);
@@ -127,3 +198,4 @@ public class ProgramTests
         output.Should().Contain("--primes-device=cpu|gpu");
     }
 }
+
