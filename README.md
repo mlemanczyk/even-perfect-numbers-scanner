@@ -37,7 +37,7 @@ The source code relays on selected functionality from the following packages:
 * [ILGPU](https://www.nuget.org/packages/ILGPU)
 * [ILGPU.Algorithms](https://www.nuget.org/packages/ILGPU.Algorithms)
 * [Open.Numeric.Primes](https://www.nuget.org/packages/Open.Numeric.Primes)
-* [PeterO.Numbers](https://www.nuget.org/packages/PeterO.Numbers)]
+* [PeterO.Numbers](https://www.nuget.org/packages/PeterO.Numbers)
 * [xunit](https://www.nuget.org/packages/xunit)
 
 # Description
