@@ -1,10 +1,11 @@
 using FluentAssertions;
 using Xunit;
-using PerfectNumbers.Core;
-using PerfectNumbers.Core.Gpu;
 using System;
 using System.Numerics;
 using System.Reflection;
+using System.Text;
+using PerfectNumbers.Core;
+using PerfectNumbers.Core.Gpu;
 
 namespace EvenPerfectBitScanner.Tests;
 
@@ -243,6 +244,85 @@ public class ProgramTests
             primeField.SetValue(null, null);
             residueField.SetValue(null, null);
             forceCpuProp!.SetValue(null, false);
+        }
+    }
+
+    [Fact]
+    public void Composite_candidates_flagged_for_residue_output_skip()
+    {
+        var useDivisorField = typeof(Program).GetField("_useDivisor", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var residueField = typeof(Program).GetField("PResidue", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var compositeField = typeof(Program).GetField("_lastCompositeP", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
+
+        useDivisorField.SetValue(null, false);
+        mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(useIncremental: true, useResidue: false, maxK: 1_000UL), trackAllValues: true));
+        primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
+        residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
+        forceCpuProp!.SetValue(null, true);
+
+        try
+        {
+            compositeField.SetValue(null, false);
+
+            Program.IsEvenPerfectCandidate(9UL, 0UL, out bool searched, out bool detailed).Should().BeFalse();
+            searched.Should().BeFalse();
+            detailed.Should().BeFalse();
+            ((bool)compositeField.GetValue(null)!).Should().BeTrue();
+
+            Program.IsEvenPerfectCandidate(11UL, 0UL, out searched, out detailed);
+            searched.Should().BeTrue();
+            ((bool)compositeField.GetValue(null)!).Should().BeFalse();
+        }
+        finally
+        {
+            mersenneField.SetValue(null, null);
+            primeField.SetValue(null, null);
+            residueField.SetValue(null, null);
+            compositeField.SetValue(null, false);
+            forceCpuProp!.SetValue(null, false);
+        }
+    }
+
+    [Fact]
+    public void Residue_mode_skips_composite_results_in_output()
+    {
+        var residueModeField = typeof(Program).GetField("_useResidueMode", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var outputField = typeof(Program).GetField("_outputBuilder", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var writeIndexField = typeof(Program).GetField("_writeIndex", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var compositeField = typeof(Program).GetField("_lastCompositeP", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var printResult = typeof(Program).GetMethod("PrintResult", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        var previousResidueMode = (bool)residueModeField.GetValue(null)!;
+        var previousOutput = (StringBuilder?)outputField.GetValue(null);
+        var previousWriteIndex = (int)writeIndexField.GetValue(null)!;
+        var previousComposite = (bool)compositeField.GetValue(null)!;
+
+        var builder = StringBuilderPool.Rent();
+
+        try
+        {
+            builder.Clear();
+            residueModeField.SetValue(null, true);
+            compositeField.SetValue(null, true);
+            outputField.SetValue(null, builder);
+            writeIndexField.SetValue(null, 0);
+
+            printResult.Invoke(null, new object[] { 9UL, false, false, false });
+
+            builder.Length.Should().Be(0);
+            ((int)writeIndexField.GetValue(null)!).Should().Be(0);
+        }
+        finally
+        {
+            outputField.SetValue(null, previousOutput);
+            writeIndexField.SetValue(null, previousWriteIndex);
+            residueModeField.SetValue(null, previousResidueMode);
+            compositeField.SetValue(null, previousComposite);
+            builder.Clear();
+            StringBuilderPool.Return(builder);
         }
     }
 
