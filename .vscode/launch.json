@@ -7,6 +7,7 @@
       "description": "Select project to run",
       "options": [
         "EvenPerfectBitScanner",
+        "EvenPerfectBitScanner.ResultsParser"
       ],
       "default": "EvenPerfectBitScanner"
     }
@@ -54,11 +55,38 @@
       "justMyCode": false
     },
     {
+      "name": "Run EvenPerfectBitScanner.ResultsParser",
+      "type": "coreclr",
+      "request": "launch",
+      "noDebug": true,
+      "preLaunchTask": "Build EvenPerfectBitScanner.ResultsParser Release",
+      "program": "${workspaceFolder}/EvenPerfectBitScanner.ResultsParser/bin/Release/net8.0/EvenPerfectBitScanner.ResultsParser.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "justMyCode": false
+    },
+    {
       "name": "Debug EvenPerfectBitScanner",
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "Build EvenPerfectBitScanner Debug",
       "program": "${workspaceFolder}/EvenPerfectBitScanner/bin/Debug/net8.0/EvenPerfectBitScanner.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "justMyCode": false
+    },
+    {
+      "name": "Debug EvenPerfectBitScanner.ResultsParser",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build EvenPerfectBitScanner.ResultsParser Debug",
+      "program": "${workspaceFolder}/EvenPerfectBitScanner.ResultsParser/bin/Debug/net8.0/EvenPerfectBitScanner.ResultsParser.dll",
       "args": [],
       "cwd": "${workspaceFolder}",
       "stopAtEntry": false,

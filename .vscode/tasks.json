@@ -49,10 +49,10 @@
 			"group": "build",
 			"problemMatcher": "$msCompile"
 		},
-		{
-			"label": "Build EvenPerfectBitScanner Release",
-			"command": "dotnet",
-			"type": "process",
+                {
+                        "label": "Build EvenPerfectBitScanner Release",
+                        "command": "dotnet",
+                        "type": "process",
 			"args": [
 				"build",
 				"${workspaceFolder}/EvenPerfectBitScanner/EvenPerfectBitScanner.csproj",
@@ -61,24 +61,69 @@
 				"--framework",
 				"net8.0"
 			],
-			"group": "build",
-			"problemMatcher": "$msCompile"
-		},
-		{
-			"label": "Run EvenPerfectBitScanner",
-			"type": "process",
+                        "group": "build",
+                        "problemMatcher": "$msCompile"
+                },
+                {
+                        "label": "Build EvenPerfectBitScanner.ResultsParser Debug",
+                        "command": "dotnet",
+                        "type": "process",
+                        "args": [
+                                "build",
+                                "${workspaceFolder}/EvenPerfectBitScanner.ResultsParser/EvenPerfectBitScanner.ResultsParser.csproj",
+                                "--configuration",
+                                "Debug",
+                                "--framework",
+                                "net8.0"
+                        ],
+                        "group": "build",
+                        "problemMatcher": "$msCompile"
+                },
+                {
+                        "label": "Build EvenPerfectBitScanner.ResultsParser Release",
+                        "command": "dotnet",
+                        "type": "process",
+                        "args": [
+                                "build",
+                                "${workspaceFolder}/EvenPerfectBitScanner.ResultsParser/EvenPerfectBitScanner.ResultsParser.csproj",
+                                "--configuration",
+                                "Release",
+                                "--framework",
+                                "net8.0"
+                        ],
+                        "group": "build",
+                        "problemMatcher": "$msCompile"
+                },
+                {
+                        "label": "Run EvenPerfectBitScanner",
+                        "type": "process",
 			"command": "dotnet",
-			"args": [
-				"run",
-				"--project",
-				"${workspaceFolder}/EvenPerfectBitScanner/EvenPerfectBitScanner.csproj",
+                        "args": [
+                                "run",
+                                "--project",
+                                "${workspaceFolder}/EvenPerfectBitScanner/EvenPerfectBitScanner.csproj",
 				"--configuration",
 				"Release",
 				"--framework",
 				"net8.0"
 			],
-			"problemMatcher": []
-		},
+                        "problemMatcher": []
+                },
+                {
+                        "label": "Run EvenPerfectBitScanner.ResultsParser",
+                        "type": "process",
+                        "command": "dotnet",
+                        "args": [
+                                "run",
+                                "--project",
+                                "${workspaceFolder}/EvenPerfectBitScanner.ResultsParser/EvenPerfectBitScanner.ResultsParser.csproj",
+                                "--configuration",
+                                "Release",
+                                "--framework",
+                                "net8.0"
+                        ],
+                        "problemMatcher": []
+                },
 		{
 			"label": "Run Release (no debug)",
 			"type": "process",
