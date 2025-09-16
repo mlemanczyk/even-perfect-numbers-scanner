@@ -31,6 +31,15 @@ https://buymeacoffee.com/mlemanczyk/e/455508
 
 [![Donate](buy-me-a-coffee.svg)](https://www.buymeacoffee.com/mlemanczyk)
 
+# Thirdparty Components
+The source code relays on selected functionality from the following packages:
+* [FluentAssertions](https://www.nuget.org/packages/FluentAssertions)
+* [ILGPU](https://www.nuget.org/packages/ILGPU)
+* [ILGPU.Algorithms](https://www.nuget.org/packages/ILGPU.Algorithms)
+* [Open.Numeric.Primes](https://www.nuget.org/packages/Open.Numeric.Primes)
+* [PeterO.Numbers](https://www.nuget.org/packages/PeterO.Numbers)]
+* [xunit](https://www.nuget.org/packages/xunit)
+
 # Description
 
 This document explains **what the program does**, **how it works step-by-step**, and **why** each optimization exists. It reflects the *current* code paths in `Program.cs` and the helper library (`PerfectNumbers.Core`), describing only what the code actually does (comments ignored).
