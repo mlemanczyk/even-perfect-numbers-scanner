@@ -26,20 +26,20 @@ internal static class Program
 	private static int _primeCount;
 	private static bool _primeFoundAfterInit;
 	private static bool _useGcdFilter;
-        private static bool _useDivisor;
-        private static bool _useResidueMode;
-        private static UInt128 _divisor;
-        private static MersenneNumberDivisorGpuTester? _divisorTester;
-        private static ulong? _orderWarmupLimitOverride;
-        private static unsafe delegate*<ulong, ref ulong, ulong> _transformP;
-        private static long _state;
-        private static bool _limitReached;
-        private static string? _resultsDir;
-        private static string? _resultsPrefix;
-        private static readonly Optimized PrimeIterator = new();
+	private static bool _useDivisor;
+	private static bool _useResidueMode;
+	private static UInt128 _divisor;
+	private static MersenneNumberDivisorGpuTester? _divisorTester;
+	private static ulong? _orderWarmupLimitOverride;
+	private static unsafe delegate*<ulong, ref ulong, ulong> _transformP;
+	private static long _state;
+	private static bool _limitReached;
+	private static string? _resultsDir;
+	private static string? _resultsPrefix;
+	private static readonly Optimized PrimeIterator = new();
 
-        [ThreadStatic]
-        private static bool _lastCompositeP;
+	[ThreadStatic]
+	private static bool _lastCompositeP;
 
 	// RLE/bit-pattern filtering options
 	private static string? _rleBlacklistPath;
@@ -414,20 +414,20 @@ internal static class Program
 
 		Console.WriteLine("Divisor cycles are ready");
 
-                _useDivisor = useDivisor;
-                _useResidueMode = useResidue;
-                _divisor = divisor;
-                if (useBitTransform)
-                {
-                        _transformP = &TransformPBit;
-                }
+		_useDivisor = useDivisor;
+		_useResidueMode = useResidue;
+		_divisor = divisor;
+		if (useBitTransform)
+		{
+			_transformP = &TransformPBit;
+		}
 		else if (useResidue)
 		{
-		        _transformP = &TransformPAdd;
+			_transformP = &TransformPAdd;
 		}
 		else
 		{
-		        _transformP = &TransformPAddPrimes;
+			_transformP = &TransformPAddPrimes;
 		}
 		PResidue = new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, initialNumber: currentP, initialized: true), trackAllValues: true);
 		PrimeTesters = new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true);
@@ -435,20 +435,20 @@ internal static class Program
 		// Initialize per-thread p residue tracker (Identity model) at currentP
 		if (!useDivisor)
 		{
-                        MersenneTesters = new ThreadLocal<MersenneNumberTester>(() =>
-                        {
-                                var tester = new MersenneNumberTester(
-                                                                        useIncremental: !useLucas,
-                                                                        useOrderCache: false,
-                                                                        kernelType: kernelType,
-                                                                        useModuloWorkaround: useModuloWorkaround,
-                                                                        useOrder: useOrder,
-                                                                        useGpuLucas: mersenneOnGpu,
-                                                                        useGpuScan: mersenneOnGpu,
-                                                                        useGpuOrder: orderOnGpu,
-                                                                        useResidue: useResidue,
-                                                                        maxK: residueKMax,
-                                                                        residueDivisorSets: divisorCyclesSearchLimit);
+			MersenneTesters = new ThreadLocal<MersenneNumberTester>(() =>
+			{
+				var tester = new MersenneNumberTester(
+																	useIncremental: !useLucas,
+																	useOrderCache: false,
+																	kernelType: kernelType,
+																	useModuloWorkaround: useModuloWorkaround,
+																	useOrder: useOrder,
+																	useGpuLucas: mersenneOnGpu,
+																	useGpuScan: mersenneOnGpu,
+																	useGpuOrder: orderOnGpu,
+																	useResidue: useResidue,
+																	maxK: residueKMax,
+																	residueDivisorSets: divisorCyclesSearchLimit);
 				if (!useLucas)
 				{
 					tester.WarmUpOrders(currentP, _orderWarmupLimitOverride ?? 5_000_000UL);
@@ -732,7 +732,7 @@ internal static class Program
 		Console.WriteLine("  --divisor-cycles-device=cpu|gpu  device for cycles generation (default gpu)");
 		Console.WriteLine("  --divisor-cycles-batch-size=<value> batch size for cycles generation (default 512)");
 		Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
-            Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor or residue");
+		Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor or residue");
 
 		Console.WriteLine("  --use-order            test primality via q order");
 		Console.WriteLine("  --workaround-mod       avoid '%' operator on the GPU");
@@ -790,30 +790,30 @@ internal static class Program
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void PrintResult(ulong currentP, bool searchedMersenne, bool detailedCheck, bool isPerfect)
-        {
-                if (isPerfect)
-                {
-                        int newCount = Interlocked.Increment(ref _primeCount);
-                        if (newCount >= 2)
-                        {
-                                Volatile.Write(ref _primeFoundAfterInit, true);
-                        }
-                }
+	private static void PrintResult(ulong currentP, bool searchedMersenne, bool detailedCheck, bool isPerfect)
+	{
+		if (isPerfect)
+		{
+			int newCount = Interlocked.Increment(ref _primeCount);
+			if (newCount >= 2)
+			{
+				Volatile.Write(ref _primeFoundAfterInit, true);
+			}
+		}
 
-                if (_useResidueMode && _lastCompositeP)
-                {
-                        return;
-                }
+		if (_useResidueMode && _lastCompositeP)
+		{
+			return;
+		}
 
-                bool primeFlag = false, printToConsole = false;
+		bool primeFlag = false, printToConsole = false;
 
-                StringBuilder localBuilder = StringBuilderPool.Rent();
-                _ = localBuilder
-                        .Append(currentP).Append(',')
-			.Append(searchedMersenne).Append(',')
-			.Append(detailedCheck).Append(',')
-			.Append(isPerfect).Append('\n');
+		StringBuilder localBuilder = StringBuilderPool.Rent();
+		_ = localBuilder
+				.Append(currentP).Append(',')
+	.Append(searchedMersenne).Append(',')
+	.Append(detailedCheck).Append(',')
+	.Append(isPerfect).Append('\n');
 
 		lock (Sync)
 		{
@@ -1011,20 +1011,20 @@ internal static class Program
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit) => IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out _, out _);
 
-        internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck)
-        {
-                searchedMersenne = false;
-                detailedCheck = false;
-                _lastCompositeP = false;
+	internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck)
+	{
+		searchedMersenne = false;
+		detailedCheck = false;
+		_lastCompositeP = false;
 
-                if (_useGcdFilter && IsCompositeByGcd(p))
-                {
-                        _lastCompositeP = true;
-                        return false;
-                }
+		if (_useGcdFilter && IsCompositeByGcd(p))
+		{
+			_lastCompositeP = true;
+			return false;
+		}
 
-                // Optional: RLE blacklist and binary-threshold filters on p (safe only when configured)
-                if (p <= _rleHardMaxP)
+		// Optional: RLE blacklist and binary-threshold filters on p (safe only when configured)
+		if (p <= _rleHardMaxP)
 		{
 			if (!_rleOnlyLast7 || (p % 10UL) == 7UL)
 			{
@@ -1058,36 +1058,36 @@ internal static class Program
 			}
 		}
 
-                // Fast residue-based composite check for p using small primes
-                if (!_useDivisor && IsCompositeByResidues(p))
-                {
-                        searchedMersenne = false;
-                        detailedCheck = false;
-                        _lastCompositeP = true;
-                        return false;
-                }
+		// Fast residue-based composite check for p using small primes
+		if (!_useDivisor && IsCompositeByResidues(p))
+		{
+			searchedMersenne = false;
+			detailedCheck = false;
+			_lastCompositeP = true;
+			return false;
+		}
 
-                // If primes-device=gpu, route p primality through GPU-assisted sieve (optional MR later)
-                // TODO: Add deterministic Miller–Rabin rounds in GPU path for 64-bit range.
-                bool isPrimeP = GpuContextPool.ForceCpu
-                        ? PrimeTesters.Value!.IsPrime(p, CancellationToken.None)
-                        : PrimeTesters.Value!.IsPrimeGpu(p, CancellationToken.None);
-                if (!isPrimeP)
-                {
-                        _lastCompositeP = true;
-                        return false;
-                }
+		// If primes-device=gpu, route p primality through GPU-assisted sieve (optional MR later)
+		// TODO: Add deterministic Miller–Rabin rounds in GPU path for 64-bit range.
+		bool isPrimeP = GpuContextPool.ForceCpu
+				? PrimeTesters.Value!.IsPrime(p, CancellationToken.None)
+				: PrimeTesters.Value!.IsPrimeGpu(p, CancellationToken.None);
+		if (!isPrimeP)
+		{
+			_lastCompositeP = true;
+			return false;
+		}
 
-                searchedMersenne = true;
-                if (_useDivisor)
-                {
-                        return _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out detailedCheck);
-                }
+		searchedMersenne = true;
+		if (_useDivisor)
+		{
+			return _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out detailedCheck);
+		}
 
-                bool mersennePrime = MersenneTesters.Value!.IsMersennePrime(p, out bool residueExhausted);
-                detailedCheck = residueExhausted;
-                return mersennePrime;
-        }
+		bool mersennePrime = MersenneTesters.Value!.IsMersennePrime(p, out bool residueExhausted);
+		detailedCheck = residueExhausted;
+		return mersennePrime;
+	}
 
 	// Use ModResidueTracker with a small set of primes to pre-filter composite p.
 	private static bool IsCompositeByResidues(ulong p)
