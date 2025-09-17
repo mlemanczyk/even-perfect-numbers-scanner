@@ -27,8 +27,18 @@ public class MersenneNumberResidueGpuTesterTests
     private static void RunCase(MersenneNumberResidueGpuTester tester, ulong exponent, ulong maxK, bool expectedPrime)
     {
         bool isPrime = true;
-        tester.Scan(exponent, (UInt128)exponent << 1, LastDigitIsSeven(exponent), (UInt128)maxK, ref isPrime);
+        bool exhausted = false;
+        tester.Scan(
+                exponent,
+                (UInt128)exponent << 1,
+                LastDigitIsSeven(exponent),
+                (UInt128)maxK,
+                1UL,
+                (UInt128)maxK,
+                ref isPrime,
+                ref exhausted);
         isPrime.Should().Be(expectedPrime);
+        exhausted.Should().BeTrue();
     }
 }
 

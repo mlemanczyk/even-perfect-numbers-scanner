@@ -24,13 +24,15 @@ public sealed class MersenneNumberTester(
     bool useGpuLucas = true,
     bool useGpuScan = true,
     bool useGpuOrder = true,
-	bool useResidue = true,
-    ulong maxK = 5_000_000UL)
+        bool useResidue = true,
+    ulong maxK = 5_000_000UL,
+        ulong residueDivisorSets = PerfectNumberConstants.ExtraDivisorCycleSearchLimit)
 {
     private readonly bool _useResidue = useResidue;
     private readonly bool _useIncremental = useIncremental && !useResidue;
         private readonly ulong _maxK = maxK;
-	private readonly GpuKernelType _kernelType = kernelType;
+        private readonly ulong _residueDivisorSetCount = residueDivisorSets;
+        private readonly GpuKernelType _kernelType = kernelType;
     private readonly bool _useModuloWorkaround = useModuloWorkaround;
     private readonly bool _useGpuLucas = useGpuLucas;
     private readonly bool _useGpuScan = useGpuScan;     // device for pow2mod/incremental scanning
@@ -42,11 +44,28 @@ public sealed class MersenneNumberTester(
 	private readonly MersenneNumberOrderCpuTester _orderCpuTester = new(kernelType);
 	private readonly MersenneNumberLucasLehmerGpuTester _lucasLehmerGpuTester = new();
 	private readonly MersenneNumberLucasLehmerCpuTester _lucasLehmerCpuTester = new();
-	private readonly MersenneNumberResidueGpuTester? _residueGpuTester = useResidue ? new(useGpuOrder) : null;
-	private readonly MersenneNumberResidueCpuTester? _residueCpuTester = useResidue ? new() : null;
+    private readonly MersenneNumberResidueGpuTester? _residueGpuTester = useResidue ? new(useGpuOrder) : null;
+        private readonly MersenneNumberResidueCpuTester? _residueCpuTester = useResidue ? new() : null;
 
-	// TODO: Ensure Program passes useResidue correctly and that residue-vs-incremental-vs-LL selection respects CLI flags.
-	// Also consider injecting a shared cycles cache (MersenneDivisorCycles.Shared) to both CPU and GPU testers.
+        // TODO: Ensure Program passes useResidue correctly and that residue-vs-incremental-vs-LL selection respects CLI flags.
+        // Also consider injecting a shared cycles cache (MersenneDivisorCycles.Shared) to both CPU and GPU testers.
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static UInt128 DivideRoundUp(UInt128 value, UInt128 divisor)
+        {
+                if (divisor == UInt128.Zero)
+                {
+                        return UInt128.Zero;
+                }
+
+                UInt128 result = value / divisor;
+                if (result * divisor == value)
+                {
+                        return result;
+                }
+
+                return result + UInt128.One;
+        }
 
     public void WarmUpOrders(ulong exponent, ulong limit = 5_000_000UL)
 	{
@@ -191,27 +210,34 @@ public sealed class MersenneNumberTester(
                 ArrayPool<UInt128>.Shared.Return(qs);
 	}
 
-    public bool IsMersennePrime(ulong exponent)
+    public bool IsMersennePrime(ulong exponent) => IsMersennePrime(exponent, out _);
+
+    public bool IsMersennePrime(ulong exponent, out bool divisorsExhausted)
     {
+        divisorsExhausted = false;
+
         // Safe early rejections using known orders for tiny primes:
         // 7 | M_p iff 3 | p. Avoid rejecting p == 3 where M_3 == 7 is prime.
         if ((exponent % 3UL) == 0UL && exponent != 3UL)
         {
+            divisorsExhausted = true;
             return false;
         }
 
         if ((exponent & 3UL) == 1UL && exponent.SharesFactorWithExponentMinusOne())
         {
+            divisorsExhausted = true;
             return false;
         }
 
         // Skip even exponents: for even p > 2, M_p is composite; here p is large.
         if ((exponent & 1UL) == 0UL)
         {
+            divisorsExhausted = true;
             return false;
         }
 
-		bool prePrime = true;
+                bool prePrime = true;
         UInt128 twoP = (UInt128)exponent << 1; // 2 * p
         // UInt128 maxDivisor = new(ulong.MaxValue, ulong.MaxValue);
         UInt128 maxK = UInt128Numbers.Two.Pow(exponent) / 2 + 1;
@@ -225,16 +251,60 @@ public sealed class MersenneNumberTester(
                 maxK = _maxK;
             }
 
+            if (_maxK == 0UL || _residueDivisorSetCount == 0UL)
+            {
+                return prePrime;
+            }
+
+            UInt128 totalLimit = (UInt128)_maxK;
+            if (totalLimit > maxK)
+            {
+                totalLimit = maxK;
+            }
+
+            if (totalLimit == UInt128.Zero)
+            {
+                return true;
+            }
+
+            ulong requestedSets = _residueDivisorSetCount;
+            if (requestedSets == 0UL)
+            {
+                requestedSets = 1UL;
+            }
+
+            UInt128 perSetLimit = DivideRoundUp(totalLimit, (UInt128)requestedSets);
+            if (perSetLimit == UInt128.Zero)
+            {
+                perSetLimit = UInt128.One;
+            }
+
+            UInt128 setsNeeded = DivideRoundUp(totalLimit, perSetLimit);
+            ulong effectiveSets = requestedSets;
+            if (setsNeeded < (UInt128)effectiveSets)
+            {
+                effectiveSets = (ulong)setsNeeded;
+            }
+
+            bool scanCompleted = false;
+
             if (_useGpuScan)
             {
-                _residueGpuTester!.Scan(exponent, twoP, lastIsSeven, maxK, ref prePrime);
+                _residueGpuTester!.Scan(exponent, twoP, lastIsSeven, perSetLimit, effectiveSets, totalLimit, ref prePrime, ref scanCompleted);
             }
             else
             {
-                _residueCpuTester!.Scan(exponent, twoP, lastIsSeven, maxK, ref prePrime);
+                _residueCpuTester!.Scan(exponent, twoP, lastIsSeven, perSetLimit, effectiveSets, totalLimit, ref prePrime, ref scanCompleted);
             }
 
-            return prePrime;
+            if (!prePrime)
+            {
+                divisorsExhausted = true;
+                return false;
+            }
+
+            divisorsExhausted = scanCompleted;
+            return true;
         }
 
 		if (!_useIncremental)
@@ -253,15 +323,18 @@ public sealed class MersenneNumberTester(
 				_incrementalCpuTester.Scan(exponent, twoPPre, lastIsSevenPre, maxKPre, ref prePrime);
 			}
 
-			if (!prePrime)
-			{
-				return false;
-			}
+                        if (!prePrime)
+                        {
+                                divisorsExhausted = true;
+                                return false;
+                        }
 
-			return _useGpuLucas
-				? _lucasLehmerGpuTester.IsPrime(exponent, runOnGpu: true)
-				: _lucasLehmerCpuTester.IsPrime(exponent);
-		}
+                        bool lucasPrime = _useGpuLucas
+                                ? _lucasLehmerGpuTester.IsPrime(exponent, runOnGpu: true)
+                                : _lucasLehmerCpuTester.IsPrime(exponent);
+                        divisorsExhausted = true;
+                        return lucasPrime;
+                }
 
         bool isPrime = true;
 
@@ -288,6 +361,7 @@ public sealed class MersenneNumberTester(
             }
         }
 
+        divisorsExhausted = true;
         return isPrime;
     }
 
