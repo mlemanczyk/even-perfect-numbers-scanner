@@ -2,6 +2,8 @@ PerfectNumbers.Core/bin/*
 PerfectNumbers.Core/obj/*
 EvenPerfectBitScanner/bin/*
 EvenPerfectBitScanner/obj/*
+EvenPerfectBitScanner.ResultsParser/bin/*
+EvenPerfectBitScanner.ResultsParser/obj/*
 EvenPerfectBitScanner.Tests/bin/*
 EvenPerfectBitScanner.Tests/obj/*
 PerfectNumbers.Core.Tests/bin/*
