@@ -27,11 +27,10 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
                 ulong step5 = ((exponent % 5UL) << 1) % 5UL;
                 GpuUInt128 twoPGpu = (GpuUInt128)twoP;
                 var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
-                ArrayView1D<uint, Stride1D.Dense> smallPrimesView = default;
-                ArrayView1D<ulong, Stride1D.Dense> smallPrimesPow2View = default;
+                ResiduePrimeViews primeViews = default;
                 if (_kernelType == GpuKernelType.Pow2Mod)
                 {
-                        (smallPrimesView, smallPrimesPow2View) = GpuKernelPool.EnsureSmallPrimesOnDevice(accelerator);
+                        primeViews = GpuKernelPool.EnsureSmallPrimesOnDevice(accelerator);
                 }
 
                 var orderBuffer = accelerator.Allocate1D<ulong>(batchSize);
@@ -56,7 +55,7 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
                                         q0.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
                                         var ra = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
                                         pow2Kernel(currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, divMul,
-                                                ra, orderBuffer.View, smallCyclesView, smallPrimesView, smallPrimesPow2View);
+                                                ra, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
                                 }
                                 else
                                 {

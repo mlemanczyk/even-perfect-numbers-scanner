@@ -30,7 +30,9 @@ public sealed class KernelContainer
     public Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
         ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>>? Incremental;
     public Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
-        ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2Mod;
+        ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>,
+        ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>,
+        ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2Mod;
 	public Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
 		ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>? IncrementalOrder;
     public Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
@@ -38,11 +40,13 @@ public sealed class KernelContainer
 
     // Optional device buffer with small divisor cycles (<= 4M). Index = divisor, value = cycle length.
     public MemoryBuffer1D<uint, Stride1D.Dense>? SmallCycles;
-    public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimes;
-    public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimesPow2;
+    public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastOne;
+    public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimesPow2LastOne;
+    public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastSeven;
+    public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimesPow2LastSeven;
 
-	public static T InitOnce<T>(ref T? slot, Func<T> factory) where T : class
-	{
+        public static T InitOnce<T>(ref T? slot, Func<T> factory) where T : class
+        {
 		var current = Volatile.Read(ref slot);
 		if (current is not null)
 		{
@@ -55,8 +59,20 @@ public sealed class KernelContainer
 			current = factory();
 			Volatile.Write(ref slot, current);
 		}
-		return current;
-	}
+                return current;
+        }
+}
+
+public readonly struct ResiduePrimeViews(
+    ArrayView1D<uint, Stride1D.Dense> lastOne,
+    ArrayView1D<uint, Stride1D.Dense> lastSeven,
+    ArrayView1D<ulong, Stride1D.Dense> lastOnePow2,
+    ArrayView1D<ulong, Stride1D.Dense> lastSevenPow2)
+{
+    public readonly ArrayView1D<uint, Stride1D.Dense> LastOne = lastOne;
+    public readonly ArrayView1D<uint, Stride1D.Dense> LastSeven = lastSeven;
+    public readonly ArrayView1D<ulong, Stride1D.Dense> LastOnePow2 = lastOnePow2;
+    public readonly ArrayView1D<ulong, Stride1D.Dense> LastSevenPow2 = lastSevenPow2;
 }
 
 public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, KernelContainer kernels)
@@ -80,14 +96,14 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
 		}
 	}
 
-    public readonly Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> Pow2ModKernel
+    public readonly Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> Pow2ModKernel
         {
                 get
                 {
                         var accel = Accelerator;
                         lock (_gpu!.Value.KernelInitLock)
                         {
-                                return KernelContainer.InitOnce(ref _kernels.Pow2Mod, () => accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernelScan));
+                                return KernelContainer.InitOnce(ref _kernels.Pow2Mod, () => accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernelScan));
                         }
                 }
         }
@@ -278,8 +294,11 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
 
     private static void Pow2ModKernelScan(Index1D index, ulong exponent, GpuUInt128 twoP, GpuUInt128 kStart, byte lastIsSeven, ulong _,
         ResidueAutomatonArgs ra, ArrayView<ulong> orders,
-        ArrayView1D<uint, Stride1D.Dense> smallCycles, ArrayView1D<uint, Stride1D.Dense> smallPrimes,
-        ArrayView1D<ulong, Stride1D.Dense> smallPrimesPow2)
+        ArrayView1D<uint, Stride1D.Dense> smallCycles,
+        ArrayView1D<uint, Stride1D.Dense> smallPrimesLastOne,
+        ArrayView1D<uint, Stride1D.Dense> smallPrimesLastSeven,
+        ArrayView1D<ulong, Stride1D.Dense> smallPrimesPow2LastOne,
+        ArrayView1D<ulong, Stride1D.Dense> smallPrimesPow2LastSeven)
     {
         ulong idx = (ulong)index.X;
         ulong r10 = ra.Q0M10 + (ra.Step10 * idx) % 10UL; r10 -= (r10 >= 10UL) ? 10UL : 0UL;
@@ -331,15 +350,17 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
             return;
         }
 
-        int primesLen = (int)smallPrimes.Length;
+        ArrayView1D<uint, Stride1D.Dense> primes = lastIsSeven != 0 ? smallPrimesLastSeven : smallPrimesLastOne;
+        ArrayView1D<ulong, Stride1D.Dense> primesPow2 = lastIsSeven != 0 ? smallPrimesPow2LastSeven : smallPrimesPow2LastOne;
+        int primesLen = (int)primes.Length;
         for (int i = 0; i < primesLen; i++)
         {
-            ulong square = smallPrimesPow2[i];
+            ulong square = primesPow2[i];
             if (new GpuUInt128(0UL, square) > q)
             {
                 break;
             }
-            ulong prime = smallPrimes[i];
+            ulong prime = primes[i];
             if (Mod128By64(q, prime) == 0UL)
             {
                 orders[index] = 0UL;
@@ -571,30 +592,47 @@ public class GpuKernelPool
         }
     }
 
-    public static (ArrayView1D<uint, Stride1D.Dense> primes, ArrayView1D<ulong, Stride1D.Dense> primesPow2) EnsureSmallPrimesOnDevice(Accelerator accelerator)
+    public static ResiduePrimeViews EnsureSmallPrimesOnDevice(Accelerator accelerator)
     {
         var kernels = GetKernels(accelerator);
-        if (kernels.SmallPrimes is { } p && kernels.SmallPrimesPow2 is { } p2)
+        if (kernels.SmallPrimesLastOne is { } lastOne &&
+            kernels.SmallPrimesLastSeven is { } lastSeven &&
+            kernels.SmallPrimesPow2LastOne is { } lastOnePow2 &&
+            kernels.SmallPrimesPow2LastSeven is { } lastSevenPow2)
         {
-            return (p.View, p2.View);
+            return new ResiduePrimeViews(lastOne.View, lastSeven.View, lastOnePow2.View, lastSevenPow2.View);
         }
 
         lock (kernels)
         {
-            if (kernels.SmallPrimes is { } existing && kernels.SmallPrimesPow2 is { } existingPow2)
+            if (kernels.SmallPrimesLastOne is { } existingLastOne &&
+                kernels.SmallPrimesLastSeven is { } existingLastSeven &&
+                kernels.SmallPrimesPow2LastOne is { } existingLastOnePow2 &&
+                kernels.SmallPrimesPow2LastSeven is { } existingLastSevenPow2)
             {
-                return (existing.View, existingPow2.View);
+                return new ResiduePrimeViews(existingLastOne.View, existingLastSeven.View, existingLastOnePow2.View, existingLastSevenPow2.View);
             }
 
-            var hostPrimes = PrimesGenerator.SmallPrimes;
-            var hostPow2 = PrimesGenerator.SmallPrimesPow2;
-            var devicePrimes = accelerator.Allocate1D<uint>(hostPrimes.Length);
-            devicePrimes.View.CopyFromCPU(hostPrimes);
-            var devicePow2 = accelerator.Allocate1D<ulong>(hostPow2.Length);
-            devicePow2.View.CopyFromCPU(hostPow2);
-            kernels.SmallPrimes = devicePrimes;
-            kernels.SmallPrimesPow2 = devicePow2;
-            return (devicePrimes.View, devicePow2.View);
+            var hostLastOne = PrimesGenerator.SmallPrimesLastOne;
+            var hostLastSeven = PrimesGenerator.SmallPrimesLastSeven;
+            var hostLastOnePow2 = PrimesGenerator.SmallPrimesPow2LastOne;
+            var hostLastSevenPow2 = PrimesGenerator.SmallPrimesPow2LastSeven;
+
+            var deviceLastOne = accelerator.Allocate1D<uint>(hostLastOne.Length);
+            deviceLastOne.View.CopyFromCPU(hostLastOne);
+            var deviceLastSeven = accelerator.Allocate1D<uint>(hostLastSeven.Length);
+            deviceLastSeven.View.CopyFromCPU(hostLastSeven);
+            var deviceLastOnePow2 = accelerator.Allocate1D<ulong>(hostLastOnePow2.Length);
+            deviceLastOnePow2.View.CopyFromCPU(hostLastOnePow2);
+            var deviceLastSevenPow2 = accelerator.Allocate1D<ulong>(hostLastSevenPow2.Length);
+            deviceLastSevenPow2.View.CopyFromCPU(hostLastSevenPow2);
+
+            kernels.SmallPrimesLastOne = deviceLastOne;
+            kernels.SmallPrimesLastSeven = deviceLastSeven;
+            kernels.SmallPrimesPow2LastOne = deviceLastOnePow2;
+            kernels.SmallPrimesPow2LastSeven = deviceLastSevenPow2;
+
+            return new ResiduePrimeViews(deviceLastOne.View, deviceLastSeven.View, deviceLastOnePow2.View, deviceLastSevenPow2.View);
         }
     }
 
