@@ -435,19 +435,20 @@ internal static class Program
 		// Initialize per-thread p residue tracker (Identity model) at currentP
 		if (!useDivisor)
 		{
-			MersenneTesters = new ThreadLocal<MersenneNumberTester>(() =>
-			{
-				var tester = new MersenneNumberTester(
-									useIncremental: !useLucas,
-									useOrderCache: false,
-									kernelType: kernelType,
-									useModuloWorkaround: useModuloWorkaround,
-									useOrder: useOrder,
-									useGpuLucas: mersenneOnGpu,
-									useGpuScan: mersenneOnGpu,
-									useGpuOrder: orderOnGpu,
-									useResidue: useResidue,
-									maxK: residueKMax);
+                        MersenneTesters = new ThreadLocal<MersenneNumberTester>(() =>
+                        {
+                                var tester = new MersenneNumberTester(
+                                                                        useIncremental: !useLucas,
+                                                                        useOrderCache: false,
+                                                                        kernelType: kernelType,
+                                                                        useModuloWorkaround: useModuloWorkaround,
+                                                                        useOrder: useOrder,
+                                                                        useGpuLucas: mersenneOnGpu,
+                                                                        useGpuScan: mersenneOnGpu,
+                                                                        useGpuOrder: orderOnGpu,
+                                                                        useResidue: useResidue,
+                                                                        maxK: residueKMax,
+                                                                        residueDivisorSets: divisorCyclesSearchLimit);
 				if (!useLucas)
 				{
 					tester.WarmUpOrders(currentP, _orderWarmupLimitOverride ?? 5_000_000UL);
@@ -731,7 +732,7 @@ internal static class Program
 		Console.WriteLine("  --divisor-cycles-device=cpu|gpu  device for cycles generation (default gpu)");
 		Console.WriteLine("  --divisor-cycles-batch-size=<value> batch size for cycles generation (default 512)");
 		Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
-		Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor");
+            Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor or residue");
 
 		Console.WriteLine("  --use-order            test primality via q order");
 		Console.WriteLine("  --workaround-mod       avoid '%' operator on the GPU");
@@ -1077,15 +1078,16 @@ internal static class Program
                         return false;
                 }
 
-		searchedMersenne = true;
-		if (_useDivisor)
-		{
-			return _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out detailedCheck);
-		}
+                searchedMersenne = true;
+                if (_useDivisor)
+                {
+                        return _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out detailedCheck);
+                }
 
-		detailedCheck = MersenneTesters.Value!.IsMersennePrime(p);
-		return detailedCheck;
-	}
+                bool mersennePrime = MersenneTesters.Value!.IsMersennePrime(p, out bool residueExhausted);
+                detailedCheck = residueExhausted;
+                return mersennePrime;
+        }
 
 	// Use ModResidueTracker with a small set of primes to pre-filter composite p.
 	private static bool IsCompositeByResidues(ulong p)
