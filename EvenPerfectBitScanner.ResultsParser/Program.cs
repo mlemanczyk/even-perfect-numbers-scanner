@@ -400,12 +400,11 @@ internal static class Program
 
 	private readonly record struct CandidateResult(ulong P, bool IsPerfect, string Csv)
 	{
-		public string ToCsv()
-		{
-			return Csv;
-		}
+		public string ToCsv() => Csv;
 
-
+		public readonly string Csv = Csv;
+		public readonly ulong P = P;
+		public readonly bool IsPerfect = IsPerfect;
 	}
 }
 
