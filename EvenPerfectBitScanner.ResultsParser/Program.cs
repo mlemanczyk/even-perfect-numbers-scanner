@@ -110,6 +110,7 @@ internal static class Program
 		ulong currentPrime = primeEnumerator.Current;
 		List<CandidateResult> pendingResults = new();
 		List<CandidateResult> primeResults = new();
+		int consoleProgress = 0;
 		while (enumerator.MoveNext())
 		{
 			string currentLine = enumerator.Current;
@@ -121,6 +122,11 @@ internal static class Program
 			CandidateResult result = ParseLine(currentLine);
 			InsertPendingResult(pendingResults, result);
 			DrainPrimeMatches(pendingResults, primeResults, ref currentPrime, primeEnumerator, false);
+			if (++consoleProgress == 10_000)
+			{
+				Console.WriteLine($"Processed {result.P}");
+				consoleProgress = 0;
+			}
 		}
 
 		DrainPrimeMatches(pendingResults, primeResults, ref currentPrime, primeEnumerator, true);
