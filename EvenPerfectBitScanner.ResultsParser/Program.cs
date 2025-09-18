@@ -122,7 +122,7 @@ internal static class Program
                         }
 
                         CandidateResult result = ParseLine(currentLine);
-                        pendingResults.Add(result);
+                        InsertPendingResult(pendingResults, result);
                         DrainPrimeMatches(pendingResults, primeResults, ref currentPrime, primeEnumerator, false);
                 }
 
@@ -273,7 +273,7 @@ internal static class Program
                         bool extractedPrime = ExtractPrimeEntries(pendingResults, primeResults, currentPrime);
                         if (extractedPrime)
                         {
-                                if (!TryAdvancePrime(primeEnumerator, ref currentPrime))
+                                if (!TryAdvancePrime(primeEnumerator, ref currentPrime, pendingResults))
                                 {
                                         pendingResults.Clear();
                                         return;
@@ -288,7 +288,7 @@ internal static class Program
                                 return;
                         }
 
-                        if (!TryAdvancePrime(primeEnumerator, ref currentPrime))
+                        if (!TryAdvancePrime(primeEnumerator, ref currentPrime, pendingResults))
                         {
                                 pendingResults.Clear();
                                 return;
@@ -303,48 +303,99 @@ internal static class Program
                 List<CandidateResult> primeResults,
                 ulong prime)
         {
-                bool found = false;
-                for (int i = 0; i < pendingResults.Count; i++)
+                if (pendingResults.Count == 0)
                 {
-                        CandidateResult candidate = pendingResults[i];
-                        if (candidate.P != prime)
-                        {
-                                continue;
-                        }
-
-                        primeResults.Add(candidate);
-                        pendingResults.RemoveAt(i);
-                        i--;
-                        found = true;
+                        return false;
                 }
 
-                return found;
+                int startIndex = FindFirstIndexAtLeast(pendingResults, prime);
+                if (startIndex >= pendingResults.Count)
+                {
+                        return false;
+                }
+
+                CandidateResult firstCandidate = pendingResults[startIndex];
+                if (firstCandidate.P != prime)
+                {
+                        return false;
+                }
+
+                int endIndex = startIndex + 1;
+                while (endIndex < pendingResults.Count && pendingResults[endIndex].P == prime)
+                {
+                        endIndex++;
+                }
+
+                for (int i = startIndex; i < endIndex; i++)
+                {
+                        primeResults.Add(pendingResults[i]);
+                }
+
+                pendingResults.RemoveRange(startIndex, endIndex - startIndex);
+                return true;
         }
 
         private static void RemoveEntriesBelowPrime(List<CandidateResult> pendingResults, ulong currentPrime)
         {
-                for (int i = 0; i < pendingResults.Count; i++)
+                if (pendingResults.Count == 0)
                 {
-                        if (pendingResults[i].P >= currentPrime)
+                        return;
+                }
+
+                int removeCount = FindFirstIndexAtLeast(pendingResults, currentPrime);
+                if (removeCount == 0)
+                {
+                        return;
+                }
+
+                pendingResults.RemoveRange(0, removeCount);
+        }
+
+        private static bool TryAdvancePrime(
+                IEnumerator<ulong> primeEnumerator,
+                ref ulong currentPrime,
+                List<CandidateResult> pendingResults)
+        {
+                ulong minimumPending = pendingResults.Count > 0 ? pendingResults[0].P : 0UL;
+                do
+                {
+                        if (!primeEnumerator.MoveNext())
                         {
+                                currentPrime = ulong.MaxValue;
+                                return false;
+                        }
+
+                        currentPrime = primeEnumerator.Current;
+                }
+                while (pendingResults.Count > 0 && currentPrime < minimumPending);
+
+                return true;
+        }
+
+        private static void InsertPendingResult(List<CandidateResult> pendingResults, CandidateResult result)
+        {
+                int insertIndex = FindFirstIndexAtLeast(pendingResults, result.P);
+                pendingResults.Insert(insertIndex, result);
+        }
+
+        private static int FindFirstIndexAtLeast(List<CandidateResult> pendingResults, ulong value)
+        {
+                int low = 0;
+                int high = pendingResults.Count - 1;
+                while (low <= high)
+                {
+                        int mid = low + ((high - low) >> 1);
+                        ulong midValue = pendingResults[mid].P;
+                        if (midValue < value)
+                        {
+                                low = mid + 1;
                                 continue;
                         }
 
-                        pendingResults.RemoveAt(i);
-                        i--;
-                }
-        }
-
-        private static bool TryAdvancePrime(IEnumerator<ulong> primeEnumerator, ref ulong currentPrime)
-        {
-                if (!primeEnumerator.MoveNext())
-                {
-                        currentPrime = ulong.MaxValue;
-                        return false;
+                        high = mid - 1;
                 }
 
-                currentPrime = primeEnumerator.Current;
-                return true;
+                return low;
         }
 
         private readonly record struct CandidateResult(ulong P, bool IsPerfect, string Csv)
