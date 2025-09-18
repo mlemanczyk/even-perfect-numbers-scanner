@@ -62,10 +62,7 @@ internal static class Program
 		}
 	}
 
-	private static bool IsHelpOption(string value)
-	{
-		return HelpOptions.Contains(value);
-	}
+	private static bool IsHelpOption(string value) => HelpOptions.Contains(value);
 
 	private static void PrintHelp()
 	{
@@ -139,11 +136,11 @@ internal static class Program
 			return;
 		}
 
-		List<CandidateResult> sortedResults = new(primeResults);
+		List<CandidateResult> sortedResults = [.. primeResults];
 		BubbleSort(sortedResults);
 
-		List<CandidateResult> passedResults = new();
-		List<CandidateResult> rejectedResults = new();
+		List<CandidateResult> passedResults = [];
+		List<CandidateResult> rejectedResults = [];
 
 		for (int i = 0; i < sortedResults.Count; i++)
 		{
@@ -180,9 +177,9 @@ internal static class Program
 		string passedOutputPath = BuildOutputPath(inputPath, "sorted-primes-passed-");
 		string rejectedOutputPath = BuildOutputPath(inputPath, "sorted-primes-rejected-");
 
-		WriteCsv(sortedOutputPath, header, Array.Empty<CandidateResult>());
-		WriteCsv(passedOutputPath, header, Array.Empty<CandidateResult>());
-		WriteCsv(rejectedOutputPath, header, Array.Empty<CandidateResult>());
+		WriteCsv(sortedOutputPath, header, []);
+		WriteCsv(passedOutputPath, header, []);
+		WriteCsv(rejectedOutputPath, header, []);
 	}
 
 	private static CandidateResult ParseLine(string line)
@@ -268,9 +265,10 @@ internal static class Program
 
 		RemoveEntriesBelowPrime(pendingResults, currentPrime);
 
+		bool extractedPrime;
 		while (pendingResults.Count > 0)
 		{
-			bool extractedPrime = ExtractPrimeEntries(pendingResults, primeResults, currentPrime);
+			extractedPrime = ExtractPrimeEntries(pendingResults, primeResults, currentPrime);
 			if (extractedPrime)
 			{
 				if (!TryAdvancePrime(primeEnumerator, ref currentPrime, pendingResults))
@@ -372,21 +370,18 @@ internal static class Program
 		return true;
 	}
 
-	private static void InsertPendingResult(List<CandidateResult> pendingResults, CandidateResult result)
-	{
-		int insertIndex = FindFirstIndexAtLeast(pendingResults, result.P);
-		pendingResults.Insert(insertIndex, result);
-	}
+	private static void InsertPendingResult(List<CandidateResult> pendingResults, CandidateResult result) => pendingResults.Insert(FindFirstIndexAtLeast(pendingResults, result.P), result);
 
 	private static int FindFirstIndexAtLeast(List<CandidateResult> pendingResults, ulong value)
 	{
-		int low = 0;
-		int high = pendingResults.Count - 1;
+		int low = 0,
+			high = pendingResults.Count - 1,
+			mid;
+
 		while (low <= high)
 		{
-			int mid = low + ((high - low) >> 1);
-			ulong midValue = pendingResults[mid].P;
-			if (midValue < value)
+			mid = low + ((high - low) >> 1);
+			if (pendingResults[mid].P < value)
 			{
 				low = mid + 1;
 				continue;
