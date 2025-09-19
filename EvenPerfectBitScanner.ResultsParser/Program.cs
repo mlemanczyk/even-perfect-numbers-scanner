@@ -19,149 +19,153 @@ internal static class Program
 				"/help"
 		};
 
-	private const string DefaultHeader = "p,searchedMersenne,detailedCheck,isPerfect";
+	private const string DefaultHeader = "p,searchedMersenne,detailedCheck,passedAllTests";
 
-        private static int Main(string[] args)
-        {
-                if (args.Length == 0)
-                {
-                        PrintHelp();
-                        return 1;
-                }
+	private static int Main(string[] args)
+	{
+		if (args.Length == 0)
+		{
+			PrintHelp();
+			return 1;
+		}
 
-                if (args.Length == 1 && IsHelpOption(args[0]))
-                {
-                        PrintHelp();
-                        return 0;
-                }
+		if (args.Length == 1 && IsHelpOption(args[0]))
+		{
+			PrintHelp();
+			return 0;
+		}
 
-                string inputPath = args[0];
-                if (IsHelpOption(inputPath))
-                {
-                        PrintHelp();
-                        return 0;
-                }
+		string inputPath = args[0];
+		if (IsHelpOption(inputPath))
+		{
+			PrintHelp();
+			return 0;
+		}
 
-                if (!File.Exists(inputPath))
-                {
-                        Console.Error.WriteLine($"Input file '{inputPath}' was not found.");
-                        return 1;
-                }
+		if (!File.Exists(inputPath))
+		{
+			Console.Error.WriteLine($"Input file '{inputPath}' was not found.");
+			return 1;
+		}
 
-                if (!TryParseRangeArguments(args.AsSpan(1), out ulong pMin, out ulong pMax))
-                {
-                        return 1;
-                }
+		if (!TryParseRangeArguments(args.AsSpan(1), out ulong pMin, out ulong pMax))
+		{
+			return 1;
+		}
 
-                if (pMin > pMax)
-                {
-                        Console.Error.WriteLine("The --p-min value cannot be greater than --p-max.");
-                        return 1;
-                }
+		if (pMin > pMax)
+		{
+			Console.Error.WriteLine("The --p-min value cannot be greater than --p-max.");
+			return 1;
+		}
 
-                try
-                {
-                        ProcessFile(inputPath, pMin, pMax);
-                        return 0;
-                }
-                catch (Exception exception)
-                {
-                        Console.Error.WriteLine($"Processing failed: {exception.Message}");
+		try
+		{
+			ProcessFile(inputPath, pMin, pMax);
+			return 0;
+		}
+		catch (Exception exception)
+		{
+			Console.Error.WriteLine($"Processing failed: {exception.Message}");
 			return 1;
 		}
 	}
 
 	private static bool IsHelpOption(string value) => HelpOptions.Contains(value);
 
-        private static bool TryParseRangeArguments(ReadOnlySpan<string> arguments, out ulong pMin, out ulong pMax)
-        {
-                pMin = 0UL;
-                pMax = ulong.MaxValue;
-                if (arguments.Length == 0)
-                {
-                        return true;
-                }
+	private static bool TryParseRangeArguments(ReadOnlySpan<string> arguments, out ulong pMin, out ulong pMax)
+	{
+		pMin = 0UL;
+		pMax = ulong.MaxValue;
+		if (arguments.Length == 0)
+		{
+			return true;
+		}
 
-                if ((arguments.Length & 1) == 1)
-                {
-                        Console.Error.WriteLine("Each range option must be followed by a numeric value.");
-                        PrintHelp();
-                        return false;
-                }
+		if ((arguments.Length & 1) == 1)
+		{
+			Console.Error.WriteLine("Each range option must be followed by a numeric value.");
+			PrintHelp();
+			return false;
+		}
 
-                for (int i = 0; i < arguments.Length; i += 2)
-                {
-                        string option = arguments[i];
-                        string value = arguments[i + 1];
+		int index;
+		string option, optionAndValue, value;
+		for (int i = 0; i < arguments.Length; i += 2)
+		{
+			optionAndValue = arguments[i];
+			index = optionAndValue.IndexOf('=');
+			option = optionAndValue[..index];
+			value = optionAndValue[(index + 1)..];
 
-                        try
-                        {
-                                switch (option)
-                                {
-                                        case "--p-min":
-                                                pMin = ParseRangeValue(option, value);
-                                                break;
-                                        case "--p-max":
-                                                pMax = ParseRangeValue(option, value);
-                                                break;
-                                        default:
-                                                Console.Error.WriteLine($"Unsupported option '{option}'.");
-                                                PrintHelp();
-                                                return false;
-                                }
-                        }
-                        catch (FormatException exception)
-                        {
-                                Console.Error.WriteLine(exception.Message);
-                                PrintHelp();
-                                return false;
-                        }
-                }
+			try
+			{
+				switch (option)
+				{
+					case "--p-min":
+						pMin = ParseRangeValue(option, value);
+						break;
+					case "--p-max":
+						pMax = ParseRangeValue(option, value);
+						break;
+					default:
+						Console.Error.WriteLine($"Unsupported option '{option}'.");
+						PrintHelp();
+						return false;
+				}
+			}
+			catch (FormatException exception)
+			{
+				Console.Error.WriteLine(exception.Message);
+				PrintHelp();
+				return false;
+			}
+		}
 
-                return true;
-        }
+		return true;
+	}
 
-        private static ulong ParseRangeValue(string option, string value)
-        {
-                if (!ulong.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong parsed))
-                {
-                        throw new FormatException($"Value '{value}' for option '{option}' is not a valid non-negative integer.");
-                }
+	private static ulong ParseRangeValue(string option, string value)
+	{
+		if (!ulong.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong parsed))
+		{
+			throw new FormatException($"Value '{value}' for option '{option}' is not a valid non-negative integer.");
+		}
 
-                return parsed;
-        }
+		return parsed;
+	}
 
-        private static void PrintHelp()
-        {
-                Console.WriteLine("EvenPerfectBitScanner.ResultsParser");
-                Console.WriteLine("Parses CSV results produced by the candidate scanner.");
-                Console.WriteLine();
-                Console.WriteLine("Usage:");
-                Console.WriteLine("  EvenPerfectBitScanner.ResultsParser <results.csv> [--p-min <value>] [--p-max <value>]");
-                Console.WriteLine();
-                Console.WriteLine("The program accepts the following help switches:");
-                Console.WriteLine("  --?, -?, /?, -help, --help, --h, -h, /h, /help");
-                Console.WriteLine();
-                Console.WriteLine("Optional range arguments allow filtering primes by exponent:");
-                Console.WriteLine("  --p-min <value>  - include entries with p >= value");
-                Console.WriteLine("  --p-max <value>  - include entries with p <= value");
-                Console.WriteLine();
-                Console.WriteLine("Outputs prime results into four files placed next to the source file:");
-                Console.WriteLine("  raw-primes-<name>              - prime entries in the original order");
-                Console.WriteLine("  sorted-primes-<name>           - prime entries sorted by p");
-                Console.WriteLine("  sorted-primes-passed-<name>    - sorted prime entries with isPerfect = true");
-                Console.WriteLine("  sorted-primes-rejected-<name>  - sorted prime entries with isPerfect = false");
+	private static void PrintHelp()
+	{
+		Console.WriteLine("EvenPerfectBitScanner.ResultsParser");
+		Console.WriteLine("Parses CSV results produced by the candidate scanner.");
+		Console.WriteLine();
+		Console.WriteLine("Usage:");
+		Console.WriteLine("  EvenPerfectBitScanner.ResultsParser <results.csv> [--p-min <value>] [--p-max <value>]");
+		Console.WriteLine();
+		Console.WriteLine("The program accepts the following help switches:");
+		Console.WriteLine("  --?, -?, /?, -help, --help, --h, -h, /h, /help");
+		Console.WriteLine();
+		Console.WriteLine("Optional range arguments allow filtering primes by exponent:");
+		Console.WriteLine("  --p-min <value>  - include entries with p >= value");
+		Console.WriteLine("  --p-max <value>  - include entries with p <= value");
+		Console.WriteLine();
+		Console.WriteLine("Outputs prime results into four files placed next to the source file:");
+		Console.WriteLine("  raw-primes-<name>              - prime entries in the original order");
+		Console.WriteLine("  sorted-primes-<name>           - prime entries sorted by p");
+		Console.WriteLine("  sorted-primes-passed-<name>    - sorted prime entries with passedAllTests = true");
+		Console.WriteLine("  sorted-primes-rejected-<name>  - sorted prime entries with passedAllTests = false");
 		Console.WriteLine();
 		Console.WriteLine("Example:");
-                Console.WriteLine("  EvenPerfectBitScanner.ResultsParser results.csv --p-min 89 --p-max 107");
-        }
+		Console.WriteLine("  EvenPerfectBitScanner.ResultsParser results.csv --p-min 89 --p-max 107");
+	}
 
-        private static void ProcessFile(string inputPath, ulong pMin, ulong pMax)
-        {
-                using IEnumerator<string> enumerator = File.ReadLines(inputPath).GetEnumerator();
-                if (!enumerator.MoveNext())
-                {
-                        Console.WriteLine("Input file did not contain any data. Created empty outputs using the default header.");
+	private static void ProcessFile(string inputPath, ulong pMin, ulong pMax)
+	{
+		using IEnumerator<string> enumerator = File.ReadLines(inputPath).GetEnumerator();
+		if (!enumerator.MoveNext())
+		{
+			Console.WriteLine("Input file did not contain any data. Created empty outputs using the default header.");
 			string fallbackHeader = DefaultHeader;
 			string rawFallbackPath = BuildOutputPath(inputPath, "raw-primes-");
 			WriteCsv(rawFallbackPath, fallbackHeader, Array.Empty<CandidateResult>());
@@ -182,25 +186,25 @@ internal static class Program
 		List<CandidateResult> pendingResults = new();
 		List<CandidateResult> primeResults = new();
 		int consoleProgress = 0;
-                while (enumerator.MoveNext())
-                {
-                        string currentLine = enumerator.Current;
-                        if (string.IsNullOrWhiteSpace(currentLine))
-                        {
-                                continue;
-                        }
+		while (enumerator.MoveNext())
+		{
+			string currentLine = enumerator.Current;
+			if (string.IsNullOrWhiteSpace(currentLine))
+			{
+				continue;
+			}
 
-                        CandidateResult result = ParseLine(currentLine);
-                        if (result.P < pMin || result.P > pMax)
-                        {
-                                continue;
-                        }
+			CandidateResult result = ParseLine(currentLine);
+			if (result.P < pMin || result.P > pMax)
+			{
+				continue;
+			}
 
-                        InsertPendingResult(pendingResults, result);
-                        DrainPrimeMatches(pendingResults, primeResults, ref currentPrime, primeEnumerator, false);
-                        if (++consoleProgress == 10_000)
-                        {
-                                Console.WriteLine($"Processed {result.P}");
+			InsertPendingResult(pendingResults, result);
+			DrainPrimeMatches(pendingResults, primeResults, ref currentPrime, primeEnumerator, false);
+			if (++consoleProgress == 10_000)
+			{
+				Console.WriteLine($"Processed {result.P}");
 				consoleProgress = 0;
 			}
 		}
@@ -219,15 +223,17 @@ internal static class Program
 		}
 
 		List<CandidateResult> sortedResults = [.. primeResults];
+		Console.WriteLine("Sorting candidates...");
 		BubbleSort(sortedResults);
 
-		List<CandidateResult> passedResults = [];
-		List<CandidateResult> rejectedResults = [];
+		Console.WriteLine("Splitting results...");
+		List<CandidateResult> passedResults = new(sortedResults.Count);
+		List<CandidateResult> rejectedResults = new(sortedResults.Count);
 
 		for (int i = 0; i < sortedResults.Count; i++)
 		{
 			CandidateResult candidate = sortedResults[i];
-			if (candidate.IsPerfect)
+			if (candidate.PassedAllTests)
 			{
 				passedResults.Add(candidate);
 			}
@@ -237,6 +243,7 @@ internal static class Program
 			}
 		}
 
+		Console.WriteLine("Saving files...");
 		string sortedOutputPath = BuildOutputPath(inputPath, "sorted-primes-");
 		string passedOutputPath = BuildOutputPath(inputPath, "sorted-primes-passed-");
 		string rejectedOutputPath = BuildOutputPath(inputPath, "sorted-primes-rejected-");
@@ -276,10 +283,10 @@ internal static class Program
 		}
 
 		ReadOnlySpan<char> pSpan = span[..firstCommaIndex];
-		ReadOnlySpan<char> isPerfectSpan = span[(lastCommaIndex + 1)..];
+		ReadOnlySpan<char> passedAllTestsSpan = span[(lastCommaIndex + 1)..];
 		ulong p = ulong.Parse(pSpan, NumberStyles.Integer, CultureInfo.InvariantCulture);
-		bool isPerfect = bool.Parse(isPerfectSpan);
-		return new CandidateResult(p, isPerfect, trimmedLine);
+		bool passedAllTests = bool.Parse(passedAllTestsSpan);
+		return new CandidateResult(p, passedAllTests, trimmedLine);
 	}
 
 	private static string BuildOutputPath(string inputPath, string prefix)
@@ -475,13 +482,13 @@ internal static class Program
 		return low;
 	}
 
-	private readonly record struct CandidateResult(ulong P, bool IsPerfect, string Csv)
+	private readonly record struct CandidateResult(ulong P, bool PassedAllTests, string Csv)
 	{
 		public string ToCsv() => Csv;
 
 		public readonly string Csv = Csv;
 		public readonly ulong P = P;
-		public readonly bool IsPerfect = IsPerfect;
+		public readonly bool PassedAllTests = PassedAllTests;
 	}
 }
 

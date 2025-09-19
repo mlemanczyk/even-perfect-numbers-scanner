@@ -476,7 +476,7 @@ internal static class Program
 		ulong remainder = currentP % 6UL;
 		if (currentP == InitialP && string.IsNullOrEmpty(filterFile))
 		{
-			// bool isPerfect = IsEvenPerfectCandidate(InitialP, out bool searchedMersenne, out bool detailedCheck);
+			// bool passedAllTests = IsEvenPerfectCandidate(InitialP, out bool searchedMersenne, out bool detailedCheck);
 			// Skip the already processed range below 138 million
 			while (currentP < 138_000_000UL && !Volatile.Read(ref _limitReached))
 			{
@@ -527,9 +527,9 @@ internal static class Program
 		if (File.Exists(ResultsFileName))
 		{
 			Console.WriteLine("Processing previous results...");
-			LoadResultsFile(ResultsFileName, (p, detailedCheck, isPerfect) =>
+			LoadResultsFile(ResultsFileName, (p, detailedCheck, passedAllTests) =>
 			{
-				if (detailedCheck && isPerfect)
+				if (detailedCheck && passedAllTests)
 				{
 					_primeCount++;
 				}
@@ -546,9 +546,9 @@ internal static class Program
 		if (useFilter)
 		{
 			Console.WriteLine("Loading filter...");
-			LoadResultsFile(filterFile, (p, detailedCheck, isPerfect) =>
+			LoadResultsFile(filterFile, (p, detailedCheck, passedAllTests) =>
 			{
-				if (isPerfect)
+				if (passedAllTests)
 				{
 					Console.WriteLine($"Adding {p}");
 					filter.Add(p);
@@ -597,7 +597,7 @@ internal static class Program
 			{
 				int count, j;
 				ulong p;
-				bool isPerfect, searchedMersenne, detailedCheck;
+				bool passedAllTests, searchedMersenne, detailedCheck;
 				ulong[] buffer = new ulong[blockSize];
 				while (!Volatile.Read(ref _limitReached))
 				{
@@ -612,8 +612,8 @@ internal static class Program
 						for (j = 0; j < count && !Volatile.Read(ref _limitReached); j++)
 						{
 							p = buffer[j];
-							isPerfect = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
-							PrintResult(p, searchedMersenne, detailedCheck, isPerfect);
+							passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
+							PrintResult(p, searchedMersenne, detailedCheck, passedAllTests);
 						}
 					}
 					else
@@ -630,8 +630,8 @@ internal static class Program
 								Console.WriteLine($"Testing {p}");
 							}
 
-							isPerfect = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
-							PrintResult(p, searchedMersenne, detailedCheck, isPerfect);
+							passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
+							PrintResult(p, searchedMersenne, detailedCheck, passedAllTests);
 							if (p == maxP)
 							{
 								Volatile.Write(ref _limitReached, true);
@@ -690,11 +690,11 @@ internal static class Program
 			}
 
 			ReadOnlySpan<char> detailedSpan = span[..third];
-			ReadOnlySpan<char> perfectSpan = span[(third + 1)..];
+			ReadOnlySpan<char> passedAllTestsSpan = span[(third + 1)..];
 
-			if (bool.TryParse(detailedSpan, out bool detailed) && bool.TryParse(perfectSpan, out bool isPerfect))
+			if (bool.TryParse(detailedSpan, out bool detailed) && bool.TryParse(passedAllTestsSpan, out bool passedAllTests))
 			{
-				lineProcessorAction(p, detailed, isPerfect);
+				lineProcessorAction(p, detailed, passedAllTests);
 			}
 		}
 	}
@@ -790,9 +790,9 @@ internal static class Program
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void PrintResult(ulong currentP, bool searchedMersenne, bool detailedCheck, bool isPerfect)
+	private static void PrintResult(ulong currentP, bool searchedMersenne, bool detailedCheck, bool passedAllTests)
 	{
-		if (isPerfect)
+		if (passedAllTests)
 		{
 			int newCount = Interlocked.Increment(ref _primeCount);
 			if (newCount >= 2)
@@ -813,7 +813,7 @@ internal static class Program
 				.Append(currentP).Append(',')
 	.Append(searchedMersenne).Append(',')
 	.Append(detailedCheck).Append(',')
-	.Append(isPerfect).Append('\n');
+	.Append(passedAllTests).Append('\n');
 
 		lock (Sync)
 		{
