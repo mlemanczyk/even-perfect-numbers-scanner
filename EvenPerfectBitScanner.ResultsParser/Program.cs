@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Open.Numeric.Primes;
 
@@ -125,7 +126,7 @@ internal static class Program
 		return true;
 	}
 
-	private static ulong ParseRangeValue(string option, string value)
+	private static ulong ParseRangeValue(in string option, in string value)
 	{
 		if (!ulong.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong parsed))
 		{
@@ -160,7 +161,7 @@ internal static class Program
 		Console.WriteLine("  EvenPerfectBitScanner.ResultsParser results.csv --p-min 89 --p-max 107");
 	}
 
-	private static void ProcessFile(string inputPath, ulong pMin, ulong pMax)
+	private static void ProcessFile(in string inputPath, ulong pMin, ulong pMax)
 	{
 		using IEnumerator<string> enumerator = File.ReadLines(inputPath).GetEnumerator();
 		if (!enumerator.MoveNext())
@@ -168,7 +169,7 @@ internal static class Program
 			Console.WriteLine("Input file did not contain any data. Created empty outputs using the default header.");
 			string fallbackHeader = DefaultHeader;
 			string rawFallbackPath = BuildOutputPath(inputPath, "raw-primes-");
-			WriteCsv(rawFallbackPath, fallbackHeader, Array.Empty<CandidateResult>());
+			WriteCsv(rawFallbackPath, fallbackHeader, File.Exists(rawFallbackPath), []);
 			CreateEmptyOutputs(inputPath, fallbackHeader);
 			return;
 		}
@@ -183,9 +184,10 @@ internal static class Program
 		}
 
 		ulong currentPrime = primeEnumerator.Current;
-		List<CandidateResult> pendingResults = new();
-		List<CandidateResult> primeResults = new();
+		List<CandidateResult> pendingResults = [];
+		List<CandidateResult> primeResults = [];
 		int consoleProgress = 0;
+		ulong pEmpty = CandidateResult.Empty.P;
 		while (enumerator.MoveNext())
 		{
 			string currentLine = enumerator.Current;
@@ -195,7 +197,7 @@ internal static class Program
 			}
 
 			CandidateResult result = ParseLine(currentLine, pMin, pMax);
-			if (result.P < pMin || result.P > pMax)
+			if (result.P == pEmpty)
 			{
 				continue;
 			}
@@ -212,7 +214,8 @@ internal static class Program
 		DrainPrimeMatches(pendingResults, primeResults, ref currentPrime, primeEnumerator, true);
 
 		string rawOutputPath = BuildOutputPath(inputPath, "raw-primes-");
-		WriteCsv(rawOutputPath, header, primeResults);
+		bool append = File.Exists(rawOutputPath);
+		WriteCsv(rawOutputPath, header, append, primeResults);
 
 		if (primeResults.Count == 0)
 		{
@@ -248,9 +251,12 @@ internal static class Program
 		string passedOutputPath = BuildOutputPath(inputPath, "sorted-primes-passed-");
 		string rejectedOutputPath = BuildOutputPath(inputPath, "sorted-primes-rejected-");
 
-		WriteCsv(sortedOutputPath, header, sortedResults);
-		WriteCsv(passedOutputPath, header, passedResults);
-		WriteCsv(rejectedOutputPath, header, rejectedResults);
+		append = File.Exists(sortedOutputPath);
+		WriteCsv(sortedOutputPath, header, append, sortedResults);
+		append = File.Exists(passedOutputPath);
+		WriteCsv(passedOutputPath, header, append, passedResults);
+		append = File.Exists(rejectedOutputPath);
+		WriteCsv(rejectedOutputPath, header, append, rejectedResults);
 
 		Console.WriteLine($"Processed {primeResults.Count} prime entr{(primeResults.Count == 1 ? "y" : "ies")}.");
 		Console.WriteLine($"Prime results (raw order): {rawOutputPath}");
@@ -259,21 +265,20 @@ internal static class Program
 		Console.WriteLine($"Prime results (rejected): {rejectedOutputPath}");
 	}
 
-	private static void CreateEmptyOutputs(string inputPath, string header)
+	private static void CreateEmptyOutputs(in string inputPath, in string header)
 	{
 		string sortedOutputPath = BuildOutputPath(inputPath, "sorted-primes-");
 		string passedOutputPath = BuildOutputPath(inputPath, "sorted-primes-passed-");
 		string rejectedOutputPath = BuildOutputPath(inputPath, "sorted-primes-rejected-");
 
-		WriteCsv(sortedOutputPath, header, []);
-		WriteCsv(passedOutputPath, header, []);
-		WriteCsv(rejectedOutputPath, header, []);
+		WriteCsv(sortedOutputPath, header, false, []);
+		WriteCsv(passedOutputPath, header, false, []);
+		WriteCsv(rejectedOutputPath, header, false, []);
 	}
 
-	private static CandidateResult ParseLine(string line, ulong pMin, ulong pMax)
+	private static CandidateResult ParseLine(in string line, ulong pMin, ulong pMax)
 	{
-		string trimmedLine = line.Trim();
-		ReadOnlySpan<char> span = trimmedLine.AsSpan();
+		ReadOnlySpan<char> span = line.AsSpan();
 		int firstCommaIndex = span.IndexOf(',');
 		int lastCommaIndex = span.LastIndexOf(',');
 		if (firstCommaIndex < 0 || lastCommaIndex <= firstCommaIndex)
@@ -288,10 +293,10 @@ internal static class Program
 		}
 
 		bool passedAllTests = bool.Parse(span[(lastCommaIndex + 1)..]);
-		return new CandidateResult(p, passedAllTests, trimmedLine);
+		return new CandidateResult(p, passedAllTests, line);
 	}
 
-	private static string BuildOutputPath(string inputPath, string prefix)
+	private static string BuildOutputPath(in string inputPath, in string prefix)
 	{
 		string fileName = Path.GetFileName(inputPath);
 		string prefixedName = prefix + fileName;
@@ -304,13 +309,17 @@ internal static class Program
 		return Path.Combine(directory, prefixedName);
 	}
 
-	private static void WriteCsv(string path, string header, IEnumerable<CandidateResult> entries)
+	private static void WriteCsv(in string path, in string header, bool append, IEnumerable<CandidateResult> entries)
 	{
-		using StreamWriter writer = new(path, false, Encoding.UTF8);
-		writer.WriteLine(header);
+		using StreamWriter writer = new(path, append, Encoding.UTF8);
+		if (!append)
+		{
+			writer.WriteLine(header);
+		}
+
 		foreach (CandidateResult entry in entries)
 		{
-			writer.WriteLine(entry.ToCsv());
+			writer.WriteLine(entry.Csv);
 		}
 	}
 
@@ -460,6 +469,7 @@ internal static class Program
 		return true;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void InsertPendingResult(List<CandidateResult> pendingResults, CandidateResult result) => pendingResults.Insert(FindFirstIndexAtLeast(pendingResults, result.P), result);
 
 	private static int FindFirstIndexAtLeast(List<CandidateResult> pendingResults, ulong value)
@@ -485,10 +495,8 @@ internal static class Program
 
 	private readonly record struct CandidateResult(ulong P, bool PassedAllTests, string Csv)
 	{
-		public static CandidateResult Empty = new(0, false, "<empty>");
-
-		public string ToCsv() => Csv;
-
+		public static readonly CandidateResult Empty = new(0UL, false, "<empty>");
+		
 		public readonly string Csv = Csv;
 		public readonly ulong P = P;
 		public readonly bool PassedAllTests = PassedAllTests;
