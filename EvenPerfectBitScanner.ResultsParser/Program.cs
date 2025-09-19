@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading.Tasks;
 using Open.Numeric.Primes;
 
 namespace EvenPerfectBitScanner.ResultsParser;
@@ -161,9 +163,11 @@ internal static class Program
 		Console.WriteLine("  EvenPerfectBitScanner.ResultsParser results.csv --p-min 89 --p-max 107");
 	}
 
-	private static void ProcessFile(in string inputPath, ulong pMin, ulong pMax)
-	{
-		using IEnumerator<string> enumerator = File.ReadLines(inputPath).GetEnumerator();
+        private const int CandidateBufferCapacity = 512;
+
+        private static void ProcessFile(in string inputPath, ulong pMin, ulong pMax)
+        {
+                using IEnumerator<string> enumerator = File.ReadLines(inputPath).GetEnumerator();
 		if (!enumerator.MoveNext())
 		{
 			Console.WriteLine("Input file did not contain any data. Created empty outputs using the default header.");
@@ -184,14 +188,17 @@ internal static class Program
 		}
 
 		ulong currentPrime = primeEnumerator.Current;
-		List<CandidateResult> pendingResults = [];
-		List<CandidateResult> primeResults = [];
-		int consoleProgress = 0;
-		ulong pEmpty = CandidateResult.Empty.P;
-		while (enumerator.MoveNext())
-		{
-			string currentLine = enumerator.Current;
-			if (string.IsNullOrWhiteSpace(currentLine))
+                PendingCandidateList pendingResults = new();
+                List<CandidateResult> primeResults = [];
+                int consoleProgress = 0;
+                ulong lastReportedCandidate = 0UL;
+                CandidateResult[] candidateBuffer = new CandidateResult[CandidateBufferCapacity];
+                int bufferedCount = 0;
+                ulong pEmpty = CandidateResult.Empty.P;
+                while (enumerator.MoveNext())
+                {
+                        string currentLine = enumerator.Current;
+                        if (string.IsNullOrWhiteSpace(currentLine))
 			{
 				continue;
 			}
@@ -202,16 +209,29 @@ internal static class Program
 				continue;
 			}
 
-			InsertPendingResult(pendingResults, result);
-			DrainPrimeMatches(pendingResults, primeResults, ref currentPrime, primeEnumerator, false);
-			if (++consoleProgress == 10_000)
-			{
-				Console.WriteLine($"Processed {result.P}");
-				consoleProgress = 0;
-			}
-		}
+                        candidateBuffer[bufferedCount++] = result;
+                        lastReportedCandidate = result.P;
+                        if (bufferedCount == CandidateBufferCapacity)
+                        {
+                                ProcessCandidateBuffer(candidateBuffer.AsSpan(0, bufferedCount), pendingResults);
+                                DrainPrimeMatches(pendingResults, primeResults, ref currentPrime, primeEnumerator, false);
+                                bufferedCount = 0;
+                        }
 
-		DrainPrimeMatches(pendingResults, primeResults, ref currentPrime, primeEnumerator, true);
+                        if (++consoleProgress == 10_000)
+                        {
+                                Console.WriteLine($"Processed {lastReportedCandidate}");
+                                consoleProgress = 0;
+                        }
+                }
+
+                if (bufferedCount > 0)
+                {
+                        ProcessCandidateBuffer(candidateBuffer.AsSpan(0, bufferedCount), pendingResults);
+                        DrainPrimeMatches(pendingResults, primeResults, ref currentPrime, primeEnumerator, false);
+                }
+
+                DrainPrimeMatches(pendingResults, primeResults, ref currentPrime, primeEnumerator, true);
 
 		string rawOutputPath = BuildOutputPath(inputPath, "raw-primes-");
 		bool append = File.Exists(rawOutputPath);
@@ -229,22 +249,8 @@ internal static class Program
                 Console.WriteLine("Sorting candidates...");
                 SortByPrime(sortedResults);
 
-		Console.WriteLine("Splitting results...");
-		List<CandidateResult> passedResults = new(sortedResults.Count);
-		List<CandidateResult> rejectedResults = new(sortedResults.Count);
-
-		for (int i = 0; i < sortedResults.Count; i++)
-		{
-			CandidateResult candidate = sortedResults[i];
-			if (candidate.PassedAllTests)
-			{
-				passedResults.Add(candidate);
-			}
-			else
-			{
-				rejectedResults.Add(candidate);
-			}
-		}
+                Console.WriteLine("Splitting results...");
+                SplitResults(sortedResults, out List<CandidateResult> passedResults, out List<CandidateResult> rejectedResults);
 
 		Console.WriteLine("Saving files...");
 		string sortedOutputPath = BuildOutputPath(inputPath, "sorted-primes-");
@@ -309,19 +315,51 @@ internal static class Program
 		return Path.Combine(directory, prefixedName);
 	}
 
-	private static void WriteCsv(in string path, in string header, bool append, IEnumerable<CandidateResult> entries)
-	{
-		using StreamWriter writer = new(path, append, Encoding.UTF8);
-		if (!append)
-		{
-			writer.WriteLine(header);
-		}
+        private static void WriteCsv(in string path, in string header, bool append, IEnumerable<CandidateResult> entries)
+        {
+                using StreamWriter writer = new(path, append, Encoding.UTF8);
+                if (!append)
+                {
+                        writer.WriteLine(header);
+                }
 
-		foreach (CandidateResult entry in entries)
-		{
-			writer.WriteLine(entry.Csv);
-		}
-	}
+                foreach (CandidateResult entry in entries)
+                {
+                        writer.WriteLine(entry.Csv);
+                }
+        }
+
+        private static void ProcessCandidateBuffer(Span<CandidateResult> buffer, PendingCandidateList pendingResults)
+        {
+                if (buffer.Length == 0)
+                {
+                        return;
+                }
+
+                buffer.Sort(CandidateResultComparer.Instance);
+
+                int start = 0;
+                int length = buffer.Length;
+                while (start < length)
+                {
+                        int end = start + 1;
+                        ulong previous = buffer[start].P;
+                        while (end < length)
+                        {
+                                ulong current = buffer[end].P;
+                                if (current > previous + 1)
+                                {
+                                        break;
+                                }
+
+                                previous = current;
+                                end++;
+                        }
+
+                        pendingResults.AddRange(buffer[start..end]);
+                        start = end;
+                }
+        }
 
         private static void SortByPrime(List<CandidateResult> results)
         {
@@ -331,6 +369,86 @@ internal static class Program
                 }
 
                 results.Sort(CandidateResultComparer.Instance);
+        }
+
+        private static void SplitResults(
+                        List<CandidateResult> sortedResults,
+                        out List<CandidateResult> passedResults,
+                        out List<CandidateResult> rejectedResults)
+        {
+                int count = sortedResults.Count;
+                if (count == 0)
+                {
+                        passedResults = [];
+                        rejectedResults = [];
+                        return;
+                }
+
+                if (count < Environment.ProcessorCount * 4)
+                {
+                        passedResults = new List<CandidateResult>(count);
+                        rejectedResults = new List<CandidateResult>(count);
+                        for (int i = 0; i < count; i++)
+                        {
+                                CandidateResult candidate = sortedResults[i];
+                                if (candidate.PassedAllTests)
+                                {
+                                        passedResults.Add(candidate);
+                                        continue;
+                                }
+
+                                rejectedResults.Add(candidate);
+                        }
+
+                        return;
+                }
+
+                List<CandidateResult> sharedPassed = new(count);
+                List<CandidateResult> sharedRejected = new(count);
+                object passedLock = new();
+                object rejectedLock = new();
+                Parallel.ForEach(
+                        Partitioner.Create(0, count),
+                        () => new SplitAccumulator(),
+                        (range, _, local) =>
+                        {
+                                List<CandidateResult> localPassed = local.Passed;
+                                List<CandidateResult> localRejected = local.Rejected;
+                                for (int i = range.Item1; i < range.Item2; i++)
+                                {
+                                        CandidateResult candidate = sortedResults[i];
+                                        if (candidate.PassedAllTests)
+                                        {
+                                                localPassed.Add(candidate);
+                                                continue;
+                                        }
+
+                                        localRejected.Add(candidate);
+                                }
+
+                                return local;
+                        },
+                        local =>
+                        {
+                                if (local.Passed.Count > 0)
+                                {
+                                        lock (passedLock)
+                                        {
+                                                sharedPassed.AddRange(local.Passed);
+                                        }
+                                }
+
+                                if (local.Rejected.Count > 0)
+                                {
+                                        lock (rejectedLock)
+                                        {
+                                                sharedRejected.AddRange(local.Rejected);
+                                        }
+                                }
+                        });
+
+                passedResults = sharedPassed;
+                rejectedResults = sharedRejected;
         }
 
         private sealed class CandidateResultComparer : IComparer<CandidateResult>
@@ -348,151 +466,210 @@ internal static class Program
                 }
         }
 
-	private static void DrainPrimeMatches(
-			List<CandidateResult> pendingResults,
-			List<CandidateResult> primeResults,
-			ref ulong currentPrime,
-			IEnumerator<ulong> primeEnumerator,
-			bool inputCompleted)
-	{
-		if (pendingResults.Count == 0)
-		{
-			return;
-		}
+        private static void DrainPrimeMatches(
+                        PendingCandidateList pendingResults,
+                        List<CandidateResult> primeResults,
+                        ref ulong currentPrime,
+                        IEnumerator<ulong> primeEnumerator,
+                        bool inputCompleted)
+        {
+                if (pendingResults.Count == 0)
+                {
+                        return;
+                }
 
-		RemoveEntriesBelowPrime(pendingResults, currentPrime);
+                pendingResults.RemoveLessThan(currentPrime);
 
-		bool extractedPrime;
-		while (pendingResults.Count > 0)
-		{
-			extractedPrime = ExtractPrimeEntries(pendingResults, primeResults, currentPrime);
-			if (extractedPrime)
-			{
-				if (!TryAdvancePrime(primeEnumerator, ref currentPrime, pendingResults))
-				{
-					pendingResults.Clear();
-					return;
-				}
+                bool extractedPrime;
+                while (pendingResults.Count > 0)
+                {
+                        extractedPrime = ExtractPrimeEntries(pendingResults, primeResults, currentPrime);
+                        if (extractedPrime)
+                        {
+                                if (!TryAdvancePrime(primeEnumerator, ref currentPrime, pendingResults))
+                                {
+                                        pendingResults.Clear();
+                                        return;
+                                }
 
-				RemoveEntriesBelowPrime(pendingResults, currentPrime);
-				continue;
-			}
+                                pendingResults.RemoveLessThan(currentPrime);
+                                continue;
+                        }
 
-			if (!inputCompleted)
-			{
-				return;
-			}
+                        if (!inputCompleted)
+                        {
+                                return;
+                        }
 
-			if (!TryAdvancePrime(primeEnumerator, ref currentPrime, pendingResults))
-			{
-				pendingResults.Clear();
-				return;
-			}
+                        if (!TryAdvancePrime(primeEnumerator, ref currentPrime, pendingResults))
+                        {
+                                pendingResults.Clear();
+                                return;
+                        }
 
-			RemoveEntriesBelowPrime(pendingResults, currentPrime);
-		}
-	}
+                        pendingResults.RemoveLessThan(currentPrime);
+                }
+        }
 
-	private static bool ExtractPrimeEntries(
-			List<CandidateResult> pendingResults,
-			List<CandidateResult> primeResults,
-			ulong prime)
-	{
-		if (pendingResults.Count == 0)
-		{
-			return false;
-		}
+        private static bool ExtractPrimeEntries(
+                        PendingCandidateList pendingResults,
+                        List<CandidateResult> primeResults,
+                        ulong prime)
+        {
+                if (pendingResults.Count == 0)
+                {
+                        return false;
+                }
 
-		int startIndex = FindFirstIndexAtLeast(pendingResults, prime);
-		if (startIndex >= pendingResults.Count)
-		{
-			return false;
-		}
+                if (!pendingResults.TryPeek(out CandidateResult next) || next.P != prime)
+                {
+                        return false;
+                }
 
-		if (pendingResults[startIndex].P != prime)
-		{
-			return false;
-		}
+                do
+                {
+                        primeResults.Add(pendingResults.Dequeue());
+                }
+                while (pendingResults.TryPeek(out CandidateResult candidate) && candidate.P == prime);
 
-		int endIndex = startIndex + 1;
-		while (endIndex < pendingResults.Count && pendingResults[endIndex].P == prime)
-		{
-			endIndex++;
-		}
+                return true;
+        }
 
-		for (int i = startIndex; i < endIndex; i++)
-		{
-			primeResults.Add(pendingResults[i]);
-		}
+        private static bool TryAdvancePrime(
+                        IEnumerator<ulong> primeEnumerator,
+                        ref ulong currentPrime,
+                        PendingCandidateList pendingResults)
+        {
+                ulong minimumPending = pendingResults.Count > 0 && pendingResults.TryPeek(out CandidateResult pending)
+                        ? pending.P
+                        : 0UL;
+                do
+                {
+                        if (!primeEnumerator.MoveNext())
+                        {
+                                currentPrime = ulong.MaxValue;
+                                return false;
+                        }
 
-		pendingResults.RemoveRange(startIndex, endIndex - startIndex);
-		return true;
-	}
+                        currentPrime = primeEnumerator.Current;
+                }
+                while (pendingResults.Count > 0 && currentPrime < minimumPending);
 
-	private static void RemoveEntriesBelowPrime(List<CandidateResult> pendingResults, ulong currentPrime)
-	{
-		if (pendingResults.Count == 0)
-		{
-			return;
-		}
+                return true;
+        }
 
-		int removeCount = FindFirstIndexAtLeast(pendingResults, currentPrime);
-		if (removeCount == 0)
-		{
-			return;
-		}
+        private sealed class PendingCandidateList
+        {
+                private readonly List<CandidateResult> _items = [];
 
-		pendingResults.RemoveRange(0, removeCount);
-	}
+                public int Count => _items.Count;
 
-	private static bool TryAdvancePrime(
-			IEnumerator<ulong> primeEnumerator,
-			ref ulong currentPrime,
-			List<CandidateResult> pendingResults)
-	{
-		ulong minimumPending = pendingResults.Count > 0 ? pendingResults[0].P : 0UL;
-		do
-		{
-			if (!primeEnumerator.MoveNext())
-			{
-				currentPrime = ulong.MaxValue;
-				return false;
-			}
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public void AddRange(ReadOnlySpan<CandidateResult> candidates)
+                {
+                        if (candidates.Length == 0)
+                        {
+                                return;
+                        }
 
-			currentPrime = primeEnumerator.Current;
-		}
-		while (pendingResults.Count > 0 && currentPrime < minimumPending);
+                        List<CandidateResult> items = _items;
+                        items.EnsureCapacity(items.Count + candidates.Length);
+                        int insertIndex = FindInsertIndex(items, candidates[0].P);
+                        int candidateIndex = 0;
+                        int candidateCount = candidates.Length;
+                        while (candidateIndex < candidateCount)
+                        {
+                                CandidateResult candidate = candidates[candidateIndex];
+                                while (insertIndex < items.Count && items[insertIndex].P <= candidate.P)
+                                {
+                                        insertIndex++;
+                                }
 
-		return true;
-	}
+                                items.Insert(insertIndex, candidate);
+                                insertIndex++;
+                                candidateIndex++;
+                        }
+                }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void InsertPendingResult(List<CandidateResult> pendingResults, CandidateResult result) => pendingResults.Insert(FindFirstIndexAtLeast(pendingResults, result.P), result);
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public bool TryPeek(out CandidateResult result)
+                {
+                        if (_items.Count == 0)
+                        {
+                                result = default;
+                                return false;
+                        }
 
-	private static int FindFirstIndexAtLeast(List<CandidateResult> pendingResults, ulong value)
-	{
-		int low = 0,
-			high = pendingResults.Count - 1,
-			mid;
+                        result = _items[0];
+                        return true;
+                }
 
-		while (low <= high)
-		{
-			mid = low + ((high - low) >> 1);
-			if (pendingResults[mid].P < value)
-			{
-				low = mid + 1;
-				continue;
-			}
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public CandidateResult Dequeue()
+                {
+                        CandidateResult value = _items[0];
+                        _items.RemoveAt(0);
+                        return value;
+                }
 
-			high = mid - 1;
-		}
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public void RemoveLessThan(ulong prime)
+                {
+                        int removeCount = 0;
+                        List<CandidateResult> items = _items;
+                        int count = items.Count;
+                        while (removeCount < count && items[removeCount].P < prime)
+                        {
+                                removeCount++;
+                        }
 
-		return low;
-	}
+                        if (removeCount > 0)
+                        {
+                                items.RemoveRange(0, removeCount);
+                        }
+                }
 
-	private readonly record struct CandidateResult(ulong P, bool PassedAllTests, string Csv)
-	{
-		public static readonly CandidateResult Empty = new(0UL, false, "<empty>");
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public void Clear()
+                {
+                        _items.Clear();
+                }
+
+                private static int FindInsertIndex(List<CandidateResult> items, ulong value)
+                {
+                        int low = 0;
+                        int high = items.Count;
+                        while (low < high)
+                        {
+                                int mid = (low + high) >> 1;
+                                if (items[mid].P < value)
+                                {
+                                        low = mid + 1;
+                                        continue;
+                                }
+
+                                high = mid;
+                        }
+
+                        return low;
+                }
+        }
+
+        private readonly struct SplitAccumulator
+        {
+                public readonly List<CandidateResult> Passed;
+                public readonly List<CandidateResult> Rejected;
+
+                public SplitAccumulator()
+                {
+                        Passed = [];
+                        Rejected = [];
+                }
+        }
+
+        private readonly record struct CandidateResult(ulong P, bool PassedAllTests, string Csv)
+        {
+                public static readonly CandidateResult Empty = new(0UL, false, "<empty>");
 		
 		public readonly string Csv = Csv;
 		public readonly ulong P = P;
