@@ -194,7 +194,7 @@ internal static class Program
 				continue;
 			}
 
-			CandidateResult result = ParseLine(currentLine);
+			CandidateResult result = ParseLine(currentLine, pMin, pMax);
 			if (result.P < pMin || result.P > pMax)
 			{
 				continue;
@@ -252,8 +252,7 @@ internal static class Program
 		WriteCsv(passedOutputPath, header, passedResults);
 		WriteCsv(rejectedOutputPath, header, rejectedResults);
 
-		Console.WriteLine($"Processed {primeResults.Count} prime entr" +
-				$"{(primeResults.Count == 1 ? "y" : "ies")}.");
+		Console.WriteLine($"Processed {primeResults.Count} prime entr{(primeResults.Count == 1 ? "y" : "ies")}.");
 		Console.WriteLine($"Prime results (raw order): {rawOutputPath}");
 		Console.WriteLine($"Prime results (sorted): {sortedOutputPath}");
 		Console.WriteLine($"Prime results (passed): {passedOutputPath}");
@@ -271,7 +270,7 @@ internal static class Program
 		WriteCsv(rejectedOutputPath, header, []);
 	}
 
-	private static CandidateResult ParseLine(string line)
+	private static CandidateResult ParseLine(string line, ulong pMin, ulong pMax)
 	{
 		string trimmedLine = line.Trim();
 		ReadOnlySpan<char> span = trimmedLine.AsSpan();
@@ -282,10 +281,13 @@ internal static class Program
 			throw new FormatException("Input line does not contain expected comma separators.");
 		}
 
-		ReadOnlySpan<char> pSpan = span[..firstCommaIndex];
-		ReadOnlySpan<char> passedAllTestsSpan = span[(lastCommaIndex + 1)..];
-		ulong p = ulong.Parse(pSpan, NumberStyles.Integer, CultureInfo.InvariantCulture);
-		bool passedAllTests = bool.Parse(passedAllTestsSpan);
+		ulong p = ulong.Parse(span[..firstCommaIndex], NumberStyles.Integer, CultureInfo.InvariantCulture);
+		if (p < pMin || p > pMax)
+		{
+			return CandidateResult.Empty;
+		}
+
+		bool passedAllTests = bool.Parse(span[(lastCommaIndex + 1)..]);
 		return new CandidateResult(p, passedAllTests, trimmedLine);
 	}
 
@@ -401,8 +403,7 @@ internal static class Program
 			return false;
 		}
 
-		CandidateResult firstCandidate = pendingResults[startIndex];
-		if (firstCandidate.P != prime)
+		if (pendingResults[startIndex].P != prime)
 		{
 			return false;
 		}
@@ -484,6 +485,8 @@ internal static class Program
 
 	private readonly record struct CandidateResult(ulong P, bool PassedAllTests, string Csv)
 	{
+		public static CandidateResult Empty = new(0, false, "<empty>");
+
 		public string ToCsv() => Csv;
 
 		public readonly string Csv = Csv;
