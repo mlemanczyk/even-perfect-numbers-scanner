@@ -225,9 +225,9 @@ internal static class Program
 			return;
 		}
 
-		List<CandidateResult> sortedResults = [.. primeResults];
-		Console.WriteLine("Sorting candidates...");
-		BubbleSort(sortedResults);
+                List<CandidateResult> sortedResults = [.. primeResults];
+                Console.WriteLine("Sorting candidates...");
+                SortByPrime(sortedResults);
 
 		Console.WriteLine("Splitting results...");
 		List<CandidateResult> passedResults = new(sortedResults.Count);
@@ -323,33 +323,30 @@ internal static class Program
 		}
 	}
 
-	private static void BubbleSort(List<CandidateResult> results)
-	{
-		if (results.Count < 2)
-		{
-			return;
-		}
+        private static void SortByPrime(List<CandidateResult> results)
+        {
+                if (results.Count < 2)
+                {
+                        return;
+                }
 
-		int length = results.Count;
-		bool swapped;
-		do
-		{
-			swapped = false;
-			for (int i = 1; i < length; i++)
-			{
-				if (results[i - 1].P <= results[i].P)
-				{
-					continue;
-				}
+                results.Sort(CandidateResultComparer.Instance);
+        }
 
-				(results[i - 1], results[i]) = (results[i], results[i - 1]);
-				swapped = true;
-			}
+        private sealed class CandidateResultComparer : IComparer<CandidateResult>
+        {
+                public static readonly CandidateResultComparer Instance = new();
 
-			length--;
-		}
-		while (swapped);
-	}
+                public int Compare(CandidateResult x, CandidateResult y)
+                {
+                        if (x.P == y.P)
+                        {
+                                return 0;
+                        }
+
+                        return x.P < y.P ? -1 : 1;
+                }
+        }
 
 	private static void DrainPrimeMatches(
 			List<CandidateResult> pendingResults,
