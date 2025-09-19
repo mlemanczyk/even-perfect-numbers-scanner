@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Open.Collections;
 using Open.Numeric.Primes;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
@@ -546,19 +547,31 @@ internal static class Program
 		if (useFilter)
 		{
 			Console.WriteLine("Loading filter...");
+			ulong[] localFilter = new ulong[1024];
+			int count = 0;
 			LoadResultsFile(filterFile, (p, detailedCheck, passedAllTests) =>
 			{
 				if (passedAllTests)
 				{
-					Console.WriteLine($"Adding {p}");
-					filter.Add(p);
+					localFilter[count++] = p;
 					if (p > maxP)
 					{
 						maxP = p;
 					}
+
+					if (count == 1024)
+					{
+						filter.AddRange(localFilter[..count]);
+						count = 0;
+						Console.WriteLine($"Added {p}");
+					}
 				}
 			});
 
+			if (count > 0)
+			{
+				filter.AddRange(localFilter[..count]);
+			}
 			// Restore this if you want to use List<ulong> instead of HashSet<ulong>
 			// filter.Sort();
 		}
@@ -624,10 +637,6 @@ internal static class Program
 							if (useFilter && !filter.Contains(p))
 							{
 								continue;
-							}
-							else
-							{
-								Console.WriteLine($"Testing {p}");
 							}
 
 							passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
