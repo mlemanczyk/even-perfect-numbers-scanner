@@ -180,31 +180,16 @@ internal static class Program
                 value = string.Empty;
                 string current = arguments[index];
                 int equalsIndex = current.IndexOf('=');
-                if (equalsIndex > 0)
+                if (equalsIndex <= 0 || equalsIndex == current.Length - 1)
                 {
-                        option = current[..equalsIndex];
-                        value = current[(equalsIndex + 1)..];
-                        index++;
-                        if (value.Length == 0)
-                        {
-                                Console.Error.WriteLine($"Option '{option}' must specify a value.");
-                                PrintHelp();
-                                return false;
-                        }
-
-                        return true;
-                }
-
-                option = current;
-                if (index + 1 >= arguments.Length)
-                {
-                        Console.Error.WriteLine($"Option '{option}' must be followed by a value.");
+                        Console.Error.WriteLine($"Option '{current}' must use the --name=value syntax.");
                         PrintHelp();
                         return false;
                 }
 
-                value = arguments[index + 1];
-                index += 2;
+                option = current[..equalsIndex];
+                value = current[(equalsIndex + 1)..];
+                index++;
                 return true;
         }
 
@@ -215,19 +200,19 @@ internal static class Program
 		Console.WriteLine();
 		Console.WriteLine("Usage:");
                 Console.WriteLine(
-                        "  EvenPerfectBitScanner.ResultsParser <results.csv> [--p-min <value>] [--p-max <value>] [--threads <value>] [--buffer-size <value>]");
+                        "  EvenPerfectBitScanner.ResultsParser <results.csv> [--p-min=<value>] [--p-max=<value>] [--threads=<value>] [--buffer-size=<value>]");
                 Console.WriteLine();
                 Console.WriteLine("The program accepts the following help switches:");
                 Console.WriteLine("  --?, -?, /?, -help, --help, --h, -h, /h, /help");
                 Console.WriteLine();
                 Console.WriteLine("Optional range arguments allow filtering primes by exponent:");
-                Console.WriteLine("  --p-min <value>  - include entries with p >= value");
-                Console.WriteLine("  --p-max <value>  - include entries with p <= value");
+                Console.WriteLine("  --p-min=<value>  - include entries with p >= value");
+                Console.WriteLine("  --p-max=<value>  - include entries with p <= value");
                 Console.WriteLine();
                 Console.WriteLine("Parallel processing options:");
-                Console.WriteLine("  --threads <value>      - number of worker threads used for parsing and splitting (default: logical cores)");
-                Console.WriteLine("  --buffer-size <value>  - number of records read into each parsing batch (default: 4096)");
-                Console.WriteLine("Values can also be provided using the --option=value syntax.");
+                Console.WriteLine("  --threads=<value>      - number of worker threads used for parsing and splitting (default: logical cores)");
+                Console.WriteLine("  --buffer-size=<value>  - number of records read into each parsing batch (default: 4096)");
+                Console.WriteLine("Values must be provided using the --option=value syntax.");
                 Console.WriteLine();
                 Console.WriteLine("Outputs prime results into four files placed next to the source file:");
 		Console.WriteLine("  raw-primes-<name>              - prime entries in the original order");
@@ -236,7 +221,7 @@ internal static class Program
 		Console.WriteLine("  sorted-primes-rejected-<name>  - sorted prime entries with passedAllTests = false");
 		Console.WriteLine();
 		Console.WriteLine("Example:");
-		Console.WriteLine("  EvenPerfectBitScanner.ResultsParser results.csv --p-min 89 --p-max 107");
+                Console.WriteLine("  EvenPerfectBitScanner.ResultsParser results.csv --p-min=89 --p-max=107");
 	}
 
         private static void ProcessFile(in string inputPath, ulong pMin, ulong pMax, int threadCount, int bufferSize)
