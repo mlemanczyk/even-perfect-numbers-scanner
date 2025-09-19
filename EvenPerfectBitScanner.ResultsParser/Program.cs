@@ -21,76 +21,147 @@ internal static class Program
 
 	private const string DefaultHeader = "p,searchedMersenne,detailedCheck,isPerfect";
 
-	private static int Main(string[] args)
-	{
-		if (args.Length == 0)
-		{
-			PrintHelp();
-			return 1;
-		}
+        private static int Main(string[] args)
+        {
+                if (args.Length == 0)
+                {
+                        PrintHelp();
+                        return 1;
+                }
 
-		if (args.Length == 1 && IsHelpOption(args[0]))
-		{
-			PrintHelp();
-			return 0;
-		}
+                if (args.Length == 1 && IsHelpOption(args[0]))
+                {
+                        PrintHelp();
+                        return 0;
+                }
 
-		if (args.Length != 1)
-		{
-			Console.Error.WriteLine("Only a single CSV file path is supported.");
-			PrintHelp();
-			return 1;
-		}
+                string inputPath = args[0];
+                if (IsHelpOption(inputPath))
+                {
+                        PrintHelp();
+                        return 0;
+                }
 
-		string inputPath = args[0];
+                if (!File.Exists(inputPath))
+                {
+                        Console.Error.WriteLine($"Input file '{inputPath}' was not found.");
+                        return 1;
+                }
 
-		if (!File.Exists(inputPath))
-		{
-			Console.Error.WriteLine($"Input file '{inputPath}' was not found.");
-			return 1;
-		}
+                if (!TryParseRangeArguments(args.AsSpan(1), out ulong pMin, out ulong pMax))
+                {
+                        return 1;
+                }
 
-		try
-		{
-			ProcessFile(inputPath);
-			return 0;
-		}
-		catch (Exception exception)
-		{
-			Console.Error.WriteLine($"Processing failed: {exception.Message}");
+                if (pMin > pMax)
+                {
+                        Console.Error.WriteLine("The --p-min value cannot be greater than --p-max.");
+                        return 1;
+                }
+
+                try
+                {
+                        ProcessFile(inputPath, pMin, pMax);
+                        return 0;
+                }
+                catch (Exception exception)
+                {
+                        Console.Error.WriteLine($"Processing failed: {exception.Message}");
 			return 1;
 		}
 	}
 
 	private static bool IsHelpOption(string value) => HelpOptions.Contains(value);
 
-	private static void PrintHelp()
-	{
-		Console.WriteLine("EvenPerfectBitScanner.ResultsParser");
-		Console.WriteLine("Parses CSV results produced by the candidate scanner.");
-		Console.WriteLine();
-		Console.WriteLine("Usage:");
-		Console.WriteLine("  EvenPerfectBitScanner.ResultsParser <results.csv>");
-		Console.WriteLine();
-		Console.WriteLine("The program accepts the following help switches:");
-		Console.WriteLine("  --?, -?, /?, -help, --help, --h, -h, /h, /help");
-		Console.WriteLine();
-		Console.WriteLine("Outputs prime results into four files placed next to the source file:");
-		Console.WriteLine("  raw-primes-<name>              - prime entries in the original order");
-		Console.WriteLine("  sorted-primes-<name>           - prime entries sorted by p");
-		Console.WriteLine("  sorted-primes-passed-<name>    - sorted prime entries with isPerfect = true");
-		Console.WriteLine("  sorted-primes-rejected-<name>  - sorted prime entries with isPerfect = false");
+        private static bool TryParseRangeArguments(ReadOnlySpan<string> arguments, out ulong pMin, out ulong pMax)
+        {
+                pMin = 0UL;
+                pMax = ulong.MaxValue;
+                if (arguments.Length == 0)
+                {
+                        return true;
+                }
+
+                if ((arguments.Length & 1) == 1)
+                {
+                        Console.Error.WriteLine("Each range option must be followed by a numeric value.");
+                        PrintHelp();
+                        return false;
+                }
+
+                for (int i = 0; i < arguments.Length; i += 2)
+                {
+                        string option = arguments[i];
+                        string value = arguments[i + 1];
+
+                        try
+                        {
+                                switch (option)
+                                {
+                                        case "--p-min":
+                                                pMin = ParseRangeValue(option, value);
+                                                break;
+                                        case "--p-max":
+                                                pMax = ParseRangeValue(option, value);
+                                                break;
+                                        default:
+                                                Console.Error.WriteLine($"Unsupported option '{option}'.");
+                                                PrintHelp();
+                                                return false;
+                                }
+                        }
+                        catch (FormatException exception)
+                        {
+                                Console.Error.WriteLine(exception.Message);
+                                PrintHelp();
+                                return false;
+                        }
+                }
+
+                return true;
+        }
+
+        private static ulong ParseRangeValue(string option, string value)
+        {
+                if (!ulong.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong parsed))
+                {
+                        throw new FormatException($"Value '{value}' for option '{option}' is not a valid non-negative integer.");
+                }
+
+                return parsed;
+        }
+
+        private static void PrintHelp()
+        {
+                Console.WriteLine("EvenPerfectBitScanner.ResultsParser");
+                Console.WriteLine("Parses CSV results produced by the candidate scanner.");
+                Console.WriteLine();
+                Console.WriteLine("Usage:");
+                Console.WriteLine("  EvenPerfectBitScanner.ResultsParser <results.csv> [--p-min <value>] [--p-max <value>]");
+                Console.WriteLine();
+                Console.WriteLine("The program accepts the following help switches:");
+                Console.WriteLine("  --?, -?, /?, -help, --help, --h, -h, /h, /help");
+                Console.WriteLine();
+                Console.WriteLine("Optional range arguments allow filtering primes by exponent:");
+                Console.WriteLine("  --p-min <value>  - include entries with p >= value");
+                Console.WriteLine("  --p-max <value>  - include entries with p <= value");
+                Console.WriteLine();
+                Console.WriteLine("Outputs prime results into four files placed next to the source file:");
+                Console.WriteLine("  raw-primes-<name>              - prime entries in the original order");
+                Console.WriteLine("  sorted-primes-<name>           - prime entries sorted by p");
+                Console.WriteLine("  sorted-primes-passed-<name>    - sorted prime entries with isPerfect = true");
+                Console.WriteLine("  sorted-primes-rejected-<name>  - sorted prime entries with isPerfect = false");
 		Console.WriteLine();
 		Console.WriteLine("Example:");
-		Console.WriteLine("  EvenPerfectBitScanner.ResultsParser results.csv");
-	}
+                Console.WriteLine("  EvenPerfectBitScanner.ResultsParser results.csv --p-min 89 --p-max 107");
+        }
 
-	private static void ProcessFile(string inputPath)
-	{
-		using IEnumerator<string> enumerator = File.ReadLines(inputPath).GetEnumerator();
-		if (!enumerator.MoveNext())
-		{
-			Console.WriteLine("Input file did not contain any data. Created empty outputs using the default header.");
+        private static void ProcessFile(string inputPath, ulong pMin, ulong pMax)
+        {
+                using IEnumerator<string> enumerator = File.ReadLines(inputPath).GetEnumerator();
+                if (!enumerator.MoveNext())
+                {
+                        Console.WriteLine("Input file did not contain any data. Created empty outputs using the default header.");
 			string fallbackHeader = DefaultHeader;
 			string rawFallbackPath = BuildOutputPath(inputPath, "raw-primes-");
 			WriteCsv(rawFallbackPath, fallbackHeader, Array.Empty<CandidateResult>());
@@ -111,20 +182,25 @@ internal static class Program
 		List<CandidateResult> pendingResults = new();
 		List<CandidateResult> primeResults = new();
 		int consoleProgress = 0;
-		while (enumerator.MoveNext())
-		{
-			string currentLine = enumerator.Current;
-			if (string.IsNullOrWhiteSpace(currentLine))
-			{
-				continue;
-			}
+                while (enumerator.MoveNext())
+                {
+                        string currentLine = enumerator.Current;
+                        if (string.IsNullOrWhiteSpace(currentLine))
+                        {
+                                continue;
+                        }
 
-			CandidateResult result = ParseLine(currentLine);
-			InsertPendingResult(pendingResults, result);
-			DrainPrimeMatches(pendingResults, primeResults, ref currentPrime, primeEnumerator, false);
-			if (++consoleProgress == 10_000)
-			{
-				Console.WriteLine($"Processed {result.P}");
+                        CandidateResult result = ParseLine(currentLine);
+                        if (result.P < pMin || result.P > pMax)
+                        {
+                                continue;
+                        }
+
+                        InsertPendingResult(pendingResults, result);
+                        DrainPrimeMatches(pendingResults, primeResults, ref currentPrime, primeEnumerator, false);
+                        if (++consoleProgress == 10_000)
+                        {
+                                Console.WriteLine($"Processed {result.P}");
 				consoleProgress = 0;
 			}
 		}
