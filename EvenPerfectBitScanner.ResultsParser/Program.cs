@@ -241,9 +241,9 @@ internal static class Program
 		string header = string.IsNullOrWhiteSpace(headerLine) ? DefaultHeader : headerLine.Trim();
 
 		List<CandidateResult> candidates = LoadCandidates(reader, pMin, pMax, threadCount, bufferSize);
-		Console.WriteLine("Sorting...");
+		Console.WriteLine("Building sorted prime results...");
 		List<CandidateResult> sortedPrimeResults = ExtractSortedPrimeCandidates(candidates);
-		Console.WriteLine("Building primes list...");
+		Console.WriteLine("Building RAW prime results...");
 		List<CandidateResult> primeResults = BuildRawPrimeResults(candidates, sortedPrimeResults);
 
 		string rawOutputPath = BuildOutputPath(inputPath, "raw-primes-");
