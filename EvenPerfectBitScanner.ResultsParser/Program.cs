@@ -625,11 +625,11 @@ internal static class Program
 		int start = 0;
 		int baseChunk = count / workerCount;
 		int remainder = count % workerCount;
-		for (int worker = 0; worker < workerCount; worker++)
-		{
-			int length = baseChunk + (worker < remainder ? 1 : 0);
-			int chunkStart = start;
-			start += length;
+                for (int worker = 0; worker < workerCount; worker++)
+                {
+                        int length = baseChunk + (worker < remainder ? 1 : 0);
+                        int chunkStart = start;
+                        start += length;
 
 			if (length == 0)
 			{
@@ -639,27 +639,28 @@ internal static class Program
 				continue;
 			}
 
-			tasks[worker] = Task.Run(() =>
-			{
-				List<CandidateResult> localPassed = new(length);
-				List<CandidateResult> localRejected = new(length);
-				int end = chunkStart + length;
-				for (int i = chunkStart; i < end; i++)
-				{
-					CandidateResult candidate = sortedResults[i];
-					if (candidate.PassedAllTests)
-					{
-						localPassed.Add(candidate);
-						continue;
-					}
+                        int workerIndex = worker;
+                        tasks[workerIndex] = Task.Run(() =>
+                        {
+                                List<CandidateResult> localPassed = new(length);
+                                List<CandidateResult> localRejected = new(length);
+                                int end = chunkStart + length;
+                                for (int i = chunkStart; i < end; i++)
+                                {
+                                        CandidateResult candidate = sortedResults[i];
+                                        if (candidate.PassedAllTests)
+                                        {
+                                                localPassed.Add(candidate);
+                                                continue;
+                                        }
 
-					localRejected.Add(candidate);
-				}
+                                        localRejected.Add(candidate);
+                                }
 
-				passedSegments[worker] = localPassed;
-				rejectedSegments[worker] = localRejected;
-			});
-		}
+                                passedSegments[workerIndex] = localPassed;
+                                rejectedSegments[workerIndex] = localRejected;
+                        });
+                }
 
 		Task.WaitAll(tasks);
 
