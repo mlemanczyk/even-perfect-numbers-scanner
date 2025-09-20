@@ -30,7 +30,7 @@ public class MersenneNumberResidueCpuTesterTests
                 (UInt128)exponent << 1,
                 LastDigitIsSeven(exponent),
                 (UInt128)maxK,
-                1UL,
+                UInt128.One,
                 (UInt128)maxK,
                 ref isPrime,
                 ref exhausted);

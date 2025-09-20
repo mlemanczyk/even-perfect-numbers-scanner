@@ -25,13 +25,13 @@ public sealed class MersenneNumberTester(
     bool useGpuScan = true,
     bool useGpuOrder = true,
         bool useResidue = true,
-    ulong maxK = 5_000_000UL,
-        ulong residueDivisorSets = PerfectNumberConstants.ExtraDivisorCycleSearchLimit)
+    UInt128? maxK = null,
+        UInt128? residueDivisorSets = null)
 {
     private readonly bool _useResidue = useResidue;
     private readonly bool _useIncremental = useIncremental && !useResidue;
-        private readonly ulong _maxK = maxK;
-        private readonly ulong _residueDivisorSetCount = residueDivisorSets;
+        private readonly UInt128 _maxK = maxK ?? (UInt128)5_000_000UL;
+        private readonly UInt128 _residueDivisorSetCount = residueDivisorSets ?? (UInt128)PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
         private readonly GpuKernelType _kernelType = kernelType;
     private readonly bool _useModuloWorkaround = useModuloWorkaround;
     private readonly bool _useGpuLucas = useGpuLucas;
@@ -44,7 +44,7 @@ public sealed class MersenneNumberTester(
 	private readonly MersenneNumberOrderCpuTester _orderCpuTester = new(kernelType);
 	private readonly MersenneNumberLucasLehmerGpuTester _lucasLehmerGpuTester = new();
 	private readonly MersenneNumberLucasLehmerCpuTester _lucasLehmerCpuTester = new();
-    private readonly MersenneNumberResidueGpuTester? _residueGpuTester = useResidue ? new(useGpuOrder) : null;
+        private readonly MersenneNumberResidueGpuTester? _residueGpuTester = useResidue ? new(useGpuOrder) : null;
         private readonly MersenneNumberResidueCpuTester? _residueCpuTester = useResidue ? new() : null;
 
         // TODO: Ensure Program passes useResidue correctly and that residue-vs-incremental-vs-LL selection respects CLI flags.
@@ -246,17 +246,17 @@ public sealed class MersenneNumberTester(
         // In residue mode the residue scan is the final primality check.
         if (_useResidue)
         {
-            if ((UInt128)_maxK < maxK)
+            if (_maxK < maxK)
             {
                 maxK = _maxK;
             }
 
-            if (_maxK == 0UL || _residueDivisorSetCount == 0UL)
+            if (_maxK == UInt128.Zero || _residueDivisorSetCount == UInt128.Zero)
             {
                 return prePrime;
             }
 
-            UInt128 totalLimit = (UInt128)_maxK;
+            UInt128 totalLimit = _maxK;
             if (totalLimit > maxK)
             {
                 totalLimit = maxK;
@@ -267,23 +267,23 @@ public sealed class MersenneNumberTester(
                 return true;
             }
 
-            ulong requestedSets = _residueDivisorSetCount;
-            if (requestedSets == 0UL)
+            UInt128 requestedSets = _residueDivisorSetCount;
+            if (requestedSets == UInt128.Zero)
             {
-                requestedSets = 1UL;
+                requestedSets = UInt128.One;
             }
 
-            UInt128 perSetLimit = DivideRoundUp(totalLimit, (UInt128)requestedSets);
+            UInt128 perSetLimit = DivideRoundUp(totalLimit, requestedSets);
             if (perSetLimit == UInt128.Zero)
             {
                 perSetLimit = UInt128.One;
             }
 
             UInt128 setsNeeded = DivideRoundUp(totalLimit, perSetLimit);
-            ulong effectiveSets = requestedSets;
-            if (setsNeeded < (UInt128)effectiveSets)
+            UInt128 effectiveSets = requestedSets;
+            if (setsNeeded < effectiveSets)
             {
-                effectiveSets = (ulong)setsNeeded;
+                effectiveSets = setsNeeded;
             }
 
             bool scanCompleted = false;

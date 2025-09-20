@@ -12,20 +12,20 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 	// via GpuKernelPool to avoid host round-trips.
 
 	// GPU residue variant: check 2^p % q == 1 for q = 2*p*k + 1.
-	public void Scan(
-			ulong exponent,
-			UInt128 twoP,
-			bool lastIsSeven,
-			UInt128 perSetLimit,
-			ulong setCount,
-			UInt128 overallLimit,
-			ref bool isPrime,
-			ref bool divisorsExhausted)
-	{
-		if (setCount == 0UL || perSetLimit == UInt128.Zero || overallLimit == UInt128.Zero)
-		{
-			return;
-		}
+        public void Scan(
+                        ulong exponent,
+                        UInt128 twoP,
+                        bool lastIsSeven,
+                        UInt128 perSetLimit,
+                        UInt128 setCount,
+                        UInt128 overallLimit,
+                        ref bool isPrime,
+                        ref bool divisorsExhausted)
+        {
+                if (setCount == UInt128.Zero || perSetLimit == UInt128.Zero || overallLimit == UInt128.Zero)
+                {
+                        return;
+                }
 
 		var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder);
 		var accelerator = gpuLease.Accelerator;
@@ -48,9 +48,9 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		Span<ulong> orders = orderArray.AsSpan(0, batchSize);
 		try
 		{
-			for (ulong setIndex = 0; setIndex < setCount && Volatile.Read(ref isPrime); setIndex++)
-			{
-				UInt128 setOffset = perSetLimit * (UInt128)setIndex;
+                for (UInt128 setIndex = UInt128.Zero; setIndex < setCount && Volatile.Read(ref isPrime); setIndex++)
+                {
+                        UInt128 setOffset = perSetLimit * setIndex;
 				UInt128 setStart = setOffset + UInt128.One;
 				if (setStart >= limitInclusive)
 				{
