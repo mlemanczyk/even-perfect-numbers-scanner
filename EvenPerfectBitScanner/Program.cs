@@ -649,17 +649,9 @@ internal static class Program
 					}
 					else
 					{
-						bool reachedMax = false;
-
-						for (j = 0; j < count; j++)
+						for (j = 0; j < count && !Volatile.Read(ref _limitReached); j++)
 						{
 							p = buffer[j];
-
-							if (Volatile.Read(ref _limitReached) && p > maxP)
-							{
-								break;
-							}
-
 							if (useFilter && !filter.Contains(p))
 							{
 								continue;
@@ -667,17 +659,11 @@ internal static class Program
 
 							passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
 							PrintResult(p, searchedMersenne, detailedCheck, passedAllTests);
-
 							if (p == maxP)
 							{
-								reachedMax = true;
+								Volatile.Write(ref _limitReached, true);
+								break;
 							}
-						}
-
-						if (reachedMax)
-						{
-							Volatile.Write(ref _limitReached, true);
-							break;
 						}
 					}
 				}
