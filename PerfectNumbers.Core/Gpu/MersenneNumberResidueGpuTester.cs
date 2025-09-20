@@ -59,9 +59,9 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
                 Span<ulong> orders = orderArray.AsSpan(0, batchSize);
                 try
                 {
-                        for (ulong setIndex = 0; setIndex < setCount && Volatile.Read(ref isPrime); setIndex++)
+                        for (UInt128 setIndex = UInt128.Zero; setIndex < setCount && Volatile.Read(ref isPrime); setIndex++)
                         {
-                                UInt128 setOffset = checked(perSetLimit * (UInt128)setIndex);
+                                UInt128 setOffset = checked(perSetLimit * setIndex);
                                 UInt128 setStart = checked(setOffset + UInt128.One);
                                 if (setStart >= limitInclusive)
                                 {
@@ -113,7 +113,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
                                                 }
                                         }
 
-                                        kStart = checked(kStart + batchSize128);
+                                        kStart = checked(kStart + (UInt128)currentSize);
                                 }
                         }
                 }

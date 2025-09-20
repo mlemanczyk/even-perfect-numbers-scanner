@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using FluentAssertions;
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Cpu;
 using PerfectNumbers.Core.Gpu;
 using Xunit;
 using UInt128 = System.UInt128;
@@ -27,6 +28,54 @@ public class MersenneNumberResidueGpuTesterTests
         RunCase(tester, 89UL, 1_001UL, expectedPrime: true);
         RunCase(tester, 107UL, 1_001UL, expectedPrime: true);
         RunCase(tester, 127UL, 1_001UL, expectedPrime: true);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "Fast")]
+    public void Gpu_residue_scan_matches_cpu_for_small_configurations(bool useGpuOrder)
+    {
+        var gpuTester = new MersenneNumberResidueGpuTester(useGpuOrder);
+        var cpuTester = new MersenneNumberResidueCpuTester();
+
+        var configurations = new (ulong Exponent, UInt128 PerSetLimit, UInt128 SetCount, UInt128 OverallLimit)[]
+        {
+            (31UL, 8UL, 6UL, 48UL),
+            (61UL, 9UL, 9UL, 81UL),
+            (89UL, 12UL, 8UL, 96UL),
+            (107UL, 16UL, 8UL, 128UL),
+        };
+
+        foreach (var (exponent, perSetLimit, setCount, overallLimit) in configurations)
+        {
+            bool gpuPrime = true;
+            bool gpuExhausted = false;
+            gpuTester.Scan(
+                exponent,
+                (UInt128)exponent << 1,
+                LastDigitIsSeven(exponent),
+                perSetLimit,
+                setCount,
+                overallLimit,
+                ref gpuPrime,
+                ref gpuExhausted);
+
+            bool cpuPrime = true;
+            bool cpuExhausted = false;
+            cpuTester.Scan(
+                exponent,
+                (UInt128)exponent << 1,
+                LastDigitIsSeven(exponent),
+                perSetLimit,
+                setCount,
+                overallLimit,
+                ref cpuPrime,
+                ref cpuExhausted);
+
+            gpuPrime.Should().Be(cpuPrime, $"GPU residue scan should match CPU for exponent {exponent}");
+            gpuExhausted.Should().Be(cpuExhausted, $"GPU residue scan should report identical exhaustion for exponent {exponent}");
+        }
     }
 
     [Fact]
@@ -86,6 +135,38 @@ public class MersenneNumberResidueGpuTesterTests
         finally
         {
             File.Delete(tempPath);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "Fast")]
+    public void Mersenne_tester_residue_gpu_handles_known_primes_with_many_sets(bool useGpuOrder)
+    {
+        var tester = new MersenneNumberTester(
+            useIncremental: true,
+            useOrderCache: false,
+            kernelType: GpuKernelType.Pow2Mod,
+            useModuloWorkaround: false,
+            useOrder: false,
+            useGpuLucas: false,
+            useGpuScan: true,
+            useGpuOrder: useGpuOrder,
+            useResidue: true,
+            maxK: (UInt128)2_400_000UL,
+            residueDivisorSets: (UInt128)512UL);
+
+        try
+        {
+            bool isPrime = tester.IsMersennePrime(127UL, out bool divisorsExhausted);
+
+            isPrime.Should().BeTrue();
+            divisorsExhausted.Should().BeTrue();
+        }
+        finally
+        {
+            GpuContextPool.DisposeAll();
         }
     }
 
