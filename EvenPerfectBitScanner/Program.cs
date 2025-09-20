@@ -75,12 +75,14 @@ internal static class Program
 		bool orderOnGpu = true;      // controls order computations device
 		int scanBatchSize = 2_097_152, sliceSize = 32;
                 UInt128 residueKMax = 5_000_000UL;
-		string filterFile = string.Empty;
-		string cyclesPath = DefaultCyclesPath;
-		int cyclesBatchSize = 512;
-		bool continueCyclesGeneration = false;
+                bool residueKMaxExplicit = false;
+                string filterFile = string.Empty;
+                string cyclesPath = DefaultCyclesPath;
+                int cyclesBatchSize = 512;
+                bool continueCyclesGeneration = false;
                 UInt128 divisorCyclesSearchLimit128 = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
                 ulong divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
+                bool divisorCyclesLimitExplicit = false;
 
 		// NTT backend selection (GPU): reference vs staged
 		for (int i = 0; i < args.Length; i++)
@@ -149,6 +151,7 @@ internal static class Program
                                 {
                                         divisorCyclesSearchLimit128 = limit;
                                         divisorCyclesSearchLimit = limit > (UInt128)ulong.MaxValue ? ulong.MaxValue : (ulong)limit;
+                                        divisorCyclesLimitExplicit = true;
                                 }
                         }
                         else if (arg.StartsWith("--residue-max-k=", StringComparison.OrdinalIgnoreCase))
@@ -157,6 +160,7 @@ internal static class Program
                                 if (UInt128.TryParse(arg.AsSpan(eq + 1), NumberStyles.Integer, provider: null, out var kmax))
                                 {
                                         residueKMax = kmax;
+                                        residueKMaxExplicit = true;
                                 }
                         }
 			// Replaces --lucas=cpu|gpu; controls device for Lucas and for
@@ -368,11 +372,13 @@ internal static class Program
 			}
 		}
 
-		if (showHelp)
-		{
-			PrintHelp();
-			return;
-		}
+                residueKMax = ResolveResidueMaxK(useResidue, residueKMaxExplicit, divisorCyclesLimitExplicit, residueKMax, divisorCyclesSearchLimit128);
+
+                if (showHelp)
+                {
+                        PrintHelp();
+                        return;
+                }
 
 		// Apply GPU prime sieve runtime configuration
 		GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
@@ -1099,16 +1105,37 @@ internal static class Program
 			return _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out detailedCheck);
 		}
 
-		bool mersennePrime = MersenneTesters.Value!.IsMersennePrime(p, out bool residueExhausted);
-		detailedCheck = residueExhausted;
-		return mersennePrime;
-	}
+                bool mersennePrime = MersenneTesters.Value!.IsMersennePrime(p, out bool residueExhausted);
+                detailedCheck = residueExhausted;
+                return mersennePrime;
+        }
 
-	// Use ModResidueTracker with a small set of primes to pre-filter composite p.
-	private static bool IsCompositeByResidues(ulong p)
-	{
-		var tracker = PResidue.Value!;
-		tracker.BeginMerge(p);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static UInt128 ResolveResidueMaxK(
+                bool useResidue,
+                bool residueMaxExplicit,
+                bool divisorLimitExplicit,
+                UInt128 residueMaxK,
+                UInt128 divisorLimit)
+        {
+                if (!useResidue)
+                {
+                        return residueMaxK;
+                }
+
+                if (residueMaxExplicit || !divisorLimitExplicit)
+                {
+                        return residueMaxK;
+                }
+
+                return divisorLimit;
+        }
+
+        // Use ModResidueTracker with a small set of primes to pre-filter composite p.
+        private static bool IsCompositeByResidues(ulong p)
+        {
+                var tracker = PResidue.Value!;
+                tracker.BeginMerge(p);
 		// Use the small prime list from PerfectNumbers.Core to the extent of sqrt(p)
 		var primes = PrimesGenerator.SmallPrimes;
 		var primesPow2 = PrimesGenerator.SmallPrimesPow2;
