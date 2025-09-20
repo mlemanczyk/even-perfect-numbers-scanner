@@ -404,12 +404,18 @@ public class ProgramTests
         var outputField = typeof(Program).GetField("_outputBuilder", BindingFlags.NonPublic | BindingFlags.Static)!;
         var writeIndexField = typeof(Program).GetField("_writeIndex", BindingFlags.NonPublic | BindingFlags.Static)!;
         var compositeField = typeof(Program).GetField("_lastCompositeP", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var primeCountField = typeof(Program).GetField("_primeCount", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var primeFoundField = typeof(Program).GetField("_primeFoundAfterInit", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var consoleCounterField = typeof(Program).GetField("_consoleCounter", BindingFlags.NonPublic | BindingFlags.Static)!;
         var printResult = typeof(Program).GetMethod("PrintResult", BindingFlags.NonPublic | BindingFlags.Static)!;
 
         var previousResidueMode = (bool)residueModeField.GetValue(null)!;
         var previousOutput = (StringBuilder?)outputField.GetValue(null);
         var previousWriteIndex = (int)writeIndexField.GetValue(null)!;
         var previousComposite = (bool)compositeField.GetValue(null)!;
+        var previousPrimeCount = (int)primeCountField.GetValue(null)!;
+        var previousPrimeFound = (bool)primeFoundField.GetValue(null)!;
+        var previousConsoleCounter = (int)consoleCounterField.GetValue(null)!;
 
         var builder = StringBuilderPool.Rent();
 
@@ -420,11 +426,19 @@ public class ProgramTests
             compositeField.SetValue(null, true);
             outputField.SetValue(null, builder);
             writeIndexField.SetValue(null, 0);
+            primeCountField.SetValue(null, 0);
+            primeFoundField.SetValue(null, false);
+            consoleCounterField.SetValue(null, 0);
 
             printResult.Invoke(null, new object[] { 9UL, false, false, false });
 
-            builder.Length.Should().Be(0);
+            builder.ToString().Should().BeEmpty();
             ((int)writeIndexField.GetValue(null)!).Should().Be(0);
+
+            printResult.Invoke(null, new object[] { 11UL, true, false, true });
+
+            builder.ToString().Should().Be("11,True,False,True" + Environment.NewLine);
+            ((int)writeIndexField.GetValue(null)!).Should().Be(1);
         }
         finally
         {
@@ -432,6 +446,9 @@ public class ProgramTests
             writeIndexField.SetValue(null, previousWriteIndex);
             residueModeField.SetValue(null, previousResidueMode);
             compositeField.SetValue(null, previousComposite);
+            primeCountField.SetValue(null, previousPrimeCount);
+            primeFoundField.SetValue(null, previousPrimeFound);
+            consoleCounterField.SetValue(null, previousConsoleCounter);
             builder.Clear();
             StringBuilderPool.Return(builder);
         }
