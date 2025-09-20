@@ -44,6 +44,13 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		GpuUInt128 twoPGpu = (GpuUInt128)twoP;
 
                 var orderBuffer = accelerator.Allocate1D<ulong>(batchSize);
+                // Device memory returned by Allocate1D is not guaranteed to be zeroed.
+                // Ensure the buffer starts with a known state so that lanes skipped by the
+                // kernel (for example due to early rejections) do not leave stale garbage
+                // values that would be interpreted as composite witnesses when copied back
+                // to the host. This mirrors the explicit zeroing performed by other GPU
+                // testers such as the order kernels.
+                orderBuffer.MemSetToZero();
                 ulong[] orderArray = ArrayPool<ulong>.Shared.Rent(batchSize);
                 UInt128 batchSize128 = (UInt128)batchSize;
                 UInt128 limitInclusive = overallLimit == UInt128.MaxValue
