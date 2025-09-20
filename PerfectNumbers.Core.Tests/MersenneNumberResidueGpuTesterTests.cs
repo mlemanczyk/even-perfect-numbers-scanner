@@ -66,6 +66,17 @@ public class MersenneNumberResidueGpuTesterTests
     }
 
     [Theory]
+    [InlineData(107UL, 1UL, 1_024UL)]
+    [Trait("Category", "Fast")]
+    public void Scan_handles_single_lane_sets_for_known_primes(ulong exponent, ulong perSetLimit, ulong overallLimit)
+    {
+        ulong setCount = overallLimit;
+
+        RunCase(new MersenneNumberResidueGpuTester(useGpuOrder: false), exponent, perSetLimit, setCount, overallLimit, expectedPrime: true);
+        RunCase(new MersenneNumberResidueGpuTester(useGpuOrder: true), exponent, perSetLimit, setCount, overallLimit, expectedPrime: true);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     [Trait("Category", "Fast")]

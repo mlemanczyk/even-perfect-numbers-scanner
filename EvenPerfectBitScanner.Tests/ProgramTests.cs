@@ -361,6 +361,45 @@ public class ProgramTests
     }
 
     [Fact]
+    public void Residue_mode_with_large_divisor_cycle_limits_accepts_known_primes()
+    {
+        var useDivisorField = typeof(Program).GetField("_useDivisor", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var residueField = typeof(Program).GetField("PResidue", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
+
+        useDivisorField.SetValue(null, false);
+        mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
+            useIncremental: true,
+            useResidue: true,
+            maxK: 1_024UL,
+            residueDivisorSets: 1_024UL), trackAllValues: true));
+        primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
+        residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
+        forceCpuProp!.SetValue(null, false);
+
+        try
+        {
+            ulong[] primes = [107UL, 127UL];
+            foreach (ulong prime in primes)
+            {
+                Program.IsEvenPerfectCandidate(prime, 1024UL, out bool searched, out bool detailed).Should().BeTrue();
+                searched.Should().BeTrue();
+                detailed.Should().BeTrue();
+            }
+        }
+        finally
+        {
+            useDivisorField.SetValue(null, false);
+            mersenneField.SetValue(null, null);
+            primeField.SetValue(null, null);
+            residueField.SetValue(null, null);
+            forceCpuProp!.SetValue(null, false);
+        }
+    }
+
+    [Fact]
     [Trait("Category", "Fast")]
     public void Residue_mode_accepts_known_primes_in_parallel()
     {
