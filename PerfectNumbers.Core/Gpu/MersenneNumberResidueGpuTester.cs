@@ -98,6 +98,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 
                                         stream.Synchronize();
                                         orderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(orders), currentSize);
+                                        stream.Synchronize();
                                         if (!Volatile.Read(ref isPrime))
                                         {
                                                 break;
