@@ -10,13 +10,14 @@ public static class GpuContextPool
 	// Default device preference for generic GPU kernels (prime scans, NTT, etc.)
 	public static bool ForceCpu { get; set; } = false;
 
-	internal sealed class PooledContext
-	{
-		private bool disposed;
+        internal sealed class PooledContext
+        {
+                private bool disposed;
 
-		public Context Context { get; }
-		public Accelerator Accelerator { get; }
-		public bool IsCpu { get; }
+                public Context Context { get; }
+                public Accelerator Accelerator { get; }
+                public bool IsCpu { get; }
+                public object ExecutionLock { get; } = new();
 
 		public PooledContext(bool preferCpu)
 		{
@@ -126,24 +127,26 @@ public static class GpuContextPool
     public struct GpuContextLease : IDisposable
     {
         private readonly PooledContext _ctx;
-		private bool disposed;
+                private bool disposed;
 
-		internal GpuContextLease(PooledContext ctx, object kernelInitLock)
+                internal GpuContextLease(PooledContext ctx, object kernelInitLock)
         {
             _ctx = ctx;
-			KernelInitLock = kernelInitLock;
-		}
+                        KernelInitLock = kernelInitLock;
+                }
 
         public Context Context => _ctx.Context;
 
         public Accelerator Accelerator => _ctx.Accelerator;
 
-		public object KernelInitLock { get; }
+                public object KernelInitLock { get; }
+
+                public object ExecutionLock => _ctx.ExecutionLock;
 
 
-		public void Dispose()
-		{
-			if (disposed)
+                public void Dispose()
+                {
+                        if (disposed)
 			{
 				return;
 			}

@@ -27,8 +27,10 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
                         return;
                 }
 
-		var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder);
-		var accelerator = gpuLease.Accelerator;
+                var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder);
+                var execution = gpuLease.EnterExecutionScope();
+                var accelerator = gpuLease.Accelerator;
+                var stream = gpuLease.Stream;
 		// Ensure device has small cycles and primes tables for in-kernel lookup
 		var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
 		ResiduePrimeViews primeViews = GpuKernelPool.EnsureSmallPrimesOnDevice(accelerator);
@@ -84,10 +86,10 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
                                         q.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
                                         var ra = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
 
-                                        kernel(currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, 0UL,
+                                        kernel(stream, currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, 0UL,
                                                 ra, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
 
-                                        accelerator.Synchronize();
+                                        stream.Synchronize();
                                         orderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(orders), currentSize);
                                         if (!Volatile.Read(ref isPrime))
                                         {
@@ -111,9 +113,10 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
                 {
                         ArrayPool<ulong>.Shared.Return(orderArray);
                         orderBuffer.Dispose();
+                        execution.Dispose();
                         gpuLease.Dispose();
                 }
 
-		divisorsExhausted = true;
-	}
+                divisorsExhausted = true;
+        }
 }
