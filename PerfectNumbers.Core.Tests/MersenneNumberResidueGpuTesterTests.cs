@@ -40,6 +40,32 @@ public class MersenneNumberResidueGpuTesterTests
     }
 
     [Theory]
+    [InlineData(31UL)]
+    [Trait("Category", "Fast")]
+    public void Scan_matches_cli_residue_configuration_for_primes(ulong exponent)
+    {
+        RunCliCase(useGpuOrder: false, exponent);
+        RunCliCase(useGpuOrder: true, exponent);
+    }
+
+    [Theory]
+    [InlineData(31UL, 1_024UL, 1UL)]
+    [InlineData(31UL, 256UL, 4UL)]
+    [InlineData(107UL, 512UL, 1UL)]
+    [InlineData(107UL, 128UL, 4UL)]
+    [InlineData(107UL, 15_625UL, 64UL)]
+    [InlineData(127UL, 512UL, 1UL)]
+    [InlineData(127UL, 128UL, 4UL)]
+    [Trait("Category", "Fast")]
+    public void Scan_handles_multiple_residue_sets_for_known_primes(ulong exponent, ulong perSetLimit, ulong setCount)
+    {
+        ulong overallLimit = perSetLimit * setCount;
+
+        RunCase(new MersenneNumberResidueGpuTester(useGpuOrder: false), exponent, perSetLimit, setCount, overallLimit, expectedPrime: true);
+        RunCase(new MersenneNumberResidueGpuTester(useGpuOrder: true), exponent, perSetLimit, setCount, overallLimit, expectedPrime: true);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     [Trait("Category", "Fast")]
@@ -86,19 +112,36 @@ public class MersenneNumberResidueGpuTesterTests
         exhausted.Should().BeTrue();
     }
 
+    private static void RunCliCase(bool useGpuOrder, ulong exponent)
+    {
+        var tester = new MersenneNumberResidueGpuTester(useGpuOrder);
+        RunCase(tester, exponent, 8UL, expectedPrime: true);
+    }
+
     private static void RunCase(MersenneNumberResidueGpuTester tester, ulong exponent, ulong maxK, bool expectedPrime)
+    {
+        RunCase(tester, exponent, maxK, 1UL, maxK, expectedPrime);
+    }
+
+    private static void RunCase(
+        MersenneNumberResidueGpuTester tester,
+        ulong exponent,
+        ulong perSetLimit,
+        ulong setCount,
+        ulong overallLimit,
+        bool expectedPrime)
     {
         bool isPrime = true;
         bool exhausted = false;
         tester.Scan(
-                exponent,
-                (UInt128)exponent << 1,
-                LastDigitIsSeven(exponent),
-                (UInt128)maxK,
-                UInt128.One,
-                (UInt128)maxK,
-                ref isPrime,
-                ref exhausted);
+            exponent,
+            (UInt128)exponent << 1,
+            LastDigitIsSeven(exponent),
+            (UInt128)perSetLimit,
+            (UInt128)setCount,
+            (UInt128)overallLimit,
+            ref isPrime,
+            ref exhausted);
         isPrime.Should().Be(expectedPrime);
         exhausted.Should().BeTrue();
     }
