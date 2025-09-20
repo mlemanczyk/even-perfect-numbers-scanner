@@ -836,57 +836,70 @@ internal static class Program
 			}
 		}
 
-		if (_useResidueMode && _lastCompositeP)
-		{
-			return;
-		}
+                bool lastWasComposite = _lastCompositeP;
+                bool primeFlag = false, printToConsole = false;
 
-		bool primeFlag = false, printToConsole = false;
+                StringBuilder? localBuilder = passedAllTests ? StringBuilderPool.Rent() : null;
+                if (localBuilder is not null)
+                {
+                        _ = localBuilder
+                                .Append(currentP).Append(',')
+                                .Append(searchedMersenne).Append(',')
+                                .Append(detailedCheck).Append(',')
+                                .Append(passedAllTests).Append('\n');
+                }
 
-		StringBuilder localBuilder = StringBuilderPool.Rent();
-		_ = localBuilder
-				.Append(currentP).Append(',')
-	.Append(searchedMersenne).Append(',')
-	.Append(detailedCheck).Append(',')
-	.Append(passedAllTests).Append('\n');
+                lock (Sync)
+                {
+                        if (_consoleCounter >= ConsoleInterval)
+                        {
+                                printToConsole = true;
+                                primeFlag = passedAllTests && !lastWasComposite && _primeFoundAfterInit;
+                                _consoleCounter = 0;
+                        }
+                        else
+                        {
+                                _consoleCounter++;
+                        }
 
-		lock (Sync)
-		{
-			_ = _outputBuilder!.Append(localBuilder);
+                        if (localBuilder is not null)
+                        {
+                                _ = _outputBuilder!.Append(localBuilder);
 
-			if (_consoleCounter >= ConsoleInterval)
-			{
-				printToConsole = true;
-				primeFlag = _primeFoundAfterInit;
-				_consoleCounter = 0;
-			}
-			else
-			{
-				_consoleCounter++;
-			}
+                                _writeIndex++;
+                                if (_writeIndex >= _writeBatchSize)
+                                {
+                                        FlushBuffer();
+                                }
+                        }
+                }
 
-			_writeIndex++;
-			if (_writeIndex >= _writeBatchSize)
-			{
-				FlushBuffer();
-			}
-		}
+                if (printToConsole)
+                {
+                        if (localBuilder is not null)
+                        {
+                                if (primeFlag)
+                                {
+                                        _ = localBuilder
+                                                .Remove(localBuilder.Length - 1, 1)
+                                                .Append(PrimeFoundSuffix)
+                                                .Append('\n');
+                                }
 
-		if (printToConsole)
-		{
-			if (primeFlag)
-			{
-				_ = localBuilder
-					.Remove(localBuilder.Length - 1, 1)
-					.Append(PrimeFoundSuffix)
-					.Append('\n');
-			}
+                                Console.WriteLine(localBuilder.Remove(localBuilder.Length - 1, 1).ToString());
+                        }
+                        else
+                        {
+                                Console.WriteLine($"{currentP},{searchedMersenne},{detailedCheck},{passedAllTests}");
+                        }
+                }
 
-			Console.WriteLine(localBuilder.Remove(localBuilder.Length - 1, 1).ToString());
-		}
-
-		StringBuilderPool.Return(localBuilder);
-	}
+                if (localBuilder is not null)
+                {
+                        localBuilder.Clear();
+                        StringBuilderPool.Return(localBuilder);
+                }
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void FlushBuffer()
