@@ -38,6 +38,28 @@ public class ProgramTests
         Program.TransformPAdd(7UL, ref remainder).Should().Be(11UL);
     }
 
+    [Theory]
+    [InlineData(false, false, false, 5UL, 1024UL, 5UL)]
+    [InlineData(true, false, false, 5UL, 1024UL, 5UL)]
+    [InlineData(true, true, true, 7UL, 1024UL, 7UL)]
+    [InlineData(true, false, true, 5UL, 1024UL, 1024UL)]
+    [InlineData(true, true, false, 5UL, 1024UL, 5UL)]
+    public void ResolveResidueMaxK_applies_expected_rules(
+        bool useResidue,
+        bool residueMaxExplicit,
+        bool divisorLimitExplicit,
+        ulong residueMaxK,
+        ulong divisorLimit,
+        ulong expected)
+    {
+        Program.ResolveResidueMaxK(
+                useResidue,
+                residueMaxExplicit,
+                divisorLimitExplicit,
+                residueMaxK,
+                divisorLimit).Should().Be((UInt128)expected);
+    }
+
     [Fact]
     public void TransformPBit_appends_one_bit_and_skips_to_candidate()
     {

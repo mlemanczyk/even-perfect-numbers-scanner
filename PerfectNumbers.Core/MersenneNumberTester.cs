@@ -268,6 +268,20 @@ public sealed class MersenneNumberTester(
             }
 
             UInt128 requestedSets = _residueDivisorSetCount;
+            if (_useGpuScan)
+            {
+                UInt128 maxUsefulSets = DivideRoundUp(totalLimit, (UInt128)GpuConstants.ScanBatchSize);
+                if (maxUsefulSets == UInt128.Zero)
+                {
+                    maxUsefulSets = UInt128.One;
+                }
+
+                if (requestedSets == UInt128.Zero || requestedSets > maxUsefulSets)
+                {
+                    requestedSets = maxUsefulSets;
+                }
+            }
+
             if (requestedSets == UInt128.Zero)
             {
                 requestedSets = UInt128.One;
