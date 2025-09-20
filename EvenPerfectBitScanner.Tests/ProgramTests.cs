@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Xunit;
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Reflection;
 using System.Text;
@@ -397,6 +398,143 @@ public class ProgramTests
             forceCpuProp!.SetValue(null, false);
         }
     }
+
+    [Theory]
+    [MemberData(nameof(KnownMersennePrimeExponents))]
+    public void IsEvenPerfectCandidate_accepts_known_small_mersenne_primes(ulong exponent)
+    {
+        var useDivisorField = typeof(Program).GetField("_useDivisor", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var residueField = typeof(Program).GetField("PResidue", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var gcdFilterField = typeof(Program).GetField("_useGcdFilter", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
+
+        useDivisorField.SetValue(null, false);
+        gcdFilterField.SetValue(null, false);
+        mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
+            useIncremental: true,
+            useGpuScan: false,
+            useGpuOrder: false,
+            useResidue: true,
+            maxK: 1_024UL,
+            residueDivisorSets: 1UL), trackAllValues: true));
+        primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
+        residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, exponent, true), trackAllValues: true));
+        forceCpuProp!.SetValue(null, true);
+
+        try
+        {
+            Program.IsEvenPerfectCandidate(exponent, 0UL, out bool searched, out bool detailedCheck).Should().BeTrue();
+            searched.Should().BeTrue();
+        }
+        finally
+        {
+            useDivisorField.SetValue(null, false);
+            mersenneField.SetValue(null, null);
+            primeField.SetValue(null, null);
+            residueField.SetValue(null, null);
+            gcdFilterField.SetValue(null, false);
+            forceCpuProp!.SetValue(null, false);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(KnownMersennePrimeGpuConfigurations))]
+    public void IsEvenPerfectCandidate_accepts_known_small_mersenne_primes_on_gpu(
+        ulong exponent,
+        MersenneGpuCandidateConfig configuration)
+    {
+        var useDivisorField = typeof(Program).GetField("_useDivisor", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var residueField = typeof(Program).GetField("PResidue", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var gcdFilterField = typeof(Program).GetField("_useGcdFilter", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
+
+        useDivisorField.SetValue(null, false);
+        gcdFilterField.SetValue(null, false);
+        mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
+            useIncremental: false,
+            kernelType: configuration.KernelType,
+            useGpuScan: true,
+            useGpuOrder: configuration.UseGpuOrder,
+            useResidue: true,
+            maxK: (UInt128)configuration.ResidueMaxK,
+            residueDivisorSets: (UInt128)configuration.ResidueSetCount), trackAllValues: true));
+        primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
+        residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, exponent, true), trackAllValues: true));
+        forceCpuProp!.SetValue(null, false);
+
+        try
+        {
+            Program.IsEvenPerfectCandidate(exponent, 0UL, out bool searched, out bool detailedCheck).Should().BeTrue();
+            searched.Should().BeTrue();
+        }
+        finally
+        {
+            useDivisorField.SetValue(null, false);
+            mersenneField.SetValue(null, null);
+            primeField.SetValue(null, null);
+            residueField.SetValue(null, null);
+            gcdFilterField.SetValue(null, false);
+            forceCpuProp!.SetValue(null, false);
+            GpuContextPool.DisposeAll();
+        }
+    }
+
+    public static IEnumerable<object[]> KnownMersennePrimeExponents()
+    {
+        foreach (ulong exponent in KnownMersennePrimeExponentValues)
+        {
+            yield return new object[] { exponent };
+        }
+    }
+
+    public static IEnumerable<object[]> KnownMersennePrimeGpuConfigurations()
+    {
+        MersenneGpuCandidateConfig[] configs =
+        {
+            new(GpuKernelType.Incremental, true, 1_024UL, 1UL),
+            new(GpuKernelType.Incremental, false, 2_048UL, 1UL),
+            new(GpuKernelType.Pow2Mod, true, 4_096UL, 2UL),
+            new(GpuKernelType.Pow2Mod, false, 512UL, 2UL),
+        };
+
+        int index = 0;
+        foreach (ulong exponent in KnownMersennePrimeExponentValues)
+        {
+            var config = configs[index % configs.Length];
+            yield return new object[] { exponent, config };
+            index++;
+        }
+    }
+
+    private static readonly ulong[] KnownMersennePrimeExponentValues =
+    [
+        31UL,
+        61UL,
+        89UL,
+        107UL,
+        127UL,
+        521UL,
+        607UL,
+        1279UL,
+        2203UL,
+        2281UL,
+        3217UL,
+        4253UL,
+        4423UL,
+        9689UL,
+        9941UL,
+        11213UL,
+    ];
+
+    public readonly record struct MersenneGpuCandidateConfig(
+        GpuKernelType KernelType,
+        bool UseGpuOrder,
+        ulong ResidueMaxK,
+        ulong ResidueSetCount);
 
     [Fact]
     public void Composite_candidates_flagged_for_residue_output_skip()

@@ -21,6 +21,18 @@ public class MersenneNumberResidueCpuTesterTests
         RunCase(tester, 127UL, 1_000UL, expectedPrime: true);
     }
 
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void Scan_recognizes_all_known_small_mersenne_primes()
+    {
+        var tester = new MersenneNumberResidueCpuTester();
+
+        foreach (ulong exponent in MersennePrimeTestData.Exponents)
+        {
+            RunCase(tester, exponent, 1UL, expectedPrime: true);
+        }
+    }
+
     private static void RunCase(MersenneNumberResidueCpuTester tester, ulong exponent, ulong maxK, bool expectedPrime)
     {
         bool isPrime = true;
