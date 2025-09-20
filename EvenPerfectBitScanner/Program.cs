@@ -40,8 +40,8 @@ internal static class Program
 	private static string? _resultsPrefix;
 	private static readonly Optimized PrimeIterator = new();
 
-        [ThreadStatic]
-        private static bool _lastCompositeP;
+	[ThreadStatic]
+	private static bool _lastCompositeP;
 
 	// RLE/bit-pattern filtering options
 	private static string? _rleBlacklistPath;
@@ -74,15 +74,15 @@ internal static class Program
 		bool mersenneOnGpu = true;   // controls Lucas/incremental/pow2mod device
 		bool orderOnGpu = true;      // controls order computations device
 		int scanBatchSize = 2_097_152, sliceSize = 32;
-                UInt128 residueKMax = 5_000_000UL;
-                bool residueKMaxExplicit = false;
-                string filterFile = string.Empty;
-                string cyclesPath = DefaultCyclesPath;
-                int cyclesBatchSize = 512;
-                bool continueCyclesGeneration = false;
-                UInt128 divisorCyclesSearchLimit128 = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
-                ulong divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
-                bool divisorCyclesLimitExplicit = false;
+		UInt128 residueKMax = 5_000_000UL;
+		bool residueKMaxExplicit = false;
+		string filterFile = string.Empty;
+		string cyclesPath = DefaultCyclesPath;
+		int cyclesBatchSize = 512;
+		bool continueCyclesGeneration = false;
+		UInt128 divisorCyclesSearchLimit128 = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
+		ulong divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
+		bool divisorCyclesLimitExplicit = false;
 
 		// NTT backend selection (GPU): reference vs staged
 		for (int i = 0; i < args.Length; i++)
@@ -144,25 +144,25 @@ internal static class Program
 				int eq = arg.IndexOf('=');
 				divisor = UInt128.Parse(arg.AsSpan(eq + 1));
 			}
-                        else if (arg.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
-                        {
-                                int eq = arg.IndexOf('=');
-                                if (UInt128.TryParse(arg.AsSpan(eq + 1), NumberStyles.Integer, provider: null, out var limit))
-                                {
-                                        divisorCyclesSearchLimit128 = limit;
-                                        divisorCyclesSearchLimit = limit > (UInt128)ulong.MaxValue ? ulong.MaxValue : (ulong)limit;
-                                        divisorCyclesLimitExplicit = true;
-                                }
-                        }
-                        else if (arg.StartsWith("--residue-max-k=", StringComparison.OrdinalIgnoreCase))
-                        {
-                                int eq = arg.IndexOf('=');
-                                if (UInt128.TryParse(arg.AsSpan(eq + 1), NumberStyles.Integer, provider: null, out var kmax))
-                                {
-                                        residueKMax = kmax;
-                                        residueKMaxExplicit = true;
-                                }
-                        }
+			else if (arg.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
+			{
+				int eq = arg.IndexOf('=');
+				if (UInt128.TryParse(arg.AsSpan(eq + 1), NumberStyles.Integer, provider: null, out var limit))
+				{
+					divisorCyclesSearchLimit128 = limit;
+					divisorCyclesSearchLimit = limit > (UInt128)ulong.MaxValue ? ulong.MaxValue : (ulong)limit;
+					divisorCyclesLimitExplicit = true;
+				}
+			}
+			else if (arg.StartsWith("--residue-max-k=", StringComparison.OrdinalIgnoreCase))
+			{
+				int eq = arg.IndexOf('=');
+				if (UInt128.TryParse(arg.AsSpan(eq + 1), NumberStyles.Integer, provider: null, out var kmax))
+				{
+					residueKMax = kmax;
+					residueKMaxExplicit = true;
+				}
+			}
 			// Replaces --lucas=cpu|gpu; controls device for Lucas and for
 			// incremental/pow2mod scanning
 			else if (arg.StartsWith("--mersenne-device=", StringComparison.OrdinalIgnoreCase))
@@ -372,13 +372,13 @@ internal static class Program
 			}
 		}
 
-                residueKMax = ResolveResidueMaxK(useResidue, residueKMaxExplicit, divisorCyclesLimitExplicit, residueKMax, divisorCyclesSearchLimit128);
+		residueKMax = ResolveResidueMaxK(useResidue, residueKMaxExplicit, divisorCyclesLimitExplicit, residueKMax, divisorCyclesSearchLimit128);
 
-                if (showHelp)
-                {
-                        PrintHelp();
-                        return;
-                }
+		if (showHelp)
+		{
+			PrintHelp();
+			return;
+		}
 
 		// Apply GPU prime sieve runtime configuration
 		GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
@@ -460,8 +460,8 @@ internal static class Program
 																	useGpuScan: mersenneOnGpu,
 																	useGpuOrder: orderOnGpu,
 																	useResidue: useResidue,
-                                                                                                                           maxK: residueKMax,
-                                                                                                                           residueDivisorSets: divisorCyclesSearchLimit128);
+																														   maxK: residueKMax,
+																														   residueDivisorSets: divisorCyclesSearchLimit128);
 				if (!useLucas)
 				{
 					tester.WarmUpOrders(currentP, _orderWarmupLimitOverride ?? 5_000_000UL);
@@ -773,7 +773,7 @@ internal static class Program
 		Console.WriteLine("  --divisor-cycles-device=cpu|gpu  device for cycles generation (default gpu)");
 		Console.WriteLine("  --divisor-cycles-batch-size=<value> batch size for cycles generation (default 512)");
 		Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
-            Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor or residue (UInt128 supported; residue path honors full range)");
+		Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor or residue (UInt128 supported; residue path honors full range)");
 
 		Console.WriteLine("  --use-order            test primality via q order");
 		Console.WriteLine("  --workaround-mod       avoid '%' operator on the GPU");
@@ -842,70 +842,54 @@ internal static class Program
 			}
 		}
 
-                bool lastWasComposite = _lastCompositeP;
-                bool primeFlag = false, printToConsole = false;
+		bool lastWasComposite = _lastCompositeP;
+		bool primeFlag = false, printToConsole = false;
 
-                StringBuilder? localBuilder = passedAllTests ? StringBuilderPool.Rent() : null;
-                if (localBuilder is not null)
-                {
-                        _ = localBuilder
-                                .Append(currentP).Append(',')
-                                .Append(searchedMersenne).Append(',')
-                                .Append(detailedCheck).Append(',')
-                                .Append(passedAllTests).Append('\n');
-                }
+		StringBuilder localBuilder = StringBuilderPool.Rent();
+		_ = localBuilder
+				.Append(currentP).Append(',')
+				.Append(searchedMersenne).Append(',')
+				.Append(detailedCheck).Append(',')
+				.Append(passedAllTests).Append('\n');
 
-                lock (Sync)
-                {
-                        if (_consoleCounter >= ConsoleInterval)
-                        {
-                                printToConsole = true;
-                                primeFlag = passedAllTests && !lastWasComposite && _primeFoundAfterInit;
-                                _consoleCounter = 0;
-                        }
-                        else
-                        {
-                                _consoleCounter++;
-                        }
+		lock (Sync)
+		{
+			if (_consoleCounter >= ConsoleInterval)
+			{
+				printToConsole = true;
+				primeFlag = passedAllTests && !lastWasComposite && _primeFoundAfterInit;
+				_consoleCounter = 0;
+			}
+			else
+			{
+				_consoleCounter++;
+			}
 
-                        if (localBuilder is not null)
-                        {
-                                _ = _outputBuilder!.Append(localBuilder);
+			_ = _outputBuilder!.Append(localBuilder);
 
-                                _writeIndex++;
-                                if (_writeIndex >= _writeBatchSize)
-                                {
-                                        FlushBuffer();
-                                }
-                        }
-                }
+			_writeIndex++;
+			if (_writeIndex >= _writeBatchSize)
+			{
+				FlushBuffer();
+			}
+		}
 
-                if (printToConsole)
-                {
-                        if (localBuilder is not null)
-                        {
-                                if (primeFlag)
-                                {
-                                        _ = localBuilder
-                                                .Remove(localBuilder.Length - 1, 1)
-                                                .Append(PrimeFoundSuffix)
-                                                .Append('\n');
-                                }
+		if (printToConsole)
+		{
+			if (primeFlag)
+			{
+				_ = localBuilder
+						.Remove(localBuilder.Length - 1, 1)
+						.Append(PrimeFoundSuffix)
+						.Append('\n');
+			}
 
-                                Console.WriteLine(localBuilder.Remove(localBuilder.Length - 1, 1).ToString());
-                        }
-                        else
-                        {
-                                Console.WriteLine($"{currentP},{searchedMersenne},{detailedCheck},{passedAllTests}");
-                        }
-                }
+			Console.WriteLine(localBuilder.Remove(localBuilder.Length - 1, 1).ToString());
+		}
 
-                if (localBuilder is not null)
-                {
-                        localBuilder.Clear();
-                        StringBuilderPool.Return(localBuilder);
-                }
-        }
+		localBuilder.Clear();
+		StringBuilderPool.Return(localBuilder);
+	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void FlushBuffer()
@@ -956,11 +940,11 @@ internal static class Program
 		}
 
 		ulong next = (value << 1) | 1UL;
-                remainder = (remainder << 1) + 1UL;
-                while (remainder >= 6UL)
-                {
-                        remainder -= 6UL;
-                }
+		remainder = (remainder << 1) + 1UL;
+		while (remainder >= 6UL)
+		{
+			remainder -= 6UL;
+		}
 
 		value = remainder switch
 		{
@@ -978,11 +962,11 @@ internal static class Program
 			return original;
 		}
 
-                remainder += value;
-                while (remainder >= 6UL)
-                {
-                        remainder -= 6UL;
-                }
+		remainder += value;
+		while (remainder >= 6UL)
+		{
+			remainder -= 6UL;
+		}
 
 		return next + value;
 	}
@@ -999,11 +983,11 @@ internal static class Program
 			return next;
 		}
 
-                remainder += diff;
-                while (remainder >= 6UL)
-                {
-                        remainder -= 6UL;
-                }
+		remainder += diff;
+		while (remainder >= 6UL)
+		{
+			remainder -= 6UL;
+		}
 
 		return next + diff;
 	}
@@ -1031,11 +1015,11 @@ internal static class Program
 				}
 
 				candidate += diff;
-                                addRemainder += diff;
-                                while (addRemainder >= 6UL)
-                                {
-                                        addRemainder -= 6UL;
-                                }
+				addRemainder += diff;
+				while (addRemainder >= 6UL)
+				{
+					addRemainder -= 6UL;
+				}
 			}
 
 			if (advancePrime)
@@ -1149,37 +1133,37 @@ internal static class Program
 			return _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out detailedCheck);
 		}
 
-                bool mersennePrime = MersenneTesters.Value!.IsMersennePrime(p, out bool residueExhausted);
-                detailedCheck = residueExhausted;
-                return mersennePrime;
-        }
+		bool mersennePrime = MersenneTesters.Value!.IsMersennePrime(p, out bool residueExhausted);
+		detailedCheck = residueExhausted;
+		return mersennePrime;
+	}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static UInt128 ResolveResidueMaxK(
-                bool useResidue,
-                bool residueMaxExplicit,
-                bool divisorLimitExplicit,
-                UInt128 residueMaxK,
-                UInt128 divisorLimit)
-        {
-                if (!useResidue)
-                {
-                        return residueMaxK;
-                }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	internal static UInt128 ResolveResidueMaxK(
+			bool useResidue,
+			bool residueMaxExplicit,
+			bool divisorLimitExplicit,
+			UInt128 residueMaxK,
+			UInt128 divisorLimit)
+	{
+		if (!useResidue)
+		{
+			return residueMaxK;
+		}
 
-                if (residueMaxExplicit || !divisorLimitExplicit)
-                {
-                        return residueMaxK;
-                }
+		if (residueMaxExplicit || !divisorLimitExplicit)
+		{
+			return residueMaxK;
+		}
 
-                return divisorLimit;
-        }
+		return divisorLimit;
+	}
 
-        // Use ModResidueTracker with a small set of primes to pre-filter composite p.
-        private static bool IsCompositeByResidues(ulong p)
-        {
-                var tracker = PResidue.Value!;
-                tracker.BeginMerge(p);
+	// Use ModResidueTracker with a small set of primes to pre-filter composite p.
+	private static bool IsCompositeByResidues(ulong p)
+	{
+		var tracker = PResidue.Value!;
+		tracker.BeginMerge(p);
 		// Use the small prime list from PerfectNumbers.Core to the extent of sqrt(p)
 		var primes = PrimesGenerator.SmallPrimes;
 		var primesPow2 = PrimesGenerator.SmallPrimesPow2;
