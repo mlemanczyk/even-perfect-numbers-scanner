@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using ILGPU;
 using ILGPU.Runtime;
 using static PerfectNumbers.Core.Gpu.GpuContextPool;
@@ -26,16 +27,16 @@ public readonly struct ResidueAutomatonArgs
 public sealed class KernelContainer
 {
 	// Serializes first-time initialization of kernels/buffers per accelerator.
-	public Action<Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>? Order;
-    public Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
+        public Action<AcceleratorStream, Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>? Order;
+    public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
         ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>>? Incremental;
-    public Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
+    public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
         ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>,
         ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>,
         ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2Mod;
-	public Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
-		ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>? IncrementalOrder;
-    public Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
+        public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
+                ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>? IncrementalOrder;
+    public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
         ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>? Pow2ModOrder;
 
     // Optional device buffer with small divisor cycles (<= 4M). Index = divisor, value = cycle length.
@@ -77,72 +78,119 @@ public readonly struct ResiduePrimeViews(
 
 public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, KernelContainer kernels)
 {
-	private bool disposedValue;
-	private IDisposable? _limiter = limiter;
-	private GpuContextLease? _gpu = gpu;
-	private KernelContainer _kernels = kernels;
+        private bool disposedValue;
+        private IDisposable? _limiter = limiter;
+        private GpuContextLease? _gpu = gpu;
+        private KernelContainer _kernels = kernels;
+        private AcceleratorStream? _stream;
+        private object? _executionLock = gpu.ExecutionLock;
 
-	public readonly Accelerator Accelerator => _gpu?.Accelerator ?? throw new NullReferenceException("GPU context is already released");
+        public readonly Accelerator Accelerator => _gpu?.Accelerator ?? throw new NullReferenceException("GPU context is already released");
 
-	public readonly Action<Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>> OrderKernel
-	{
-		get
-		{
-			var accel = Accelerator; // avoid capturing 'this' in lambda
-			lock (_gpu!.Value.KernelInitLock)
-			{
-				return KernelContainer.InitOnce(ref _kernels.Order, () => accel.LoadAutoGroupedStreamKernel<Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>(OrderKernelScan));
-			}
-		}
-	}
+        public AcceleratorStream Stream
+        {
+                get
+                {
+                        if (_stream is { } stream)
+                        {
+                                return stream;
+                        }
 
-    public readonly Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> Pow2ModKernel
+                        stream = Accelerator.CreateStream();
+                        _stream = stream;
+                        return stream;
+                }
+        }
+
+        public readonly ExecutionScope EnterExecutionScope()
+        {
+                return new ExecutionScope(_executionLock);
+        }
+
+        public readonly Action<AcceleratorStream, Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>> OrderKernel
+        {
+                get
+                {
+                        var accel = Accelerator; // avoid capturing 'this' in lambda
+                        lock (_gpu!.Value.KernelInitLock)
+                        {
+                                return KernelContainer.InitOnce(ref _kernels.Order, () =>
+                                {
+                                        var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>(OrderKernelScan);
+                                        var kernel = KernelUtil.GetKernel(loaded);
+                                        return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>>();
+                                });
+                        }
+                }
+        }
+
+    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> Pow2ModKernel
         {
                 get
                 {
                         var accel = Accelerator;
                         lock (_gpu!.Value.KernelInitLock)
                         {
-                                return KernelContainer.InitOnce(ref _kernels.Pow2Mod, () => accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernelScan));
+                                return KernelContainer.InitOnce(ref _kernels.Pow2Mod, () =>
+                                {
+                                        var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernelScan);
+                                        var kernel = KernelUtil.GetKernel(loaded);
+                                        return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+                                });
                         }
                 }
         }
 
-    public readonly Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>> IncrementalKernel
-	{
-		get
-		{
-			var accel = Accelerator;
-			lock (_gpu!.Value.KernelInitLock)
-			{
-				return KernelContainer.InitOnce(ref _kernels.Incremental, () => accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>>(IncrementalKernelScan));
-			}
-		}
-	}
+    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>> IncrementalKernel
+        {
+                get
+                {
+                        var accel = Accelerator;
+                        lock (_gpu!.Value.KernelInitLock)
+                        {
+                                return KernelContainer.InitOnce(ref _kernels.Incremental, () =>
+                                {
+                                        var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>>(IncrementalKernelScan);
+                                        var kernel = KernelUtil.GetKernel(loaded);
+                                        return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>>>();
+                                });
+                        }
+                }
+        }
 
-	public readonly Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>> IncrementalOrderKernel
-	{
-		get
-		{
-			var accel = Accelerator;
-			lock (_gpu!.Value.KernelInitLock)
-			{
-				return KernelContainer.InitOnce(ref _kernels.IncrementalOrder, () => accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>(IncrementalOrderKernelScan));
-			}
-		}
-	}
+        public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>> IncrementalOrderKernel
+        {
+                get
+                {
+                        var accel = Accelerator;
+                        lock (_gpu!.Value.KernelInitLock)
+                        {
+                                return KernelContainer.InitOnce(ref _kernels.IncrementalOrder, () =>
+                                {
+                                        var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>(IncrementalOrderKernelScan);
+                                        var kernel = KernelUtil.GetKernel(loaded);
+                                        return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>>();
+                                });
+                        }
+                }
+        }
 
-	public readonly Action<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>> Pow2ModOrderKernel
-	{
-		get
-		{
-			var accel = Accelerator;
-			lock (_gpu!.Value.KernelInitLock)
-			{
-				return KernelContainer.InitOnce(ref _kernels.Pow2ModOrder, () => accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>(Pow2ModOrderKernelScan));
-			}
-		}
-	}
+        public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>> Pow2ModOrderKernel
+        {
+                get
+                {
+                        var accel = Accelerator;
+                        lock (_gpu!.Value.KernelInitLock)
+                        {
+                                return KernelContainer.InitOnce(ref _kernels.Pow2ModOrder, () =>
+                                {
+                                        var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>(Pow2ModOrderKernelScan);
+                                        var kernel = KernelUtil.GetKernel(loaded);
+                                        return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>>();
+                                });
+                        }
+                }
+        }
 
 	// TODO: Plumb the small-cycles device buffer into all kernels that can benefit
 	// (some already accept it). Consider a compact type (byte/ushort) for memory footprint.
@@ -273,18 +321,23 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         orders[index] = exponent;
     }
 
-	private void Dispose(bool disposing)
-	{
-		if (!disposedValue)
-		{
-			if (disposing)
-			{
-				_gpu?.Dispose();
-				_gpu = null;
+        private void Dispose(bool disposing)
+        {
+                if (!disposedValue)
+                {
+                        if (disposing)
+                        {
+                                _stream?.Dispose();
+                                _stream = null;
 
-				_limiter?.Dispose();
-				_limiter = null;
-			}
+                                _gpu?.Dispose();
+                                _gpu = null;
+
+                                _executionLock = null;
+
+                                _limiter?.Dispose();
+                                _limiter = null;
+                        }
 
 			// free unmanaged resources (unmanaged objects) and override finalizer
 			// set large fields to null
@@ -563,13 +616,35 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         Atomic.Or(ref found[0], 1);
     }
 
-	public void Dispose()
-	{
-		// Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-		Dispose(disposing: true);
-		// Enabled this when the struct is converted to a class
-		// GC.SuppressFinalize(this);
-	}
+        public void Dispose()
+        {
+                // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+                Dispose(disposing: true);
+                // Enabled this when the struct is converted to a class
+                // GC.SuppressFinalize(this);
+        }
+
+        public readonly struct ExecutionScope : IDisposable
+        {
+                private readonly object? _lock;
+
+                public ExecutionScope(object? sync)
+                {
+                        _lock = sync;
+                        if (_lock is not null)
+                        {
+                                Monitor.Enter(_lock);
+                        }
+                }
+
+                public void Dispose()
+                {
+                        if (_lock is not null)
+                        {
+                                Monitor.Exit(_lock);
+                        }
+                }
+        }
 }
 
 public class GpuKernelPool
@@ -667,10 +742,12 @@ public class GpuKernelPool
     public static void Run(Action<Accelerator, AcceleratorStream> action)
     {
         var lease = GetKernel(useGpuOrder: true);
+        var execution = lease.EnterExecutionScope();
         var accelerator = lease.Accelerator;
         var stream = accelerator.CreateStream();
         action(accelerator, stream);
         stream.Dispose();
+        execution.Dispose();
         lease.Dispose();
 
     }

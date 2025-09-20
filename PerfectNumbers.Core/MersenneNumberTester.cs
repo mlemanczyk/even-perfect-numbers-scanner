@@ -160,55 +160,63 @@ public sealed class MersenneNumberTester(
 
 		UInt128[] qs = qsBuffer;
 
-		var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder);
-		var accelerator = gpuLease.Accelerator;
-		var orderKernel = gpuLease.OrderKernel!;
+                var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder);
+                var execution = gpuLease.EnterExecutionScope();
+                var accelerator = gpuLease.Accelerator;
+                var stream = gpuLease.Stream;
+                var orderKernel = gpuLease.OrderKernel!;
 
-		// Guard long-running kernels by chunking the warm-up across batches.
-		// Reuse the same ScanBatchSize knob used for scanning.
-		int batchSize = GpuConstants.ScanBatchSize;
-		ulong divMul = (ulong)((((UInt128)1 << 64) - 1UL) / exponent) + 1UL;
-		int offset = 0;
-		while (offset < idx)
-		{
-			int count = Math.Min(batchSize, idx - offset);
-			var qBuffer = accelerator.Allocate1D<PerfectNumbers.Core.Gpu.GpuUInt128>(count);
-			var orderBuffer = accelerator.Allocate1D<ulong>(count);
-			// Convert to device-friendly GpuUInt128 on the fly
-			var tmp = System.Buffers.ArrayPool<PerfectNumbers.Core.Gpu.GpuUInt128>.Shared.Rent(count);
-			for (int i = 0; i < count; i++)
-			{
-				tmp[i] = (PerfectNumbers.Core.Gpu.GpuUInt128)qs[offset + i];
-			}
-			// Copy only the populated elements to the device buffer to avoid overrun on pooled arrays.
-			qBuffer.View.CopyFromCPU(ref tmp[0], count);
-			System.Buffers.ArrayPool<PerfectNumbers.Core.Gpu.GpuUInt128>.Shared.Return(tmp);
-			orderKernel(count, exponent, divMul, qBuffer.View, orderBuffer.View);
-			accelerator.Synchronize();
+                try
+                {
+                        // Guard long-running kernels by chunking the warm-up across batches.
+                        // Reuse the same ScanBatchSize knob used for scanning.
+                        int batchSize = GpuConstants.ScanBatchSize;
+                        ulong divMul = (ulong)((((UInt128)1 << 64) - 1UL) / exponent) + 1UL;
+                        int offset = 0;
+                        while (offset < idx)
+                        {
+                                int count = Math.Min(batchSize, idx - offset);
+                                var qBuffer = accelerator.Allocate1D<PerfectNumbers.Core.Gpu.GpuUInt128>(count);
+                                var orderBuffer = accelerator.Allocate1D<ulong>(count);
+                                // Convert to device-friendly GpuUInt128 on the fly
+                                var tmp = System.Buffers.ArrayPool<PerfectNumbers.Core.Gpu.GpuUInt128>.Shared.Rent(count);
+                                for (int i = 0; i < count; i++)
+                                {
+                                        tmp[i] = (PerfectNumbers.Core.Gpu.GpuUInt128)qs[offset + i];
+                                }
+                                // Copy only the populated elements to the device buffer to avoid overrun on pooled arrays.
+                                qBuffer.View.CopyFromCPU(ref tmp[0], count);
+                                System.Buffers.ArrayPool<PerfectNumbers.Core.Gpu.GpuUInt128>.Shared.Return(tmp);
+                                orderKernel(stream, count, exponent, divMul, qBuffer.View, orderBuffer.View);
+                                stream.Synchronize();
 
-			ulong[] orders = orderBuffer.GetAsArray1D();
-			for (int i = 0; i < count; i++)
-			{
-				ulong order = orders[i];
-				if (order == 0UL)
-				{
-					order = qs[offset + i].CalculateOrder();
-				}
+                                ulong[] orders = orderBuffer.GetAsArray1D();
+                                for (int i = 0; i < count; i++)
+                                {
+                                        ulong order = orders[i];
+                                        if (order == 0UL)
+                                        {
+                                                order = qs[offset + i].CalculateOrder();
+                                        }
 
-				if (useOrderCache)
-				{
-					OrderCache[qs[offset + i]] = order;
-				}
-			}
+                                        if (useOrderCache)
+                                        {
+                                                OrderCache[qs[offset + i]] = order;
+                                        }
+                                }
 
-			offset += count;
-			orderBuffer.Dispose();
-			qBuffer.Dispose();
-		}
-
-		gpuLease.Dispose();
-		ArrayPool<UInt128>.Shared.Return(qs);
-	}
+                                offset += count;
+                                orderBuffer.Dispose();
+                                qBuffer.Dispose();
+                        }
+                }
+                finally
+                {
+                        execution.Dispose();
+                        gpuLease.Dispose();
+                        ArrayPool<UInt128>.Shared.Return(qs);
+                }
+        }
 
 	public bool IsMersennePrime(ulong exponent) => IsMersennePrime(exponent, out _);
 

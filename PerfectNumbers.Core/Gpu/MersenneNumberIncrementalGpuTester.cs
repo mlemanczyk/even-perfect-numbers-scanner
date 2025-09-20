@@ -13,7 +13,9 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
         public void Scan(ulong exponent, UInt128 twoP, bool lastIsSeven, UInt128 maxK, ref bool isPrime)
         {
                 var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder);
+                var execution = gpuLease.EnterExecutionScope();
                 var accelerator = gpuLease.Accelerator;
+                var stream = gpuLease.Stream;
                 int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy
                 UInt128 kStart = 1UL;
                 ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
@@ -54,17 +56,18 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
                                 {
                                         q0.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
                                         var ra = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
-                                        pow2Kernel(currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, divMul,
-                                                ra, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
+                                        pow2Kernel(stream, currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, divMul,
+                                                ra, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven,
+                                                primeViews.LastOnePow2, primeViews.LastSevenPow2);
                                 }
                                 else
                                 {
                                         q0.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
-                                        incKernel(currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, divMul,
+                                        incKernel(stream, currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, divMul,
                                                 q0m10, q0m8, q0m3, q0m5, orderBuffer.View, smallCyclesView);
                                 }
 
-                                accelerator.Synchronize();
+                                stream.Synchronize();
                                 orderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(orders), currentSize);
                                 if (_kernelType == GpuKernelType.Pow2Mod)
                                 {
@@ -95,10 +98,10 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
                 finally
                 {
                         ArrayPool<ulong>.Shared.Return(orderArray);
+                        orderBuffer.Dispose();
+                        execution.Dispose();
+                        gpuLease.Dispose();
                 }
-
-                orderBuffer.Dispose();
-                gpuLease.Dispose();
 
         }
 }
