@@ -554,12 +554,6 @@ internal static class Program
 		}
 
 		bool useFilter = !string.IsNullOrEmpty(filterFile);
-		if (useFilter && !useBitTransform)
-		{
-			// When replaying a filtered list of p values, iterate strictly along the prime sequence.
-			// This keeps candidate generation aligned with the recorded primes regardless of residue stepping.
-			_transformP = &TransformPAddPrimes;
-		}
 		HashSet<ulong> filter = [];
 		ulong maxP = 0UL;
 		if (useFilter)
