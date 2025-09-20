@@ -255,12 +255,15 @@ public sealed class PrimeTester(bool useInternal = false)
             return;
         }
 
-        // Early reject special gcd heuristic with floor(log2 n)
-        ulong m = 63UL - (ulong)ILGPU.Algorithms.XMath.LeadingZeroCount(n);
-        if (BinaryGcdGpu(n, m) != 1UL)
+        if ((n % 10UL) == 1UL)
         {
-            results[index] = 0;
-            return;
+            // Early reject special GCD heuristic with floor(log2 n)
+            ulong m = 63UL - (ulong)ILGPU.Algorithms.XMath.LeadingZeroCount(n);
+            if (BinaryGcdGpu(n, m) != 1UL)
+            {
+                results[index] = 0;
+                return;
+            }
         }
 
         long len = smallPrimes.Length;
