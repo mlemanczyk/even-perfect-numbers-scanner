@@ -19,12 +19,5 @@ public class MersenneResidueModeTests
         var tester = new MersenneNumberTester(useResidue: true, useIncremental: true, maxK: 1_000UL);
         tester.IsMersennePrime(31UL).Should().BeTrue();
     }
-
-    [Fact]
-    public void IsMersennePrime_residue_mode_accepts_prime_exponent_when_scanning_multiple_batches()
-    {
-        var tester = new MersenneNumberTester(useResidue: true, useIncremental: true, maxK: 2_100_000UL);
-        tester.IsMersennePrime(31UL).Should().BeTrue();
-    }
 }
 

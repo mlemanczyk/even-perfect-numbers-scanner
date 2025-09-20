@@ -312,19 +312,14 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
             }
             else
             {
-                ulong r3 = ra.Q0M3 + (ra.Step3 * (idx % 3UL));
-                if (r3 >= 6UL) r3 -= 6UL;
-                if (r3 >= 3UL) r3 -= 3UL;
+                ulong r3 = ra.Q0M3 + (ra.Step3 * (idx % 3UL)); r3 -= (r3 >= 3UL) ? 3UL : 0UL;
                 if (r3 == 0UL)
                 {
                     shouldCheck = false;
                 }
                 else
                 {
-                    ulong r5 = ra.Q0M5 + (ra.Step5 * (idx % 5UL));
-                    if (r5 >= 15UL) r5 -= 15UL;
-                    if (r5 >= 10UL) r5 -= 10UL;
-                    if (r5 >= 5UL) r5 -= 5UL;
+                    ulong r5 = ra.Q0M5 + (ra.Step5 * (idx % 5UL)); if (r5 >= 5UL) r5 -= 5UL;
                     if (r5 == 0UL)
                     {
                         shouldCheck = false;
@@ -439,24 +434,19 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
 			}
 			else
 			{
-                                ulong r3 = ra.Q0M3 + (ra.Step3 * (idx % 3UL));
-                                if (r3 >= 6UL) r3 -= 6UL;
-                                if (r3 >= 3UL) r3 -= 3UL;
-                                if (r3 == 0UL)
-                                {
-                                        shouldCheck = false;
-                                }
-                                else
-                                {
-                                        ulong r5 = ra.Q0M5 + (ra.Step5 * (idx % 5UL));
-                                        if (r5 >= 15UL) r5 -= 15UL;
-                                        if (r5 >= 10UL) r5 -= 10UL;
-                                        if (r5 >= 5UL) r5 -= 5UL;
-                                        if (r5 == 0UL)
-                                        {
-                                                shouldCheck = false;
-                                        }
-                                }
+				ulong r3 = ra.Q0M3 + (ra.Step3 * (idx % 3UL)); r3 -= (r3 >= 3UL) ? 3UL : 0UL;
+				if (r3 == 0UL)
+				{
+					shouldCheck = false;
+				}
+				else
+				{
+					ulong r5 = ra.Q0M5 + (ra.Step5 * (idx % 5UL)); if (r5 >= 5UL) r5 -= 5UL;
+					if (r5 == 0UL)
+					{
+						shouldCheck = false;
+					}
+				}
 			}
 		}
 		if (!shouldCheck)
@@ -519,24 +509,19 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
 			}
 			else
 			{
-                                ulong r3 = ra.Q0M3 + (ra.Step3 * (idx % 3UL));
-                                if (r3 >= 6UL) r3 -= 6UL;
-                                if (r3 >= 3UL) r3 -= 3UL;
-                                if (r3 == 0UL)
-                                {
-                                        shouldCheck = false;
-                                }
-                                else
-                                {
-                                        ulong r5 = ra.Q0M5 + (ra.Step5 * (idx % 5UL));
-                                        if (r5 >= 15UL) r5 -= 15UL;
-                                        if (r5 >= 10UL) r5 -= 10UL;
-                                        if (r5 >= 5UL) r5 -= 5UL;
-                                        if (r5 == 0UL)
-                                        {
-                                                shouldCheck = false;
-                                        }
-                                }
+				ulong r3 = ra.Q0M3 + (ra.Step3 * (idx % 3UL)); r3 -= (r3 >= 3UL) ? 3UL : 0UL;
+				if (r3 == 0UL)
+				{
+					shouldCheck = false;
+				}
+				else
+				{
+					ulong r5 = ra.Q0M5 + (ra.Step5 * (idx % 5UL)); if (r5 >= 5UL) r5 -= 5UL;
+					if (r5 == 0UL)
+					{
+						shouldCheck = false;
+					}
+				}
 			}
 		}
 		if (!shouldCheck)
