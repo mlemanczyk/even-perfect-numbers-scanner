@@ -29,6 +29,20 @@ public class MersenneNumberResidueGpuTesterTests
     [InlineData(false)]
     [InlineData(true)]
     [Trait("Category", "Fast")]
+    public void Scan_recognizes_all_known_small_mersenne_primes(bool useGpuOrder)
+    {
+        var tester = new MersenneNumberResidueGpuTester(useGpuOrder);
+
+        foreach (ulong exponent in MersennePrimeTestData.Exponents)
+        {
+            RunCase(tester, exponent, 1UL, expectedPrime: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "Fast")]
     public void Scan_handles_multiple_sets_without_false_positives(bool useGpuOrder)
     {
         var tester = new MersenneNumberResidueGpuTester(useGpuOrder);
