@@ -246,10 +246,14 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
         {
             uint cyc = smallCycles[(int)q.Low];
-            if (cyc != 0U && (exponent % cyc) != 0UL)
+            if (cyc != 0U)
             {
-                orders[index] = 0UL;
-                return;
+                ulong cycle = cyc;
+                if (cycle <= exponent && (exponent % cycle) != 0UL)
+                {
+                    orders[index] = 0UL;
+                    return;
+                }
             }
         }
 
@@ -396,10 +400,14 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
         {
             uint cyc = smallCycles[(int)q.Low];
-            if (cyc != 0U && (exponent % cyc) != 0UL)
+            if (cyc != 0U)
             {
-                orders[index] = 0UL;
-                return;
+                ulong cycle = cyc;
+                if (cycle <= exponent && (exponent % cycle) != 0UL)
+                {
+                    orders[index] = 0UL;
+                    return;
+                }
             }
         }
         if (GpuUInt128.Pow2Minus1Mod(exponent, q) != GpuUInt128.Zero)
@@ -524,9 +532,13 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
         {
             uint cyc = smallCycles[(int)q.Low];
-            if (cyc != 0U && (exponent % (ulong)cyc) != 0UL)
+            if (cyc != 0U)
             {
-                return;
+                ulong cycle = cyc;
+                if (cycle <= exponent && (exponent % cycle) != 0UL)
+                {
+                    return;
+                }
             }
         }
         GpuUInt128 phi = q - GpuUInt128.One;
@@ -603,9 +615,13 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
         {
             uint cyc = smallCycles[(int)q.Low];
-            if (cyc != 0U && (exponent % (ulong)cyc) != 0UL)
+            if (cyc != 0U)
             {
-                return;
+                ulong cycle = cyc;
+                if (cycle <= exponent && (exponent % cycle) != 0UL)
+                {
+                    return;
+                }
             }
         }
         if (GpuUInt128.Pow2Mod(exponent, q) != GpuUInt128.One)

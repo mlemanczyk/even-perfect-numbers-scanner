@@ -1,4 +1,8 @@
+using System.IO;
+using System.Linq;
+using System.Reflection;
 using FluentAssertions;
+using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 using Xunit;
 using UInt128 = System.UInt128;
@@ -23,6 +27,66 @@ public class MersenneNumberResidueGpuTesterTests
         RunCase(tester, 89UL, 1_001UL, expectedPrime: true);
         RunCase(tester, 107UL, 1_001UL, expectedPrime: true);
         RunCase(tester, 127UL, 1_001UL, expectedPrime: true);
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void Scan_residue_gpu_handles_inaccurate_small_cycle_entries()
+    {
+        const ulong exponent = 23UL;
+        const ulong divisor = 47UL; // 47 | M_23
+
+        string tempPath = Path.GetTempFileName();
+        try
+        {
+            using (var writer = new BinaryWriter(File.Open(tempPath, FileMode.Create, FileAccess.Write, FileShare.Read)))
+            {
+                writer.Write(divisor);
+                writer.Write((ulong)uint.MaxValue);
+            }
+
+            var cycles = MersenneDivisorCycles.Shared;
+            var tableField = typeof(MersenneDivisorCycles).GetField("_table", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var smallCyclesField = typeof(MersenneDivisorCycles).GetField("_smallCycles", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+            var originalTable = ((List<(ulong Divisor, ulong Cycle)>)tableField.GetValue(cycles)!).Select(x => x).ToList();
+            var originalSmall = (uint[]?)smallCyclesField.GetValue(cycles);
+            uint[]? backupSmall = originalSmall is null ? null : (uint[])originalSmall.Clone();
+
+            cycles.LoadFrom(tempPath);
+            GpuContextPool.DisposeAll();
+
+            try
+            {
+                var tester = new MersenneNumberResidueGpuTester(useGpuOrder: false);
+
+                bool isPrime = true;
+                bool exhausted = false;
+
+                tester.Scan(
+                    exponent,
+                    (UInt128)exponent << 1,
+                    lastIsSeven: true,
+                    perSetLimit: (UInt128)10UL,
+                    setCount: UInt128.One,
+                    overallLimit: (UInt128)10UL,
+                    ref isPrime,
+                    ref exhausted);
+
+                isPrime.Should().BeFalse();
+                exhausted.Should().BeTrue();
+            }
+            finally
+            {
+                tableField.SetValue(cycles, originalTable);
+                smallCyclesField.SetValue(cycles, backupSmall);
+                GpuContextPool.DisposeAll();
+            }
+        }
+        finally
+        {
+            File.Delete(tempPath);
+        }
     }
 
     [Theory]
