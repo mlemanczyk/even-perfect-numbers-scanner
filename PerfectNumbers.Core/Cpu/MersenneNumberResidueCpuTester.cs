@@ -10,12 +10,12 @@ public class MersenneNumberResidueCpuTester
             UInt128 twoP,
             bool lastIsSeven,
             UInt128 perSetLimit,
-            ulong setCount,
+            UInt128 setCount,
             UInt128 overallLimit,
             ref bool isPrime,
             ref bool divisorsExhausted)
     {
-            if (setCount == 0UL || perSetLimit == UInt128.Zero || overallLimit == UInt128.Zero)
+            if (setCount == UInt128.Zero || perSetLimit == UInt128.Zero || overallLimit == UInt128.Zero)
             {
                     return;
             }
@@ -52,9 +52,9 @@ public class MersenneNumberResidueCpuTester
 
                 ModResidueTracker tracker = _mersenneResidueTracker!;
                 UInt128 limitInclusive = overallLimit + UInt128.One;
-                for (ulong setIndex = 0; setIndex < setCount && Volatile.Read(ref isPrime); setIndex++)
+                for (UInt128 setIndex = UInt128.Zero; setIndex < setCount && Volatile.Read(ref isPrime); setIndex++)
                 {
-                        UInt128 setOffset = perSetLimit * (UInt128)setIndex;
+                        UInt128 setOffset = perSetLimit * setIndex;
                         UInt128 k = setOffset + UInt128.One;
                         if (k >= limitInclusive)
                         {
