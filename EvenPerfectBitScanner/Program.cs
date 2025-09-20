@@ -554,6 +554,12 @@ internal static class Program
 		}
 
 		bool useFilter = !string.IsNullOrEmpty(filterFile);
+		if (useFilter && !useBitTransform)
+		{
+			// When replaying a filtered list of p values, iterate strictly along the prime sequence.
+			// This keeps candidate generation aligned with the recorded primes regardless of residue stepping.
+			_transformP = &TransformPAddPrimes;
+		}
 		HashSet<ulong> filter = [];
 		ulong maxP = 0UL;
 		if (useFilter)
@@ -950,9 +956,11 @@ internal static class Program
 		}
 
 		ulong next = (value << 1) | 1UL;
-		remainder = (remainder << 1) + 1UL;
-		remainder -= (remainder >= 6UL) ? 6UL : 0UL;
-		remainder -= (remainder >= 6UL) ? 6UL : 0UL;
+                remainder = (remainder << 1) + 1UL;
+                while (remainder >= 6UL)
+                {
+                        remainder -= 6UL;
+                }
 
 		value = remainder switch
 		{
@@ -970,8 +978,11 @@ internal static class Program
 			return original;
 		}
 
-		remainder += value;
-		remainder -= (remainder >= 6UL) ? 6UL : 0UL;
+                remainder += value;
+                while (remainder >= 6UL)
+                {
+                        remainder -= 6UL;
+                }
 
 		return next + value;
 	}
@@ -988,8 +999,11 @@ internal static class Program
 			return next;
 		}
 
-		remainder += diff;
-		remainder -= (remainder >= 6UL) ? 6UL : 0UL;
+                remainder += diff;
+                while (remainder >= 6UL)
+                {
+                        remainder -= 6UL;
+                }
 
 		return next + diff;
 	}
@@ -1017,8 +1031,11 @@ internal static class Program
 				}
 
 				candidate += diff;
-				addRemainder += diff;
-				addRemainder -= (addRemainder >= 6UL) ? 6UL : 0UL;
+                                addRemainder += diff;
+                                while (addRemainder >= 6UL)
+                                {
+                                        addRemainder -= 6UL;
+                                }
 			}
 
 			if (advancePrime)
