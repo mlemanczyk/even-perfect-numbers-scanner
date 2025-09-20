@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Numerics;
 using ILGPU;
@@ -31,8 +32,8 @@ public sealed class MersenneNumberDivisorGpuTester
 			list[count++] = ((ulong)i, cycle);
 		}
 
-		_divisorCandidates = list[..count].ToArray();
-	}
+                _divisorCandidates = count == 0 ? Array.Empty<(ulong divisor, uint cycle)>() : list[..count].ToArray();
+        }
 
         public bool IsDivisible(ulong exponent, UInt128 divisor)
         {
@@ -40,14 +41,20 @@ public sealed class MersenneNumberDivisorGpuTester
                 var accelerator = gpu.Accelerator;
                 var kernel = GetKernel(accelerator);
                 var resultBuffer = _resultBuffers.GetOrAdd(accelerator, acc => acc.Allocate1D<byte>(1));
+                resultBuffer.MemSetToZero();
                 kernel(1, exponent, (GpuUInt128)divisor, resultBuffer.View);
                 accelerator.Synchronize();
-                bool divisible = resultBuffer.GetAsArray1D()[0] != 0;
+                Span<byte> result = stackalloc byte[1];
+                resultBuffer.View.CopyToCPU(ref result[0], 1);
+                bool divisible = result[0] != 0;
+                result[0] = 0;
+                resultBuffer.View.CopyFromCPU(ref result[0], 1);
+                accelerator.Synchronize();
                 gpu.Dispose();
                 return divisible;
         }
 
-	private static (ulong divisor, uint cycle)[]? _divisorCandidates;
+        private static (ulong divisor, uint cycle)[]? _divisorCandidates = Array.Empty<(ulong divisor, uint cycle)>();
 
         public bool IsPrime(ulong p, UInt128 d, ulong divisorCyclesSearchLimit, out bool divisorsExhausted)
         {
@@ -63,22 +70,23 @@ public sealed class MersenneNumberDivisorGpuTester
                         return true;
                 }
 
-                var candidates = _divisorCandidates!;
-                int k, len = candidates.Length;
-                uint cycle;
-
-                for (k = 0; k < len; k++)
+                if (_divisorCandidates is { Length: > 0 } candidates)
                 {
-                        (ulong dSmall, cycle) = candidates[k];
-                        if (p % cycle != 0UL)
+                        int len = candidates.Length;
+                        uint cycle;
+                        for (int k = 0; k < len; k++)
                         {
-                                continue;
-                        }
+                                (ulong dSmall, cycle) = candidates[k];
+                                if (p % cycle != 0UL)
+                                {
+                                        continue;
+                                }
 
-                        if (IsDivisible(p, dSmall))
-                        {
-                                divisorsExhausted = true;
-                                return false;
+                                if (IsDivisible(p, dSmall))
+                                {
+                                        divisorsExhausted = true;
+                                        return false;
+                                }
                         }
                 }
 
@@ -149,10 +157,12 @@ public sealed class MersenneNumberDivisorGpuTester
                         baseVal = new GpuUInt128(0UL, 1UL << x);
                 }
 
-                baseVal.ModPow(exponent / ux, mod);
+                GpuUInt128 pow = baseVal;
+                pow.ModPow(exponent / ux, mod);
                 var part2 = GpuUInt128.Pow2Mod(exponent % ux, mod);
-                baseVal.MulMod(part2, mod);
-                result[0] = baseVal.High == 0UL && baseVal.Low == 1UL ? (byte)1 : (byte)0;
+                GpuUInt128 product = pow;
+                product.MulMod(part2, mod);
+                result[0] = product.High == 0UL && product.Low == 1UL ? (byte)1 : (byte)0;
         }
 }
 
