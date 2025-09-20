@@ -40,8 +40,8 @@ internal static class Program
 	private static string? _resultsPrefix;
 	private static readonly Optimized PrimeIterator = new();
 
-	[ThreadStatic]
-	private static bool _lastCompositeP;
+        [ThreadStatic]
+        private static bool _lastCompositeP;
 
 	// RLE/bit-pattern filtering options
 	private static string? _rleBlacklistPath;
