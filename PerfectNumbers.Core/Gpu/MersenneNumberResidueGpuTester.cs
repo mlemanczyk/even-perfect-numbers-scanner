@@ -41,72 +41,78 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		ulong step5 = ((exponent % 5UL) << 1) % 5UL;
 		GpuUInt128 twoPGpu = (GpuUInt128)twoP;
 
-		var orderBuffer = accelerator.Allocate1D<ulong>(batchSize);
-		ulong[] orderArray = ArrayPool<ulong>.Shared.Rent(batchSize);
-		UInt128 batchSize128 = (UInt128)batchSize;
-		UInt128 limitInclusive = overallLimit + UInt128.One;
-		Span<ulong> orders = orderArray.AsSpan(0, batchSize);
-		try
-		{
-                for (UInt128 setIndex = UInt128.Zero; setIndex < setCount && Volatile.Read(ref isPrime); setIndex++)
+                var orderBuffer = accelerator.Allocate1D<ulong>(batchSize);
+                ulong[] orderArray = ArrayPool<ulong>.Shared.Rent(batchSize);
+                UInt128 batchSize128 = (UInt128)batchSize;
+                UInt128 limitInclusive = overallLimit == UInt128.MaxValue
+                        ? overallLimit
+                        : checked(overallLimit + UInt128.One);
+                Span<ulong> orders = orderArray.AsSpan(0, batchSize);
+                try
                 {
-                        UInt128 setOffset = perSetLimit * setIndex;
-				UInt128 setStart = setOffset + UInt128.One;
-				if (setStart >= limitInclusive)
-				{
-					break;
-				}
+                        for (ulong setIndex = 0; setIndex < setCount && Volatile.Read(ref isPrime); setIndex++)
+                        {
+                                UInt128 setOffset = checked(perSetLimit * (UInt128)setIndex);
+                                UInt128 setStart = checked(setOffset + UInt128.One);
+                                if (setStart >= limitInclusive)
+                                {
+                                        break;
+                                }
 
-				UInt128 setLimitExclusive = setOffset + perSetLimit + UInt128.One;
-				if (setLimitExclusive > limitInclusive)
-				{
-					setLimitExclusive = limitInclusive;
-				}
+                                UInt128 setLimitExclusive = checked(setOffset + perSetLimit);
+                                setLimitExclusive = setLimitExclusive >= limitInclusive
+                                        ? limitInclusive
+                                        : checked(setLimitExclusive + UInt128.One);
+                                if (setLimitExclusive > limitInclusive)
+                                {
+                                        setLimitExclusive = limitInclusive;
+                                }
 
-				UInt128 kStart = setStart;
-				while (kStart < setLimitExclusive && Volatile.Read(ref isPrime))
-				{
-					UInt128 remaining = setLimitExclusive - kStart;
-					int currentSize = remaining > batchSize128 ? batchSize : (int)remaining;
-					if (currentSize <= 0)
-					{
-						break;
-					}
-					orders = orderArray.AsSpan(0, currentSize);
+                                UInt128 kStart = setStart;
+                                while (kStart < setLimitExclusive && Volatile.Read(ref isPrime))
+                                {
+                                        UInt128 remaining = checked(setLimitExclusive - kStart);
+                                        int currentSize = remaining > batchSize128 ? batchSize : (int)remaining;
+                                        if (currentSize <= 0)
+                                        {
+                                                break;
+                                        }
+                                        orders = orderArray.AsSpan(0, currentSize);
 
-					UInt128 q = twoP * kStart + UInt128.One;
-					q.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
-					var ra = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
+                                        UInt128 q = checked(twoP * kStart);
+                                        q = checked(q + UInt128.One);
+                                        q.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
+                                        var ra = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
 
-					kernel(currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, 0UL,
-							ra, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
+                                        kernel(currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, 0UL,
+                                                ra, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
 
-					accelerator.Synchronize();
-					orderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(orders), currentSize);
-					if (!Volatile.Read(ref isPrime))
-					{
-						break;
-					}
+                                        accelerator.Synchronize();
+                                        orderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(orders), currentSize);
+                                        if (!Volatile.Read(ref isPrime))
+                                        {
+                                                break;
+                                        }
 
-					for (int i = 0; i < currentSize; i++)
-					{
-						if (orders[i] != 0UL)
-						{
-							Volatile.Write(ref isPrime, false);
-							break;
-						}
-					}
+                                        for (int i = 0; i < currentSize; i++)
+                                        {
+                                                if (orders[i] != 0UL)
+                                                {
+                                                        Volatile.Write(ref isPrime, false);
+                                                        break;
+                                                }
+                                        }
 
-					kStart += batchSize128;
-				}
-			}
-		}
-		finally
-		{
-			ArrayPool<ulong>.Shared.Return(orderArray);
-			orderBuffer.Dispose();
-			gpuLease.Dispose();
-		}
+                                        kStart = checked(kStart + batchSize128);
+                                }
+                        }
+                }
+                finally
+                {
+                        ArrayPool<ulong>.Shared.Return(orderArray);
+                        orderBuffer.Dispose();
+                        gpuLease.Dispose();
+                }
 
 		divisorsExhausted = true;
 	}

@@ -95,7 +95,8 @@ public sealed class MersenneNumberDivisorGpuTester
                 for (k2 = 1UL; k2 <= limit; k2++)
                 {
                         kMul2 = (UInt128)k2 << 1;
-                        d = kMul2 * p + UInt128.One;
+                        UInt128 candidate = checked(kMul2 * p);
+                        d = checked(candidate + UInt128.One);
                         if (p < 64UL && d == ((UInt128)1 << (int)p) - UInt128.One)
                         {
                                 continue;
