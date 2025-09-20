@@ -1,4 +1,9 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
 using FluentAssertions;
+using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 using Xunit;
 using UInt128 = System.UInt128;
@@ -26,6 +31,60 @@ public class MersenneNumberOrderGpuTesterTests
 
         RunCase(tester, 89UL, 1_000UL, expectedPrime: true);
         RunCase(tester, 127UL, 1_000UL, expectedPrime: true);
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void Scan_order_gpu_handles_inaccurate_small_cycle_entries()
+    {
+        const ulong exponent = 23UL;
+        const ulong divisor = 47UL; // 47 | M_23
+
+        string tempPath = Path.GetTempFileName();
+        try
+        {
+            using (var writer = new BinaryWriter(File.Open(tempPath, FileMode.Create, FileAccess.Write, FileShare.Read)))
+            {
+                writer.Write(divisor);
+                writer.Write((ulong)uint.MaxValue);
+            }
+
+            var cycles = MersenneDivisorCycles.Shared;
+            var tableField = typeof(MersenneDivisorCycles).GetField("_table", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var smallCyclesField = typeof(MersenneDivisorCycles).GetField("_smallCycles", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+            var originalTable = ((List<(ulong Divisor, ulong Cycle)>)tableField.GetValue(cycles)!).Select(x => x).ToList();
+            var originalSmall = (uint[]?)smallCyclesField.GetValue(cycles);
+            uint[]? backupSmall = originalSmall is null ? null : (uint[])originalSmall.Clone();
+
+            cycles.LoadFrom(tempPath);
+            GpuContextPool.DisposeAll();
+
+            try
+            {
+                var tester = new MersenneNumberOrderGpuTester(GpuKernelType.Pow2Mod, useGpuOrder: false);
+
+                bool isPrime = true;
+                tester.Scan(
+                    exponent,
+                    (UInt128)exponent << 1,
+                    LastDigitIsSeven(exponent),
+                    (UInt128)10UL,
+                    ref isPrime);
+
+                isPrime.Should().BeFalse();
+            }
+            finally
+            {
+                tableField.SetValue(cycles, originalTable);
+                smallCyclesField.SetValue(cycles, backupSmall);
+                GpuContextPool.DisposeAll();
+            }
+        }
+        finally
+        {
+            File.Delete(tempPath);
+        }
     }
 
     private static void RunCase(MersenneNumberOrderGpuTester tester, ulong exponent, ulong maxK, bool expectedPrime)

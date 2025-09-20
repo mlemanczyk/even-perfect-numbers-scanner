@@ -52,6 +52,38 @@ public class MersenneNumberResidueIntegrationTests
     }
 
     [Theory]
+    [InlineData(107UL)]
+    [InlineData(127UL)]
+    [Trait("Category", "Fast")]
+    public void Residue_gpu_mode_matches_cli_limits_for_known_primes(ulong exponent)
+    {
+        var tester = new MersenneNumberTester(
+            useIncremental: true,
+            useOrderCache: false,
+            kernelType: GpuKernelType.Pow2Mod,
+            useModuloWorkaround: false,
+            useOrder: false,
+            useGpuLucas: false,
+            useGpuScan: true,
+            useGpuOrder: true,
+            useResidue: true,
+            maxK: (UInt128)5_000_000UL,
+            residueDivisorSets: (UInt128)1_024UL);
+
+        try
+        {
+            bool isPrime = tester.IsMersennePrime(exponent, out bool divisorsExhausted);
+
+            isPrime.Should().BeTrue();
+            divisorsExhausted.Should().BeTrue();
+        }
+        finally
+        {
+            GpuContextPool.DisposeAll();
+        }
+    }
+
+    [Theory]
     [MemberData(nameof(ResidueThreadCounts))]
     [Trait("Category", "Fast")]
     public void Residue_gpu_mode_matches_cli_configuration_for_known_primes(int threadCount)
