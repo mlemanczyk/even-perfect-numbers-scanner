@@ -36,5 +36,33 @@ public class PrimeTesterIsPrimeTests
 
         GpuContextPool.ForceCpu = false;
     }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void IsPrimeGpu_handles_parallel_calls_for_known_primes()
+    {
+        GpuContextPool.ForceCpu = false;
+        GpuPrimeWorkLimiter.SetLimit(64);
+        PrimeTester.GpuBatchSize = 256_000;
+
+        ulong[] primes = [107UL, 127UL, 521UL, 607UL];
+        var results = new bool[primes.Length];
+
+        var testers = new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true);
+        Parallel.For(0, primes.Length, i =>
+        {
+            results[i] = testers.Value!.IsPrimeGpu(primes[i], CancellationToken.None);
+        });
+
+        results.Should().AllBeEquivalentTo(true);
+
+        Parallel.For(0, Environment.ProcessorCount * 16, _ =>
+        {
+            foreach (ulong prime in primes)
+            {
+                testers.Value!.IsPrimeGpu(prime, CancellationToken.None).Should().BeTrue();
+            }
+        });
+    }
 }
 

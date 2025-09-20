@@ -361,6 +361,48 @@ public class ProgramTests
     }
 
     [Fact]
+    [Trait("Category", "Fast")]
+    public void Residue_mode_accepts_known_primes_in_parallel()
+    {
+        var useDivisorField = typeof(Program).GetField("_useDivisor", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var residueField = typeof(Program).GetField("PResidue", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var gcdFilterField = typeof(Program).GetField("_useGcdFilter", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
+
+        useDivisorField.SetValue(null, false);
+        gcdFilterField.SetValue(null, false);
+        mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
+            useIncremental: true,
+            useResidue: true,
+            maxK: 5_000_000UL,
+            residueDivisorSets: PerfectNumberConstants.ExtraDivisorCycleSearchLimit), trackAllValues: true));
+        primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
+        residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
+        forceCpuProp!.SetValue(null, false);
+
+        try
+        {
+            ulong[] primes = [107UL, 127UL, 521UL, 607UL];
+            Parallel.ForEach(primes, prime =>
+            {
+                Program.IsEvenPerfectCandidate(prime, 0UL, out bool searched, out bool detailed).Should().BeTrue();
+                searched.Should().BeTrue();
+                detailed.Should().BeTrue();
+            });
+        }
+        finally
+        {
+            useDivisorField.SetValue(null, false);
+            mersenneField.SetValue(null, null);
+            primeField.SetValue(null, null);
+            residueField.SetValue(null, null);
+            forceCpuProp!.SetValue(null, false);
+        }
+    }
+
+    [Fact]
     public void Residue_mode_with_default_limits_accepts_large_known_primes()
     {
         var useDivisorField = typeof(Program).GetField("_useDivisor", BindingFlags.NonPublic | BindingFlags.Static)!;

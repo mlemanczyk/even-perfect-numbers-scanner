@@ -83,48 +83,53 @@ public sealed class PrimeTester(bool useInternal = false)
         // Limit concurrency and declare variables outside loops for performance and reuse
         var limiter = GpuPrimeWorkLimiter.Acquire();
         var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
 
-        // Get per-accelerator cached kernel and device primes buffer.
-        var state = GpuKernelState.GetOrCreate(accelerator);
-
-        MemoryBuffer1D<ulong, Stride1D.Dense> input;
-        MemoryBuffer1D<byte, Stride1D.Dense> output;
-        int totalLength, batchSize, pos, remaining, count;
-        ulong[] temp;
-
-        totalLength = values.Length;
-        batchSize = Math.Max(1, GpuBatchSize);
-
-        // Rent per-call scratch buffers sized to current batch (thread-safe)
-        var scratch = state.RentScratch(batchSize, accelerator);
-        input = scratch.Input;
-        output = scratch.Output;
-
-        // Reusable host buffer per call
-        temp = ArrayPool<ulong>.Shared.Rent(batchSize);
-
-        pos = 0;
-        while (pos < totalLength)
+        try
         {
-            remaining = totalLength - pos;
-            count = remaining > batchSize ? batchSize : remaining;
+            var accelerator = gpu.Accelerator;
 
-            // Copy chunk to host temp then to device
-            values.Slice(pos, count).CopyTo(temp);
-            input.View.CopyFromCPU(ref temp[0], count);
+            // Get per-accelerator cached kernel and device primes buffer.
+            var state = GpuKernelState.GetOrCreate(accelerator);
+            int totalLength = values.Length;
+            int batchSize = Math.Max(1, GpuBatchSize);
 
-            state.Kernel(count, input.View, state.DevicePrimes.View, output.View);
-            accelerator.Synchronize();
-            output.View.CopyToCPU(ref results[pos], count);
+            lock (gpu.ExecutionLock)
+            {
+                var scratch = state.RentScratch(batchSize, accelerator);
+                var input = scratch.Input;
+                var output = scratch.Output;
+                ulong[] temp = ArrayPool<ulong>.Shared.Rent(batchSize);
 
-            pos += count;
+                try
+                {
+                    int pos = 0;
+                    while (pos < totalLength)
+                    {
+                        int remaining = totalLength - pos;
+                        int count = remaining > batchSize ? batchSize : remaining;
+
+                        values.Slice(pos, count).CopyTo(temp);
+                        input.View.CopyFromCPU(ref temp[0], count);
+
+                        state.Kernel(count, input.View, state.DevicePrimes.View, output.View);
+                        accelerator.Synchronize();
+                        output.View.CopyToCPU(ref results[pos], count);
+
+                        pos += count;
+                    }
+                }
+                finally
+                {
+                    ArrayPool<ulong>.Shared.Return(temp);
+                    state.ReturnScratch(scratch);
+                }
+            }
         }
-
-        ArrayPool<ulong>.Shared.Return(temp);
-        state.ReturnScratch(scratch);
-        gpu.Dispose();
-        limiter.Dispose();
+        finally
+        {
+            gpu.Dispose();
+            limiter.Dispose();
+        }
     }
 
     // Per-accelerator GPU state for prime sieve (kernel + uploaded primes).
