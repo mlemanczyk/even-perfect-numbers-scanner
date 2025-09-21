@@ -24,13 +24,12 @@ public class ResidueComputationBenchmarks
     [Benchmark]
     public (ulong Step10, ulong Step8, ulong Step3, ulong Step5) ModMethodModulo()
     {
-        UInt128 exponent128 = Exponent;
-        exponent128.Mod10_8_5_3(out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3);
-        ulong step10 = (mod10 << 1) % 10UL;
-        ulong step8 = (mod8 << 1) & 7UL;
-        ulong step3 = (mod3 << 1) % 3UL;
-        ulong step5 = (mod5 << 1) % 5UL;
-        return (step10, step8, step3, step5);
+        Exponent.Mod10_8_5_3(out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3);
+        mod10 = (mod10 << 1) % 10UL;
+        mod8 = (mod8 << 1) & 7UL;
+        mod3 = (mod3 << 1) % 3UL;
+        mod5 = (mod5 << 1) % 5UL;
+        return (mod10, mod8, mod3, mod5);
     }
 }
 

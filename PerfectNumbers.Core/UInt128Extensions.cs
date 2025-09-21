@@ -120,87 +120,73 @@ public static class UInt128Extensions
 		return true;
 	}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Mod10_8_5_3(this UInt128 value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)
-        {
-                UInt128 temp = value;
-                uint byteSum = 0U;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static void Mod10_8_5_3(this UInt128 value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)
+	{
+		UInt128 temp = value;
+		uint byteSum = 0U;
 
-                do
-                {
-                        byteSum += (uint)(byte)temp;
-                        temp >>= 8;
-                }
-                while (temp != UInt128.Zero);
+		do
+		{
+			byteSum += (byte)temp;
+			temp >>= 8;
+		}
+		while (temp != UInt128.Zero);
 
-                mod8 = (ulong)value & 7UL;
+		mod8 = (ulong)value & 7UL;
 
-                uint mod5Value = FastRemainder5(byteSum);
-                uint mod3Value = FastRemainder3(byteSum);
+		uint mod5Value = PerfectNumbersMath.FastRemainder5(byteSum);
+		uint mod3Value = PerfectNumbersMath.FastRemainder3(byteSum);
 
-                ulong parity = mod8 & 1UL;
-                mod10 = parity == 0UL
-                        ? mod5Value switch
-                        {
-                                0U => 0UL,
-                                1U => 6UL,
-                                2U => 2UL,
-                                3U => 8UL,
-                                _ => 4UL,
-                        }
-                        : mod5Value switch
-                        {
-                                0U => 5UL,
-                                1U => 1UL,
-                                2U => 7UL,
-                                3U => 3UL,
-                                _ => 9UL,
-                        };
+		ulong parity = mod8 & 1UL;
+		mod10 = parity == 0UL
+				? mod5Value switch
+				{
+					0U => 0UL,
+					1U => 6UL,
+					2U => 2UL,
+					3U => 8UL,
+					_ => 4UL,
+				}
+				: mod5Value switch
+				{
+					0U => 5UL,
+					1U => 1UL,
+					2U => 7UL,
+					3U => 3UL,
+					_ => 9UL,
+				};
 
-                mod5 = mod5Value;
-                mod3 = mod3Value;
-        }
+		mod5 = mod5Value;
+		mod3 = mod3Value;
+	}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static uint FastRemainder3(uint value)
-        {
-                uint quotient = (uint)(((ulong)value * 0xAAAAAAABUL) >> 33);
-                return value - quotient * 3U;
-        }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static UInt128 Pow(this UInt128 value, ulong exponent)
+	{
+		UInt128 result = UInt128.One;
+		UInt128 baseValue = value;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static uint FastRemainder5(uint value)
-        {
-                uint quotient = (uint)(((ulong)value * 0xCCCCCCCDUL) >> 34);
-                return value - quotient * 5U;
-        }
+		while (exponent != 0UL)
+		{
+			if ((exponent & 1UL) != 0UL)
+			{
+				result *= baseValue;
+			}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static UInt128 Pow(this UInt128 value, ulong exponent)
-        {
-                UInt128 result = UInt128.One;
-                UInt128 baseValue = value;
+			baseValue *= baseValue;
+			exponent >>= 1;
+		}
 
-                while (exponent != 0UL)
-                {
-                        if ((exponent & 1UL) != 0UL)
-                        {
-                                result *= baseValue;
-                        }
+		return result;
+	}
 
-                        baseValue *= baseValue;
-                        exponent >>= 1;
-                }
-
-                return result;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static UInt128 ModPow(this UInt128 value, UInt128 exponent, UInt128 modulus)
-        {
-                UInt128 result, one = result = UInt128.One,
-                                zero = UInt128.Zero,
-                                baseValue = value % modulus;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static UInt128 ModPow(this UInt128 value, UInt128 exponent, UInt128 modulus)
+	{
+		UInt128 result, one = result = UInt128.One,
+						zero = UInt128.Zero,
+						baseValue = value % modulus;
 
 		while (exponent != zero)
 		{
@@ -284,7 +270,7 @@ public static class UInt128Extensions
 			{
 				a -= modulus;
 			}
-			
+
 			b >>= 1;
 		}
 

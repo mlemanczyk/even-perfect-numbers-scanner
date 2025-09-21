@@ -58,6 +58,47 @@ public static class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static void Mod10_8_5_3(this ulong value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)
+	{
+		ulong temp = value;
+		uint byteSum = 0U;
+
+		do
+		{
+			byteSum += (byte)temp;
+			temp >>= 8;
+		}
+		while (temp != 0UL);
+
+		mod8 = value & 7UL;
+
+		uint mod5Value = PerfectNumbersMath.FastRemainder5(byteSum);
+		uint mod3Value = PerfectNumbersMath.FastRemainder3(byteSum);
+
+		ulong parity = mod8 & 1UL;
+		mod10 = parity == 0UL
+				? mod5Value switch
+				{
+					0U => 0UL,
+					1U => 6UL,
+					2U => 2UL,
+					3U => 8UL,
+					_ => 4UL,
+				}
+				: mod5Value switch
+				{
+					0U => 5UL,
+					1U => 1UL,
+					2U => 7UL,
+					3U => 3UL,
+					_ => 9UL,
+				};
+
+		mod5 = mod5Value;
+		mod3 = mod3Value;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool IsPrimeCandidate(this ulong n)
 	{
 		int i = 0;
