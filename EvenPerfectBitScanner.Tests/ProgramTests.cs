@@ -39,28 +39,6 @@ public class ProgramTests
         Program.TransformPAdd(7UL, ref remainder).Should().Be(11UL);
     }
 
-    [Theory]
-    [InlineData(false, false, false, 5UL, 1024UL, 5UL)]
-    [InlineData(true, false, false, 5UL, 1024UL, 5UL)]
-    [InlineData(true, true, true, 7UL, 1024UL, 7UL)]
-    [InlineData(true, false, true, 5UL, 1024UL, 1024UL)]
-    [InlineData(true, true, false, 5UL, 1024UL, 5UL)]
-    public void ResolveResidueMaxK_applies_expected_rules(
-        bool useResidue,
-        bool residueMaxExplicit,
-        bool divisorLimitExplicit,
-        ulong residueMaxK,
-        ulong divisorLimit,
-        ulong expected)
-    {
-        Program.ResolveResidueMaxK(
-                useResidue,
-                residueMaxExplicit,
-                divisorLimitExplicit,
-                residueMaxK,
-                divisorLimit).Should().Be((UInt128)expected);
-    }
-
     [Fact]
     public void TransformPBit_appends_one_bit_and_skips_to_candidate()
     {
@@ -284,8 +262,7 @@ public class ProgramTests
         mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
             useIncremental: true,
             useResidue: true,
-            maxK: 1_024UL,
-            residueDivisorSets: 1_024UL), trackAllValues: true));
+            maxK: 1_024UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
         forceCpuProp!.SetValue(null, false);
@@ -326,8 +303,7 @@ public class ProgramTests
         mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
             useIncremental: true,
             useResidue: true,
-            maxK: 5_000_000UL,
-            residueDivisorSets: PerfectNumberConstants.ExtraDivisorCycleSearchLimit), trackAllValues: true));
+            maxK: 5_000_000UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
         forceCpuProp!.SetValue(null, false);
@@ -365,8 +341,7 @@ public class ProgramTests
         mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
             useIncremental: true,
             useResidue: true,
-            maxK: 5_000_000UL,
-            residueDivisorSets: PerfectNumberConstants.ExtraDivisorCycleSearchLimit), trackAllValues: true));
+            maxK: 5_000_000UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
         forceCpuProp!.SetValue(null, false);
@@ -409,8 +384,7 @@ public class ProgramTests
             useGpuScan: false,
             useGpuOrder: false,
             useResidue: true,
-            maxK: 1_024UL,
-            residueDivisorSets: 1UL), trackAllValues: true));
+            maxK: 1_024UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, exponent, true), trackAllValues: true));
         forceCpuProp!.SetValue(null, true);
@@ -452,8 +426,7 @@ public class ProgramTests
             useGpuScan: true,
             useGpuOrder: configuration.UseGpuOrder,
             useResidue: true,
-            maxK: (UInt128)configuration.ResidueMaxK,
-            residueDivisorSets: (UInt128)configuration.ResidueSetCount), trackAllValues: true));
+            maxK: configuration.ResidueMaxK), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         residueField.SetValue(null, new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, exponent, true), trackAllValues: true));
         forceCpuProp!.SetValue(null, false);
@@ -487,10 +460,10 @@ public class ProgramTests
     {
         MersenneGpuCandidateConfig[] configs =
         {
-            new(GpuKernelType.Incremental, true, 1_024UL, 1UL),
-            new(GpuKernelType.Incremental, false, 2_048UL, 1UL),
-            new(GpuKernelType.Pow2Mod, true, 4_096UL, 2UL),
-            new(GpuKernelType.Pow2Mod, false, 512UL, 2UL),
+            new(GpuKernelType.Incremental, true, 1_024UL),
+            new(GpuKernelType.Incremental, false, 2_048UL),
+            new(GpuKernelType.Pow2Mod, true, 4_096UL),
+            new(GpuKernelType.Pow2Mod, false, 512UL),
         };
 
         int index = 0;
@@ -525,8 +498,7 @@ public class ProgramTests
     public readonly record struct MersenneGpuCandidateConfig(
         GpuKernelType KernelType,
         bool UseGpuOrder,
-        ulong ResidueMaxK,
-        ulong ResidueSetCount);
+        ulong ResidueMaxK);
 
     [Fact]
     public void Composite_candidates_flagged_for_residue_output_skip()
@@ -564,63 +536,6 @@ public class ProgramTests
             residueField.SetValue(null, null);
             compositeField.SetValue(null, false);
             forceCpuProp!.SetValue(null, false);
-        }
-    }
-
-    [Fact]
-    public void Residue_mode_skips_composite_results_in_output()
-    {
-        var residueModeField = typeof(Program).GetField("_useResidueMode", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var outputField = typeof(Program).GetField("_outputBuilder", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var writeIndexField = typeof(Program).GetField("_writeIndex", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var compositeField = typeof(Program).GetField("_lastCompositeP", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var primeCountField = typeof(Program).GetField("_primeCount", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var primeFoundField = typeof(Program).GetField("_primeFoundAfterInit", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var consoleCounterField = typeof(Program).GetField("_consoleCounter", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var printResult = typeof(Program).GetMethod("PrintResult", BindingFlags.NonPublic | BindingFlags.Static)!;
-
-        var previousResidueMode = (bool)residueModeField.GetValue(null)!;
-        var previousOutput = (StringBuilder?)outputField.GetValue(null);
-        var previousWriteIndex = (int)writeIndexField.GetValue(null)!;
-        var previousComposite = (bool)compositeField.GetValue(null)!;
-        var previousPrimeCount = (int)primeCountField.GetValue(null)!;
-        var previousPrimeFound = (bool)primeFoundField.GetValue(null)!;
-        var previousConsoleCounter = (int)consoleCounterField.GetValue(null)!;
-
-        var builder = StringBuilderPool.Rent();
-
-        try
-        {
-            builder.Clear();
-            residueModeField.SetValue(null, true);
-            compositeField.SetValue(null, true);
-            outputField.SetValue(null, builder);
-            writeIndexField.SetValue(null, 0);
-            primeCountField.SetValue(null, 0);
-            primeFoundField.SetValue(null, false);
-            consoleCounterField.SetValue(null, 0);
-
-            printResult.Invoke(null, new object[] { 9UL, false, false, false });
-
-            builder.ToString().Should().BeEmpty();
-            ((int)writeIndexField.GetValue(null)!).Should().Be(0);
-
-            printResult.Invoke(null, new object[] { 11UL, true, false, true });
-
-            builder.ToString().Should().Be("11,True,False,True" + Environment.NewLine);
-            ((int)writeIndexField.GetValue(null)!).Should().Be(1);
-        }
-        finally
-        {
-            outputField.SetValue(null, previousOutput);
-            writeIndexField.SetValue(null, previousWriteIndex);
-            residueModeField.SetValue(null, previousResidueMode);
-            compositeField.SetValue(null, previousComposite);
-            primeCountField.SetValue(null, previousPrimeCount);
-            primeFoundField.SetValue(null, previousPrimeFound);
-            consoleCounterField.SetValue(null, previousConsoleCounter);
-            builder.Clear();
-            StringBuilderPool.Return(builder);
         }
     }
 
