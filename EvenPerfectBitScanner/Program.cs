@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -11,8 +12,8 @@ namespace EvenPerfectBitScanner;
 
 internal static class Program
 {
-	private static ThreadLocal<PrimeTester> PrimeTesters = null!;
-	private static ThreadLocal<MersenneNumberTester> MersenneTesters = null!;
+        private static ThreadLocal<PrimeTester> PrimeTesters = null!;
+        private static ThreadLocal<MersenneNumberTester> MersenneTesters = null!;
 	private static ThreadLocal<ModResidueTracker> PResidue = null!;      // p mod d tracker (per-thread)
 	private const ulong InitialP = PerfectNumberConstants.BiggestKnownEvenPerfectP;
 	private const int WriteBatchSize = 100;
@@ -29,6 +30,7 @@ internal static class Program
         private static bool _useDivisor;
         private static bool _useResidueMode;
         private static bool _useByDivisorMode;
+        private static bool _byDivisorPrecheckOnly;
         private static UInt128 _divisor;
         private static MersenneNumberDivisorGpuTester? _divisorTester;
         private static MersenneNumberDivisorByDivisorGpuTester? _byDivisorTester;
@@ -52,9 +54,18 @@ internal static class Program
 	private static double _zeroFracConj = -1.0;                 // disabled when < 0
 	private static int _maxZeroConj = -1;                       // disabled when < 0
 
-	private static unsafe void Main(string[] args)
-	{
-		ulong currentP = InitialP;
+        private struct ByDivisorPrimeState
+        {
+                internal ulong Prime;
+                internal ulong AllowedMax;
+                internal bool Completed;
+                internal bool Composite;
+                internal bool DetailedCheck;
+        }
+
+        private static unsafe void Main(string[] args)
+        {
+                ulong currentP = InitialP;
 		int threadCount = Environment.ProcessorCount;
 		int blockSize = 1;
 		int gpuPrimeThreads = 1;
@@ -575,6 +586,7 @@ internal static class Program
 
                 bool useFilter = !string.IsNullOrEmpty(filterFile);
                 HashSet<ulong> filter = [];
+                List<ulong> filterList = [];
                 ulong maxP = 0UL;
                 if (useFilter)
                 {
@@ -593,7 +605,7 @@ internal static class Program
 
 					if (count == 1024)
 					{
-						filter.AddRange(localFilter[..count]);
+                                                filter.AddRange(localFilter[..count]);
 						count = 0;
 						Console.WriteLine($"Added {p}");
 					}
@@ -602,10 +614,9 @@ internal static class Program
 
 			if (count > 0)
 			{
-				filter.AddRange(localFilter[..count]);
+                                filter.AddRange(localFilter[..count]);
                         }
-                        // Restore this if you want to use List<ulong> instead of HashSet<ulong>
-                        // filter.Sort();
+                        filterList = [..filter];
                 }
 
                 if (useByDivisor)
@@ -630,6 +641,14 @@ internal static class Program
 		GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
 		// Configure batch size for GPU primality sieve
 		PrimeTester.GpuBatchSize = gpuPrimeBatch;
+
+                if (_useByDivisorMode)
+                {
+                        RunByDivisorMode(filterList, divisorCyclesSearchLimit);
+                        FlushBuffer();
+                        StringBuilderPool.Return(_outputBuilder!);
+                        return;
+                }
 
                 if (!useDivisor && !useByDivisor)
                 {
@@ -711,8 +730,184 @@ internal static class Program
 
 		Task.WaitAll(tasks);
 		FlushBuffer();
-		StringBuilderPool.Return(_outputBuilder!);
-	}
+                StringBuilderPool.Return(_outputBuilder!);
+        }
+
+        private static void RunByDivisorMode(List<ulong> primes, ulong divisorCyclesSearchLimit)
+        {
+                if (primes.Count == 0)
+                {
+                        return;
+                }
+
+                primes.Sort();
+                List<ByDivisorPrimeState> states = new(primes.Count);
+
+                _byDivisorPrecheckOnly = true;
+                foreach (ulong prime in primes)
+                {
+                        bool passed = IsEvenPerfectCandidate(prime, divisorCyclesSearchLimit, out bool searched, out bool detailed);
+                        if (!passed)
+                        {
+                                PrintResult(prime, searched, detailed, false);
+                                continue;
+                        }
+
+                        ulong allowedMax = _byDivisorTester!.GetAllowedMaxDivisor(prime);
+                        if (allowedMax < 3UL)
+                        {
+                                PrintResult(prime, searchedMersenne: true, detailedCheck: true, passedAllTests: true);
+                                continue;
+                        }
+
+                        states.Add(new ByDivisorPrimeState
+                        {
+                                Prime = prime,
+                                AllowedMax = allowedMax,
+                                Completed = false,
+                                Composite = false,
+                                DetailedCheck = false,
+                        });
+                }
+
+                _byDivisorPrecheckOnly = false;
+
+                if (states.Count == 0)
+                {
+                        return;
+                }
+
+                using var session = _byDivisorTester!.CreateDivisorSession();
+                byte[] hitsBuffer = ArrayPool<byte>.Shared.Rent(states.Count);
+                ulong[] primeBuffer = ArrayPool<ulong>.Shared.Rent(states.Count);
+                int[] indexBuffer = ArrayPool<int>.Shared.Rent(states.Count);
+
+                try
+                {
+                        ulong divisor = 3UL;
+                        ulong divisorLimit = _byDivisorTester!.DivisorLimit;
+
+                        while (true)
+                        {
+                                bool anyPending = false;
+                                int activeCount = 0;
+
+                                for (int i = 0; i < states.Count; i++)
+                                {
+                                        var state = states[i];
+                                        if (state.Completed)
+                                        {
+                                                continue;
+                                        }
+
+                                        if (state.AllowedMax < divisor)
+                                        {
+                                                state.Completed = true;
+                                                state.DetailedCheck = true;
+                                                states[i] = state;
+                                                PrintResult(state.Prime, searchedMersenne: true, detailedCheck: true, passedAllTests: true);
+                                                continue;
+                                        }
+
+                                        anyPending = true;
+
+                                        if (divisor > divisorLimit)
+                                        {
+                                                states[i] = state;
+                                                continue;
+                                        }
+
+                                        primeBuffer[activeCount] = state.Prime;
+                                        indexBuffer[activeCount] = i;
+                                        activeCount++;
+                                        states[i] = state;
+                                }
+
+                                if (!anyPending || divisor > divisorLimit)
+                                {
+                                        break;
+                                }
+
+                                if (activeCount == 0)
+                                {
+                                        ulong nextDivisor = divisor + 2UL;
+                                        if (nextDivisor <= divisor)
+                                        {
+                                                break;
+                                        }
+
+                                        divisor = nextDivisor;
+                                        continue;
+                                }
+
+                                session.CheckDivisor(divisor, primeBuffer.AsSpan(0, activeCount), hitsBuffer.AsSpan(0, activeCount));
+
+                                for (int i = 0; i < activeCount; i++)
+                                {
+                                        if (hitsBuffer[i] == 0)
+                                        {
+                                                continue;
+                                        }
+
+                                        int index = indexBuffer[i];
+                                        var state = states[index];
+                                        if (state.Completed)
+                                        {
+                                                continue;
+                                        }
+
+                                        state.Completed = true;
+                                        state.Composite = true;
+                                        state.DetailedCheck = true;
+                                        states[index] = state;
+                                        PrintResult(state.Prime, searchedMersenne: true, detailedCheck: true, passedAllTests: false);
+                                }
+
+                                bool remaining = false;
+                                for (int i = 0; i < states.Count; i++)
+                                {
+                                        if (!states[i].Completed)
+                                        {
+                                                remaining = true;
+                                                break;
+                                        }
+                                }
+
+                                if (!remaining)
+                                {
+                                        break;
+                                }
+
+                                ulong next = divisor + 2UL;
+                                if (next <= divisor)
+                                {
+                                        break;
+                                }
+
+                                divisor = next;
+                        }
+
+                        for (int i = 0; i < states.Count; i++)
+                        {
+                                var state = states[i];
+                                if (state.Completed)
+                                {
+                                        continue;
+                                }
+
+                                state.Completed = true;
+                                state.DetailedCheck = divisor > state.AllowedMax;
+                                states[i] = state;
+                                PrintResult(state.Prime, searchedMersenne: true, detailedCheck: state.DetailedCheck, passedAllTests: true);
+                        }
+                }
+                finally
+                {
+                        ArrayPool<int>.Shared.Return(indexBuffer, clearArray: true);
+                        ArrayPool<ulong>.Shared.Return(primeBuffer, clearArray: true);
+                        ArrayPool<byte>.Shared.Return(hitsBuffer, clearArray: true);
+                }
+        }
 
 	private static unsafe void LoadResultsFile(string resultsFileName, Action<ulong, bool, bool> lineProcessorAction)
 	{
@@ -1161,6 +1356,13 @@ internal static class Program
                 searchedMersenne = true;
                 if (_useByDivisorMode)
                 {
+                        if (_byDivisorPrecheckOnly)
+                        {
+                                searchedMersenne = false;
+                                detailedCheck = false;
+                                return true;
+                        }
+
                         return _byDivisorTester!.IsPrime(p, out detailedCheck);
                 }
 

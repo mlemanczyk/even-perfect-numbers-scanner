@@ -103,5 +103,23 @@ public class MersenneNumberDivisorGpuTesterTests
         divisorsExhausted.Should().BeTrue();
     }
 
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void ByDivisor_session_checks_divisors_across_primes()
+    {
+        var tester = new MersenneNumberDivisorByDivisorGpuTester();
+        tester.ConfigureFromMaxPrime(13UL);
+
+        using var session = tester.CreateDivisorSession();
+        ulong[] primes = { 5UL, 7UL, 11UL, 13UL };
+        byte[] hits = new byte[primes.Length];
+
+        session.CheckDivisor(23UL, primes, hits);
+        hits.Should().ContainInOrder(new byte[] { 0, 0, 1, 0 });
+
+        Array.Fill(hits, (byte)0);
+        session.CheckDivisor(31UL, primes, hits);
+        hits.Should().ContainInOrder(new byte[] { 1, 0, 0, 0 });
+    }
 }
 
