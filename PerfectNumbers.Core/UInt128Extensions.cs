@@ -224,7 +224,7 @@ public static class UInt128Extensions
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong Mod8(this UInt128 value) => (ulong)value & 7UL;
-
+	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong Mod3(this UInt128 value)
 	{
@@ -240,6 +240,7 @@ public static class UInt128Extensions
 		ulong rem = ((ulong)value % 5UL) + ((ulong)(value >> 64) % 5UL);
 		return rem >= 5UL ? rem - 5UL : rem;
 	}
+
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static UInt128 Mul64(this UInt128 a, UInt128 b)
