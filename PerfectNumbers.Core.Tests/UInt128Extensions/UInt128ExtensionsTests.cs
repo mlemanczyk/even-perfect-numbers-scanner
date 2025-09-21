@@ -211,6 +211,30 @@ public class UInt128ExtensionsTests
 
     [Fact]
     [Trait("Category", "Fast")]
+    public void Mod7_matches_operator()
+    {
+        UInt128 value = (UInt128.One << 100) + 9876543210987654321UL;
+        value.Mod7().Should().Be((ulong)(value % 7));
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void Mod11_matches_operator()
+    {
+        UInt128 value = (UInt128.One << 120) + 9876543210987654321UL;
+        value.Mod11().Should().Be((ulong)(value % 11));
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void Mod128_matches_operator()
+    {
+        UInt128 value = (UInt128.One << 120) + 9876543210987654321UL;
+        value.Mod128().Should().Be((ulong)(value % 128));
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
     public void Mul64_matches_expected_product()
     {
         UInt128 a = (UInt128.One << 80) + 123456789;

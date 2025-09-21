@@ -58,51 +58,62 @@ public static class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void Mod10_8_5_3(this ulong value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)
-	{
-		ulong temp = value;
-		uint byteSum = 0U;
+        public static void Mod10_8_5_3(this ulong value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)
+        {
+                ulong temp = value;
+                uint byteSum = 0U;
 
-		do
-		{
-			byteSum += (byte)temp;
-			temp >>= 8;
-		}
-		while (temp != 0UL);
+                do
+                {
+                        byteSum += (byte)temp;
+                        temp >>= 8;
+                }
+                while (temp != 0UL);
 
-		mod8 = value & 7UL;
+                mod8 = value & 7UL;
 
-		uint mod5Value = PerfectNumbersMath.FastRemainder5(byteSum);
-		uint mod3Value = PerfectNumbersMath.FastRemainder3(byteSum);
+                uint mod5Value = PerfectNumbersMath.FastRemainder5(byteSum);
+                uint mod3Value = PerfectNumbersMath.FastRemainder3(byteSum);
 
-		ulong parity = mod8 & 1UL;
-		mod10 = parity == 0UL
-				? mod5Value switch
-				{
-					0U => 0UL,
-					1U => 6UL,
-					2U => 2UL,
-					3U => 8UL,
-					_ => 4UL,
-				}
-				: mod5Value switch
-				{
-					0U => 5UL,
-					1U => 1UL,
-					2U => 7UL,
-					3U => 3UL,
-					_ => 9UL,
-				};
+                ulong parity = mod8 & 1UL;
+                mod10 = parity == 0UL
+                                ? mod5Value switch
+                                {
+                                        0U => 0UL,
+                                        1U => 6UL,
+                                        2U => 2UL,
+                                        3U => 8UL,
+                                        _ => 4UL,
+                                }
+                                : mod5Value switch
+                                {
+                                        0U => 5UL,
+                                        1U => 1UL,
+                                        2U => 7UL,
+                                        3U => 3UL,
+                                        _ => 9UL,
+                                };
 
-		mod5 = mod5Value;
-		mod3 = mod3Value;
-	}
+                mod5 = mod5Value;
+                mod3 = mod3Value;
+        }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool IsPrimeCandidate(this ulong n)
-	{
-		int i = 0;
-		ulong p;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Mod10_8_5_3Steps(this ulong value, out ulong step10, out ulong step8, out ulong step5, out ulong step3)
+        {
+                value.Mod10_8_5_3(out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3);
+
+                step10 = (mod10 << 1).Mod10();
+                step8 = ((mod8 << 1) & 7UL);
+                step5 = (mod5 << 1).Mod5();
+                step3 = (mod3 << 1).Mod3();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsPrimeCandidate(this ulong n)
+        {
+                int i = 0;
+                ulong p;
 		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
 		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
 		int len = smallPrimes.Length;
@@ -123,12 +134,70 @@ public static class ULongExtensions
 		return true;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Mod10(this ulong value)
-	{
-		ulong quotient = (ulong)(((UInt128)value * 0xCCCCCCCCCCCCCCCDUL) >> 67);
-		return value - quotient * 10UL;
-	}
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod10(this ulong value)
+        {
+                ulong quotient = (ulong)(((UInt128)value * 0xCCCCCCCCCCCCCCCDUL) >> 67);
+                return value - quotient * 10UL;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod8(this ulong value) => value & 7UL;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod3(this ulong value)
+        {
+                uint sum = (uint)(value & 0xFFFFUL);
+                sum += (uint)((value >> 16) & 0xFFFFUL);
+                sum += (uint)((value >> 32) & 0xFFFFUL);
+                sum += (uint)((value >> 48) & 0xFFFFUL);
+
+                return PerfectNumbersMath.FastRemainder3(sum);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod5(this ulong value)
+        {
+                uint sum = (uint)(value & 0xFFFFUL);
+                sum += (uint)((value >> 16) & 0xFFFFUL);
+                sum += (uint)((value >> 32) & 0xFFFFUL);
+                sum += (uint)((value >> 48) & 0xFFFFUL);
+
+                return PerfectNumbersMath.FastRemainder5(sum);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod7(this ulong value)
+        {
+                uint low = (uint)value;
+                uint high = (uint)(value >> 32);
+
+                ulong remainder = low.Mod7() + (ulong)high.Mod7() * 4UL;
+                while (remainder >= 7UL)
+                {
+                        remainder -= 7UL;
+                }
+
+                return remainder;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod11(this ulong value)
+        {
+                uint low = (uint)value;
+                uint high = (uint)(value >> 32);
+
+                ulong remainder = low.Mod11() + (ulong)high.Mod11() * 4UL;
+                while (remainder >= 11UL)
+                {
+                        remainder -= 11UL;
+                }
+
+                return remainder;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod128(this ulong value) => value & 127UL;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static UInt128 Mul64(this ulong a, ulong b) => ((UInt128)a.MulHigh(b) << 64) | (UInt128)(a * b);
