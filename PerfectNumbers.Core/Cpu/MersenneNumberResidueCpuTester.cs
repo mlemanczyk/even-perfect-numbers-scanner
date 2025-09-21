@@ -20,10 +20,8 @@ public class MersenneNumberResidueCpuTester
 		// Current residues
 		q.Mod10_8_5_3(out ulong r10, out ulong r8, out ulong r5, out ulong r3);
 		// Step residues for q += 2*p
-		ulong step10 = (ulong)(twoP % 10UL) % 10UL;
-		ulong step8 = (ulong)(twoP % 8UL);
-		ulong step3 = (ulong)(twoP % 3UL);
-		ulong step5 = (ulong)(twoP % 5UL);
+		twoP.Mod10_8_5_3(out ulong step10, out ulong step8, out ulong step5, out ulong step3);
+		step10 = step10.Mod10();
 
 		// Allowed last-digit sets for q depending on last digit of M_p
 		// lastIsSeven == true  => allow {7,9}

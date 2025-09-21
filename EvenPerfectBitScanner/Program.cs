@@ -1060,7 +1060,7 @@ internal static class Program
 		// Optional: RLE blacklist and binary-threshold filters on p (safe only when configured)
 		if (p <= _rleHardMaxP)
 		{
-			if (!_rleOnlyLast7 || (p % 10UL) == 7UL)
+			if (!_rleOnlyLast7 || p.Mod10() == 7UL)
 			{
 				if (RleBlacklist.IsLoaded() && RleBlacklist.Matches(p))
 				{

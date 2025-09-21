@@ -59,7 +59,7 @@ public sealed class PrimeTester(bool useInternal = false)
         }
         else
         {
-            if ((n % 10UL) == 1UL && SharesFactorWithMaxExponent(n))
+            if (n.Mod10() == 1UL && SharesFactorWithMaxExponent(n))
             {
                 result = false;
             }
@@ -266,7 +266,7 @@ public sealed class PrimeTester(bool useInternal = false)
             return;
         }
 
-        if ((n % 10UL) == 1UL)
+        if (n.Mod10() == 1UL)
         {
             // Early reject special GCD heuristic with floor(log2 n)
             ulong m = 63UL - (ulong)ILGPU.Algorithms.XMath.LeadingZeroCount(n);

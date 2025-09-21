@@ -24,7 +24,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		UInt128 kStart = 1UL;
 		byte last = lastIsSeven ? (byte)1 : (byte)0;
 		var kernel = gpuLease.Pow2ModKernel;
-		ulong step10 = ((exponent % 10UL) << 1) % 10UL;
+		ulong step10 = (exponent.Mod10() << 1).Mod10();
 		ulong step8 = ((exponent & 7UL) << 1) & 7UL;
 		ulong step3 = ((exponent % 3UL) << 1) % 3UL;
 		ulong step5 = ((exponent % 5UL) << 1) % 5UL;

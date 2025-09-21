@@ -30,12 +30,12 @@ public sealed class MersenneResidueAutomaton
         _currentQ = _step + 1UL;        // start at k = 1
 
         // init residues
-        Mod10R = Mod10(_currentQ);
+        Mod10R = _currentQ.Mod10();
         Mod8R  = Mod8(_currentQ);
         Mod3R  = Mod3(_currentQ);
         Mod5R  = Mod5(_currentQ);
 
-        _step10 = Mod10((ulong)(_step % 10UL));
+        _step10 = _step.Mod10().Mod10();
         _step8  = (ulong)(_step & 7UL); // % 8
         _step3  = Mod3(_step);
         _step5  = Mod5(_step);
@@ -71,21 +71,6 @@ public sealed class MersenneResidueAutomaton
         }
         Mod5R = r5;
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong Mod10(UInt128 value)
-    {
-        // Split and fold under mod 10: 2^64 ≡ 6 (mod 10)
-        ulong high = (ulong)(value >> 64);
-        ulong low = (ulong)value;
-        ulong highRem = Mod10(high);
-        ulong lowRem = Mod10(low);
-        ulong combined = lowRem + highRem * 6UL;
-        return Mod10(combined);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong Mod10(ulong value) => value % 10UL;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong Mod8(UInt128 value) => (ulong)value & 7UL;
@@ -196,8 +181,8 @@ public sealed class Ending7Automaton
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong AlignTo7(ulong start)
     {
-        ulong r = start % 10UL;
-        ulong add = (7UL + 10UL - r) % 10UL;
+        ulong r = start.Mod10();
+		ulong add = (7UL + 10UL - r).Mod10();
         return start + add;
     }
 

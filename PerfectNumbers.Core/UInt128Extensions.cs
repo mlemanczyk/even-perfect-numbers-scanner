@@ -215,11 +215,11 @@ public static class UInt128Extensions
 		while (high != zero)
 		{
 			// 2^64 ≡ 6 (mod 10)
-			result = (result + (ulong)high * 6UL) % 10UL;
+			result = (result + (ulong)high * 6UL).Mod10();
 			high >>= 64;
 		}
 
-		return result % 10UL;
+		return result.Mod10();
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -201,8 +201,8 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
     {
         ulong idx = (ulong)index.X;
 		// residue automaton
-        ulong step10 = ((exponent % 10UL) << 1) % 10UL;
-        ulong r10 = q0m10 + (step10 * idx) % 10UL;
+		ulong step10 = (exponent.Mod10() << 1).Mod10();
+        ulong r10 = q0m10 + (step10 * idx).Mod10();
 		r10 -= (r10 >= 10UL) ? 10UL : 0UL;
 		bool shouldCheck = r10 != 5UL; // skip q ≡ 5 (mod 10); other residues handled by r8/r3/r5
 		if (shouldCheck)
@@ -358,7 +358,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         ArrayView1D<ulong, Stride1D.Dense> smallPrimesPow2LastSeven)
     {
         ulong idx = (ulong)index.X;
-        ulong r10 = ra.Q0M10 + (ra.Step10 * idx) % 10UL; r10 -= (r10 >= 10UL) ? 10UL : 0UL;
+        ulong r10 = ra.Q0M10 + (ra.Step10 * idx).Mod10(); r10 -= (r10 >= 10UL) ? 10UL : 0UL;
         bool shouldCheck = r10 != 5UL;
         if (shouldCheck)
         {
@@ -489,7 +489,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                 ResidueAutomatonArgs ra, ArrayView<int> found, ArrayView1D<uint, Stride1D.Dense> smallCycles)
     {
         ulong idx = (ulong)index.X;
-		ulong r10 = ra.Q0M10 + (ra.Step10 * idx) % 10UL; r10 -= (r10 >= 10UL) ? 10UL : 0UL;
+		ulong r10 = ra.Q0M10 + (ra.Step10 * idx).Mod10(); r10 -= (r10 >= 10UL) ? 10UL : 0UL;
 		bool shouldCheck = r10 != 5UL;
 		if (shouldCheck)
 		{
@@ -573,7 +573,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                 ResidueAutomatonArgs ra, ArrayView<int> found, ArrayView1D<uint, Stride1D.Dense> smallCycles)
     {
         ulong idx = (ulong)index.X;
-		ulong r10 = ra.Q0M10 + (ra.Step10 * idx) % 10UL; r10 -= (r10 >= 10UL) ? 10UL : 0UL;
+		ulong r10 = ra.Q0M10 + (ra.Step10 * idx).Mod10(); r10 -= (r10 >= 10UL) ? 10UL : 0UL;
 		bool shouldCheck = r10 != 5UL;
 		if (shouldCheck)
 		{
