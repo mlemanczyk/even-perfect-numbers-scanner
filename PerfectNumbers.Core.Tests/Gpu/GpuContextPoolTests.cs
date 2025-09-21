@@ -6,6 +6,7 @@ using Xunit;
 
 namespace PerfectNumbers.Core.Tests.Gpu;
 
+[Collection("GpuNtt")]
 public class GpuContextPoolTests
 {
     [Fact]
