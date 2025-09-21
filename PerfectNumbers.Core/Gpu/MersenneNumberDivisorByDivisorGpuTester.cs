@@ -274,11 +274,18 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 			}
 
 			int offset = 0;
+			int consoleStatus = 0;
 			while (offset < primes.Length)
 			{
 				int batchSize = Math.Min(_owner._gpuBatchSize, primes.Length - offset);
 				Span<ulong> primeSpan = _primesHost.AsSpan(0, batchSize);
 				primes.Slice(offset, batchSize).CopyTo(primeSpan);
+
+				if (++consoleStatus == PerfectNumberConstants.ConsoleInterval)
+				{
+					Console.WriteLine($"...processed by-divisor candidate = {primes[0]}");
+					consoleStatus = 0;
+				}
 
 				var primesView = _primesBuffer.View.SubView(0, batchSize);
 				var hitsView = _hitsBuffer.View.SubView(0, batchSize);
