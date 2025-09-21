@@ -372,8 +372,6 @@ internal static class Program
 			}
 		}
 
-		residueKMax = ResolveResidueMaxK(useResidue, residueKMaxExplicit, divisorCyclesLimitExplicit, residueKMax, divisorCyclesSearchLimit128);
-
 		if (showHelp)
 		{
 			PrintHelp();

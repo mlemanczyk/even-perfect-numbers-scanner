@@ -16,6 +16,7 @@ public enum GpuKernelType
 }
 
 public sealed class MersenneNumberTester(
+	UInt128 maxK,
     bool useIncremental = true,
     bool useOrderCache = false,
     GpuKernelType kernelType = GpuKernelType.Incremental,
@@ -24,12 +25,11 @@ public sealed class MersenneNumberTester(
     bool useGpuLucas = true,
     bool useGpuScan = true,
     bool useGpuOrder = true,
-	bool useResidue = true,
-    ulong maxK = 5_000_000UL)
+	bool useResidue = true)
 {
     private readonly bool _useResidue = useResidue;
     private readonly bool _useIncremental = useIncremental && !useResidue;
-        private readonly ulong _maxK = maxK;
+        private readonly UInt128 _maxK = maxK;
 	private readonly GpuKernelType _kernelType = kernelType;
     private readonly bool _useModuloWorkaround = useModuloWorkaround;
     private readonly bool _useGpuLucas = useGpuLucas;
@@ -228,11 +228,6 @@ public sealed class MersenneNumberTester(
         // In residue mode the residue scan is the final primality check.
         if (_useResidue)
         {
-            if ((UInt128)_maxK < maxK)
-            {
-                maxK = _maxK;
-            }
-
             if (_useGpuScan)
             {
                 _residueGpuTester!.Scan(exponent, twoP, lastIsSeven, maxK, ref prePrime);
