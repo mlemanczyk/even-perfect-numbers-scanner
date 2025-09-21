@@ -45,54 +45,49 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		UInt128 batchSize128 = (UInt128)batchSize, q;
 		Span<ulong> orders = orderArray.AsSpan(0, batchSize);
 		ref var ordersRef = ref MemoryMarshal.GetReference(orders);
-		try
+		while (kStart < maxK && Volatile.Read(ref isPrime))
 		{
-			while (kStart < maxK && Volatile.Read(ref isPrime))
+			remaining = maxK - kStart;
+			if (remaining > batchSize128)
 			{
-				remaining = maxK - kStart;
-				if (remaining > batchSize128)
-				{
-					currentSize = batchSize;
-				}
-				else
-				{
-					currentSize = (int)remaining;
-					orders = orderArray.AsSpan(0, currentSize);
-					ordersRef = ref MemoryMarshal.GetReference(orders);
-				}
-
-				q = twoP * kStart + UInt128.One;
-				q.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
-				var ra = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
-
-				kernel(stream, currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, 0UL,
-						ra, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);                                // kernel(currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, 0UL,
-																																														   //         ra, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
-
-				accelerator.Synchronize();
-				orderBuffer.View.CopyToCPU(ref ordersRef, currentSize);
-				if (!Volatile.Read(ref isPrime))
-				{
-					break;
-				}
-
-				for (i = 0; i < currentSize; i++)
-				{
-					if (orders[i] != 0UL)
-					{
-						Volatile.Write(ref isPrime, false);
-						break;
-					}
-				}
-
-				kStart += batchSize128;
+				currentSize = batchSize;
 			}
+			else
+			{
+				currentSize = (int)remaining;
+				orders = orderArray.AsSpan(0, currentSize);
+				ordersRef = ref MemoryMarshal.GetReference(orders);
+			}
+
+			q = twoP * kStart + UInt128.One;
+			q.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
+			var ra = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
+
+			kernel(stream, currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, 0UL,
+					ra, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
+
+			accelerator.Synchronize();
+			orderBuffer.View.CopyToCPU(ref ordersRef, currentSize);
+			if (!Volatile.Read(ref isPrime))
+			{
+				break;
+			}
+
+			for (i = 0; i < currentSize; i++)
+			{
+				if (orders[i] != 0UL)
+				{
+					Volatile.Write(ref isPrime, false);
+					goto cleanup;
+				}
+			}
+
+			kStart += batchSize128;
 		}
-		finally
-		{
-			ArrayPool<ulong>.Shared.Return(orderArray);
-			orderBuffer.Dispose();
-			gpuLease.Dispose();
-		}
+
+	cleanup:
+		ArrayPool<ulong>.Shared.Return(orderArray);
+		orderBuffer.Dispose();
+		gpuLease.Dispose();
 	}
 }
