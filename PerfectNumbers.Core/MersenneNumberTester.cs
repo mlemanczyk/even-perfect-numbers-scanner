@@ -228,6 +228,11 @@ public sealed class MersenneNumberTester(
         // In residue mode the residue scan is the final primality check.
         if (_useResidue)
         {
+            if (_maxK < maxK)
+            {
+                maxK = _maxK;
+            }
+
             if (_useGpuScan)
             {
                 _residueGpuTester!.Scan(exponent, twoP, lastIsSeven, maxK, ref prePrime);
