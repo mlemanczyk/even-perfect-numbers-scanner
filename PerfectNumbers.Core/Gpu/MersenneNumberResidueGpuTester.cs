@@ -20,89 +20,87 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		// Ensure device has small cycles and primes tables for in-kernel lookup
 		var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
 		ResiduePrimeViews primeViews = GpuKernelPool.EnsureSmallPrimesOnDevice(accelerator);
-                int batchSize = GpuConstants.ScanBatchSize;
-                UInt128 kStart = 1UL;
-                byte last = lastIsSeven ? (byte)1 : (byte)0;
-                var kernel = gpuLease.Pow2ModKernel;
-                UInt128 exponent128 = exponent;
-                exponent128.Mod10_8_5_3(out ulong exponentMod10, out ulong exponentMod8, out ulong exponentMod5, out ulong exponentMod3);
-                ulong step10 = (exponentMod10 << 1) % 10UL;
-                ulong step8 = (exponentMod8 << 1) & 7UL;
-                ulong step3 = (exponentMod3 << 1) % 3UL;
-                ulong step5 = (exponentMod5 << 1) % 5UL;
-                GpuUInt128 twoPGpu = (GpuUInt128)twoP;
+		int batchSize = GpuConstants.ScanBatchSize;
+		UInt128 kStart = 1UL;
+		byte last = lastIsSeven ? (byte)1 : (byte)0;
+		var kernel = gpuLease.Pow2ModKernel;
+		ulong step10 = ((exponent % 10UL) << 1) % 10UL;
+		ulong step8 = ((exponent & 7UL) << 1) & 7UL;
+		ulong step3 = ((exponent % 3UL) << 1) % 3UL;
+		ulong step5 = ((exponent % 5UL) << 1) % 5UL;
+		GpuUInt128 twoPGpu = (GpuUInt128)twoP;
 
-                var orderBuffer = accelerator.Allocate1D<ulong>(batchSize);
-                // Device memory returned by Allocate1D is not guaranteed to be zeroed.
-                // Ensure the buffer starts with a known state so that lanes skipped by the
-                // kernel (for example due to early rejections) do not leave stale garbage
-                // values that would be interpreted as composite witnesses when copied back
-                // to the host. This mirrors the explicit zeroing performed by other GPU
-                // testers such as the order kernels.
-                orderBuffer.MemSetToZero();
-                ulong[] orderArray = ArrayPool<ulong>.Shared.Rent(batchSize);
-                UInt128 batchSize128 = (UInt128)batchSize;
-                UInt128 fullBatchStep = twoP * batchSize128;
-                UInt128 q = twoP * kStart + UInt128.One;
+		var orderBuffer = accelerator.Allocate1D<ulong>(batchSize);
+		// Device memory returned by Allocate1D is not guaranteed to be zeroed.
+		// Ensure the buffer starts with a known state so that lanes skipped by the
+		// kernel (for example due to early rejections) do not leave stale garbage
+		// values that would be interpreted as composite witnesses when copied back
+		// to the host. This mirrors the explicit zeroing performed by other GPU
+		// testers such as the order kernels.
+		orderBuffer.MemSetToZero();
+		ulong[] orderArray = ArrayPool<ulong>.Shared.Rent(batchSize);
+		UInt128 batchSize128 = (UInt128)batchSize;
+		UInt128 fullBatchStep = twoP * batchSize128;
+		UInt128 q = twoP * kStart + UInt128.One;
 
-                try
-                {
-                        while (kStart < maxK && Volatile.Read(ref isPrime))
-                        {
-                                UInt128 remaining = maxK - kStart;
-                                int currentSize = remaining > batchSize128 ? batchSize : (int)remaining;
-                                Span<ulong> orders = orderArray.AsSpan(0, currentSize);
-                                ref ulong ordersRef = ref MemoryMarshal.GetReference(orders);
+		try
+		{
+			while (kStart < maxK && Volatile.Read(ref isPrime))
+			{
+				UInt128 remaining = maxK - kStart;
+				int currentSize = remaining > batchSize128 ? batchSize : (int)remaining;
+				Span<ulong> orders = orderArray.AsSpan(0, currentSize);
+				ref ulong ordersRef = ref MemoryMarshal.GetReference(orders);
 
-                                q.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
-                                var kernelArgs = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
+				q.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
+				var kernelArgs = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
 
-                                kernel(stream, currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, 0UL,
-                                        kernelArgs, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
+				kernel(stream, currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, 0UL,
+						kernelArgs, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
 
-                                accelerator.Synchronize();
-                                orderBuffer.View.CopyToCPU(ref ordersRef, currentSize);
-                                if (!Volatile.Read(ref isPrime))
-                                {
-                                        break;
-                                }
+				accelerator.Synchronize();
+				orderBuffer.View.CopyToCPU(ref ordersRef, currentSize);
+				if (!Volatile.Read(ref isPrime))
+				{
+					break;
+				}
 
-                                bool compositeFound = false;
-                                for (int i = 0; i < currentSize; i++)
-                                {
-                                        if (orders[i] != 0UL)
-                                        {
-                                                Volatile.Write(ref isPrime, false);
-                                                compositeFound = true;
-                                                break;
-                                        }
-                                }
+				bool compositeFound = false;
+				for (int i = 0; i < currentSize; i++)
+				{
+					if (orders[i] != 0UL)
+					{
+						Volatile.Write(ref isPrime, false);
+						compositeFound = true;
+						break;
+					}
+				}
 
-                                if (compositeFound)
-                                {
-                                        break;
-                                }
+				if (compositeFound)
+				{
+					break;
+				}
 
-                                UInt128 processed = (UInt128)currentSize;
-                                kStart += processed;
-                                if (kStart < maxK)
-                                {
-                                        if (processed == batchSize128)
-                                        {
-                                                q += fullBatchStep;
-                                        }
-                                        else
-                                        {
-                                                q += twoP * processed;
-                                        }
-                                }
-                        }
-                }
-                finally
-                {
-                        ArrayPool<ulong>.Shared.Return(orderArray);
-                        orderBuffer.Dispose();
-                        gpuLease.Dispose();
-                }
-        }
+				UInt128 processed = (UInt128)currentSize;
+				kStart += processed;
+				if (kStart < maxK)
+				{
+					if (processed == batchSize128)
+					{
+						q += fullBatchStep;
+					}
+					else
+					{
+						q += twoP * processed;
+					}
+				}
+			}
+		}
+		finally
+		{
+			ArrayPool<ulong>.Shared.Return(orderArray);
+			orderBuffer.Dispose();
+			gpuLease.Dispose();
+		}
+	}
 }
