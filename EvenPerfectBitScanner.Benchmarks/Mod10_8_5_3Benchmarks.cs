@@ -5,7 +5,7 @@ using PerfectNumbers.Core;
 namespace EvenPerfectBitScanner.Benchmarks;
 
 [MemoryDiagnoser]
-public class UInt128ExtensionsBenchmarks
+public class Mod10_8_5_3Benchmarks
 {
     [Params(3UL, 8191UL, 131071UL, 2147483647UL)]
     public ulong Value { get; set; }
