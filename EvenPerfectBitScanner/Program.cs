@@ -74,15 +74,12 @@ internal static class Program
 		bool mersenneOnGpu = true;   // controls Lucas/incremental/pow2mod device
 		bool orderOnGpu = true;      // controls order computations device
 		int scanBatchSize = 2_097_152, sliceSize = 32;
-		UInt128 residueKMax = 5_000_000UL;
-		bool residueKMaxExplicit = false;
-		string filterFile = string.Empty;
-		string cyclesPath = DefaultCyclesPath;
-		int cyclesBatchSize = 512;
-		bool continueCyclesGeneration = false;
-		UInt128 divisorCyclesSearchLimit128 = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
-		ulong divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
-		bool divisorCyclesLimitExplicit = false;
+                ulong residueKMax = 5_000_000UL;
+                string filterFile = string.Empty;
+                string cyclesPath = DefaultCyclesPath;
+                int cyclesBatchSize = 512;
+                bool continueCyclesGeneration = false;
+                ulong divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
 
 		// NTT backend selection (GPU): reference vs staged
 		for (int i = 0; i < args.Length; i++)
@@ -144,24 +141,21 @@ internal static class Program
 				int eq = arg.IndexOf('=');
 				divisor = UInt128.Parse(arg.AsSpan(eq + 1));
 			}
-			else if (arg.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				if (UInt128.TryParse(arg.AsSpan(eq + 1), NumberStyles.Integer, provider: null, out var limit))
-				{
-					divisorCyclesSearchLimit128 = limit;
-					divisorCyclesSearchLimit = limit > (UInt128)ulong.MaxValue ? ulong.MaxValue : (ulong)limit;
-					divisorCyclesLimitExplicit = true;
-				}
-			}
-			else if (arg.StartsWith("--residue-max-k=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				if (UInt128.TryParse(arg.AsSpan(eq + 1), NumberStyles.Integer, provider: null, out var kmax))
-				{
-					residueKMax = kmax;
-					residueKMaxExplicit = true;
-				}
+                        else if (arg.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                int eq = arg.IndexOf('=');
+                                if (ulong.TryParse(arg.AsSpan(eq + 1), out var limit))
+                                {
+                                        divisorCyclesSearchLimit = limit;
+                                }
+                        }
+                        else if (arg.StartsWith("--residue-max-k=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                int eq = arg.IndexOf('=');
+                                if (ulong.TryParse(arg.AsSpan(eq + 1), out var kmax))
+                                {
+                                        residueKMax = kmax;
+                                }
 			}
 			// Replaces --lucas=cpu|gpu; controls device for Lucas and for
 			// incremental/pow2mod scanning

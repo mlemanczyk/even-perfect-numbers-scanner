@@ -120,37 +120,59 @@ public static class UInt128Extensions
 		return true;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void Mod10_8_5_3(this UInt128 value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)
-	{
-		UInt128 zero = UInt128.Zero;
-		if (value == zero)
-		{
-			mod3 = 0UL;
-			mod5 = 0UL;
-			mod8 = 0UL;
-			mod10 = 0UL;
-			return;
-		}
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Mod10_8_5_3(this UInt128 value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)
+        {
+                UInt128 temp = value;
+                uint byteSum = 0U;
 
-		UInt128 high = value >> 64;
-		ulong result = (ulong)value;
-		mod8 = result & 7UL;
-		// 2^64 ≡ 1 (mod 3)
-		ulong modRem = (result % 3UL) + ((ulong)high % 3UL);
-		mod3 = modRem >= 3UL ? modRem - 3UL : modRem;
-		// 2^64 ≡ 1 (mod 5)
-		modRem = (result % 5UL) + ((ulong)high % 5UL);
-		mod5 = modRem >= 5UL ? modRem - 5UL : modRem;
+                do
+                {
+                        byteSum += (uint)(byte)temp;
+                        temp >>= 8;
+                }
+                while (temp != UInt128.Zero);
 
-		while (high != zero)
-		{
-			// 2^64 ≡ 6 (mod 10)
-			result = (result + (ulong)high * 6UL) % 10UL;
-			high >>= 64;
-		}
+                mod8 = (ulong)value & 7UL;
 
-                mod10 = result % 10UL;
+                uint mod5Value = FastRemainder5(byteSum);
+                uint mod3Value = FastRemainder3(byteSum);
+
+                ulong parity = mod8 & 1UL;
+                mod10 = parity == 0UL
+                        ? mod5Value switch
+                        {
+                                0U => 0UL,
+                                1U => 6UL,
+                                2U => 2UL,
+                                3U => 8UL,
+                                _ => 4UL,
+                        }
+                        : mod5Value switch
+                        {
+                                0U => 5UL,
+                                1U => 1UL,
+                                2U => 7UL,
+                                3U => 3UL,
+                                _ => 9UL,
+                        };
+
+                mod5 = mod5Value;
+                mod3 = mod3Value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static uint FastRemainder3(uint value)
+        {
+                uint quotient = (uint)(((ulong)value * 0xAAAAAAABUL) >> 33);
+                return value - quotient * 3U;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static uint FastRemainder5(uint value)
+        {
+                uint quotient = (uint)(((ulong)value * 0xCCCCCCCDUL) >> 34);
+                return value - quotient * 5U;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
