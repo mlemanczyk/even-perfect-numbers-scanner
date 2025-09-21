@@ -124,7 +124,7 @@ public static class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Mod10(ulong value)
+	public static ulong Mod10(this ulong value)
 	{
 		ulong quotient = (ulong)(((UInt128)value * 0xCCCCCCCCCCCCCCCDUL) >> 67);
 		return value - quotient * 10UL;
