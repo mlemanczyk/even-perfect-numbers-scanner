@@ -44,6 +44,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		int i;
 		UInt128 batchSize128 = (UInt128)batchSize, q;
 		Span<ulong> orders = orderArray.AsSpan(0, batchSize);
+		ref var ordersRef = ref MemoryMarshal.GetReference(orders);
 		try
 		{
 			while (kStart < maxK && Volatile.Read(ref isPrime))
@@ -57,6 +58,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 				{
 					currentSize = (int)remaining;
 					orders = orderArray.AsSpan(0, currentSize);
+					ordersRef = ref MemoryMarshal.GetReference(orders);
 				}
 
 				q = twoP * kStart + UInt128.One;
@@ -68,7 +70,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 																																														   //         ra, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
 
 				accelerator.Synchronize();
-				orderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(orders), currentSize);
+				orderBuffer.View.CopyToCPU(ref ordersRef, currentSize);
 				if (!Volatile.Read(ref isPrime))
 				{
 					break;
