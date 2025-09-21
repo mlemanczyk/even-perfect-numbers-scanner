@@ -23,6 +23,86 @@ public class ULongExtensionsTests
 
     [Theory]
     [Trait("Category", "Fast")]
+    [InlineData(0UL)]
+    [InlineData(ulong.MaxValue)]
+    [InlineData(1234567890123456789UL)]
+    public void Mod3_matches_operator(ulong value)
+    {
+        value.Mod3().Should().Be(value % 3UL);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(0UL)]
+    [InlineData(ulong.MaxValue)]
+    [InlineData(1234567890123456789UL)]
+    public void Mod5_matches_operator(ulong value)
+    {
+        value.Mod5().Should().Be(value % 5UL);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(0UL)]
+    [InlineData(ulong.MaxValue)]
+    [InlineData(1234567890123456789UL)]
+    public void Mod7_matches_operator(ulong value)
+    {
+        value.Mod7().Should().Be(value % 7UL);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(0UL)]
+    [InlineData(ulong.MaxValue)]
+    [InlineData(1234567890123456789UL)]
+    public void Mod8_matches_operator(ulong value)
+    {
+        value.Mod8().Should().Be(value % 8UL);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(0UL)]
+    [InlineData(ulong.MaxValue)]
+    [InlineData(1234567890123456789UL)]
+    public void Mod11_matches_operator(ulong value)
+    {
+        value.Mod11().Should().Be(value % 11UL);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(0UL)]
+    [InlineData(ulong.MaxValue)]
+    [InlineData(1234567890123456789UL)]
+    public void Mod128_matches_operator(ulong value)
+    {
+        value.Mod128().Should().Be(value % 128UL);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(1UL)]
+    [InlineData(123456789UL)]
+    [InlineData(ulong.MaxValue)]
+    public void Mod10_8_5_3Steps_matches_manual_formula(ulong value)
+    {
+        value.Mod10_8_5_3Steps(out ulong step10, out ulong step8, out ulong step5, out ulong step3);
+
+        ulong expected10 = ((value % 10UL) << 1) % 10UL;
+        ulong expected8 = ((value & 7UL) << 1) & 7UL;
+        ulong expected5 = ((value % 5UL) << 1) % 5UL;
+        ulong expected3 = ((value % 3UL) << 1) % 3UL;
+
+        step10.Should().Be(expected10);
+        step8.Should().Be(expected8);
+        step5.Should().Be(expected5);
+        step3.Should().Be(expected3);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
     [InlineData(2UL, true)]
     [InlineData(9UL, false)]
     [InlineData(97UL, true)]

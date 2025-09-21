@@ -203,48 +203,73 @@ public static class UInt128Extensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Mod10(this UInt128 value)
-	{
-		UInt128 zero = UInt128.Zero;
-		if (value == zero)
-			return 0UL;
+        public static ulong Mod10(this UInt128 value)
+        {
+                UInt128 zero = UInt128.Zero;
+                if (value == zero)
+                        return 0UL;
 
-		ulong result = (ulong)value;
-		UInt128 high = value >> 64;
+                ulong result = (ulong)value;
+                UInt128 high = value >> 64;
 
-		while (high != zero)
-		{
-			// 2^64 ≡ 6 (mod 10)
-			result = (result + (ulong)high * 6UL).Mod10();
-			high >>= 64;
-		}
+                while (high != zero)
+                {
+                        // 2^64 ≡ 6 (mod 10)
+                        result = (result + (ulong)high * 6UL).Mod10();
+                        high >>= 64;
+                }
 
-		return result.Mod10();
-	}
+                return result.Mod10();
+        }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Mod8(this UInt128 value) => (ulong)value & 7UL;
-	
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Mod3(this UInt128 value)
-	{
-		// 2^64 ≡ 1 (mod 3)
-		ulong rem = ((ulong)value % 3UL) + ((ulong)(value >> 64) % 3UL);
-		return rem >= 3UL ? rem - 3UL : rem;
-	}
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod8(this UInt128 value) => (ulong)value & 7UL;
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Mod5(this UInt128 value)
-	{
-		// 2^64 ≡ 1 (mod 5)
-		ulong rem = ((ulong)value % 5UL) + ((ulong)(value >> 64) % 5UL);
-		return rem >= 5UL ? rem - 5UL : rem;
-	}
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod3(this UInt128 value)
+        {
+                ulong remainder = ((ulong)value).Mod3() + ((ulong)(value >> 64)).Mod3();
+                return remainder >= 3UL ? remainder - 3UL : remainder;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod5(this UInt128 value)
+        {
+                ulong remainder = ((ulong)value).Mod5() + ((ulong)(value >> 64)).Mod5();
+                return remainder >= 5UL ? remainder - 5UL : remainder;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod7(this UInt128 value)
+        {
+                ulong remainder = ((ulong)value).Mod7() + ((ulong)(value >> 64)).Mod7() * 2UL;
+                while (remainder >= 7UL)
+                {
+                        remainder -= 7UL;
+                }
+
+                return remainder;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod11(this UInt128 value)
+        {
+                ulong remainder = ((ulong)value).Mod11() + ((ulong)(value >> 64)).Mod11() * 5UL;
+                while (remainder >= 11UL)
+                {
+                        remainder -= 11UL;
+                }
+
+                return remainder;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod128(this UInt128 value) => (ulong)value & 127UL;
 
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static UInt128 Mul64(this UInt128 a, UInt128 b)
-	{
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static UInt128 Mul64(this UInt128 a, UInt128 b)
+        {
 		ulong aLow = (ulong)a;
 		ulong bLow = (ulong)b;
 		return ((UInt128)(aLow * (ulong)(b >> 64) + aLow.MulHigh(bLow)) << 64) | (aLow * bLow);
