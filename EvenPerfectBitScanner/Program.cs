@@ -54,14 +54,30 @@ internal static class Program
 	private static double _zeroFracConj = -1.0;                 // disabled when < 0
 	private static int _maxZeroConj = -1;                       // disabled when < 0
 
-	private struct ByDivisorPrimeState
-	{
-		internal ulong Prime;
-		internal ulong AllowedMax;
-		internal bool Completed;
-		internal bool Composite;
-		internal bool DetailedCheck;
-	}
+        private struct ByDivisorPrimeState
+        {
+                internal ulong Prime;
+                internal ulong AllowedMax;
+                internal bool Completed;
+                internal bool Composite;
+                internal bool DetailedCheck;
+        }
+
+        private readonly struct PendingResult
+        {
+                internal PendingResult(ulong prime, bool detailedCheck, bool passedAllTests)
+                {
+                        Prime = prime;
+                        DetailedCheck = detailedCheck;
+                        PassedAllTests = passedAllTests;
+                }
+
+                internal ulong Prime { get; }
+
+                internal bool DetailedCheck { get; }
+
+                internal bool PassedAllTests { get; }
+        }
 
 	private static unsafe void Main(string[] args)
 	{
@@ -644,9 +660,9 @@ internal static class Program
 
 		Console.WriteLine("Starting scan...");
 
-		if (_useByDivisorMode)
-		{
-			RunByDivisorMode(filterList, divisorCyclesSearchLimit);
+                if (_useByDivisorMode)
+                {
+                        RunByDivisorMode(filterList, divisorCyclesSearchLimit, threadCount);
 			FlushBuffer();
 			StringBuilderPool.Return(_outputBuilder!);
 			return;
@@ -734,12 +750,12 @@ internal static class Program
 		StringBuilderPool.Return(_outputBuilder!);
 	}
 
-	private static void RunByDivisorMode(List<ulong> primes, ulong divisorCyclesSearchLimit)
-	{
-		if (primes.Count == 0)
-		{
-			return;
-		}
+        private static void RunByDivisorMode(List<ulong> primes, ulong divisorCyclesSearchLimit, int threadCount)
+        {
+                if (primes.Count == 0)
+                {
+                        return;
+                }
 
 		List<ByDivisorPrimeState> states = new(primes.Count);
 
@@ -772,142 +788,232 @@ internal static class Program
 
 		_byDivisorPrecheckOnly = false;
 
-		if (states.Count == 0)
-		{
-			return;
-		}
+                if (states.Count == 0)
+                {
+                        return;
+                }
 
-		using var session = _byDivisorTester!.CreateDivisorSession();
-		byte[] hitsBuffer = ArrayPool<byte>.Shared.Rent(states.Count);
-		ulong[] primeBuffer = ArrayPool<ulong>.Shared.Rent(states.Count);
-		int[] indexBuffer = ArrayPool<int>.Shared.Rent(states.Count);
+                object stateLock = new();
+                ulong divisorLimit = _byDivisorTester!.DivisorLimit;
+                ulong nextDivisor = 3UL;
+                bool divisorsExhausted = false;
+                ulong finalDivisorValue = 3UL;
+                int remainingStates = states.Count;
 
-		try
-		{
-			ulong divisor = 3UL;
-			ulong divisorLimit = _byDivisorTester!.DivisorLimit;
+                Task[] workers = new Task[Math.Max(1, threadCount)];
 
-			while (true)
-			{
-				bool anyPending = false;
-				int activeCount = 0;
+                for (int i = 0; i < workers.Length; i++)
+                {
+                        workers[i] = Task.Run(() =>
+                        {
+                                using var session = _byDivisorTester!.CreateDivisorSession();
+                                byte[] hitsBuffer = ArrayPool<byte>.Shared.Rent(states.Count);
+                                ulong[] primeBuffer = ArrayPool<ulong>.Shared.Rent(states.Count);
+                                int[] indexBuffer = ArrayPool<int>.Shared.Rent(states.Count);
+                                List<PendingResult> completions = new(states.Count);
+                                List<PendingResult> composites = new(states.Count);
 
-				for (int i = 0; i < states.Count; i++)
-				{
-					var state = states[i];
-					if (state.Completed)
-					{
-						continue;
-					}
+                                try
+                                {
+                                        while (true)
+                                        {
+                                                ulong divisor;
+                                                int activeCount;
+                                                bool shouldTerminate;
+                                                bool hasWork;
 
-					if (state.AllowedMax < divisor)
-					{
-						state.Completed = true;
-						state.DetailedCheck = true;
-						states[i] = state;
-						PrintResult(state.Prime, searchedMersenne: true, detailedCheck: true, passedAllTests: true);
-						continue;
-					}
+                                                lock (stateLock)
+                                                {
+                                                        hasWork = TryAcquireDivisorWork(states, divisorLimit, primeBuffer, indexBuffer, completions, ref nextDivisor, ref divisorsExhausted, ref finalDivisorValue, ref remainingStates, out divisor, out activeCount, out shouldTerminate);
+                                                }
 
-					anyPending = true;
+                                                if (completions.Count > 0)
+                                                {
+                                                        foreach (PendingResult result in completions)
+                                                        {
+                                                                PrintResult(result.Prime, searchedMersenne: true, detailedCheck: result.DetailedCheck, passedAllTests: result.PassedAllTests);
+                                                        }
 
-					if (divisor > divisorLimit)
-					{
-						states[i] = state;
-						continue;
-					}
+                                                        completions.Clear();
+                                                }
 
-					primeBuffer[activeCount] = state.Prime;
-					indexBuffer[activeCount] = i;
-					activeCount++;
-					states[i] = state;
-				}
+                                                if (!hasWork)
+                                                {
+                                                        if (shouldTerminate)
+                                                        {
+                                                                break;
+                                                        }
 
-				if (!anyPending || divisor > divisorLimit)
-				{
-					break;
-				}
+                                                        continue;
+                                                }
 
-				if (activeCount == 0)
-				{
-					ulong nextDivisor = divisor + 2UL;
-					if (nextDivisor <= divisor)
-					{
-						break;
-					}
+                                                Span<byte> hitsSpan = hitsBuffer.AsSpan(0, activeCount);
+                                                hitsSpan.Clear();
+                                                session.CheckDivisor(divisor, primeBuffer.AsSpan(0, activeCount), hitsSpan);
 
-					divisor = nextDivisor;
-					continue;
-				}
+                                                bool exitAfterIteration;
+                                                composites.Clear();
 
-				session.CheckDivisor(divisor, primeBuffer.AsSpan(0, activeCount), hitsBuffer.AsSpan(0, activeCount));
+                                                lock (stateLock)
+                                                {
+                                                        for (int j = 0; j < activeCount; j++)
+                                                        {
+                                                                if (hitsSpan[j] == 0)
+                                                                {
+                                                                        continue;
+                                                                }
 
-				for (int i = 0; i < activeCount; i++)
-				{
-					if (hitsBuffer[i] == 0)
-					{
-						continue;
-					}
+                                                                int index = indexBuffer[j];
+                                                                var state = states[index];
+                                                                if (state.Completed)
+                                                                {
+                                                                        continue;
+                                                                }
 
-					int index = indexBuffer[i];
-					var state = states[index];
-					if (state.Completed)
-					{
-						continue;
-					}
+                                                                state.Completed = true;
+                                                                state.Composite = true;
+                                                                state.DetailedCheck = true;
+                                                                states[index] = state;
+                                                                remainingStates--;
+                                                                composites.Add(new PendingResult(state.Prime, state.DetailedCheck, false));
+                                                        }
 
-					state.Completed = true;
-					state.Composite = true;
-					state.DetailedCheck = true;
-					states[index] = state;
-					PrintResult(state.Prime, searchedMersenne: true, detailedCheck: true, passedAllTests: false);
-				}
+                                                        exitAfterIteration = remainingStates == 0;
+                                                        if (exitAfterIteration && !divisorsExhausted)
+                                                        {
+                                                                divisorsExhausted = true;
+                                                                finalDivisorValue = Math.Max(finalDivisorValue, nextDivisor);
+                                                        }
+                                                }
 
-				bool remaining = false;
-				for (int i = 0; i < states.Count; i++)
-				{
-					if (!states[i].Completed)
-					{
-						remaining = true;
-						break;
-					}
-				}
+                                                if (composites.Count > 0)
+                                                {
+                                                        foreach (PendingResult result in composites)
+                                                        {
+                                                                PrintResult(result.Prime, searchedMersenne: true, detailedCheck: result.DetailedCheck, passedAllTests: result.PassedAllTests);
+                                                        }
+                                                }
 
-				if (!remaining)
-				{
-					break;
-				}
+                                                if (exitAfterIteration)
+                                                {
+                                                        break;
+                                                }
+                                        }
+                                }
+                                finally
+                                {
+                                        ArrayPool<int>.Shared.Return(indexBuffer, clearArray: true);
+                                        ArrayPool<ulong>.Shared.Return(primeBuffer, clearArray: true);
+                                        ArrayPool<byte>.Shared.Return(hitsBuffer, clearArray: true);
+                                }
+                        });
+                }
 
-				ulong next = divisor + 2UL;
-				if (next <= divisor)
-				{
-					break;
-				}
+                Task.WaitAll(workers);
+        }
 
-				divisor = next;
-			}
+        private static bool TryAcquireDivisorWork(List<ByDivisorPrimeState> states, ulong divisorLimit, ulong[] primeBuffer, int[] indexBuffer, List<PendingResult> completions, ref ulong nextDivisor, ref bool divisorsExhausted, ref ulong finalDivisorValue, ref int remainingStates, out ulong divisor, out int activeCount, out bool shouldTerminate)
+        {
+                completions.Clear();
 
-			for (int i = 0; i < states.Count; i++)
-			{
-				var state = states[i];
-				if (state.Completed)
-				{
-					continue;
-				}
+                while (true)
+                {
+                        if (remainingStates == 0)
+                        {
+                                divisor = 0UL;
+                                activeCount = 0;
+                                shouldTerminate = true;
+                                return false;
+                        }
 
-				state.Completed = true;
-				state.DetailedCheck = divisor > state.AllowedMax;
-				states[i] = state;
-				PrintResult(state.Prime, searchedMersenne: true, detailedCheck: state.DetailedCheck, passedAllTests: true);
-			}
-		}
-		finally
-		{
-			ArrayPool<int>.Shared.Return(indexBuffer, clearArray: true);
-			ArrayPool<ulong>.Shared.Return(primeBuffer, clearArray: true);
-			ArrayPool<byte>.Shared.Return(hitsBuffer, clearArray: true);
-		}
-	}
+                        if (divisorsExhausted || nextDivisor > divisorLimit)
+                        {
+                                if (!divisorsExhausted)
+                                {
+                                        divisorsExhausted = true;
+                                        finalDivisorValue = nextDivisor;
+                                }
+
+                                ulong completionDivisor = finalDivisorValue;
+                                for (int i = 0; i < states.Count; i++)
+                                {
+                                        var state = states[i];
+                                        if (state.Completed)
+                                        {
+                                                continue;
+                                        }
+
+                                        state.Completed = true;
+                                        state.DetailedCheck = completionDivisor > state.AllowedMax;
+                                        states[i] = state;
+                                        remainingStates--;
+                                        completions.Add(new PendingResult(state.Prime, state.DetailedCheck, true));
+                                }
+
+                                divisor = 0UL;
+                                activeCount = 0;
+                                shouldTerminate = true;
+                                return false;
+                        }
+
+                        ulong divisorValue = nextDivisor;
+                        ulong candidate = divisorValue + 2UL;
+                        if (candidate <= divisorValue)
+                        {
+                                divisorsExhausted = true;
+                                finalDivisorValue = divisorValue;
+                        }
+                        else
+                        {
+                                nextDivisor = candidate;
+                                if (nextDivisor > divisorLimit)
+                                {
+                                        divisorsExhausted = true;
+                                        finalDivisorValue = nextDivisor;
+                                }
+                        }
+
+                        activeCount = 0;
+                        for (int i = 0; i < states.Count; i++)
+                        {
+                                var state = states[i];
+                                if (state.Completed)
+                                {
+                                        continue;
+                                }
+
+                                if (state.AllowedMax < divisorValue)
+                                {
+                                        state.Completed = true;
+                                        state.DetailedCheck = true;
+                                        states[i] = state;
+                                        remainingStates--;
+                                        completions.Add(new PendingResult(state.Prime, state.DetailedCheck, true));
+                                        continue;
+                                }
+
+                                primeBuffer[activeCount] = state.Prime;
+                                indexBuffer[activeCount] = i;
+                                activeCount++;
+                        }
+
+                        if (activeCount == 0)
+                        {
+                                if (completions.Count == 0)
+                                {
+                                        continue;
+                                }
+
+                                divisor = 0UL;
+                                shouldTerminate = remainingStates == 0 && (divisorsExhausted || nextDivisor > divisorLimit);
+                                return false;
+                        }
+
+                        divisor = divisorValue;
+                        shouldTerminate = false;
+                        return true;
+                }
+        }
 
 	private static unsafe void LoadResultsFile(string resultsFileName, Action<ulong, bool, bool> lineProcessorAction)
 	{
