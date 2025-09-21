@@ -23,10 +23,12 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
 
                 var pow2Kernel = gpuLease.Pow2ModKernel;
                 var incKernel = gpuLease.IncrementalKernel;
-                ulong step10 = ((exponent % 10UL) << 1) % 10UL;
-                ulong step8 = ((exponent & 7UL) << 1) & 7UL;
-                ulong step3 = ((exponent % 3UL) << 1) % 3UL;
-                ulong step5 = ((exponent % 5UL) << 1) % 5UL;
+                UInt128 exponent128 = exponent;
+                exponent128.Mod10_8_5_3(out ulong exponentMod10, out ulong exponentMod8, out ulong exponentMod5, out ulong exponentMod3);
+                ulong step10 = (exponentMod10 << 1) % 10UL;
+                ulong step8 = (exponentMod8 << 1) & 7UL;
+                ulong step3 = (exponentMod3 << 1) % 3UL;
+                ulong step5 = (exponentMod5 << 1) % 5UL;
                 GpuUInt128 twoPGpu = (GpuUInt128)twoP;
                 var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
                 ResiduePrimeViews primeViews = default;
@@ -55,9 +57,9 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
                                 if (_kernelType == GpuKernelType.Pow2Mod)
                                 {
                                         q0.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
-                                        var ra = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
+                                        var kernelArgs = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
                                         pow2Kernel(stream, currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, divMul,
-                                                ra, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven,
+                                                kernelArgs, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven,
                                                 primeViews.LastOnePow2, primeViews.LastSevenPow2);
                                 }
                                 else

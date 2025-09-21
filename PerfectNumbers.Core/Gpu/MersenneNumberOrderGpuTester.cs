@@ -25,6 +25,12 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
         };
 
                 var foundBuffer = accelerator.Allocate1D<int>(1);
+                UInt128 exponent128 = exponent;
+                exponent128.Mod10_8_5_3(out ulong exponentMod10, out ulong exponentMod8, out ulong exponentMod5, out ulong exponentMod3);
+                ulong step10 = (exponentMod10 << 1) % 10UL;
+                ulong step8 = (exponentMod8 << 1) & 7UL;
+                ulong step3 = (exponentMod3 << 1) % 3UL;
+                ulong step5 = (exponentMod5 << 1) % 5UL;
                 try
                 {
                         UInt128 remaining;
@@ -37,21 +43,14 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
                                 foundBuffer.MemSetToZero();
                                 // Precompute residue automaton bases for this batch
                                 UInt128 q0 = twoP * kStart + 1UL;
-                                ulong q0m10 = q0.Mod10();
-                                ulong q0m8 = q0.Mod8();
-                                ulong q0m3 = q0.Mod3();
-                                ulong q0m5 = q0.Mod5();
-                                ulong step10 = ((exponent % 10UL) << 1) % 10UL;
-                                ulong step8 = ((exponent & 7UL) << 1) & 7UL;
-                                ulong step3 = ((exponent % 3UL) << 1) % 3UL;
-                                ulong step5 = ((exponent % 5UL) << 1) % 5UL;
-                                var ra = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
+                                q0.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
+                                var kernelArgs = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
 
 
                                 // Ensure device has small cycles table for early rejections in order kernels
                                 var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
                                 kernel(stream, currentSize, exponent, (GpuUInt128)twoP, (GpuUInt128)kStart, last, divMul,
-                                        ra, foundBuffer.View, smallCyclesView);
+                                        kernelArgs, foundBuffer.View, smallCyclesView);
 
                                 stream.Synchronize();
                                 foundBuffer.View.CopyToCPU(ref found, 1);
