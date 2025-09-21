@@ -102,5 +102,6 @@ public class MersenneNumberDivisorGpuTesterTests
         tester.IsPrime(11UL, out bool divisorsExhausted).Should().BeTrue();
         divisorsExhausted.Should().BeTrue();
     }
+
 }
 
