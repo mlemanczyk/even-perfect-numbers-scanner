@@ -158,7 +158,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                 }
         }
 
-        public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>> IncrementalOrderKernel
+    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>> IncrementalOrderKernel
         {
                 get
                 {
@@ -175,7 +175,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                 }
         }
 
-        public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>> Pow2ModOrderKernel
+    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>> Pow2ModOrderKernel
         {
                 get
                 {
@@ -486,7 +486,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
     }
 
     private static void IncrementalOrderKernelScan(Index1D index, ulong exponent, GpuUInt128 twoP, GpuUInt128 kStart, byte lastIsSeven, ulong divMul,
-		ResidueAutomatonArgs ra, ArrayView<int> found, ArrayView1D<uint, Stride1D.Dense> smallCycles)
+                ResidueAutomatonArgs ra, ArrayView<int> found, ArrayView1D<uint, Stride1D.Dense> smallCycles)
     {
         ulong idx = (ulong)index.X;
 		ulong r10 = ra.Q0M10 + (ra.Step10 * idx) % 10UL; r10 -= (r10 >= 10UL) ? 10UL : 0UL;
@@ -570,7 +570,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
     }
 
     private static void Pow2ModOrderKernelScan(Index1D index, ulong exponent, GpuUInt128 twoP, GpuUInt128 kStart, byte lastIsSeven, ulong _,
-		ResidueAutomatonArgs ra, ArrayView<int> found, ArrayView1D<uint, Stride1D.Dense> smallCycles)
+                ResidueAutomatonArgs ra, ArrayView<int> found, ArrayView1D<uint, Stride1D.Dense> smallCycles)
     {
         ulong idx = (ulong)index.X;
 		ulong r10 = ra.Q0M10 + (ra.Step10 * idx) % 10UL; r10 -= (r10 >= 10UL) ? 10UL : 0UL;

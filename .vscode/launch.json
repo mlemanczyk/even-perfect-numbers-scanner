@@ -7,7 +7,8 @@
       "description": "Select project to run",
       "options": [
         "EvenPerfectBitScanner",
-        "EvenPerfectBitScanner.ResultsParser"
+        "EvenPerfectBitScanner.ResultsParser",
+        "EvenPerfectBitScanner.Benchmarks"
       ],
       "default": "EvenPerfectBitScanner"
     }
@@ -20,7 +21,7 @@
       "preLaunchTask": "Build Debug",
       "program": "${workspaceFolder}/${input:projectName}/bin/Debug/net8.0/${input:projectName}.dll",
       "args": [
-		"--increment=add --mersenne=residue --threads=128 --gpu-scan-batch=512000 --primes-device=gpu --mersenne-device=gpu --mod-reduction=barrett128 --block-size=10000000 --gpu-prime-threads=32 --write-batch-size=10000 --divisor-cycles-device=gpu"
+        "--increment=add --mersenne=residue --threads=128 --gpu-scan-batch=512000 --primes-device=gpu --mersenne-device=gpu --mod-reduction=barrett128 --block-size=10000000 --gpu-prime-threads=32 --write-batch-size=10000 --divisor-cycles-device=gpu"
       ],
       "cwd": "${workspaceFolder}",
       "stopAtEntry": false,
@@ -87,6 +88,33 @@
       "request": "launch",
       "preLaunchTask": "Build EvenPerfectBitScanner.ResultsParser Debug",
       "program": "${workspaceFolder}/EvenPerfectBitScanner.ResultsParser/bin/Debug/net8.0/EvenPerfectBitScanner.ResultsParser.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "justMyCode": false
+    },
+    {
+      "name": "Run EvenPerfectBitScanner.Benchmarks",
+      "type": "coreclr",
+      "request": "launch",
+      "noDebug": true,
+      "preLaunchTask": "Build EvenPerfectBitScanner.Benchmarks Release",
+      "program": "${workspaceFolder}/EvenPerfectBitScanner.Benchmarks/bin/Release/net8.0/EvenPerfectBitScanner.Benchmarks.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "justMyCode": false
+    },
+    {
+      "name": "Debug EvenPerfectBitScanner.Benchmarks",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build EvenPerfectBitScanner.Benchmarks Debug",
+      "program": "${workspaceFolder}/EvenPerfectBitScanner.Benchmarks/bin/Debug/net8.0/EvenPerfectBitScanner.Benchmarks.dll",
       "args": [],
       "cwd": "${workspaceFolder}",
       "stopAtEntry": false,
