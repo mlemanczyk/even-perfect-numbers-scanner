@@ -16,8 +16,6 @@ internal static class Program
         private static ThreadLocal<MersenneNumberTester> MersenneTesters = null!;
 	private static ThreadLocal<ModResidueTracker> PResidue = null!;      // p mod d tracker (per-thread)
 	private const ulong InitialP = PerfectNumberConstants.BiggestKnownEvenPerfectP;
-
-	private const int ConsoleInterval = 100_000;
 	private const int WriteBatchSize = 100;
 	private const string DefaultCyclesPath = "divisor_cycles.bin";
 	private static string ResultsFileName = "even_perfect_bit_scan_results.csv";
@@ -1082,7 +1080,7 @@ internal static class Program
 
 		lock (Sync)
 		{
-			if (_consoleCounter >= ConsoleInterval)
+			if (_consoleCounter >= PerfectNumberConstants.ConsoleInterval)
 			{
 				printToConsole = true;
 				primeFlag = passedAllTests && !lastWasComposite && _primeFoundAfterInit;
