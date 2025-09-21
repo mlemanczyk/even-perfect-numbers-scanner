@@ -60,5 +60,20 @@ public class MersenneNumberDivisorGpuTesterTests
         tester.IsPrime(3UL, 7UL, ulong.MaxValue, out bool exhausted).Should().BeFalse();
         exhausted.Should().BeTrue();
     }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void ByDivisor_tester_tracks_divisors_across_primes()
+    {
+        var tester = new MersenneNumberDivisorByDivisorGpuTester();
+        tester.IsPrime(5UL, 64UL, out bool exhausted).Should().BeTrue();
+        exhausted.Should().BeTrue();
+
+        tester.IsPrime(7UL, 96UL, out exhausted).Should().BeTrue();
+        exhausted.Should().BeTrue();
+
+        tester.IsPrime(11UL, 128UL, out exhausted).Should().BeFalse();
+        exhausted.Should().BeTrue();
+    }
 }
 

@@ -28,10 +28,12 @@ internal static class Program
 	private static int _primeCount;
 	private static bool _primeFoundAfterInit;
 	private static bool _useGcdFilter;
-	private static bool _useDivisor;
-	private static bool _useResidueMode;
-	private static UInt128 _divisor;
-	private static MersenneNumberDivisorGpuTester? _divisorTester;
+        private static bool _useDivisor;
+        private static bool _useResidueMode;
+        private static bool _useByDivisorMode;
+        private static UInt128 _divisor;
+        private static MersenneNumberDivisorGpuTester? _divisorTester;
+        private static MersenneNumberDivisorByDivisorGpuTester? _byDivisorTester;
 	private static ulong? _orderWarmupLimitOverride;
 	private static unsafe delegate*<ulong, ref ulong, ulong> _transformP;
 	private static long _state;
@@ -66,8 +68,9 @@ internal static class Program
 		bool showHelp = false;
 		bool useBitTransform = false;
 		bool useLucas = false;
-		bool useResidue = false;    // M_p test via residue divisors (replaces LL/incremental)
-		bool useDivisor = false;     // M_p divisibility by specific divisor
+                bool useResidue = false;    // M_p test via residue divisors (replaces LL/incremental)
+                bool useDivisor = false;     // M_p divisibility by specific divisor
+                bool useByDivisor = false;   // Iterative divisor scan across primes
 		UInt128 divisor = UInt128.Zero;
 		// Device routing
 		bool useGpuCycles = true;
@@ -125,12 +128,19 @@ internal static class Program
 					useResidue = true;
 					useLucas = false;
 				}
-				else if (value.Equals("divisor", StringComparison.OrdinalIgnoreCase))
-				{
-					useDivisor = true;
-					useLucas = false;
-					useResidue = false;
-				}
+                                else if (value.Equals("divisor", StringComparison.OrdinalIgnoreCase))
+                                {
+                                        useDivisor = true;
+                                        useLucas = false;
+                                        useResidue = false;
+                                }
+                                else if (value.Equals("bydivisor", StringComparison.OrdinalIgnoreCase))
+                                {
+                                        useByDivisor = true;
+                                        useLucas = false;
+                                        useResidue = false;
+                                        useDivisor = false;
+                                }
 				else
 				{
 					kernelType = GpuKernelType.Incremental;
@@ -419,9 +429,16 @@ internal static class Program
 
 		Console.WriteLine("Divisor cycles are ready");
 
-		_useDivisor = useDivisor;
-		_useResidueMode = useResidue;
-		_divisor = divisor;
+                if (useByDivisor)
+                {
+                        threadCount = 1;
+                        blockSize = 1;
+                }
+
+                _useDivisor = useDivisor;
+                _useResidueMode = useResidue;
+                _useByDivisorMode = useByDivisor;
+                _divisor = divisor;
 		if (useBitTransform)
 		{
 			_transformP = &TransformPBit;
@@ -438,9 +455,9 @@ internal static class Program
 		PrimeTesters = new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true);
 		// Note: --primes-device controls default device for library kernels; p primality remains CPU here.
 		// Initialize per-thread p residue tracker (Identity model) at currentP
-		if (!useDivisor)
-		{
-			MersenneTesters = new ThreadLocal<MersenneNumberTester>(() =>
+                if (!useDivisor && !useByDivisor)
+                {
+                        MersenneTesters = new ThreadLocal<MersenneNumberTester>(() =>
 			{
 				var tester = new MersenneNumberTester(
 									useIncremental: !useLucas,
@@ -461,15 +478,19 @@ internal static class Program
 				return tester;
 			}, trackAllValues: true);
 		}
-		else
-		{
-			if (divisor == UInt128.Zero)
-			{
-				MersenneNumberDivisorGpuTester.BuildDivisorCandidates();
-			}
+                else if (useDivisor)
+                {
+                        if (divisor == UInt128.Zero)
+                        {
+                                MersenneNumberDivisorGpuTester.BuildDivisorCandidates();
+                        }
 
-			_divisorTester = new MersenneNumberDivisorGpuTester();
-		}
+                        _divisorTester = new MersenneNumberDivisorGpuTester();
+                }
+                else if (useByDivisor)
+                {
+                        _byDivisorTester = new MersenneNumberDivisorByDivisorGpuTester();
+                }
 
 		// Load RLE blacklist (optional)
 		if (!string.IsNullOrEmpty(_rleBlacklistPath))
@@ -495,14 +516,15 @@ internal static class Program
 
 		Console.WriteLine("Initialization...");
 		// Compose a results file name that encodes configuration (before opening file)
-		var builtName = BuildResultsFileName(
-				useBitTransform,
-				threadCount,
-				blockSize,
-				kernelType,
-				useLucas,
-				useDivisor,
-				mersenneOnGpu,
+                var builtName = BuildResultsFileName(
+                                useBitTransform,
+                                threadCount,
+                                blockSize,
+                                kernelType,
+                                useLucas,
+                                useDivisor,
+                                useByDivisor,
+                                mersenneOnGpu,
 				useOrder,
 				useModuloWorkaround,
 				_useGcdFilter,
@@ -591,11 +613,11 @@ internal static class Program
 		// Configure batch size for GPU primality sieve
 		PrimeTester.GpuBatchSize = gpuPrimeBatch;
 
-		if (!useDivisor)
-		{
-			Console.WriteLine("Warming up orders...");
+                if (!useDivisor && !useByDivisor)
+                {
+                        Console.WriteLine("Warming up orders...");
 
-			threadCount = Math.Max(1, threadCount);
+                        threadCount = Math.Max(1, threadCount);
 			_ = MersenneTesters.Value;
 			if (!useLucas)
 			{
@@ -734,7 +756,7 @@ internal static class Program
 		Console.WriteLine("  --increment=bit|add    exponent increment method");
 		Console.WriteLine("  --threads=<value>      number of worker threads");
 		Console.WriteLine("  --block-size=<value>   values processed per thread batch");
-		Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor  Mersenne test method");
+                Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
 		Console.WriteLine("  --divisor=<value>     optional divisor for --mersenne=divisor mode");
 		Console.WriteLine("  --residue-max-k=<value>  max k for residue Mersenne test (q = 2*p*k + 1)");
 		Console.WriteLine("  --mersenne-device=cpu|gpu  Device for Mersenne method (default gpu)");
@@ -769,10 +791,16 @@ internal static class Program
 		Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
 	}
 
-	private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useModWorkaround, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
+        private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool useByDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useModWorkaround, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
 	{
 		string inc = bitInc ? "bit" : "add";
-		string mers = useDivisorFlag ? "divisor" : (useLucasFlag ? "lucas" : (kernelType == GpuKernelType.Pow2Mod ? "pow2mod" : "incremental"));
+                string mers = useDivisorFlag
+                                ? "divisor"
+                                : (useLucasFlag
+                                                ? "lucas"
+                                                : (useByDivisorFlag
+                                                                ? "bydivisor"
+                                                                : (kernelType == GpuKernelType.Pow2Mod ? "pow2mod" : "incremental")));
 		string ntt = nttBackend == NttBackend.Staged ? "staged" : "reference";
 		string red = reduction switch { ModReductionMode.Mont64 => "mont64", ModReductionMode.Barrett128 => "barrett128", ModReductionMode.GpuUInt128 => "uint128", _ => "auto" };
 		string order = useOrder ? "order-on" : "order-off";
@@ -1112,11 +1140,16 @@ internal static class Program
 			return false;
 		}
 
-		searchedMersenne = true;
-		if (_useDivisor)
-		{
-			return _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out detailedCheck);
-		}
+                searchedMersenne = true;
+                if (_useByDivisorMode)
+                {
+                        return _byDivisorTester!.IsPrime(p, divisorCyclesSearchLimit, out detailedCheck);
+                }
+
+                if (_useDivisor)
+                {
+                        return _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out detailedCheck);
+                }
 
 		detailedCheck = MersenneTesters.Value!.IsMersennePrime(p);
 		return detailedCheck;
