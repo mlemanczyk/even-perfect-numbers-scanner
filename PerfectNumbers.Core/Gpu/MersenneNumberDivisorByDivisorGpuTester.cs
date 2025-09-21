@@ -17,9 +17,13 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
         private ulong _lastStatusDivisor;
 
         private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>>> _kernelCache = new();
+        private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>>> _kernelByPrimeCache = new();
 
         private Action<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
                         _kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>>(CheckKernel));
+
+        private Action<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>> GetKernelByPrime(Accelerator accelerator) =>
+                        _kernelByPrimeCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>>(CheckKernelByPrime));
 
         public int GpuBatchSize
         {
@@ -34,6 +38,48 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                         _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
                         _lastStatusDivisor = 0UL;
                         _isConfigured = true;
+                }
+        }
+
+        public ulong DivisorLimit
+        {
+                get
+                {
+                        lock (_sync)
+                        {
+                                if (!_isConfigured)
+                                {
+                                        throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+                                }
+
+                                return _divisorLimit;
+                        }
+                }
+        }
+
+        public ulong GetAllowedMaxDivisor(ulong prime)
+        {
+                lock (_sync)
+                {
+                        if (!_isConfigured)
+                        {
+                                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+                        }
+
+                        return ComputeAllowedMaxDivisor(prime);
+                }
+        }
+
+        public DivisorScanSession CreateDivisorSession()
+        {
+                lock (_sync)
+                {
+                        if (!_isConfigured)
+                        {
+                                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+                        }
+
+                        return new DivisorScanSession(this);
                 }
         }
 
@@ -179,6 +225,79 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                 return composite;
         }
 
+        public sealed class DivisorScanSession : IDisposable
+        {
+                private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
+                private readonly GpuContextPool.GpuContextLease _lease;
+                private readonly Accelerator _accelerator;
+                private readonly Action<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>> _kernel;
+                private readonly MemoryBuffer1D<ulong, Stride1D.Dense> _primesBuffer;
+                private readonly MemoryBuffer1D<byte, Stride1D.Dense> _hitsBuffer;
+                private readonly ulong[] _primesHost;
+                private readonly byte[] _hitsHost;
+                private bool _disposed;
+
+                internal DivisorScanSession(MersenneNumberDivisorByDivisorGpuTester owner)
+                {
+                        _owner = owner;
+                        _lease = GpuContextPool.RentPreferred(preferCpu: false);
+                        _accelerator = _lease.Accelerator;
+                        _kernel = owner.GetKernelByPrime(_accelerator);
+                        _primesBuffer = _accelerator.Allocate1D<ulong>(owner._gpuBatchSize);
+                        _hitsBuffer = _accelerator.Allocate1D<byte>(owner._gpuBatchSize);
+                        _primesHost = ArrayPool<ulong>.Shared.Rent(owner._gpuBatchSize);
+                        _hitsHost = ArrayPool<byte>.Shared.Rent(owner._gpuBatchSize);
+                }
+
+                public void CheckDivisor(ulong divisor, ReadOnlySpan<ulong> primes, Span<byte> hits)
+                {
+                        if (_disposed)
+                        {
+                                throw new ObjectDisposedException(nameof(DivisorScanSession));
+                        }
+
+                        if (primes.Length == 0)
+                        {
+                                return;
+                        }
+
+                        int offset = 0;
+                        while (offset < primes.Length)
+                        {
+                                int batchSize = Math.Min(_owner._gpuBatchSize, primes.Length - offset);
+                                Span<ulong> primeSpan = _primesHost.AsSpan(0, batchSize);
+                                primes.Slice(offset, batchSize).CopyTo(primeSpan);
+
+                                var primesView = _primesBuffer.View.SubView(0, batchSize);
+                                var hitsView = _hitsBuffer.View.SubView(0, batchSize);
+
+                                primesView.CopyFromCPU(ref MemoryMarshal.GetReference(primeSpan), batchSize);
+                                _kernel(batchSize, divisor, primesView, hitsView);
+                                _accelerator.Synchronize();
+
+                                Span<byte> hitSpan = _hitsHost.AsSpan(0, batchSize);
+                                hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitSpan), batchSize);
+                                hitSpan.CopyTo(hits.Slice(offset, batchSize));
+                                offset += batchSize;
+                        }
+                }
+
+                public void Dispose()
+                {
+                        if (_disposed)
+                        {
+                                return;
+                        }
+
+                        _disposed = true;
+                        ArrayPool<ulong>.Shared.Return(_primesHost, clearArray: true);
+                        ArrayPool<byte>.Shared.Return(_hitsHost, clearArray: true);
+                        _primesBuffer.Dispose();
+                        _hitsBuffer.Dispose();
+                        _lease.Dispose();
+                }
+        }
+
         private void ReportStatus(ulong divisor)
         {
                 if (divisor <= _lastStatusDivisor)
@@ -224,6 +343,19 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
         private static void CheckKernel(Index1D index, ulong prime, ArrayView<ulong> divisors, ArrayView<byte> hits)
         {
                 ulong divisor = divisors[index];
+                if (divisor <= 1UL || (divisor & 1UL) == 0UL)
+                {
+                        hits[index] = 0;
+                        return;
+                }
+
+                ulong pow = Pow2Mod(prime, divisor);
+                hits[index] = pow == 1UL ? (byte)1 : (byte)0;
+        }
+
+        private static void CheckKernelByPrime(Index1D index, ulong divisor, ArrayView<ulong> primes, ArrayView<byte> hits)
+        {
+                ulong prime = primes[index];
                 if (divisor <= 1UL || (divisor & 1UL) == 0UL)
                 {
                         hits[index] = 0;
