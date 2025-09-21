@@ -11,6 +11,8 @@ namespace PerfectNumbers.Core.Gpu;
 
 public sealed class MersenneNumberDivisorByDivisorGpuTester
 {
+        private int _gpuBatchSize = GpuConstants.ScanBatchSize;
+
         private readonly List<ulong> _divisors = new();
         private readonly List<ulong> _remainders = new();
         private readonly List<ulong> _lastPrimes = new();
@@ -27,6 +29,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 
         private Action<Index1D, ulong, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> GetInitialKernel(Accelerator accelerator) =>
                         _initialKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(InitialKernel));
+
+        public int GpuBatchSize
+        {
+                get => _gpuBatchSize;
+                set => _gpuBatchSize = Math.Max(1, value);
+        }
 
         public void ConfigureFromMaxPrime(ulong maxPrime)
         {
@@ -80,49 +88,91 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                         return false;
                 }
 
+                var divisorsSpan = CollectionsMarshal.AsSpan(_divisors);
+                var remaindersSpan = CollectionsMarshal.AsSpan(_remainders);
+                var lastPrimesSpan = CollectionsMarshal.AsSpan(_lastPrimes);
+
                 var gpuLease = GpuContextPool.RentPreferred(preferCpu: false);
                 var accelerator = gpuLease.Accelerator;
                 var kernel = GetUpdateKernel(accelerator);
-                var divisorsBuffer = accelerator.Allocate1D<ulong>(count);
-                var remaindersBuffer = accelerator.Allocate1D<ulong>(count);
-                var lastPrimesBuffer = accelerator.Allocate1D<ulong>(count);
-                var hitsBuffer = accelerator.Allocate1D<byte>(count);
 
-                Span<ulong> divisorsSpan = CollectionsMarshal.AsSpan(_divisors);
-                Span<ulong> remaindersSpan = CollectionsMarshal.AsSpan(_remainders);
-                Span<ulong> lastPrimesSpan = CollectionsMarshal.AsSpan(_lastPrimes);
+                int batchCapacity = Math.Min(_gpuBatchSize, count);
+                var divisorsBuffer = accelerator.Allocate1D<ulong>(batchCapacity);
+                var remaindersBuffer = accelerator.Allocate1D<ulong>(batchCapacity);
+                var lastPrimesBuffer = accelerator.Allocate1D<ulong>(batchCapacity);
+                var hitsBuffer = accelerator.Allocate1D<byte>(batchCapacity);
 
-                divisorsBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(divisorsSpan), count);
-                remaindersBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(remaindersSpan), count);
-                lastPrimesBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(lastPrimesSpan), count);
-                hitsBuffer.MemSetToZero();
-
-                kernel(count, prime, divisorsBuffer.View, remaindersBuffer.View, lastPrimesBuffer.View, hitsBuffer.View);
-                accelerator.Synchronize();
-
-                remaindersBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(remaindersSpan), count);
-                lastPrimesBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(lastPrimesSpan), count);
-
-                byte[] hits = ArrayPool<byte>.Shared.Rent(count);
-                Span<byte> hitsSpan = hits.AsSpan(0, count);
-                hitsBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(hitsSpan), count);
+                byte[] hits = ArrayPool<byte>.Shared.Rent(batchCapacity);
 
                 bool composite = false;
                 ulong lastProcessed = 0UL;
-                for (int i = 0; i < count; i++)
-                {
-                        ulong divisor = divisorsSpan[i];
-                        if (divisor > allowedMax)
-                        {
-                                break;
-                        }
 
-                        lastProcessed = divisor;
-                        if (hitsSpan[i] != 0)
+                try
+                {
+                        int processed = 0;
+                        while (processed < count)
                         {
-                                composite = true;
-                                break;
+                                int batchSize = Math.Min(batchCapacity, count - processed);
+                                var divisorView = divisorsBuffer.View.SubView(0, batchSize);
+                                var remainderView = remaindersBuffer.View.SubView(0, batchSize);
+                                var lastPrimeView = lastPrimesBuffer.View.SubView(0, batchSize);
+                                var hitsView = hitsBuffer.View.SubView(0, batchSize);
+
+                                Span<ulong> divisorBatch = divisorsSpan.Slice(processed, batchSize);
+                                Span<ulong> remainderBatch = remaindersSpan.Slice(processed, batchSize);
+                                Span<ulong> lastPrimeBatch = lastPrimesSpan.Slice(processed, batchSize);
+
+                                divisorView.CopyFromCPU(ref MemoryMarshal.GetReference(divisorBatch), batchSize);
+                                remainderView.CopyFromCPU(ref MemoryMarshal.GetReference(remainderBatch), batchSize);
+                                lastPrimeView.CopyFromCPU(ref MemoryMarshal.GetReference(lastPrimeBatch), batchSize);
+                                hitsView.MemSetToZero();
+
+                                kernel(batchSize, prime, divisorView, remainderView, lastPrimeView, hitsView);
+                                accelerator.Synchronize();
+
+                                remainderView.CopyToCPU(ref MemoryMarshal.GetReference(remainderBatch), batchSize);
+                                lastPrimeView.CopyToCPU(ref MemoryMarshal.GetReference(lastPrimeBatch), batchSize);
+
+                                Span<byte> hitsSpan = hits.AsSpan(0, batchSize);
+                                hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitsSpan), batchSize);
+
+                                for (int i = 0; i < batchSize; i++)
+                                {
+                                        ulong divisor = divisorBatch[i];
+                                        if (divisor > allowedMax)
+                                        {
+                                                processed = count;
+                                                break;
+                                        }
+
+                                        lastProcessed = divisor;
+                                        if (hitsSpan[i] != 0)
+                                        {
+                                                composite = true;
+                                                processed = count;
+                                                break;
+                                        }
+                                }
+
+                                if (composite)
+                                {
+                                        break;
+                                }
+
+                                if (processed < count)
+                                {
+                                        processed += batchSize;
+                                }
                         }
+                }
+                finally
+                {
+                        ArrayPool<byte>.Shared.Return(hits, clearArray: true);
+                        hitsBuffer.Dispose();
+                        lastPrimesBuffer.Dispose();
+                        remaindersBuffer.Dispose();
+                        divisorsBuffer.Dispose();
+                        gpuLease.Dispose();
                 }
 
                 if (lastProcessed != 0UL)
@@ -130,34 +180,17 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                         ReportStatus(lastProcessed);
                 }
 
-                ArrayPool<byte>.Shared.Return(hits, clearArray: true);
-
-                hitsBuffer.Dispose();
-                lastPrimesBuffer.Dispose();
-                remaindersBuffer.Dispose();
-                divisorsBuffer.Dispose();
-                gpuLease.Dispose();
-
                 return composite;
         }
 
         private bool ExtendDivisors(ulong prime, ulong allowedMax)
         {
-                ulong currentMax = _divisors.Count == 0 ? 1UL : _divisors[^1];
+                int existingCount = _divisors.Count;
+                allowedMax = Math.Min(allowedMax, _divisorLimit);
+
+                ulong currentMax = existingCount == 0 ? 1UL : _divisors[^1];
                 ulong start = currentMax < 3UL ? 3UL : currentMax + 2UL;
                 if (start > allowedMax)
-                {
-                        return false;
-                }
-
-                List<ulong> newDivisors = new();
-                for (ulong divisor = start; divisor <= allowedMax; divisor += 2UL)
-                {
-                        newDivisors.Add(divisor);
-                }
-
-                int count = newDivisors.Count;
-                if (count == 0)
                 {
                         return false;
                 }
@@ -165,52 +198,87 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                 var gpuLease = GpuContextPool.RentPreferred(preferCpu: false);
                 var accelerator = gpuLease.Accelerator;
                 var kernel = GetInitialKernel(accelerator);
-                var divisorsBuffer = accelerator.Allocate1D<ulong>(count);
-                var remaindersBuffer = accelerator.Allocate1D<ulong>(count);
-                var hitsBuffer = accelerator.Allocate1D<byte>(count);
 
-                Span<ulong> newDivisorsSpan = CollectionsMarshal.AsSpan(newDivisors);
-                divisorsBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(newDivisorsSpan), count);
-                hitsBuffer.MemSetToZero();
+                int batchCapacity = _gpuBatchSize;
+                var divisorsBuffer = accelerator.Allocate1D<ulong>(batchCapacity);
+                var remaindersBuffer = accelerator.Allocate1D<ulong>(batchCapacity);
+                var hitsBuffer = accelerator.Allocate1D<byte>(batchCapacity);
 
-                kernel(count, prime, divisorsBuffer.View, remaindersBuffer.View, hitsBuffer.View);
-                accelerator.Synchronize();
-
-                ulong[] newRemainders = ArrayPool<ulong>.Shared.Rent(count);
-                byte[] hits = ArrayPool<byte>.Shared.Rent(count);
-                Span<ulong> newRemaindersSpan = newRemainders.AsSpan(0, count);
-                Span<byte> hitsSpan = hits.AsSpan(0, count);
-                remaindersBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(newRemaindersSpan), count);
-                hitsBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(hitsSpan), count);
+                ulong[] remainders = ArrayPool<ulong>.Shared.Rent(batchCapacity);
+                byte[] hits = ArrayPool<byte>.Shared.Rent(batchCapacity);
+                ulong[] divisors = ArrayPool<ulong>.Shared.Rent(batchCapacity);
 
                 bool composite = false;
                 ulong lastProcessed = 0UL;
-                for (int i = 0; i < count; i++)
+                ulong divisor = start;
+
+                try
                 {
-                        ulong divisor = newDivisorsSpan[i];
-                        ulong remainder = newRemaindersSpan[i];
-                        _divisors.Add(divisor);
-                        _remainders.Add(remainder);
-                        _lastPrimes.Add(prime);
-                        lastProcessed = divisor;
-                        if (!composite && hitsSpan[i] != 0)
+                        while (divisor <= allowedMax)
                         {
-                                composite = true;
+                                int batchSize = batchCapacity;
+                                int index = 0;
+                                while (index < batchSize && divisor <= allowedMax)
+                                {
+                                        divisors[index++] = divisor;
+                                        divisor += 2UL;
+                                }
+
+                                if (index == 0)
+                                {
+                                        break;
+                                }
+
+                                var divisorView = divisorsBuffer.View.SubView(0, index);
+                                var remainderView = remaindersBuffer.View.SubView(0, index);
+                                var hitsView = hitsBuffer.View.SubView(0, index);
+
+                                Span<ulong> divisorSpan = divisors.AsSpan(0, index);
+                                divisorView.CopyFromCPU(ref MemoryMarshal.GetReference(divisorSpan), index);
+                                hitsView.MemSetToZero();
+
+                                kernel(index, prime, divisorView, remainderView, hitsView);
+                                accelerator.Synchronize();
+
+                                Span<ulong> remainderSpan = remainders.AsSpan(0, index);
+                                Span<byte> hitsSpan = hits.AsSpan(0, index);
+                                remainderView.CopyToCPU(ref MemoryMarshal.GetReference(remainderSpan), index);
+                                hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitsSpan), index);
+
+                                for (int i = 0; i < index; i++)
+                                {
+                                        ulong newDivisor = divisorSpan[i];
+                                        _divisors.Add(newDivisor);
+                                        _remainders.Add(remainderSpan[i]);
+                                        _lastPrimes.Add(prime);
+                                        lastProcessed = newDivisor;
+                                        if (!composite && hitsSpan[i] != 0)
+                                        {
+                                                composite = true;
+                                        }
+                                }
+
+                                if (composite)
+                                {
+                                        break;
+                                }
                         }
+                }
+                finally
+                {
+                        ArrayPool<ulong>.Shared.Return(divisors, clearArray: true);
+                        ArrayPool<ulong>.Shared.Return(remainders, clearArray: true);
+                        ArrayPool<byte>.Shared.Return(hits, clearArray: true);
+                        hitsBuffer.Dispose();
+                        remaindersBuffer.Dispose();
+                        divisorsBuffer.Dispose();
+                        gpuLease.Dispose();
                 }
 
                 if (lastProcessed != 0UL)
                 {
                         ReportStatus(lastProcessed);
                 }
-
-                ArrayPool<ulong>.Shared.Return(newRemainders, clearArray: true);
-                ArrayPool<byte>.Shared.Return(hits, clearArray: true);
-
-                hitsBuffer.Dispose();
-                remaindersBuffer.Dispose();
-                divisorsBuffer.Dispose();
-                gpuLease.Dispose();
 
                 return composite;
         }

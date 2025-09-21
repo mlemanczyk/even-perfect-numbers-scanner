@@ -495,7 +495,10 @@ internal static class Program
                 }
                 else if (useByDivisor)
                 {
-                        _byDivisorTester = new MersenneNumberDivisorByDivisorGpuTester();
+                        _byDivisorTester = new MersenneNumberDivisorByDivisorGpuTester
+                        {
+                                GpuBatchSize = scanBatchSize,
+                        };
                 }
 
 		// Load RLE blacklist (optional)
