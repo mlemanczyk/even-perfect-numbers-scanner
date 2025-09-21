@@ -17,6 +17,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
         private readonly object _sync = new();
         private ulong _divisorLimit;
         private bool _isConfigured;
+        private ulong _lastStatusDivisor;
 
         private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>> _updateKernelCache = new();
         private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>> _initialKernelCache = new();
@@ -39,6 +40,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                         }
 
                         _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
+                        _lastStatusDivisor = 0UL;
                         _isConfigured = true;
                 }
         }
@@ -106,18 +108,26 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                 hitsBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(hitsSpan), count);
 
                 bool composite = false;
+                ulong lastProcessed = 0UL;
                 for (int i = 0; i < count; i++)
                 {
-                        if (divisorsSpan[i] > allowedMax)
+                        ulong divisor = divisorsSpan[i];
+                        if (divisor > allowedMax)
                         {
                                 break;
                         }
 
+                        lastProcessed = divisor;
                         if (hitsSpan[i] != 0)
                         {
                                 composite = true;
                                 break;
                         }
+                }
+
+                if (lastProcessed != 0UL)
+                {
+                        ReportStatus(lastProcessed);
                 }
 
                 ArrayPool<byte>.Shared.Return(hits, clearArray: true);
@@ -174,6 +184,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                 hitsBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(hitsSpan), count);
 
                 bool composite = false;
+                ulong lastProcessed = 0UL;
                 for (int i = 0; i < count; i++)
                 {
                         ulong divisor = newDivisorsSpan[i];
@@ -181,10 +192,16 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                         _divisors.Add(divisor);
                         _remainders.Add(remainder);
                         _lastPrimes.Add(prime);
+                        lastProcessed = divisor;
                         if (!composite && hitsSpan[i] != 0)
                         {
                                 composite = true;
                         }
+                }
+
+                if (lastProcessed != 0UL)
+                {
+                        ReportStatus(lastProcessed);
                 }
 
                 ArrayPool<ulong>.Shared.Return(newRemainders, clearArray: true);
@@ -196,6 +213,17 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                 gpuLease.Dispose();
 
                 return composite;
+        }
+
+        private void ReportStatus(ulong divisor)
+        {
+                if (divisor <= _lastStatusDivisor)
+                {
+                        return;
+                }
+
+                _lastStatusDivisor = divisor;
+                Console.WriteLine($"...processed by-divisor candidate = {divisor}");
         }
 
         private static ulong ComputeDivisorLimitFromMaxPrime(ulong maxPrime)
