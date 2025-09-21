@@ -137,8 +137,29 @@ public static class ULongExtensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Mod10(this ulong value)
         {
-                ulong quotient = (ulong)(((UInt128)value * 0xCCCCCCCCCCCCCCCDUL) >> 67);
-                return value - quotient * 10UL;
+                ulong parity = value & 1UL;
+                ulong mod5 = value.Mod5();
+
+                if (parity == 0UL)
+                {
+                        return mod5 switch
+                        {
+                                0UL => 0UL,
+                                1UL => 6UL,
+                                2UL => 2UL,
+                                3UL => 8UL,
+                                _ => 4UL,
+                        };
+                }
+
+                return mod5 switch
+                {
+                        0UL => 5UL,
+                        1UL => 1UL,
+                        2UL => 7UL,
+                        3UL => 3UL,
+                        _ => 9UL,
+                };
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
