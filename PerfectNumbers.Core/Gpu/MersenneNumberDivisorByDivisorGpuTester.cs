@@ -16,6 +16,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
         private readonly List<ulong> _lastPrimes = new();
         private readonly object _sync = new();
         private ulong _divisorLimit;
+        private bool _isConfigured;
 
         private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>> _updateKernelCache = new();
         private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>> _initialKernelCache = new();
@@ -26,12 +27,32 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
         private Action<Index1D, ulong, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> GetInitialKernel(Accelerator accelerator) =>
                         _initialKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(InitialKernel));
 
-        public bool IsPrime(ulong prime, ulong divisorLimit, out bool divisorsExhausted)
+        public void ConfigureFromMaxPrime(ulong maxPrime)
         {
                 lock (_sync)
                 {
-                        _divisorLimit = divisorLimit;
-                        ulong allowedMax = ComputeAllowedMaxDivisor(prime, divisorLimit);
+                        if (_divisors.Count > 0)
+                        {
+                                _divisors.Clear();
+                                _remainders.Clear();
+                                _lastPrimes.Clear();
+                        }
+
+                        _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
+                        _isConfigured = true;
+                }
+        }
+
+        public bool IsPrime(ulong prime, out bool divisorsExhausted)
+        {
+                lock (_sync)
+                {
+                        if (!_isConfigured)
+                        {
+                                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+                        }
+
+                        ulong allowedMax = ComputeAllowedMaxDivisor(prime);
                         if (allowedMax < 3UL)
                         {
                                 divisorsExhausted = true;
@@ -177,7 +198,22 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                 return composite;
         }
 
-        private static ulong ComputeAllowedMaxDivisor(ulong prime, ulong divisorLimit)
+        private static ulong ComputeDivisorLimitFromMaxPrime(ulong maxPrime)
+        {
+                if (maxPrime <= 1UL)
+                {
+                        return 0UL;
+                }
+
+                if (maxPrime - 1UL >= 64UL)
+                {
+                        return ulong.MaxValue;
+                }
+
+                return (1UL << (int)(maxPrime - 1UL)) - 1UL;
+        }
+
+        private ulong ComputeAllowedMaxDivisor(ulong prime)
         {
                 if (prime <= 1UL)
                 {
@@ -186,11 +222,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 
                 if (prime - 1UL >= 64UL)
                 {
-                        return divisorLimit;
+                        return _divisorLimit;
                 }
 
                 ulong maxByPrime = (1UL << (int)(prime - 1UL)) - 1UL;
-                return Math.Min(maxByPrime, divisorLimit);
+                return Math.Min(maxByPrime, _divisorLimit);
         }
 
         private static void UpdateKernel(Index1D index, ulong prime, ArrayView<ulong> divisors, ArrayView<ulong> remainders, ArrayView<ulong> lastPrimes, ArrayView<byte> hits)

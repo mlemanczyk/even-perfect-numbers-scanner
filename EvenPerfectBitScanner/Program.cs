@@ -374,13 +374,19 @@ internal static class Program
 			{
 				continueCyclesGeneration = true;
 			}
-		}
+                }
 
-		if (showHelp)
-		{
-			PrintHelp();
-			return;
-		}
+                if (useByDivisor && string.IsNullOrEmpty(filterFile))
+                {
+                        Console.WriteLine("--mersenne=bydivisor requires --filter-p=<path>.");
+                        return;
+                }
+
+                if (showHelp)
+                {
+                        PrintHelp();
+                        return;
+                }
 
 		// Apply GPU prime sieve runtime configuration
 		GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
@@ -566,12 +572,12 @@ internal static class Program
 			File.WriteAllText(ResultsFileName, $"p,searchedMersenne,detailedCheck,passedAllTests{Environment.NewLine}");
 		}
 
-		bool useFilter = !string.IsNullOrEmpty(filterFile);
-		HashSet<ulong> filter = [];
-		ulong maxP = 0UL;
-		if (useFilter)
-		{
-			Console.WriteLine("Loading filter...");
+                bool useFilter = !string.IsNullOrEmpty(filterFile);
+                HashSet<ulong> filter = [];
+                ulong maxP = 0UL;
+                if (useFilter)
+                {
+                        Console.WriteLine("Loading filter...");
 			ulong[] localFilter = new ulong[1024];
 			int count = 0;
 			LoadResultsFile(filterFile, (p, detailedCheck, passedAllTests) =>
@@ -596,15 +602,26 @@ internal static class Program
 			if (count > 0)
 			{
 				filter.AddRange(localFilter[..count]);
-			}
-			// Restore this if you want to use List<ulong> instead of HashSet<ulong>
-			// filter.Sort();
-		}
+                        }
+                        // Restore this if you want to use List<ulong> instead of HashSet<ulong>
+                        // filter.Sort();
+                }
 
-		if (_primeCount >= 2)
-		{
-			_primeFoundAfterInit = true;
-		}
+                if (useByDivisor)
+                {
+                        if (maxP <= 1UL)
+                        {
+                                Console.WriteLine("The filter specified by --filter-p must contain at least one prime exponent greater than 1 for --mersenne=bydivisor.");
+                                return;
+                        }
+
+                        _byDivisorTester!.ConfigureFromMaxPrime(maxP);
+                }
+
+                if (_primeCount >= 2)
+                {
+                        _primeFoundAfterInit = true;
+                }
 
 		_outputBuilder = StringBuilderPool.Rent();
 
@@ -785,7 +802,7 @@ internal static class Program
 		Console.WriteLine("  --use-order            test primality via q order");
 		Console.WriteLine("  --workaround-mod       avoid '%' operator on the GPU");
 		// mod-automaton removed
-		Console.WriteLine("  --filter-p=<path>      process only p from previous run results");
+                Console.WriteLine("  --filter-p=<path>      process only p from previous run results (required for --mersenne=bydivisor)");
 		Console.WriteLine("  --write-batch-size=<value> overwrite frequency of disk writes (default 100 lines)");
 		Console.WriteLine("  --gcd-filter           enable early sieve based on GCD");
 		Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
@@ -1143,7 +1160,7 @@ internal static class Program
                 searchedMersenne = true;
                 if (_useByDivisorMode)
                 {
-                        return _byDivisorTester!.IsPrime(p, divisorCyclesSearchLimit, out detailedCheck);
+                        return _byDivisorTester!.IsPrime(p, out detailedCheck);
                 }
 
                 if (_useDivisor)

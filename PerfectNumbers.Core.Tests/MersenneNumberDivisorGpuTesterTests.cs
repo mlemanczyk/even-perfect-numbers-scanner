@@ -1,5 +1,6 @@
 using FluentAssertions;
 using PerfectNumbers.Core.Gpu;
+using System;
 using System.Numerics;
 using System.Reflection;
 using Xunit;
@@ -66,14 +67,40 @@ public class MersenneNumberDivisorGpuTesterTests
     public void ByDivisor_tester_tracks_divisors_across_primes()
     {
         var tester = new MersenneNumberDivisorByDivisorGpuTester();
-        tester.IsPrime(5UL, 64UL, out bool exhausted).Should().BeTrue();
+        tester.ConfigureFromMaxPrime(11UL);
+
+        tester.IsPrime(5UL, out bool exhausted).Should().BeTrue();
         exhausted.Should().BeTrue();
 
-        tester.IsPrime(7UL, 96UL, out exhausted).Should().BeTrue();
+        tester.IsPrime(7UL, out exhausted).Should().BeTrue();
         exhausted.Should().BeTrue();
 
-        tester.IsPrime(11UL, 128UL, out exhausted).Should().BeFalse();
+        tester.IsPrime(11UL, out exhausted).Should().BeFalse();
         exhausted.Should().BeTrue();
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void ByDivisor_tester_requires_configuration()
+    {
+        var tester = new MersenneNumberDivisorByDivisorGpuTester();
+        Action act = () => tester.IsPrime(5UL, out _);
+        act.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void ByDivisor_tester_respects_filter_based_limit()
+    {
+        var tester = new MersenneNumberDivisorByDivisorGpuTester();
+        tester.ConfigureFromMaxPrime(5UL);
+
+        tester.IsPrime(5UL, out _).Should().BeTrue();
+        tester.IsPrime(7UL, out bool exhausted).Should().BeTrue();
+        exhausted.Should().BeTrue();
+
+        tester.IsPrime(11UL, out bool divisorsExhausted).Should().BeTrue();
+        divisorsExhausted.Should().BeTrue();
     }
 }
 
