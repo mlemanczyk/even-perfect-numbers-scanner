@@ -16,28 +16,26 @@ public enum GpuKernelType
 }
 
 public sealed class MersenneNumberTester(
-	bool useIncremental = true,
-	bool useOrderCache = false,
-	GpuKernelType kernelType = GpuKernelType.Incremental,
-	bool useModuloWorkaround = false,
-	bool useOrder = false,
-	bool useGpuLucas = true,
-	bool useGpuScan = true,
-	bool useGpuOrder = true,
-		bool useResidue = true,
-	UInt128? maxK = null,
-		UInt128? residueDivisorSets = null)
+    bool useIncremental = true,
+    bool useOrderCache = false,
+    GpuKernelType kernelType = GpuKernelType.Incremental,
+    bool useModuloWorkaround = false,
+    bool useOrder = false,
+    bool useGpuLucas = true,
+    bool useGpuScan = true,
+    bool useGpuOrder = true,
+	bool useResidue = true,
+    ulong maxK = 5_000_000UL)
 {
-	private readonly bool _useResidue = useResidue;
-	private readonly bool _useIncremental = useIncremental && !useResidue;
-	private readonly UInt128 _maxK = maxK ?? (UInt128)5_000_000UL;
-	private readonly UInt128 _residueDivisorSetCount = residueDivisorSets ?? (UInt128)PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
+    private readonly bool _useResidue = useResidue;
+    private readonly bool _useIncremental = useIncremental && !useResidue;
+        private readonly ulong _maxK = maxK;
 	private readonly GpuKernelType _kernelType = kernelType;
-	private readonly bool _useModuloWorkaround = useModuloWorkaround;
-	private readonly bool _useGpuLucas = useGpuLucas;
-	private readonly bool _useGpuScan = useGpuScan;     // device for pow2mod/incremental scanning
-	private readonly bool _useGpuOrder = useGpuOrder;   // device for order computations
-	private static readonly ConcurrentDictionary<UInt128, ulong> OrderCache = new();
+    private readonly bool _useModuloWorkaround = useModuloWorkaround;
+    private readonly bool _useGpuLucas = useGpuLucas;
+    private readonly bool _useGpuScan = useGpuScan;     // device for pow2mod/incremental scanning
+    private readonly bool _useGpuOrder = useGpuOrder;   // device for order computations
+    private static readonly ConcurrentDictionary<UInt128, ulong> OrderCache = new();
 	private readonly MersenneNumberIncrementalGpuTester _incrementalGpuTester = new(kernelType, useGpuOrder);
 	private readonly MersenneNumberIncrementalCpuTester _incrementalCpuTester = new(kernelType);
 	private readonly MersenneNumberOrderGpuTester _orderGpuTester = new(kernelType, useGpuOrder);
@@ -50,24 +48,7 @@ public sealed class MersenneNumberTester(
 	// TODO: Ensure Program passes useResidue correctly and that residue-vs-incremental-vs-LL selection respects CLI flags.
 	// Also consider injecting a shared cycles cache (MersenneDivisorCycles.Shared) to both CPU and GPU testers.
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static UInt128 DivideRoundUp(UInt128 value, UInt128 divisor)
-	{
-		if (divisor == UInt128.Zero)
-		{
-			return UInt128.Zero;
-		}
-
-		UInt128 result = value / divisor;
-		if (result * divisor == value)
-		{
-			return result;
-		}
-
-		return result + UInt128.One;
-	}
-
-	public void WarmUpOrders(ulong exponent, ulong limit = 5_000_000UL)
+    public void WarmUpOrders(ulong exponent, ulong limit = 5_000_000UL)
 	{
 		bool cacheEnabled = useOrderCache;
 		if (!cacheEnabled)
@@ -218,116 +199,51 @@ public sealed class MersenneNumberTester(
                 }
         }
 
-	public bool IsMersennePrime(ulong exponent) => IsMersennePrime(exponent, out _);
+    public bool IsMersennePrime(ulong exponent)
+    {
+        // Safe early rejections using known orders for tiny primes:
+        // 7 | M_p iff 3 | p. Avoid rejecting p == 3 where M_3 == 7 is prime.
+        if ((exponent % 3UL) == 0UL && exponent != 3UL)
+        {
+            return false;
+        }
 
-	public bool IsMersennePrime(ulong exponent, out bool divisorsExhausted)
-	{
-		divisorsExhausted = false;
+        if ((exponent & 3UL) == 1UL && exponent.SharesFactorWithExponentMinusOne())
+        {
+            return false;
+        }
 
-		// Safe early rejections using known orders for tiny primes:
-		// 7 | M_p iff 3 | p. Avoid rejecting p == 3 where M_3 == 7 is prime.
-		if ((exponent % 3UL) == 0UL && exponent != 3UL)
-		{
-			divisorsExhausted = true;
-			return false;
-		}
-
-		if ((exponent & 3UL) == 1UL && exponent.SharesFactorWithExponentMinusOne())
-		{
-			divisorsExhausted = true;
-			return false;
-		}
-
-		// Skip even exponents: for even p > 2, M_p is composite; here p is large.
-		if ((exponent & 1UL) == 0UL)
-		{
-			divisorsExhausted = true;
-			return false;
-		}
+        // Skip even exponents: for even p > 2, M_p is composite; here p is large.
+        if ((exponent & 1UL) == 0UL)
+        {
+            return false;
+        }
 
 		bool prePrime = true;
-		UInt128 twoP = (UInt128)exponent << 1; // 2 * p
-											   // UInt128 maxDivisor = new(ulong.MaxValue, ulong.MaxValue);
-		UInt128 maxK = UInt128Numbers.Two.Pow(exponent) / 2 + 1;
-		bool lastIsSeven = (exponent & 3UL) == 3UL;
+        UInt128 twoP = (UInt128)exponent << 1; // 2 * p
+        // UInt128 maxDivisor = new(ulong.MaxValue, ulong.MaxValue);
+        UInt128 maxK = UInt128Numbers.Two.Pow(exponent) / 2 + 1;
+        bool lastIsSeven = (exponent & 3UL) == 3UL;
 
-		// In residue mode the residue scan is the final primality check.
-		if (_useResidue)
-		{
-			if (_maxK < maxK)
-			{
-				maxK = _maxK;
-			}
+        // In residue mode the residue scan is the final primality check.
+        if (_useResidue)
+        {
+            if ((UInt128)_maxK < maxK)
+            {
+                maxK = _maxK;
+            }
 
-			if (_maxK == UInt128.Zero || _residueDivisorSetCount == UInt128.Zero)
-			{
-				return prePrime;
-			}
+            if (_useGpuScan)
+            {
+                _residueGpuTester!.Scan(exponent, twoP, lastIsSeven, maxK, ref prePrime);
+            }
+            else
+            {
+                _residueCpuTester!.Scan(exponent, twoP, lastIsSeven, maxK, ref prePrime);
+            }
 
-			UInt128 totalLimit = _maxK;
-			if (totalLimit > maxK)
-			{
-				totalLimit = maxK;
-			}
-
-			if (totalLimit == UInt128.Zero)
-			{
-				return true;
-			}
-
-			UInt128 requestedSets = _residueDivisorSetCount;
-			if (_useGpuScan)
-			{
-				UInt128 maxUsefulSets = DivideRoundUp(totalLimit, (UInt128)GpuConstants.ScanBatchSize);
-				if (maxUsefulSets == UInt128.Zero)
-				{
-					maxUsefulSets = UInt128.One;
-				}
-
-				if (requestedSets == UInt128.Zero || requestedSets > maxUsefulSets)
-				{
-					requestedSets = maxUsefulSets;
-				}
-			}
-
-			if (requestedSets == UInt128.Zero)
-			{
-				requestedSets = UInt128.One;
-			}
-
-			UInt128 perSetLimit = DivideRoundUp(totalLimit, requestedSets);
-			if (perSetLimit == UInt128.Zero)
-			{
-				perSetLimit = UInt128.One;
-			}
-
-			UInt128 setsNeeded = DivideRoundUp(totalLimit, perSetLimit);
-			UInt128 effectiveSets = requestedSets;
-			if (setsNeeded < effectiveSets)
-			{
-				effectiveSets = setsNeeded;
-			}
-
-			bool scanCompleted = false;
-
-			if (_useGpuScan)
-			{
-				_residueGpuTester!.Scan(exponent, twoP, lastIsSeven, perSetLimit, effectiveSets, totalLimit, ref prePrime, ref scanCompleted);
-			}
-			else
-			{
-				_residueCpuTester!.Scan(exponent, twoP, lastIsSeven, perSetLimit, effectiveSets, totalLimit, ref prePrime, ref scanCompleted);
-			}
-
-			if (!prePrime)
-			{
-				divisorsExhausted = true;
-				return false;
-			}
-
-			divisorsExhausted = scanCompleted;
-			return true;
-		}
+            return prePrime;
+        }
 
 		if (!_useIncremental)
 		{
@@ -347,15 +263,12 @@ public sealed class MersenneNumberTester(
 
 			if (!prePrime)
 			{
-				divisorsExhausted = true;
 				return false;
 			}
 
-			bool lucasPrime = _useGpuLucas
-					? _lucasLehmerGpuTester.IsPrime(exponent, runOnGpu: true)
-					: _lucasLehmerCpuTester.IsPrime(exponent);
-			divisorsExhausted = true;
-			return lucasPrime;
+			return _useGpuLucas
+				? _lucasLehmerGpuTester.IsPrime(exponent, runOnGpu: true)
+				: _lucasLehmerCpuTester.IsPrime(exponent);
 		}
 
 		bool isPrime = true;
@@ -383,9 +296,8 @@ public sealed class MersenneNumberTester(
 			}
 		}
 
-		divisorsExhausted = true;
-		return isPrime;
-	}
+        return isPrime;
+    }
 
 	// Limit of k to scan in the pre-Lucas prescan
 	public const int PreLucasPreScanK = 5_000_000;

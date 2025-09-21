@@ -288,18 +288,8 @@ public class MersenneNumberResidueGpuTesterTests
         bool expectedPrime)
     {
         bool isPrime = true;
-        bool exhausted = false;
-        tester.Scan(
-            exponent,
-            (UInt128)exponent << 1,
-            LastDigitIsSeven(exponent),
-            (UInt128)perSetLimit,
-            (UInt128)setCount,
-            (UInt128)overallLimit,
-            ref isPrime,
-            ref exhausted);
+        tester.Scan(exponent, (UInt128)exponent << 1, LastDigitIsSeven(exponent), (UInt128)maxK, ref isPrime);
         isPrime.Should().Be(expectedPrime);
-        exhausted.Should().BeTrue();
     }
 }
 
