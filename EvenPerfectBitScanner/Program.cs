@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using Open.Collections;
 using Open.Numeric.Primes;
 using PerfectNumbers.Core;
@@ -54,12 +55,17 @@ internal static class Program
 	private static double _zeroFracConj = -1.0;                 // disabled when < 0
 	private static int _maxZeroConj = -1;                       // disabled when < 0
 
-	private struct ByDivisorPrimeState
-	{
-		internal ulong Prime;
-		internal ulong AllowedMax;
-		internal bool Completed;
-		internal bool Composite;
+        private const int ByDivisorStateActive = 0;
+        private const int ByDivisorStateComposite = 1;
+        private const int ByDivisorStateCompleted = 2;
+        private const int ByDivisorStateCompletedDetailed = 3;
+
+        private struct ByDivisorPrimeState
+        {
+                internal ulong Prime;
+                internal ulong AllowedMax;
+                internal bool Completed;
+                internal bool Composite;
 		internal bool DetailedCheck;
 	}
 
@@ -793,231 +799,253 @@ internal static class Program
 			return;
 		}
 
-		object stateLock = new();
-		ulong divisorLimit = _byDivisorTester!.DivisorLimit;
-		ulong nextDivisor = 3UL;
-		bool divisorsExhausted = false;
-		ulong finalDivisorValue = 3UL;
-		int remainingStates = states.Count;
+                int stateCount = states.Count;
+                ulong[] primeValues = new ulong[stateCount];
+                ulong[] allowedMaxValues = new ulong[stateCount];
+                int[] stateFlags = new int[stateCount];
 
-		Task[] workers = new Task[Math.Max(1, threadCount)];
+                for (int i = 0; i < stateCount; i++)
+                {
+                        var state = states[i];
+                        primeValues[i] = state.Prime;
+                        allowedMaxValues[i] = state.AllowedMax;
+                }
 
-		for (int i = 0; i < workers.Length; i++)
-		{
-			workers[i] = Task.Run(() =>
-			{
-				using var session = _byDivisorTester!.CreateDivisorSession();
-				byte[] hitsBuffer = ArrayPool<byte>.Shared.Rent(states.Count);
-				ulong[] primeBuffer = ArrayPool<ulong>.Shared.Rent(states.Count);
-				int[] indexBuffer = ArrayPool<int>.Shared.Rent(states.Count);
-				List<PendingResult> completions = new(states.Count);
-				List<PendingResult> composites = new(states.Count);
+                states.Clear();
 
-				try
-				{
-					while (true)
-					{
-						ulong divisor;
-						int activeCount;
-						bool shouldTerminate;
-						bool hasWork;
+                ulong divisorLimit = _byDivisorTester!.DivisorLimit;
+                ulong nextDivisor = 3UL;
+                long finalDivisorBits = unchecked((long)3UL);
+                int divisorsExhaustedFlag = 0;
+                int finalizerState = 0;
+                int finalizationCompleted = 0;
+                int remainingStates = stateCount;
 
-						lock (stateLock)
-						{
-							hasWork = TryAcquireDivisorWork(states, divisorLimit, primeBuffer, indexBuffer, completions, ref nextDivisor, ref divisorsExhausted, ref finalDivisorValue, ref remainingStates, out divisor, out activeCount, out shouldTerminate);
-						}
+                Task[] workers = new Task[Math.Max(1, threadCount)];
 
-						if (completions.Count > 0)
-						{
-							foreach (PendingResult result in completions)
-							{
-								PrintResult(result.Prime, searchedMersenne: true, detailedCheck: result.DetailedCheck, passedAllTests: result.PassedAllTests);
-							}
+                for (int workerIndex = 0; workerIndex < workers.Length; workerIndex++)
+                {
+                        workers[workerIndex] = Task.Run(() =>
+                        {
+                                using var session = _byDivisorTester!.CreateDivisorSession();
+                                byte[] hitsBuffer = ArrayPool<byte>.Shared.Rent(stateCount);
+                                ulong[] primeBuffer = ArrayPool<ulong>.Shared.Rent(stateCount);
+                                int[] indexBuffer = ArrayPool<int>.Shared.Rent(stateCount);
+                                List<PendingResult> completions = new(stateCount);
+                                List<PendingResult> composites = new(stateCount);
 
-							completions.Clear();
-						}
+                                try
+                                {
+                                        while (true)
+                                        {
+                                                if (Volatile.Read(ref remainingStates) == 0)
+                                                {
+                                                        if (Volatile.Read(ref finalizationCompleted) != 0 || Volatile.Read(ref divisorsExhaustedFlag) == 0)
+                                                        {
+                                                                break;
+                                                        }
+                                                }
 
-						if (!hasWork)
-						{
-							if (shouldTerminate)
-							{
-								break;
-							}
+                                                bool exhausted;
+                                                ulong divisor = AcquireNextDivisor(ref nextDivisor, divisorLimit, ref divisorsExhaustedFlag, ref finalDivisorBits, out exhausted);
 
-							continue;
-						}
+                                                if (divisor == 0UL)
+                                                {
+                                                        if (!exhausted)
+                                                        {
+                                                                if (Volatile.Read(ref remainingStates) == 0)
+                                                                {
+                                                                        break;
+                                                                }
 
-						Span<byte> hitsSpan = hitsBuffer.AsSpan(0, activeCount);
-						hitsSpan.Clear();
-						session.CheckDivisor(divisor, primeBuffer.AsSpan(0, activeCount), hitsSpan);
+                                                                Thread.Yield();
+                                                                continue;
+                                                        }
 
-						bool exitAfterIteration;
-						composites.Clear();
+                                                        if (Interlocked.CompareExchange(ref finalizerState, 1, 0) == 0)
+                                                        {
+                                                                completions.Clear();
+                                                                FinalizeRemainingStates(primeValues, allowedMaxValues, stateFlags, ref remainingStates, ref finalDivisorBits, completions);
 
-						lock (stateLock)
-						{
-							for (int j = 0; j < activeCount; j++)
-							{
-								if (hitsSpan[j] == 0)
-								{
-									continue;
-								}
+                                                                if (completions.Count > 0)
+                                                                {
+                                                                        foreach (PendingResult result in completions)
+                                                                        {
+                                                                                PrintResult(result.Prime, searchedMersenne: true, detailedCheck: result.DetailedCheck, passedAllTests: result.PassedAllTests);
+                                                                        }
 
-								int index = indexBuffer[j];
-								var state = states[index];
-								if (state.Completed)
-								{
-									continue;
-								}
+                                                                        completions.Clear();
+                                                                }
 
-								state.Completed = true;
-								state.Composite = true;
-								state.DetailedCheck = true;
-								states[index] = state;
-								remainingStates--;
-								composites.Add(new PendingResult(state.Prime, state.DetailedCheck, false));
-							}
+                                                                Volatile.Write(ref finalizationCompleted, 1);
+                                                        }
+                                                        else
+                                                        {
+                                                                while (Volatile.Read(ref finalizationCompleted) == 0 && Volatile.Read(ref remainingStates) > 0)
+                                                                {
+                                                                        Thread.Yield();
+                                                                }
+                                                        }
 
-							exitAfterIteration = remainingStates == 0;
-							if (exitAfterIteration && !divisorsExhausted)
-							{
-								divisorsExhausted = true;
-								finalDivisorValue = Math.Max(finalDivisorValue, nextDivisor);
-							}
-						}
+                                                        if (Volatile.Read(ref remainingStates) == 0)
+                                                        {
+                                                                break;
+                                                        }
 
-						if (composites.Count > 0)
-						{
-							foreach (PendingResult result in composites)
-							{
-								PrintResult(result.Prime, searchedMersenne: true, detailedCheck: result.DetailedCheck, passedAllTests: result.PassedAllTests);
-							}
-						}
+                                                        continue;
+                                                }
 
-						if (exitAfterIteration)
-						{
-							break;
-						}
-					}
-				}
-				finally
-				{
-					ArrayPool<int>.Shared.Return(indexBuffer, clearArray: true);
-					ArrayPool<ulong>.Shared.Return(primeBuffer, clearArray: true);
-					ArrayPool<byte>.Shared.Return(hitsBuffer, clearArray: true);
-				}
-			});
-		}
+                                                int activeCount = BuildPrimeBuffer(divisor, primeValues, allowedMaxValues, stateFlags, primeBuffer, indexBuffer, completions, ref remainingStates);
 
-		Task.WaitAll(workers);
-	}
+                                                if (completions.Count > 0)
+                                                {
+                                                        foreach (PendingResult result in completions)
+                                                        {
+                                                                PrintResult(result.Prime, searchedMersenne: true, detailedCheck: result.DetailedCheck, passedAllTests: result.PassedAllTests);
+                                                        }
 
-	private static bool TryAcquireDivisorWork(List<ByDivisorPrimeState> states, ulong divisorLimit, ulong[] primeBuffer, int[] indexBuffer, List<PendingResult> completions, ref ulong nextDivisor, ref bool divisorsExhausted, ref ulong finalDivisorValue, ref int remainingStates, out ulong divisor, out int activeCount, out bool shouldTerminate)
-	{
-		completions.Clear();
+                                                        completions.Clear();
+                                                }
 
-		while (true)
-		{
-			if (remainingStates == 0)
-			{
-				divisor = 0UL;
-				activeCount = 0;
-				shouldTerminate = true;
-				return false;
-			}
+                                                if (activeCount == 0)
+                                                {
+                                                        continue;
+                                                }
 
-			if (divisorsExhausted || nextDivisor > divisorLimit)
-			{
-				if (!divisorsExhausted)
-				{
-					divisorsExhausted = true;
-					finalDivisorValue = nextDivisor;
-				}
+                                                Span<byte> hitsSpan = hitsBuffer.AsSpan(0, activeCount);
+                                                hitsSpan.Clear();
+                                                session.CheckDivisor(divisor, primeBuffer.AsSpan(0, activeCount), hitsSpan);
 
-				ulong completionDivisor = finalDivisorValue;
-				for (int i = 0; i < states.Count; i++)
-				{
-					var state = states[i];
-					if (state.Completed)
-					{
-						continue;
-					}
+                                                for (int j = 0; j < activeCount; j++)
+                                                {
+                                                        if (hitsSpan[j] == 0)
+                                                        {
+                                                                continue;
+                                                        }
 
-					state.Completed = true;
-					state.DetailedCheck = completionDivisor > state.AllowedMax;
-					states[i] = state;
-					remainingStates--;
-					completions.Add(new PendingResult(state.Prime, state.DetailedCheck, true));
-				}
+                                                        int index = indexBuffer[j];
+                                                        if (Interlocked.CompareExchange(ref stateFlags[index], ByDivisorStateComposite, ByDivisorStateActive) == ByDivisorStateActive)
+                                                        {
+                                                                Interlocked.Decrement(ref remainingStates);
+                                                                composites.Add(new PendingResult(primeValues[index], detailedCheck: true, passedAllTests: false));
+                                                        }
+                                                }
 
-				divisor = 0UL;
-				activeCount = 0;
-				shouldTerminate = true;
-				return false;
-			}
+                                                if (composites.Count > 0)
+                                                {
+                                                        foreach (PendingResult result in composites)
+                                                        {
+                                                                PrintResult(result.Prime, searchedMersenne: true, detailedCheck: result.DetailedCheck, passedAllTests: result.PassedAllTests);
+                                                        }
 
-			ulong divisorValue = nextDivisor;
-			ulong candidate = divisorValue + 2UL;
-			if (candidate <= divisorValue)
-			{
-				divisorsExhausted = true;
-				finalDivisorValue = divisorValue;
-			}
-			else
-			{
-				nextDivisor = candidate;
-				if (nextDivisor > divisorLimit)
-				{
-					divisorsExhausted = true;
-					finalDivisorValue = nextDivisor;
-				}
-			}
+                                                        composites.Clear();
+                                                }
+                                        }
+                                }
+                                finally
+                                {
+                                        ArrayPool<int>.Shared.Return(indexBuffer, clearArray: true);
+                                        ArrayPool<ulong>.Shared.Return(primeBuffer, clearArray: true);
+                                        ArrayPool<byte>.Shared.Return(hitsBuffer, clearArray: true);
+                                }
+                        });
+                }
 
-			activeCount = 0;
-			for (int i = 0; i < states.Count; i++)
-			{
-				var state = states[i];
-				if (state.Completed)
-				{
-					continue;
-				}
+                Task.WaitAll(workers);
+        }
 
-				if (state.AllowedMax < divisorValue)
-				{
-					state.Completed = true;
-					state.DetailedCheck = true;
-					states[i] = state;
-					remainingStates--;
-					completions.Add(new PendingResult(state.Prime, state.DetailedCheck, true));
-					continue;
-				}
+        private static ulong AcquireNextDivisor(ref ulong nextDivisor, ulong divisorLimit, ref int divisorsExhaustedFlag, ref long finalDivisorBits, out bool exhausted)
+        {
+                ref long nextDivisorBits = ref Unsafe.As<ulong, long>(ref nextDivisor);
 
-				primeBuffer[activeCount] = state.Prime;
-				indexBuffer[activeCount] = i;
-				activeCount++;
-			}
+                while (true)
+                {
+                        if (Volatile.Read(ref divisorsExhaustedFlag) != 0)
+                        {
+                                exhausted = true;
+                                return 0UL;
+                        }
 
-			if (activeCount == 0)
-			{
-				if (completions.Count == 0)
-				{
-					continue;
-				}
+                        long currentBits = Volatile.Read(ref nextDivisorBits);
+                        ulong currentValue = unchecked((ulong)currentBits);
+                        if (currentValue > divisorLimit)
+                        {
+                                if (Interlocked.CompareExchange(ref divisorsExhaustedFlag, 1, 0) == 0)
+                                {
+                                        Volatile.Write(ref finalDivisorBits, currentBits);
+                                }
 
-				divisor = 0UL;
-				shouldTerminate = remainingStates == 0 && (divisorsExhausted || nextDivisor > divisorLimit);
-				return false;
-			}
+                                exhausted = true;
+                                return 0UL;
+                        }
 
-			divisor = divisorValue;
-			shouldTerminate = false;
-			return true;
-		}
-	}
+                        ulong nextValue = currentValue + 2UL;
+                        long nextBits = unchecked((long)nextValue);
+                        if (Interlocked.CompareExchange(ref nextDivisorBits, nextBits, currentBits) == currentBits)
+                        {
+                                exhausted = false;
+                                return currentValue;
+                        }
+                }
+        }
 
-	private static unsafe void LoadResultsFile(string resultsFileName, Action<ulong, bool, bool> lineProcessorAction)
-	{
-		using FileStream readStream = new(resultsFileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        private static int BuildPrimeBuffer(ulong divisor, ulong[] primeValues, ulong[] allowedMaxValues, int[] stateFlags, ulong[] primeBuffer, int[] indexBuffer, List<PendingResult> completions, ref int remainingStates)
+        {
+                int activeCount = 0;
+
+                for (int i = 0; i < primeValues.Length; i++)
+                {
+                        if (allowedMaxValues[i] < divisor)
+                        {
+                                if (Interlocked.CompareExchange(ref stateFlags[i], ByDivisorStateCompletedDetailed, ByDivisorStateActive) == ByDivisorStateActive)
+                                {
+                                        Interlocked.Decrement(ref remainingStates);
+                                        completions.Add(new PendingResult(primeValues[i], detailedCheck: true, passedAllTests: true));
+                                }
+
+                                continue;
+                        }
+
+                        if (Volatile.Read(ref stateFlags[i]) != ByDivisorStateActive)
+                        {
+                                continue;
+                        }
+
+                        primeBuffer[activeCount] = primeValues[i];
+                        indexBuffer[activeCount] = i;
+                        activeCount++;
+                }
+
+                return activeCount;
+        }
+
+        private static void FinalizeRemainingStates(ulong[] primeValues, ulong[] allowedMaxValues, int[] stateFlags, ref int remainingStates, ref long finalDivisorBits, List<PendingResult> completions)
+        {
+                ulong finalDivisorValue = unchecked((ulong)Volatile.Read(ref finalDivisorBits));
+
+                for (int i = 0; i < primeValues.Length; i++)
+                {
+                        if (Volatile.Read(ref stateFlags[i]) != ByDivisorStateActive)
+                        {
+                                continue;
+                        }
+
+                        bool detailed = finalDivisorValue > allowedMaxValues[i];
+                        int newState = detailed ? ByDivisorStateCompletedDetailed : ByDivisorStateCompleted;
+
+                        if (Interlocked.CompareExchange(ref stateFlags[i], newState, ByDivisorStateActive) != ByDivisorStateActive)
+                        {
+                                continue;
+                        }
+
+                        Interlocked.Decrement(ref remainingStates);
+                        completions.Add(new PendingResult(primeValues[i], detailedCheck: detailed, passedAllTests: true));
+                }
+        }
+
+        private static unsafe void LoadResultsFile(string resultsFileName, Action<ulong, bool, bool> lineProcessorAction)
+        {
+                using FileStream readStream = new(resultsFileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 		using StreamReader reader = new(readStream);
 		string? line;
 		bool headerSkipped = false;
