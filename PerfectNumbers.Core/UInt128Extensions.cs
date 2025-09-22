@@ -218,11 +218,11 @@ public static class UInt128Extensions
                 while (high != zero)
                 {
                         // 2^64 ≡ 6 (mod 10)
-                        result = (result + (ulong)high * 6UL).Mod10();
+                        result = (result + (ulong)high * 6UL) % 10UL;
                         high >>= 64;
                 }
 
-                return result.Mod10();
+                return result % 10UL;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -231,14 +231,14 @@ public static class UInt128Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Mod3(this UInt128 value)
         {
-                ulong remainder = ((ulong)value).Mod3() + ((ulong)(value >> 64)).Mod3();
+                ulong remainder = ((ulong)value % 3UL) + ((ulong)(value >> 64) % 3UL);
                 return remainder >= 3UL ? remainder - 3UL : remainder;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Mod5(this UInt128 value)
         {
-                ulong remainder = ((ulong)value).Mod5() + ((ulong)(value >> 64)).Mod5();
+                ulong remainder = ((ulong)value % 5UL) + ((ulong)(value >> 64) % 5UL);
                 return remainder >= 5UL ? remainder - 5UL : remainder;
         }
 
@@ -259,7 +259,7 @@ public static class UInt128Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Mod7(this UInt128 value)
         {
-                ulong remainder = ((ulong)value).Mod7() + ((ulong)(value >> 64)).Mod7() * 2UL;
+                ulong remainder = ((ulong)value % 7UL) + ((ulong)(value >> 64) % 7UL) * 2UL;
                 while (remainder >= 7UL)
                 {
                         remainder -= 7UL;
@@ -271,7 +271,7 @@ public static class UInt128Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Mod11(this UInt128 value)
         {
-                ulong remainder = ((ulong)value).Mod11() + ((ulong)(value >> 64)).Mod11() * 5UL;
+                ulong remainder = ((ulong)value % 11UL) + ((ulong)(value >> 64) % 11UL) * 5UL;
                 while (remainder >= 11UL)
                 {
                         remainder -= 11UL;

@@ -520,7 +520,7 @@ internal static class Program
 			RleBlacklist.Load(_rleBlacklistPath!);
 		}
 
-            ulong remainder = currentP.Mod6();
+            ulong remainder = currentP % 6UL;
 		if (currentP == InitialP && string.IsNullOrEmpty(filterFile))
 		{
 			// bool passedAllTests = IsEvenPerfectCandidate(InitialP, out bool searchedMersenne, out bool detailedCheck);
@@ -1649,7 +1649,7 @@ internal static class Program
 		// Optional: RLE blacklist and binary-threshold filters on p (safe only when configured)
 		if (p <= _rleHardMaxP)
 		{
-                   if (!_rleOnlyLast7 || p.Mod10() == 7UL)
+                   if (!_rleOnlyLast7 || p % 10UL == 7UL)
 			{
 				if (RleBlacklist.IsLoaded() && RleBlacklist.Matches(p))
 				{
