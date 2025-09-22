@@ -1057,13 +1057,27 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong MulMod64(ulong a, ulong b, ulong modulus)
     {
-        // Note: 64-bit % is supported in ILGPU kernels, but the straightforward
-        // (UInt128)a*b % modulus is not, because 128-bit multiply is not
-        // supported in device code. We therefore implement a branch-free
-        // shift-add reduction here based solely on 64-bit ops.
+        if (modulus <= 1UL)
+        {
+            return 0UL;
+        }
+
+        ulong aReduced = a % modulus;
+        ulong bReduced = b % modulus;
+        if (aReduced == 0UL || bReduced == 0UL)
+        {
+            return 0UL;
+        }
+
+        if (TryGetMersenneExponent(modulus, out int exponent))
+        {
+            return MulModMersenne(aReduced, bReduced, modulus, exponent);
+        }
+
+        // Fallback for general moduli using the branch-free shift-add reducer.
         ulong result = 0UL;
-        ulong x = a % modulus;
-        ulong y = b;
+        ulong x = aReduced;
+        ulong y = bReduced;
         while (y != 0UL)
         {
             if ((y & 1UL) != 0UL)
@@ -1085,6 +1099,99 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         }
 
         return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong MulModMersenne(ulong a, ulong b, ulong modulus, int exponent)
+    {
+        Mul64Parts(a, b, out ulong productHigh, out ulong productLow);
+        ulong mask = exponent == 64 ? ulong.MaxValue : modulus;
+
+        ulong currentHigh = productHigh;
+        ulong currentLow = productLow;
+
+        do
+        {
+            ulong lower = currentLow & mask;
+            ShiftRight128(currentHigh, currentLow, exponent, out ulong shiftedHigh, out ulong shiftedLow);
+            currentLow = lower + shiftedLow;
+            currentHigh = shiftedHigh;
+            if (currentLow < lower)
+            {
+                currentHigh++;
+            }
+        }
+        while (currentHigh != 0UL);
+
+        ulong result = currentLow;
+        while (result >= modulus)
+        {
+            result -= modulus;
+        }
+
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryGetMersenneExponent(ulong modulus, out int exponent)
+    {
+        if (modulus <= 1UL)
+        {
+            exponent = 0;
+            return false;
+        }
+
+        ulong plusOne = modulus + 1UL;
+        if (plusOne == 0UL)
+        {
+            exponent = 64;
+            return true;
+        }
+
+        if ((plusOne & (plusOne - 1UL)) != 0UL)
+        {
+            exponent = 0;
+            return false;
+        }
+
+        int bits = 0;
+        while ((plusOne & 1UL) == 0UL)
+        {
+            plusOne >>= 1;
+            bits++;
+        }
+
+        exponent = bits;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ShiftRight128(ulong high, ulong low, int shift, out ulong newHigh, out ulong newLow)
+    {
+        if (shift == 0)
+        {
+            newHigh = high;
+            newLow = low;
+            return;
+        }
+
+        if (shift < 64)
+        {
+            newLow = (low >> shift) | (high << (64 - shift));
+            newHigh = high >> shift;
+            return;
+        }
+
+        if (shift == 64)
+        {
+            newLow = high;
+            newHigh = 0UL;
+            return;
+        }
+
+        int extra = shift - 64;
+        newLow = high >> extra;
+        newHigh = 0UL;
     }
 
     // Montgomery core for 64-bit operands. Returns a*b*R^{-1} mod modulus.
