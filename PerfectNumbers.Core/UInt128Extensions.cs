@@ -135,8 +135,8 @@ public static class UInt128Extensions
 
 		mod8 = (ulong)value & 7UL;
 
-		uint mod5Value = PerfectNumbersMath.FastRemainder5(byteSum);
-		uint mod3Value = PerfectNumbersMath.FastRemainder3(byteSum);
+                uint mod5Value = byteSum.Mod5();
+                uint mod3Value = byteSum.Mod3();
 
                 mod10 = (mod8 & 1UL) == 0UL
                                 ? mod5Value switch
@@ -236,6 +236,22 @@ public static class UInt128Extensions
         {
                 ulong remainder = ((ulong)value).Mod5() + ((ulong)(value >> 64)).Mod5();
                 return remainder >= 5UL ? remainder - 5UL : remainder;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod6(this UInt128 value)
+        {
+                ulong mod3 = value.Mod3();
+                ulong key = (mod3 << 1) | ((ulong)value & 1UL);
+                return key switch
+                {
+                        0UL => 0UL,
+                        1UL => 3UL,
+                        2UL => 4UL,
+                        3UL => 1UL,
+                        4UL => 2UL,
+                        _ => 5UL,
+                };
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

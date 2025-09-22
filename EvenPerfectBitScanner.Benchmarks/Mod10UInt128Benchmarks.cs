@@ -22,10 +22,10 @@ public class Mod10UInt128Benchmarks
 		ulong value = (ulong)Value;
 		ulong high = value >> 64;
 		ulong low = value;
-		ulong highRem = high.Mod10();
-		ulong lowRem = low.Mod10();
-		ulong combined = lowRem + highRem * 6UL;
-		return combined.Mod10();
+                ulong highRem = high % 10UL;
+                ulong lowRem = low % 10UL;
+                ulong combined = lowRem + highRem * 6UL;
+                return combined % 10UL;
 	}
 
     [Benchmark]
@@ -42,11 +42,11 @@ public class Mod10UInt128Benchmarks
 		while (high != zero)
 		{
 			// 2^64 ≡ 6 (mod 10)
-			result = (result + (ulong)high * 6UL).Mod10();
-			high >>= 64;
-		}
+                        result = (result + (ulong)high * 6UL) % 10UL;
+                        high >>= 64;
+                }
 
-		return result.Mod10();
+                return result % 10UL;
     }
 }
 

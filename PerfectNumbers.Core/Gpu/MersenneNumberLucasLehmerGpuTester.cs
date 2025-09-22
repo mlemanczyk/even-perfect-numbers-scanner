@@ -51,7 +51,7 @@ public class MersenneNumberLucasLehmerGpuTester
         // Early rejections aligned with incremental/order sieves, but safe for small p:
         // - If 3 | p and p != 3, then 7 | M_p -> composite.
         // - If p ≡ 1 (mod 4) and p shares a factor with (p-1), reject fast.
-        if ((exponent % 3UL) == 0UL && exponent != 3UL)
+        if (exponent % 3UL == 0UL && exponent != 3UL)
         {
             return false;
         }
@@ -548,7 +548,7 @@ public class MersenneNumberLucasLehmerGpuTester
             }
         }
 
-        int topBits = (int)(exponent % 128UL);
+        int topBits = (int)exponent.Mod128();
         if (topBits == 0)
         {
             topBits = 128;
@@ -672,7 +672,7 @@ public class MersenneNumberLucasLehmerGpuTester
             }
         }
 
-        int topBits = (int)(exponent % 128UL);
+        int topBits = (int)exponent.Mod128();
         if (topBits == 0)
         {
             topBits = 128;
@@ -803,7 +803,7 @@ public class MersenneNumberLucasLehmerGpuTester
         vLow.Add(vHigh);
 
         // Mask to keep only p low bits and fold the carry bits (v >> p)
-        int topBits = (int)(p % 128UL);
+        int topBits = (int)p.Mod128();
         if (topBits == 0)
         {
             topBits = 128;

@@ -100,14 +100,14 @@ public static class PrimesGenerator
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static bool IsAllowedForLastOne(uint prime)
 	{
-		uint mod10 = prime % 10U;
+                uint mod10 = prime % 10U;
 		return mod10 == 1U || mod10 == 3U || mod10 == 9U || prime == 7U || prime == 11U;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static bool IsAllowedForLastSeven(uint prime)
 	{
-		uint mod10 = prime % 10U;
+                uint mod10 = prime % 10U;
 		return mod10 == 3U || mod10 == 7U || mod10 == 9U || prime == 11U;
 	}
 }

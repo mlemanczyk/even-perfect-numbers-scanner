@@ -53,13 +53,13 @@ public sealed class PrimeTester(bool useInternal = false)
         {
             result = false;
         }
-        else if (n > 5UL && (n % 5UL) == 0UL)
+        else if (n > 5UL && n % 5UL == 0UL)
         {
             result = false;
         }
         else
         {
-            if (n.Mod10() == 1UL && SharesFactorWithMaxExponent(n))
+            if (n % 10UL == 1UL && SharesFactorWithMaxExponent(n))
             {
                 result = false;
             }
@@ -260,13 +260,13 @@ public sealed class PrimeTester(bool useInternal = false)
             return;
         }
 
-        if ((n & 1UL) == 0UL || (n > 5UL && (n % 5UL) == 0UL))
+        if ((n & 1UL) == 0UL || (n > 5UL && n % 5UL == 0UL))
         {
             results[index] = 0;
             return;
         }
 
-        if (n.Mod10() == 1UL)
+        if (n % 10UL == 1UL)
         {
             // Early reject special GCD heuristic with floor(log2 n)
             ulong m = 63UL - (ulong)ILGPU.Algorithms.XMath.LeadingZeroCount(n);

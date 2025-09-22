@@ -8,12 +8,16 @@ public class MersenneNumberLucasLehmerCpuTester
 		// - If 3 | p and p != 3, then 7 | M_p -> composite.
 		// - If p ≡ 1 (mod 4) and p shares a factor with (p-1), reject fast.
 		// - If p is divisible by divisors specific to numbers ending with 1 or 7, reject fast.
-		if (
-			((exponent % 3UL) == 0UL && exponent != 3UL) ||
-			((exponent % 5UL) == 0UL && exponent != 5UL) ||
-			((exponent % 7UL) == 0UL && exponent != 7UL) ||
-			((exponent % 11UL) == 0UL && exponent != 11UL)
-		)
+                ulong mod3 = exponent.Mod3();
+                ulong mod5 = exponent.Mod5();
+                ulong mod7 = exponent.Mod7();
+                ulong mod11 = exponent.Mod11();
+                if (
+                    (mod3 == 0UL && exponent != 3UL) ||
+                    (mod5 == 0UL && exponent != 5UL) ||
+                    (mod7 == 0UL && exponent != 7UL) ||
+                    (mod11 == 0UL && exponent != 11UL)
+                )
 		{
 			return false;
 		}

@@ -57,7 +57,11 @@ public static class ULongExtensions
 		return q;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static readonly byte[] Mod6Lookup = { 0, 3, 4, 1, 2, 5 };
+        private static readonly byte[] Mod7ByteCoefficients = { 1, 4, 2, 1, 4, 2, 1, 4 };
+        private static readonly byte[] Mod11ByteCoefficients = { 1, 3, 9, 5, 4, 1, 3, 9 };
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Mod10_8_5_3(this ulong value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)
         {
                 ulong temp = value;
@@ -72,8 +76,8 @@ public static class ULongExtensions
 
                 mod8 = value & 7UL;
 
-                uint mod5Value = PerfectNumbersMath.FastRemainder5(byteSum);
-                uint mod3Value = PerfectNumbersMath.FastRemainder3(byteSum);
+                uint mod5Value = byteSum.Mod5();
+                uint mod3Value = byteSum.Mod3();
 
                 mod10 = (mod8 & 1UL) == 0UL
                                 ? mod5Value switch
@@ -95,6 +99,35 @@ public static class ULongExtensions
 
                 mod5 = mod5Value;
                 mod3 = mod3Value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Mod11_7_5_3(this ulong value, out ulong mod11, out ulong mod7, out ulong mod5, out ulong mod3)
+        {
+                uint mod3Accumulator = 0U;
+                uint mod5Accumulator = 0U;
+                uint mod7Accumulator = 0U;
+                uint mod11Accumulator = 0U;
+                ulong temp = value;
+                int index = 0;
+
+                do
+                {
+                        byte current = (byte)temp;
+                        mod3Accumulator += current;
+                        mod5Accumulator += current;
+                        mod7Accumulator += (uint)(current * Mod7ByteCoefficients[index]);
+                        mod11Accumulator += (uint)(current * Mod11ByteCoefficients[index]);
+
+                        temp >>= 8;
+                        index++;
+                }
+                while (temp != 0UL);
+
+                mod3 = mod3Accumulator.Mod3();
+                mod5 = mod5Accumulator.Mod5();
+                mod7 = ReduceMod7(mod7Accumulator);
+                mod11 = ReduceMod11(mod11Accumulator);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -171,7 +204,7 @@ public static class ULongExtensions
                 sum += (uint)((value >> 32) & 0xFFFFUL);
                 sum += (uint)((value >> 48) & 0xFFFFUL);
 
-                return PerfectNumbersMath.FastRemainder3(sum);
+                return sum.Mod3();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -182,7 +215,14 @@ public static class ULongExtensions
                 sum += (uint)((value >> 32) & 0xFFFFUL);
                 sum += (uint)((value >> 48) & 0xFFFFUL);
 
-                return PerfectNumbersMath.FastRemainder5(sum);
+                return sum.Mod5();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod6(this ulong value)
+        {
+                ulong key = (value.Mod3() << 1) | (value & 1UL);
+                return Mod6Lookup[(int)key];
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -217,6 +257,36 @@ public static class ULongExtensions
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Mod128(this ulong value) => value & 127UL;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong ReduceMod7(uint value)
+        {
+                while (value >= 7U)
+                {
+                        value = (value >> 3) + (value & 7U);
+                        if (value >= 7U && value < 14U)
+                        {
+                                value -= 7U;
+                        }
+                }
+
+                return value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong ReduceMod11(uint value)
+        {
+                while (value >= 11U)
+                {
+                        value = (value & 15U) + ((value >> 4) * 5U);
+                        if (value >= 11U && value < 22U)
+                        {
+                                value -= 11U;
+                        }
+                }
+
+                return value;
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static UInt128 Mul64(this ulong a, ulong b) => ((UInt128)a.MulHigh(b) << 64) | (UInt128)(a * b);

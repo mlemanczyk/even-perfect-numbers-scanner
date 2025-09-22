@@ -33,6 +33,17 @@ public class UIntExtensionsTests
     [InlineData(1U)]
     [InlineData(1234567890U)]
     [InlineData(uint.MaxValue)]
+    public void Mod6_matches_operator(uint value)
+    {
+        value.Mod6().Should().Be(value % 6U);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(0U)]
+    [InlineData(1U)]
+    [InlineData(1234567890U)]
+    [InlineData(uint.MaxValue)]
     public void Mod7_matches_operator(uint value)
     {
         value.Mod7().Should().Be(value % 7U);

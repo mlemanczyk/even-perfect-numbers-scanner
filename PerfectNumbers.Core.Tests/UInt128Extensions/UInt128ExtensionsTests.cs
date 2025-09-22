@@ -203,6 +203,14 @@ public class UInt128ExtensionsTests
 
     [Fact]
     [Trait("Category", "Fast")]
+    public void Mod6_matches_operator()
+    {
+        UInt128 value = (UInt128.One << 100) + 9876543210UL;
+        value.Mod6().Should().Be((ulong)(value % 6));
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
     public void Mod5_matches_operator()
     {
         UInt128 value = (UInt128.One << 100) + 12345;
