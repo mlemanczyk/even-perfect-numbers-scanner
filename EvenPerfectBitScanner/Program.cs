@@ -22,7 +22,8 @@ internal static class Program
 	private static string ResultsFileName = "even_perfect_bit_scan_results.csv";
 	private const string PrimeFoundSuffix = " (FOUND VALID CANDIDATES)";
 	private static StringBuilder? _outputBuilder;
-	private static readonly object Sync = new();
+        private static readonly object Sync = new();
+        private static readonly object FileWriteSync = new();
 	private static int _consoleCounter;
 	private static int _writeIndex;
 	private static int _primeCount;
@@ -1349,84 +1350,137 @@ internal static class Program
 		}
 	}
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryAcquireConsoleSlot(bool primeCandidate, out bool primeFlag)
+        {
+                int consoleInterval = PerfectNumberConstants.ConsoleInterval;
+                int counterValue = Interlocked.Increment(ref _consoleCounter);
+                if (counterValue >= consoleInterval)
+                {
+                        int previous = Interlocked.Exchange(ref _consoleCounter, 0);
+                        if (previous >= consoleInterval)
+                        {
+                                primeFlag = primeCandidate;
+                                return true;
+                        }
+                }
+
+                primeFlag = false;
+                return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static StringBuilder? AppendToOutputBuffer(StringBuilder source)
+        {
+                StringBuilder? builderToFlush = null;
+
+                lock (Sync)
+                {
+                        StringBuilder outputBuilder = _outputBuilder!;
+                        _ = outputBuilder.Append(source);
+
+                        int nextIndex = _writeIndex + 1;
+                        if (nextIndex >= _writeBatchSize)
+                        {
+                                builderToFlush = outputBuilder;
+                                _outputBuilder = StringBuilderPool.Rent();
+                                _writeIndex = 0;
+                        }
+                        else
+                        {
+                                _writeIndex = nextIndex;
+                        }
+                }
+
+                return builderToFlush;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void PrintResult(ulong currentP, bool searchedMersenne, bool detailedCheck, bool passedAllTests)
+        {
+                if (passedAllTests)
+                {
+                        int newCount = Interlocked.Increment(ref _primeCount);
+                        if (newCount >= 2)
+                        {
+                                Volatile.Write(ref _primeFoundAfterInit, true);
+                        }
+                }
+
+                bool lastWasComposite = _lastCompositeP;
+                bool primeCandidate = passedAllTests && !lastWasComposite && Volatile.Read(ref _primeFoundAfterInit);
+
+                StringBuilder localBuilder = StringBuilderPool.Rent();
+                _ = localBuilder
+                                .Append(currentP).Append(',')
+                                .Append(searchedMersenne).Append(',')
+                                .Append(detailedCheck).Append(',')
+                                .Append(passedAllTests).Append('\n');
+
+                bool printToConsole = TryAcquireConsoleSlot(primeCandidate, out bool primeFlag);
+                StringBuilder? builderToFlush = AppendToOutputBuffer(localBuilder);
+
+                if (builderToFlush is not null)
+                {
+                        FlushBuffer(builderToFlush);
+                }
+
+                if (printToConsole)
+                {
+                        if (primeFlag)
+                        {
+                                _ = localBuilder
+                                                .Remove(localBuilder.Length - 1, 1)
+                                                .Append(PrimeFoundSuffix)
+                                                .Append('\n');
+                        }
+
+                        Console.WriteLine(localBuilder.Remove(localBuilder.Length - 1, 1).ToString());
+                }
+
+                localBuilder.Clear();
+                StringBuilderPool.Return(localBuilder);
+        }
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void PrintResult(ulong currentP, bool searchedMersenne, bool detailedCheck, bool passedAllTests)
-	{
-		if (passedAllTests)
-		{
-			int newCount = Interlocked.Increment(ref _primeCount);
-			if (newCount >= 2)
-			{
-				Volatile.Write(ref _primeFoundAfterInit, true);
-			}
-		}
+        private static void FlushBuffer()
+        {
+                StringBuilder? builderToFlush = null;
 
-		bool lastWasComposite = _lastCompositeP;
-		bool primeFlag = false, printToConsole = false;
+                lock (Sync)
+                {
+                        if (_writeIndex == 0 || _outputBuilder is null || _outputBuilder.Length == 0)
+                        {
+                                return;
+                        }
 
-		StringBuilder localBuilder = StringBuilderPool.Rent();
-		_ = localBuilder
-				.Append(currentP).Append(',')
-				.Append(searchedMersenne).Append(',')
-				.Append(detailedCheck).Append(',')
-				.Append(passedAllTests).Append('\n');
+                        builderToFlush = _outputBuilder;
+                        _outputBuilder = StringBuilderPool.Rent();
+                        _writeIndex = 0;
+                }
 
-		lock (Sync)
-		{
-			if (_consoleCounter >= PerfectNumberConstants.ConsoleInterval)
-			{
-				printToConsole = true;
-				primeFlag = passedAllTests && !lastWasComposite && _primeFoundAfterInit;
-				_consoleCounter = 0;
-			}
-			else
-			{
-				_consoleCounter++;
-			}
+                FlushBuffer(builderToFlush!);
+        }
 
-			_ = _outputBuilder!.Append(localBuilder);
-
-			_writeIndex++;
-			if (_writeIndex >= _writeBatchSize)
-			{
-				FlushBuffer();
-			}
-		}
-
-		if (printToConsole)
-		{
-			if (primeFlag)
-			{
-				_ = localBuilder
-						.Remove(localBuilder.Length - 1, 1)
-						.Append(PrimeFoundSuffix)
-						.Append('\n');
-			}
-
-			Console.WriteLine(localBuilder.Remove(localBuilder.Length - 1, 1).ToString());
-		}
-
-		localBuilder.Clear();
-		StringBuilderPool.Return(localBuilder);
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void FlushBuffer()
-	{
-		var stream = new FileStream(ResultsFileName, FileMode.Append, FileAccess.Write, FileShare.Read);
-		var writer = new StreamWriter(stream) { AutoFlush = false };
-
-		if (_writeIndex > 0)
-		{
-			writer.Write(_outputBuilder);
-			writer.Flush();
-			_outputBuilder!.Clear();
-			_writeIndex = 0;
-		}
-
-		writer.Dispose();
-		stream.Dispose();
-	}
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void FlushBuffer(StringBuilder builderToFlush)
+        {
+                try
+                {
+                        lock (FileWriteSync)
+                        {
+                                using FileStream stream = new(ResultsFileName, FileMode.Append, FileAccess.Write, FileShare.Read);
+                                using StreamWriter writer = new(stream) { AutoFlush = false };
+                                writer.Write(builderToFlush);
+                                writer.Flush();
+                        }
+                }
+                finally
+                {
+                        builderToFlush.Clear();
+                        StringBuilderPool.Return(builderToFlush);
+                }
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static ulong CountOnes(ulong value)
