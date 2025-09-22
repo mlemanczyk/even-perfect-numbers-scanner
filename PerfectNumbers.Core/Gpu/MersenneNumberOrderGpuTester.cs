@@ -27,10 +27,10 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 		var foundBuffer = accelerator.Allocate1D<int>(1);
 		UInt128 exponent128 = exponent;
 		exponent128.Mod10_8_5_3(out ulong exponentMod10, out ulong exponentMod8, out ulong exponentMod5, out ulong exponentMod3);
-            ulong step10 = (exponentMod10 << 1) % 10UL;
-		ulong step8 = (exponentMod8 << 1) & 7UL;
-                ulong step3 = (exponentMod3 << 1) % 3UL;
-                ulong step5 = (exponentMod5 << 1) % 5UL;
+            ulong step10 = (exponentMod10 << 1).Mod10();
+                ulong step8 = (exponentMod8 << 1) & 7UL;
+                ulong step3 = (exponentMod3 << 1).Mod3();
+                ulong step5 = (exponentMod5 << 1).Mod5();
 		try
 		{
 			UInt128 remaining;

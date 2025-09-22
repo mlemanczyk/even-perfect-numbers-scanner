@@ -51,7 +51,7 @@ public class MersenneNumberLucasLehmerGpuTester
         // Early rejections aligned with incremental/order sieves, but safe for small p:
         // - If 3 | p and p != 3, then 7 | M_p -> composite.
         // - If p ≡ 1 (mod 4) and p shares a factor with (p-1), reject fast.
-        if (exponent % 3UL == 0UL && exponent != 3UL)
+        if (exponent.Mod3() == 0UL && exponent != 3UL)
         {
             return false;
         }

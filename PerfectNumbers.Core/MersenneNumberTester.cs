@@ -67,7 +67,7 @@ public sealed class MersenneNumberTester(
 			for (; k <= limit; k++)
 			{
 				q = twoP * k + UInt128.One;
-                            remainder = (ulong)(q % 10UL);
+                            remainder = q.Mod10();
 				bool shouldCheck = lastIsSeven
 					? remainder == 7UL || remainder == 9UL || remainder == 3UL
 					: remainder == 1UL || remainder == 3UL || remainder == 9UL;
@@ -75,12 +75,12 @@ public sealed class MersenneNumberTester(
 				// Early modular filters for odd order and small-prime rejections
 				if (shouldCheck)
 				{
-                                    ulong mod8 = (ulong)(q % 8UL);
+                                    ulong mod8 = q.Mod8();
 					if (mod8 != 1UL && mod8 != 7UL)
 					{
 						continue;
 					}
-                                    else if ((ulong)(q % 3UL) == 0UL || (ulong)(q % 5UL) == 0UL)
+                                    else if (q.Mod3() == 0UL || q.Mod5() == 0UL)
 					{
 						continue;
 					}
@@ -106,7 +106,7 @@ public sealed class MersenneNumberTester(
 		for (; k2 <= limit; k2++)
 		{
 			q2 = twoP * k2 + 1UL;
-                    remainder2 = (ulong)(q2 % 10UL);
+                    remainder2 = q2.Mod10();
 			bool shouldCheck2 = lastIsSeven
 				? remainder2 == 7UL || remainder2 == 9UL || remainder2 == 3UL
 				: remainder2 == 1UL || remainder2 == 3UL || remainder2 == 9UL;
@@ -114,12 +114,12 @@ public sealed class MersenneNumberTester(
 			// Early modular filters for odd order and small-prime rejections
 			if (shouldCheck2)
 			{
-                            ulong mod8 = (ulong)(q2 % 8UL);
+                            ulong mod8 = q2.Mod8();
 				if (mod8 != 1UL && mod8 != 7UL)
 				{
 					shouldCheck2 = false;
 				}
-                            else if ((ulong)(q2 % 3UL) == 0UL || (ulong)(q2 % 5UL) == 0UL)
+                            else if (q2.Mod3() == 0UL || q2.Mod5() == 0UL)
 				{
 					shouldCheck2 = false;
 				}
@@ -203,7 +203,7 @@ public sealed class MersenneNumberTester(
     {
         // Safe early rejections using known orders for tiny primes:
         // 7 | M_p iff 3 | p. Avoid rejecting p == 3 where M_3 == 7 is prime.
-        if (exponent % 3UL == 0UL && exponent != 3UL)
+        if (exponent.Mod3() == 0UL && exponent != 3UL)
         {
             return false;
         }
