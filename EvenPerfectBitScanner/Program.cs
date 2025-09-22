@@ -103,6 +103,7 @@ internal static class Program
 		bool useResidue = false;    // M_p test via residue divisors (replaces LL/incremental)
 		bool useDivisor = false;     // M_p divisibility by specific divisor
 		bool useByDivisor = false;   // Iterative divisor scan across primes
+		bool useDivisorCycles = false;
 		UInt128 divisor = UInt128.Zero;
 		// Device routing
 		bool useGpuCycles = true;
@@ -183,6 +184,13 @@ internal static class Program
                         else if (arg.StartsWith("--divisor=", StringComparison.OrdinalIgnoreCase))
                         {
                                 divisor = UInt128.Parse(arg.AsSpan(arg.IndexOf('=') + 1));
+                        }
+                        else if (arg.StartsWith("--use-divisor-cycles=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                if (bool.TryParse(arg.AsSpan(arg.IndexOf('=') + 1), out bool parsedBool))
+                                {
+                                        useDivisorCycles = parsedBool;
+                                }
                         }
                         else if (arg.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
                         {
@@ -501,6 +509,7 @@ internal static class Program
 			_byDivisorTester = new MersenneNumberDivisorByDivisorGpuTester
 			{
 				GpuBatchSize = scanBatchSize,
+				UseDivisorCycles = useDivisorCycles,
 			};
 		}
 
@@ -1277,6 +1286,7 @@ internal static class Program
 		Console.WriteLine("  --divisor-cycles-batch-size=<value> batch size for cycles generation (default 512)");
 		Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
 		Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor");
+		Console.WriteLine("  --use-divisor-cycles=true|false  enable divisor cycle filtering in --mersenne=bydivisor (default false)");
 
 		Console.WriteLine("  --use-order            test primality via q order");
 		Console.WriteLine("  --workaround-mod       avoid '%' operator on the GPU");
