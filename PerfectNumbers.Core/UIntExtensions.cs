@@ -35,8 +35,7 @@ public static class UIntExtensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static uint Mod10(this uint value)
         {
-                uint quotient = (uint)(((ulong)value * 0xCCCCCCCDUL) >> 35);
-                return value - quotient * 10U;
+                return value - (uint)(((ulong)value * 0xCCCCCCCDUL) >> 35) * 10U;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

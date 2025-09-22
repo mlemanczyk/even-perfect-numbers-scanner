@@ -109,27 +109,31 @@ internal static class Program
 		bool mersenneOnGpu = true;   // controls Lucas/incremental/pow2mod device
 		bool orderOnGpu = true;      // controls order computations device
 		int scanBatchSize = 2_097_152, sliceSize = 32;
-		ulong residueKMax = 5_000_000UL;
-		string filterFile = string.Empty;
-		string cyclesPath = DefaultCyclesPath;
-		int cyclesBatchSize = 512;
-		bool continueCyclesGeneration = false;
-		ulong divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
+                ulong residueKMax = 5_000_000UL;
+                string filterFile = string.Empty;
+                string cyclesPath = DefaultCyclesPath;
+                int cyclesBatchSize = 512;
+                bool continueCyclesGeneration = false;
+                ulong divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
+                int argIndex = 0;
+                string arg = string.Empty;
+                ReadOnlySpan<char> mersenneOption = default;
+                ulong parsedLimit = 0UL;
+                ulong parsedResidueMax = 0UL;
 
-		// NTT backend selection (GPU): reference vs staged
-		for (int i = 0; i < args.Length; i++)
-		{
-			string arg = args[i];
-			if (arg.Equals("--?", StringComparison.OrdinalIgnoreCase) || arg.Equals("-?", StringComparison.OrdinalIgnoreCase) || arg.Equals("--help", StringComparison.OrdinalIgnoreCase) || arg.Equals("-help", StringComparison.OrdinalIgnoreCase) || arg.Equals("/?", StringComparison.OrdinalIgnoreCase))
-			{
-				showHelp = true;
-				break;
-			}
-			else if (arg.StartsWith("--prime=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				currentP = ulong.Parse(arg.AsSpan(eq + 1));
-			}
+                // NTT backend selection (GPU): reference vs staged
+                for (; argIndex < args.Length; argIndex++)
+                {
+                        arg = args[argIndex];
+                        if (arg.Equals("--?", StringComparison.OrdinalIgnoreCase) || arg.Equals("-?", StringComparison.OrdinalIgnoreCase) || arg.Equals("--help", StringComparison.OrdinalIgnoreCase) || arg.Equals("-help", StringComparison.OrdinalIgnoreCase) || arg.Equals("/?", StringComparison.OrdinalIgnoreCase))
+                        {
+                                showHelp = true;
+                                break;
+                        }
+                        else if (arg.StartsWith("--prime=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                currentP = ulong.Parse(arg.AsSpan(arg.IndexOf('=') + 1));
+                        }
 			else if (arg.Equals("--increment=bit", StringComparison.OrdinalIgnoreCase))
 			{
 				useBitTransform = true;
@@ -138,75 +142,68 @@ internal static class Program
 			{
 				useBitTransform = false;
 			}
-			else if (arg.StartsWith("--threads=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				threadCount = Math.Max(1, int.Parse(arg.AsSpan(eq + 1)));
-			}
-			else if (arg.StartsWith("--mersenne=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				ReadOnlySpan<char> value = arg.AsSpan(eq + 1);
-				if (value.Equals("pow2mod", StringComparison.OrdinalIgnoreCase))
-				{
-					kernelType = GpuKernelType.Pow2Mod;
-				}
-				else if (value.Equals("lucas", StringComparison.OrdinalIgnoreCase))
-				{
-					useLucas = true;
-				}
-				else if (value.Equals("residue", StringComparison.OrdinalIgnoreCase))
-				{
-					useResidue = true;
-					useLucas = false;
-				}
-				else if (value.Equals("divisor", StringComparison.OrdinalIgnoreCase))
-				{
-					useDivisor = true;
-					useLucas = false;
-					useResidue = false;
-				}
-				else if (value.Equals("bydivisor", StringComparison.OrdinalIgnoreCase))
-				{
-					useByDivisor = true;
-					useLucas = false;
-					useResidue = false;
-					useDivisor = false;
+                        else if (arg.StartsWith("--threads=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                threadCount = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                        }
+                        else if (arg.StartsWith("--mersenne=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                mersenneOption = arg.AsSpan(arg.IndexOf('=') + 1);
+                                if (mersenneOption.Equals("pow2mod", StringComparison.OrdinalIgnoreCase))
+                                {
+                                        kernelType = GpuKernelType.Pow2Mod;
+                                }
+                                else if (mersenneOption.Equals("lucas", StringComparison.OrdinalIgnoreCase))
+                                {
+                                        useLucas = true;
+                                }
+                                else if (mersenneOption.Equals("residue", StringComparison.OrdinalIgnoreCase))
+                                {
+                                        useResidue = true;
+                                        useLucas = false;
+                                }
+                                else if (mersenneOption.Equals("divisor", StringComparison.OrdinalIgnoreCase))
+                                {
+                                        useDivisor = true;
+                                        useLucas = false;
+                                        useResidue = false;
+                                }
+                                else if (mersenneOption.Equals("bydivisor", StringComparison.OrdinalIgnoreCase))
+                                {
+                                        useByDivisor = true;
+                                        useLucas = false;
+                                        useResidue = false;
+                                        useDivisor = false;
 				}
 				else
 				{
 					kernelType = GpuKernelType.Incremental;
 				}
 			}
-			else if (arg.StartsWith("--divisor=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				divisor = UInt128.Parse(arg.AsSpan(eq + 1));
-			}
-			else if (arg.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				if (ulong.TryParse(arg.AsSpan(eq + 1), out var limit))
-				{
-					divisorCyclesSearchLimit = limit;
-				}
-			}
-			else if (arg.StartsWith("--residue-max-k=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				if (ulong.TryParse(arg.AsSpan(eq + 1), out var kmax))
-				{
-					residueKMax = kmax;
-				}
-			}
+                        else if (arg.StartsWith("--divisor=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                divisor = UInt128.Parse(arg.AsSpan(arg.IndexOf('=') + 1));
+                        }
+                        else if (arg.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                if (ulong.TryParse(arg.AsSpan(arg.IndexOf('=') + 1), out parsedLimit))
+                                {
+                                        divisorCyclesSearchLimit = parsedLimit;
+                                }
+                        }
+                        else if (arg.StartsWith("--residue-max-k=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                if (ulong.TryParse(arg.AsSpan(arg.IndexOf('=') + 1), out parsedResidueMax))
+                                {
+                                        residueKMax = parsedResidueMax;
+                                }
+                        }
 			// Replaces --lucas=cpu|gpu; controls device for Lucas and for
 			// incremental/pow2mod scanning
-			else if (arg.StartsWith("--mersenne-device=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				ReadOnlySpan<char> value = arg.AsSpan(eq + 1);
-				mersenneOnGpu = !value.Equals("cpu", StringComparison.OrdinalIgnoreCase);
-			}
+                        else if (arg.StartsWith("--mersenne-device=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                mersenneOnGpu = !arg.AsSpan(arg.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                        }
 			else if (arg.Equals("--workaround-mod", StringComparison.OrdinalIgnoreCase))
 			{
 				useModuloWorkaround = true;
@@ -215,39 +212,37 @@ internal static class Program
 			{
 				useOrder = true;
 			}
-			else if (arg.StartsWith("--order-warmup-limit=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				// stored and used below when initializing testers
-				if (ulong.TryParse(arg.AsSpan(eq + 1), out var limit))
-				{
-					_orderWarmupLimitOverride = limit;
-				}
-			}
+                        else if (arg.StartsWith("--order-warmup-limit=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                // stored and used below when initializing testers
+                                // Reusing parsedLimit to capture the --order-warmup-limit argument.
+                                if (ulong.TryParse(arg.AsSpan(arg.IndexOf('=') + 1), out parsedLimit))
+                                {
+                                        _orderWarmupLimitOverride = parsedLimit;
+                                }
+                        }
 			else if (arg.Equals("--gcd-filter", StringComparison.OrdinalIgnoreCase))
 			{
 				_useGcdFilter = true;
 			}
-			else if (arg.StartsWith("--ntt=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				ReadOnlySpan<char> value = arg.AsSpan(eq + 1);
-				if (value.Equals("staged", StringComparison.OrdinalIgnoreCase))
-				{
-					NttGpuMath.GpuTransformBackend = NttBackend.Staged;
+                        else if (arg.StartsWith("--ntt=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                ReadOnlySpan<char> value = arg.AsSpan(arg.IndexOf('=') + 1);
+                                if (value.Equals("staged", StringComparison.OrdinalIgnoreCase))
+                                {
+                                        NttGpuMath.GpuTransformBackend = NttBackend.Staged;
 				}
 				else
 				{
 					NttGpuMath.GpuTransformBackend = NttBackend.Reference;
 				}
 			}
-			else if (arg.StartsWith("--mod-reduction=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				ReadOnlySpan<char> value = arg.AsSpan(eq + 1);
-				if (value.Equals("mont64", StringComparison.OrdinalIgnoreCase))
-				{
-					NttGpuMath.ReductionMode = ModReductionMode.Mont64;
+                        else if (arg.StartsWith("--mod-reduction=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                ReadOnlySpan<char> value = arg.AsSpan(arg.IndexOf('=') + 1);
+                                if (value.Equals("mont64", StringComparison.OrdinalIgnoreCase))
+                                {
+                                        NttGpuMath.ReductionMode = ModReductionMode.Mont64;
 				}
 				else if (value.Equals("barrett128", StringComparison.OrdinalIgnoreCase))
 				{
@@ -262,146 +257,122 @@ internal static class Program
 					NttGpuMath.ReductionMode = ModReductionMode.Auto;
 				}
 			}
-			else if (arg.StartsWith("--primes-device=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				ReadOnlySpan<char> value = arg.AsSpan(eq + 1);
-				// Controls default device for library prime-related GPU kernels
-				// that are not explicitly parameterized (backward compatibility).
-				GpuContextPool.ForceCpu = value.Equals("cpu", StringComparison.OrdinalIgnoreCase);
-			}
+                        else if (arg.StartsWith("--primes-device=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                // Controls default device for library prime-related GPU kernels
+                                // that are not explicitly parameterized (backward compatibility).
+                                GpuContextPool.ForceCpu = arg.AsSpan(arg.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                        }
 			// New: choose device for order computations (warm-ups and order scans)
-			else if (arg.StartsWith("--order-device=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				ReadOnlySpan<char> value = arg.AsSpan(eq + 1);
-				orderOnGpu = !value.Equals("cpu", StringComparison.OrdinalIgnoreCase);
-			}
+                        else if (arg.StartsWith("--order-device=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                orderOnGpu = !arg.AsSpan(arg.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                        }
 			// Optional: RLE blacklist for p
-			else if (arg.StartsWith("--rle-blacklist=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				_rleBlacklistPath = arg.Substring(eq + 1);
-			}
-			else if (arg.StartsWith("--rle-hard-max=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				if (ulong.TryParse(arg.AsSpan(eq + 1), out var rleMaxP))
-				{
-					_rleHardMaxP = rleMaxP;
-				}
-			}
-			else if (arg.StartsWith("--rle-only-last7=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				ReadOnlySpan<char> value = arg.AsSpan(eq + 1);
-				_rleOnlyLast7 = !value.Equals("false", StringComparison.OrdinalIgnoreCase) && !value.Equals("0", StringComparison.OrdinalIgnoreCase);
-			}
-			else if (arg.StartsWith("--zero-hard=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				if (double.TryParse(arg.AsSpan(eq + 1), out var z))
-				{
-					_zeroFracHard = z;
-				}
-			}
-			else if (arg.StartsWith("--zero-conj=", StringComparison.OrdinalIgnoreCase))
-			{
-				// format: <zeroFrac>:<maxZeroBlock>
-				int eq = arg.IndexOf('=');
-				ReadOnlySpan<char> value = arg.AsSpan(eq + 1);
-				int colon = value.IndexOf(':');
-				if (colon > 0)
-				{
-					if (double.TryParse(value[..colon], out var zf) && int.TryParse(value[(colon + 1)..], out var mz))
-					{
-						_zeroFracConj = zf;
-						_maxZeroConj = mz;
-					}
-				}
+                        else if (arg.StartsWith("--rle-blacklist=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                _rleBlacklistPath = arg[(arg.IndexOf('=') + 1)..];
+                        }
+                        else if (arg.StartsWith("--rle-hard-max=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                ulong rleMaxP;
+                                if (ulong.TryParse(arg.AsSpan(arg.IndexOf('=') + 1), out rleMaxP))
+                                {
+                                        _rleHardMaxP = rleMaxP;
+                                }
+                        }
+                        else if (arg.StartsWith("--rle-only-last7=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                ReadOnlySpan<char> value = arg.AsSpan(arg.IndexOf('=') + 1);
+                                _rleOnlyLast7 = !value.Equals("false", StringComparison.OrdinalIgnoreCase) && !value.Equals("0", StringComparison.OrdinalIgnoreCase);
+                        }
+                        else if (arg.StartsWith("--zero-hard=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                double zeroFraction;
+                                if (double.TryParse(arg.AsSpan(arg.IndexOf('=') + 1), out zeroFraction))
+                                {
+                                        _zeroFracHard = zeroFraction;
+                                }
+                        }
+                        else if (arg.StartsWith("--zero-conj=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                // format: <zeroFrac>:<maxZeroBlock>
+                                ReadOnlySpan<char> value = arg.AsSpan(arg.IndexOf('=') + 1);
+                                int colon = value.IndexOf(':');
+                                if (colon > 0)
+                                {
+                                        double zeroFrac;
+                                        int maxZero;
+                                        if (double.TryParse(value[..colon], out zeroFrac) && int.TryParse(value[(colon + 1)..], out maxZero))
+                                        {
+                                                _zeroFracConj = zeroFrac;
+                                                _maxZeroConj = maxZero;
+                                        }
+                                }
 			}
 			// Backward-compat: accept deprecated device flags and map to new ones
-			else if (arg.StartsWith("--lucas=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				ReadOnlySpan<char> value = arg.AsSpan(eq + 1);
-				mersenneOnGpu = !value.Equals("cpu", StringComparison.OrdinalIgnoreCase);
-			}
-			else if (arg.StartsWith("--primes=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				ReadOnlySpan<char> value = arg.AsSpan(eq + 1);
-				GpuContextPool.ForceCpu = value.Equals("cpu", StringComparison.OrdinalIgnoreCase);
-			}
-			else if (arg.StartsWith("--gpu-kernels=", StringComparison.OrdinalIgnoreCase) || arg.StartsWith("--accelerator=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				ReadOnlySpan<char> value = arg.AsSpan(eq + 1);
-				// Legacy alias: treat as primes-device for backward compat
-				GpuContextPool.ForceCpu = value.Equals("cpu", StringComparison.OrdinalIgnoreCase);
-			}
-			else if (arg.StartsWith("--results-dir=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				_resultsDir = arg.Substring(eq + 1);
-			}
-			else if (arg.StartsWith("--results-prefix=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				_resultsPrefix = arg.Substring(eq + 1);
-			}
+                        else if (arg.StartsWith("--lucas=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                mersenneOnGpu = !arg.AsSpan(arg.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                        }
+                        else if (arg.StartsWith("--primes=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                GpuContextPool.ForceCpu = arg.AsSpan(arg.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                        }
+                        else if (arg.StartsWith("--gpu-kernels=", StringComparison.OrdinalIgnoreCase) || arg.StartsWith("--accelerator=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                // Legacy alias: treat as primes-device for backward compat
+                                GpuContextPool.ForceCpu = arg.AsSpan(arg.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                        }
+                        else if (arg.StartsWith("--results-dir=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                _resultsDir = arg[(arg.IndexOf('=') + 1)..];
+                        }
+                        else if (arg.StartsWith("--results-prefix=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                _resultsPrefix = arg[(arg.IndexOf('=') + 1)..];
+                        }
 
-			else if (arg.StartsWith("--gpu-prime-threads=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				gpuPrimeThreads = Math.Max(1, int.Parse(arg.AsSpan(eq + 1)));
-			}
-			else if (arg.StartsWith("--gpu-prime-batch=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				gpuPrimeBatch = Math.Max(1, int.Parse(arg.AsSpan(eq + 1)));
-			}
-			else if (arg.StartsWith("--ll-slice=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				sliceSize = Math.Max(1, int.Parse(arg.AsSpan(eq + 1)));
-			}
-			else if (arg.StartsWith("--gpu-scan-batch=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				scanBatchSize = Math.Max(1, int.Parse(arg.AsSpan(eq + 1)));
-			}
-			else if (arg.StartsWith("--block-size=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				blockSize = Math.Max(1, int.Parse(arg.AsSpan(eq + 1)));
-			}
-			else if (arg.StartsWith("--filter-p=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				filterFile = arg.AsSpan(eq + 1).ToString();
-			}
-			else if (arg.StartsWith("--write-batch-size=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				_writeBatchSize = Math.Max(1, int.Parse(arg.AsSpan(eq + 1)));
-			}
-			if (arg.StartsWith("--divisor-cycles="))
-			{
-				int eq = arg.IndexOf('=');
-				cyclesPath = arg.AsSpan(eq + 1).ToString();
-			}
-			else if (arg.StartsWith("--divisor-cycles-device=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				ReadOnlySpan<char> value = arg.AsSpan(eq + 1);
-				useGpuCycles = !value.Equals("cpu", StringComparison.OrdinalIgnoreCase);
-			}
-			else if (arg.StartsWith("--divisor-cycles-batch-size=", StringComparison.OrdinalIgnoreCase))
-			{
-				int eq = arg.IndexOf('=');
-				cyclesBatchSize = Math.Max(1, int.Parse(arg.AsSpan(eq + 1)));
-			}
+                        else if (arg.StartsWith("--gpu-prime-threads=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                gpuPrimeThreads = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                        }
+                        else if (arg.StartsWith("--gpu-prime-batch=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                gpuPrimeBatch = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                        }
+                        else if (arg.StartsWith("--ll-slice=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                sliceSize = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                        }
+                        else if (arg.StartsWith("--gpu-scan-batch=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                scanBatchSize = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                        }
+                        else if (arg.StartsWith("--block-size=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                blockSize = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                        }
+                        else if (arg.StartsWith("--filter-p=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                filterFile = arg[(arg.IndexOf('=') + 1)..];
+                        }
+                        else if (arg.StartsWith("--write-batch-size=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                _writeBatchSize = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                        }
+                        if (arg.StartsWith("--divisor-cycles="))
+                        {
+                                cyclesPath = arg[(arg.IndexOf('=') + 1)..];
+                        }
+                        else if (arg.StartsWith("--divisor-cycles-device=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                useGpuCycles = !arg.AsSpan(arg.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                        }
+                        else if (arg.StartsWith("--divisor-cycles-batch-size=", StringComparison.OrdinalIgnoreCase))
+                        {
+                                cyclesBatchSize = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                        }
 			else if (arg.Equals("--divisor-cycles-continue", StringComparison.OrdinalIgnoreCase))
 			{
 				continueCyclesGeneration = true;
@@ -607,40 +578,42 @@ internal static class Program
 			File.WriteAllText(ResultsFileName, $"p,searchedMersenne,detailedCheck,passedAllTests{Environment.NewLine}");
 		}
 
-		bool useFilter = !string.IsNullOrEmpty(filterFile);
-		HashSet<ulong> filter = [];
-		List<ulong> filterList = [];
-		ulong maxP = 0UL;
-		if (useFilter)
-		{
-			Console.WriteLine("Loading filter...");
-			ulong[] localFilter = new ulong[1024];
-			int count = 0;
-			LoadResultsFile(filterFile, (p, detailedCheck, passedAllTests) =>
-			{
-				if (passedAllTests)
-				{
-					localFilter[count++] = p;
-					if (p > maxP)
-					{
-						maxP = p;
-					}
+                bool useFilter = !string.IsNullOrEmpty(filterFile);
+                HashSet<ulong> filter = [];
+                List<ulong> filterList = [];
+                ulong maxP = 0UL;
+                ulong[] localFilter = Array.Empty<ulong>();
+                int filterCount = 0;
+                if (useFilter)
+                {
+                        Console.WriteLine("Loading filter...");
+                        localFilter = new ulong[1024];
+                        filterCount = 0;
+                        LoadResultsFile(filterFile, (p, detailedCheck, passedAllTests) =>
+                        {
+                                if (passedAllTests)
+                                {
+                                        localFilter[filterCount++] = p;
+                                        if (p > maxP)
+                                        {
+                                                maxP = p;
+                                        }
 
-					if (count == 1024)
-					{
-						filter.AddRange(localFilter[..count]);
-						count = 0;
-						Console.WriteLine($"Added {p}");
-					}
-				}
-			});
+                                        if (filterCount == 1024)
+                                        {
+                                                filter.AddRange(localFilter[..filterCount]);
+                                                filterCount = 0;
+                                                Console.WriteLine($"Added {p}");
+                                        }
+                                }
+                        });
 
-			if (count > 0)
-			{
-				filter.AddRange(localFilter[..count]);
-			}
-			filterList = [.. filter];
-		}
+                        if (filterCount > 0)
+                        {
+                                filter.AddRange(localFilter[..filterCount]);
+                        }
+                        filterList = [.. filter];
+                }
 
 		if (useByDivisor)
 		{
@@ -687,41 +660,43 @@ internal static class Program
 			}
 		}
 
-		_state = ((long)currentP << 3) | (long)remainder;
-		Task[] tasks = new Task[threadCount];
+                _state = ((long)currentP << 3) | (long)remainder;
+                Task[] tasks = new Task[threadCount];
 
-		for (int i = 0; i < threadCount; i++)
-		{
-			tasks[i] = Task.Run(() =>
-			{
-				int count, j;
-				ulong p;
-				bool passedAllTests, searchedMersenne, detailedCheck;
-				ulong[] buffer = new ulong[blockSize];
-				while (!Volatile.Read(ref _limitReached))
-				{
-					count = ReserveBlock(buffer, blockSize);
-					if (count == 0)
-					{
+                int taskIndex = 0;
+                for (; taskIndex < threadCount; taskIndex++)
+                {
+                        tasks[taskIndex] = Task.Run(() =>
+                        {
+                                int count, j;
+                                ulong p;
+                                bool passedAllTests, searchedMersenne, detailedCheck;
+                                ulong[] buffer = new ulong[blockSize];
+                                bool reachedMax = false;
+                                while (!Volatile.Read(ref _limitReached))
+                                {
+                                        count = ReserveBlock(buffer, blockSize);
+                                        if (count == 0)
+                                        {
 						break;
 					}
 
-					if (!useFilter)
-					{
-						for (j = 0; j < count && !Volatile.Read(ref _limitReached); j++)
-						{
-							p = buffer[j];
+                                        if (!useFilter)
+                                        {
+                                                for (j = 0; j < count && !Volatile.Read(ref _limitReached); j++)
+                                                {
+                                                        p = buffer[j];
 							passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
 							PrintResult(p, searchedMersenne, detailedCheck, passedAllTests);
 						}
-					}
-					else
-					{
-						bool reachedMax = false;
+                                        }
+                                        else
+                                        {
+                                                reachedMax = false;
 
-						for (j = 0; j < count; j++)
-						{
-							p = buffer[j];
+                                                for (j = 0; j < count; j++)
+                                                {
+                                                        p = buffer[j];
 
 							if (Volatile.Read(ref _limitReached) && p > maxP)
 							{
@@ -757,48 +732,52 @@ internal static class Program
 		StringBuilderPool.Return(_outputBuilder!);
 	}
 
-	private static void RunByDivisorMode(List<ulong> primes, ulong divisorCyclesSearchLimit, int threadCount)
-	{
-		if (primes.Count == 0)
-		{
-			return;
-		}
+        private static void RunByDivisorMode(List<ulong> primes, ulong divisorCyclesSearchLimit, int threadCount)
+        {
+                if (primes.Count == 0)
+                {
+                        return;
+                }
 
                 List<ByDivisorPrimeState> states = new(primes.Count);
+                ByDivisorPrimeState stateToAdd;
+                bool searched = false;
+                bool detailed = false;
+                ulong allowedMax = 0UL;
 
-		_byDivisorPrecheckOnly = true;
-		foreach (ulong prime in primes)
-		{
-			bool passed = IsEvenPerfectCandidate(prime, divisorCyclesSearchLimit, out bool searched, out bool detailed);
-			if (!passed)
-			{
-				PrintResult(prime, searched, detailed, false);
-				continue;
-			}
+                _byDivisorPrecheckOnly = true;
+                foreach (ulong prime in primes)
+                {
+                        if (!IsEvenPerfectCandidate(prime, divisorCyclesSearchLimit, out searched, out detailed))
+                        {
+                                PrintResult(prime, searched, detailed, false);
+                                continue;
+                        }
 
-			ulong allowedMax = _byDivisorTester!.GetAllowedMaxDivisor(prime);
-			if (allowedMax < 3UL)
-			{
-				PrintResult(prime, searchedMersenne: true, detailedCheck: true, passedAllTests: true);
-				continue;
-			}
+                        allowedMax = _byDivisorTester!.GetAllowedMaxDivisor(prime);
+                        if (allowedMax < 3UL)
+                        {
+                                PrintResult(prime, searchedMersenne: true, detailedCheck: true, passedAllTests: true);
+                                continue;
+                        }
 
-			states.Add(new ByDivisorPrimeState
-			{
-				Prime = prime,
-				AllowedMax = allowedMax,
-				Completed = false,
-				Composite = false,
-				DetailedCheck = false,
-			});
-		}
+                        stateToAdd = new ByDivisorPrimeState
+                        {
+                                Prime = prime,
+                                AllowedMax = allowedMax,
+                                Completed = false,
+                                Composite = false,
+                                DetailedCheck = false,
+                        };
+                        states.Add(stateToAdd);
+                }
 
-		_byDivisorPrecheckOnly = false;
+                _byDivisorPrecheckOnly = false;
 
-		if (states.Count == 0)
-		{
-			return;
-		}
+                if (states.Count == 0)
+                {
+                        return;
+                }
 
                 states.Sort((left, right) => left.AllowedMax.CompareTo(right.AllowedMax));
 
@@ -807,12 +786,14 @@ internal static class Program
                 ulong[] allowedMaxValues = new ulong[stateCount];
                 int[] stateFlags = new int[stateCount];
 
-                for (int i = 0; i < stateCount; i++)
+                int stateIndex = 0;
+                ByDivisorPrimeState currentState;
+                for (; stateIndex < stateCount; stateIndex++)
                 {
-                        var state = states[i];
-                        primeValues[i] = state.Prime;
-                        allowedMaxValues[i] = state.AllowedMax;
-                        stateFlags[i] = ByDivisorStateActive;
+                        currentState = states[stateIndex];
+                        primeValues[stateIndex] = currentState.Prime;
+                        allowedMaxValues[stateIndex] = currentState.AllowedMax;
+                        stateFlags[stateIndex] = ByDivisorStateActive;
                 }
 
                 states.Clear();
@@ -827,29 +808,40 @@ internal static class Program
                 int activeStartIndex = 0;
                 long[] activeStateMask = new long[(stateCount + 63) >> 6];
 
-                for (int i = 0; i < stateCount; i++)
+                int maskStateIndex = 0;
+                int wordIndex = 0;
+                int bitIndex = 0;
+                for (; maskStateIndex < stateCount; maskStateIndex++)
                 {
-                        int wordIndex = i >> 6;
-                        int bitIndex = i & 63;
+                        wordIndex = maskStateIndex >> 6;
+                        bitIndex = maskStateIndex & 63;
                         activeStateMask[wordIndex] |= 1L << bitIndex;
                 }
 
                 Task[] workers = new Task[Math.Max(1, threadCount)];
 
-                for (int workerIndex = 0; workerIndex < workers.Length; workerIndex++)
+                int workerIndex = 0;
+                for (; workerIndex < workers.Length; workerIndex++)
                 {
+                        int capturedStateCount = stateCount;
                         workers[workerIndex] = Task.Run(() =>
                         {
                                 using var session = _byDivisorTester!.CreateDivisorSession();
-                                byte[] hitsBuffer = ArrayPool<byte>.Shared.Rent(stateCount);
-                                ulong[] primeBuffer = ArrayPool<ulong>.Shared.Rent(stateCount);
-                                int[] indexBuffer = ArrayPool<int>.Shared.Rent(stateCount);
-                                PendingResult[] completionsBuffer = ArrayPool<PendingResult>.Shared.Rent(stateCount);
-                                PendingResult[] compositesBuffer = ArrayPool<PendingResult>.Shared.Rent(stateCount);
+                                byte[] hitsBuffer = ArrayPool<byte>.Shared.Rent(capturedStateCount);
+                                ulong[] primeBuffer = ArrayPool<ulong>.Shared.Rent(capturedStateCount);
+                                int[] indexBuffer = ArrayPool<int>.Shared.Rent(capturedStateCount);
+                                PendingResult[] completionsBuffer = ArrayPool<PendingResult>.Shared.Rent(capturedStateCount);
+                                PendingResult[] compositesBuffer = ArrayPool<PendingResult>.Shared.Rent(capturedStateCount);
                                 int completionsCount = 0;
                                 int compositesCount = 0;
                                 ulong localDivisorCursor = 0UL;
                                 int localDivisorsRemaining = 0;
+                                bool exhausted = false;
+                                ulong divisor = 0UL;
+                                int activeCount = 0;
+                                Span<byte> hitsSpan = default;
+                                int hitIndex = 0;
+                                int index = 0;
 
                                 try
                                 {
@@ -863,8 +855,7 @@ internal static class Program
                                                         }
                                                 }
 
-                                                bool exhausted;
-                                                ulong divisor = AcquireNextDivisor(ref nextDivisor, divisorLimit, ref divisorsExhaustedFlag, ref finalDivisorBits, out exhausted, ref localDivisorCursor, ref localDivisorsRemaining);
+                                                divisor = AcquireNextDivisor(ref nextDivisor, divisorLimit, ref divisorsExhaustedFlag, ref finalDivisorBits, out exhausted, ref localDivisorCursor, ref localDivisorsRemaining);
 
                                                 if (divisor == 0UL)
                                                 {
@@ -906,7 +897,7 @@ internal static class Program
                                                         continue;
                                                 }
 
-                                                int activeCount = BuildPrimeBuffer(divisor, primeValues, allowedMaxValues, stateFlags, primeBuffer, indexBuffer, completionsBuffer, ref completionsCount, ref remainingStates, activeStateMask, ref activeStartIndex);
+                                                activeCount = BuildPrimeBuffer(divisor, primeValues, allowedMaxValues, stateFlags, primeBuffer, indexBuffer, completionsBuffer, ref completionsCount, ref remainingStates, activeStateMask, ref activeStartIndex);
 
                                                 if (completionsCount > 0)
                                                 {
@@ -918,18 +909,18 @@ internal static class Program
                                                         continue;
                                                 }
 
-                                                Span<byte> hitsSpan = hitsBuffer.AsSpan(0, activeCount);
+                                                hitsSpan = hitsBuffer.AsSpan(0, activeCount);
                                                 hitsSpan.Clear();
                                                 session.CheckDivisor(divisor, primeBuffer.AsSpan(0, activeCount), hitsSpan);
 
-                                                for (int j = 0; j < activeCount; j++)
+                                                for (hitIndex = 0; hitIndex < activeCount; hitIndex++)
                                                 {
-                                                        if (hitsSpan[j] == 0)
+                                                        if (hitsSpan[hitIndex] == 0)
                                                         {
                                                                 continue;
                                                         }
 
-                                                        int index = indexBuffer[j];
+                                                        index = indexBuffer[hitIndex];
                                                         if (Interlocked.CompareExchange(ref stateFlags[index], ByDivisorStateComposite, ByDivisorStateActive) == ByDivisorStateActive)
                                                         {
                                                                 ClearActiveMask(activeStateMask, index);
@@ -976,10 +967,18 @@ internal static class Program
         private static ulong AcquireNextDivisor(ref ulong nextDivisor, ulong divisorLimit, ref int divisorsExhaustedFlag, ref long finalDivisorBits, out bool exhausted, ref ulong localDivisorCursor, ref int localDivisorsRemaining)
         {
                 ref long nextDivisorBits = ref Unsafe.As<ulong, long>(ref nextDivisor);
+                ulong currentValue = 0UL;
+                long currentBits = 0L;
+                ulong maximumNext = 0UL;
+                ulong blockStride = unchecked((ulong)(DivisorAllocationBlockSize * 2));
+                ulong requestedNext = 0UL;
+                long nextBits = 0L;
+                ulong available = 0UL;
+                int count = 0;
 
                 if (localDivisorsRemaining > 0)
                 {
-                        ulong currentValue = localDivisorCursor;
+                        currentValue = localDivisorCursor;
                         localDivisorCursor += 2UL;
                         localDivisorsRemaining--;
                         exhausted = false;
@@ -994,8 +993,8 @@ internal static class Program
                                 return 0UL;
                         }
 
-                        long currentBits = Volatile.Read(ref nextDivisorBits);
-                        ulong currentValue = unchecked((ulong)currentBits);
+                        currentBits = Volatile.Read(ref nextDivisorBits);
+                        currentValue = unchecked((ulong)currentBits);
                         if (currentValue > divisorLimit)
                         {
                                 if (Interlocked.CompareExchange(ref divisorsExhaustedFlag, 1, 0) == 0)
@@ -1007,27 +1006,26 @@ internal static class Program
                                 return 0UL;
                         }
 
-                        ulong maximumNext = divisorLimit >= ulong.MaxValue - 1UL ? ulong.MaxValue : divisorLimit + 2UL;
-                        ulong blockStride = unchecked((ulong)(DivisorAllocationBlockSize * 2));
-                        ulong requestedNext = currentValue > ulong.MaxValue - blockStride ? ulong.MaxValue : currentValue + blockStride;
+                        maximumNext = divisorLimit >= ulong.MaxValue - 1UL ? ulong.MaxValue : divisorLimit + 2UL;
+                        requestedNext = currentValue > ulong.MaxValue - blockStride ? ulong.MaxValue : currentValue + blockStride;
                         if (requestedNext > maximumNext)
                         {
                                 requestedNext = maximumNext;
                         }
 
-                        long nextBits = unchecked((long)requestedNext);
+                        nextBits = unchecked((long)requestedNext);
                         if (Interlocked.CompareExchange(ref nextDivisorBits, nextBits, currentBits) != currentBits)
                         {
                                 continue;
                         }
 
-                        ulong available = requestedNext - currentValue;
+                        available = requestedNext - currentValue;
                         if (available == 0UL)
                         {
                                 continue;
                         }
 
-                        int count = (int)(available >> 1);
+                        count = (int)(available >> 1);
                         if (count <= 0)
                         {
                                 continue;
@@ -1045,6 +1043,10 @@ internal static class Program
                 int length = primeValues.Length;
                 int startIndex = Volatile.Read(ref activeStartIndex);
                 int index = startIndex;
+                int wordIndex = 0;
+                ulong word = 0UL;
+                int bitOffset = 0;
+                int candidateIndex = 0;
 
                 while (index < length && allowedMaxValues[index] < divisor)
                 {
@@ -1074,19 +1076,18 @@ internal static class Program
                 int activeCount = 0;
                 while (index < length)
                 {
-                        int wordIndex = index >> 6;
-                        ulong word = unchecked((ulong)Volatile.Read(ref activeStateMask[wordIndex]));
+                        wordIndex = index >> 6;
+                        word = unchecked((ulong)Volatile.Read(ref activeStateMask[wordIndex]));
                         if (word == 0UL)
                         {
                                 index = (wordIndex + 1) << 6;
                                 continue;
                         }
 
-                        int bitOffset = index & 63;
+                        bitOffset = index & 63;
                         if (bitOffset != 0)
                         {
-                                ulong mask = ulong.MaxValue << bitOffset;
-                                word &= mask;
+                                word &= ulong.MaxValue << bitOffset;
                                 if (word == 0UL)
                                 {
                                         index = (wordIndex + 1) << 6;
@@ -1096,15 +1097,13 @@ internal static class Program
 
                         while (word != 0UL)
                         {
-                                int bit = BitOperations.TrailingZeroCount(word);
-                                int candidateIndex = (wordIndex << 6) + bit;
+                                candidateIndex = (wordIndex << 6) + BitOperations.TrailingZeroCount(word);
                                 if (candidateIndex >= length)
                                 {
                                         return activeCount;
                                 }
 
-                                int state = Volatile.Read(ref stateFlags[candidateIndex]);
-                                if (state == ByDivisorStateActive)
+                                if (Volatile.Read(ref stateFlags[candidateIndex]) == ByDivisorStateActive)
                                 {
                                         primeBuffer[activeCount] = primeValues[candidateIndex];
                                         indexBuffer[activeCount] = candidateIndex;
@@ -1126,38 +1125,38 @@ internal static class Program
 
         private static void FinalizeRemainingStates(ulong[] primeValues, ulong[] allowedMaxValues, int[] stateFlags, ref int remainingStates, ref long finalDivisorBits, PendingResult[] completionsBuffer, ref int completionsCount, long[] activeStateMask)
         {
-                ulong finalDivisorValue = unchecked((ulong)Volatile.Read(ref finalDivisorBits));
-
-                for (int i = 0; i < primeValues.Length; i++)
+                int finalizeIndex = 0;
+                bool detailed = false;
+                for (; finalizeIndex < primeValues.Length; finalizeIndex++)
                 {
-                        if (Volatile.Read(ref stateFlags[i]) != ByDivisorStateActive)
+                        if (Volatile.Read(ref stateFlags[finalizeIndex]) != ByDivisorStateActive)
                         {
                                 continue;
                         }
 
-                        bool detailed = finalDivisorValue > allowedMaxValues[i];
-                        int newState = detailed ? ByDivisorStateCompletedDetailed : ByDivisorStateCompleted;
+                        detailed = unchecked((ulong)Volatile.Read(ref finalDivisorBits)) > allowedMaxValues[finalizeIndex];
 
-                        if (Interlocked.CompareExchange(ref stateFlags[i], newState, ByDivisorStateActive) != ByDivisorStateActive)
+                        if (Interlocked.CompareExchange(ref stateFlags[finalizeIndex], detailed ? ByDivisorStateCompletedDetailed : ByDivisorStateCompleted, ByDivisorStateActive) != ByDivisorStateActive)
                         {
                                 continue;
                         }
 
-                        ClearActiveMask(activeStateMask, i);
+                        ClearActiveMask(activeStateMask, finalizeIndex);
                         Interlocked.Decrement(ref remainingStates);
                         if (completionsCount == completionsBuffer.Length)
                         {
                                 FlushPendingResults(completionsBuffer, ref completionsCount);
                         }
-                        completionsBuffer[completionsCount++] = new PendingResult(primeValues[i], detailedCheck: detailed, passedAllTests: true);
+                        completionsBuffer[completionsCount++] = new PendingResult(primeValues[finalizeIndex], detailedCheck: detailed, passedAllTests: true);
                 }
         }
 
         private static void FlushPendingResults(PendingResult[] buffer, ref int count)
         {
-                for (int i = 0; i < count; i++)
+                int flushIndex = 0;
+                for (; flushIndex < count; flushIndex++)
                 {
-                        PendingResult result = buffer[i];
+                        PendingResult result = buffer[flushIndex];
                         PrintResult(result.Prime, searchedMersenne: true, detailedCheck: result.DetailedCheck, passedAllTests: result.PassedAllTests);
                 }
 
@@ -1177,8 +1176,7 @@ internal static class Program
                                 return;
                         }
 
-                        long next = current & ~bit;
-                        if (Interlocked.CompareExchange(ref activeStateMask[wordIndex], next, current) == current)
+                        if (Interlocked.CompareExchange(ref activeStateMask[wordIndex], current & ~bit, current) == current)
                         {
                                 return;
                         }
@@ -1188,53 +1186,62 @@ internal static class Program
         private static unsafe void LoadResultsFile(string resultsFileName, Action<ulong, bool, bool> lineProcessorAction)
         {
                 using FileStream readStream = new(resultsFileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-		using StreamReader reader = new(readStream);
-		string? line;
-		bool headerSkipped = false;
-		while ((line = reader.ReadLine()) != null)
-		{
-			if (!headerSkipped)
-			{
-				headerSkipped = true;
+                using StreamReader reader = new(readStream);
+                string? line;
+                bool headerSkipped = false;
+                ReadOnlySpan<char> span;
+                int first = 0;
+                int second = 0;
+                int third = 0;
+                ulong parsedP = 0UL;
+                ReadOnlySpan<char> detailedSpan = default;
+                ReadOnlySpan<char> passedAllTestsSpan = default;
+                bool detailed = false;
+                bool passedAllTests = false;
+                while ((line = reader.ReadLine()) != null)
+                {
+                        if (!headerSkipped)
+                        {
+                                headerSkipped = true;
 				continue;
 			}
 
 			if (string.IsNullOrWhiteSpace(line))
 			{
-				continue;
-			}
+                                continue;
+                        }
 
-			ReadOnlySpan<char> span = line.AsSpan();
-			int first = span.IndexOf(',');
-			if (first < 0)
-			{
-				continue;
-			}
+                        span = line.AsSpan();
+                        first = span.IndexOf(',');
+                        if (first < 0)
+                        {
+                                continue;
+                        }
 
-			ulong p = ulong.Parse(span[..first]);
-			span = span[(first + 1)..];
-			int second = span.IndexOf(',');
-			if (second < 0)
-			{
-				continue;
-			}
+                        parsedP = ulong.Parse(span[..first]);
+                        span = span[(first + 1)..];
+                        second = span.IndexOf(',');
+                        if (second < 0)
+                        {
+                                continue;
+                        }
 
-			span = span[(second + 1)..];
-			int third = span.IndexOf(',');
-			if (third < 0)
-			{
-				continue;
-			}
+                        span = span[(second + 1)..];
+                        third = span.IndexOf(',');
+                        if (third < 0)
+                        {
+                                continue;
+                        }
 
-			ReadOnlySpan<char> detailedSpan = span[..third];
-			ReadOnlySpan<char> passedAllTestsSpan = span[(third + 1)..];
+                        detailedSpan = span[..third];
+                        passedAllTestsSpan = span[(third + 1)..];
 
-			if (bool.TryParse(detailedSpan, out bool detailed) && bool.TryParse(passedAllTestsSpan, out bool passedAllTests))
-			{
-				lineProcessorAction(p, detailed, passedAllTests);
-			}
-		}
-	}
+                        if (bool.TryParse(detailedSpan, out detailed) && bool.TryParse(passedAllTestsSpan, out passedAllTests))
+                        {
+                                lineProcessorAction(parsedP, detailed, passedAllTests);
+                        }
+                }
+        }
 
 	private static void PrintHelp()
 	{
@@ -1495,25 +1502,27 @@ internal static class Program
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static ulong TransformPAddPrimes(ulong value, ref ulong remainder)
-	{
-		ulong originalRemainder = remainder;
-		ulong addRemainder = remainder;
-		ulong candidate = value;
-		ulong primeCandidate = value;
-		bool advanceAdd = true;
-		bool advancePrime = true;
+        internal static ulong TransformPAddPrimes(ulong value, ref ulong remainder)
+        {
+                ulong originalRemainder = remainder;
+                ulong addRemainder = remainder;
+                ulong candidate = value;
+                ulong primeCandidate = value;
+                bool advanceAdd = true;
+                bool advancePrime = true;
+                ulong diff = 0UL;
+                ulong nextPrime = 0UL;
 
-		while (true)
-		{
-			if (advanceAdd)
-			{
-				ulong diff = GetNextAddDiff(addRemainder);
-				if (candidate > ulong.MaxValue - diff)
-				{
-					Volatile.Write(ref _limitReached, true);
-					remainder = originalRemainder;
-					return candidate;
+                while (true)
+                {
+                        if (advanceAdd)
+                        {
+                                diff = GetNextAddDiff(addRemainder);
+                                if (candidate > ulong.MaxValue - diff)
+                                {
+                                        Volatile.Write(ref _limitReached, true);
+                                        remainder = originalRemainder;
+                                        return candidate;
 				}
 
 				candidate += diff;
@@ -1524,13 +1533,12 @@ internal static class Program
 				}
 			}
 
-			if (advancePrime)
-			{
-				ulong nextPrime;
-				try
-				{
-					nextPrime = PrimeIterator.Next(in primeCandidate);
-				}
+                        if (advancePrime)
+                        {
+                                try
+                                {
+                                        nextPrime = PrimeIterator.Next(in primeCandidate);
+                                }
 				catch (InvalidOperationException)
 				{
 					Volatile.Write(ref _limitReached, true);
@@ -1586,28 +1594,31 @@ internal static class Program
 			}
 		}
 
-		if (_zeroFracHard >= 0 || (_zeroFracConj >= 0 && _maxZeroConj >= 0))
-		{
-			double zf;
-			ComputeBitStats(p, out int bitLen, out int zeroCount, out int maxZeroBlock);
-			if (_zeroFracHard >= 0)
-			{
-				zf = (double)zeroCount / bitLen;
-				if (zf > _zeroFracHard)
-				{
-					return false;
-				}
-			}
+                if (_zeroFracHard >= 0 || (_zeroFracConj >= 0 && _maxZeroConj >= 0))
+                {
+                        double zf;
+                        int bitLength = 0;
+                        int zeroCountValue = 0;
+                        int maxZeroBlockValue = 0;
+                        ComputeBitStats(p, out bitLength, out zeroCountValue, out maxZeroBlockValue);
+                        if (_zeroFracHard >= 0)
+                        {
+                                zf = (double)zeroCountValue / bitLength;
+                                if (zf > _zeroFracHard)
+                                {
+                                        return false;
+                                }
+                        }
 
-			if (_zeroFracConj >= 0 && _maxZeroConj >= 0)
-			{
-				zf = (double)zeroCount / bitLen;
-				if (zf > _zeroFracConj && maxZeroBlock >= _maxZeroConj)
-				{
-					return false;
-				}
-			}
-		}
+                        if (_zeroFracConj >= 0 && _maxZeroConj >= 0)
+                        {
+                                zf = (double)zeroCountValue / bitLength;
+                                if (zf > _zeroFracConj && maxZeroBlockValue >= _maxZeroConj)
+                                {
+                                        return false;
+                                }
+                        }
+                }
 
 		// Fast residue-based composite check for p using small primes
 		if (!_useDivisor && !_useByDivisorMode && IsCompositeByResidues(p))
@@ -1620,17 +1631,16 @@ internal static class Program
 
 		// If primes-device=gpu, route p primality through GPU-assisted sieve (optional MR later)
 		// TODO: Add deterministic Miller–Rabin rounds in GPU path for 64-bit range.
-		if (!_useByDivisorMode)
-		{
-			bool isPrimeP = GpuContextPool.ForceCpu
-					? PrimeTesters.Value!.IsPrime(p, CancellationToken.None)
-					: PrimeTesters.Value!.IsPrimeGpu(p, CancellationToken.None);
-			if (!isPrimeP)
-			{
-				_lastCompositeP = true;
-				return false;
-			}
-		}
+                if (!_useByDivisorMode)
+                {
+                        if (!(GpuContextPool.ForceCpu
+                                        ? PrimeTesters.Value!.IsPrime(p, CancellationToken.None)
+                                        : PrimeTesters.Value!.IsPrimeGpu(p, CancellationToken.None)))
+                        {
+                                _lastCompositeP = true;
+                                return false;
+                        }
+                }
 
 		searchedMersenne = true;
 		if (_useByDivisorMode)
@@ -1655,115 +1665,136 @@ internal static class Program
 	}
 
 	// Use ModResidueTracker with a small set of primes to pre-filter composite p.
-	private static bool IsCompositeByResidues(ulong p)
-	{
-		var tracker = PResidue.Value!;
-		tracker.BeginMerge(p);
-		// Use the small prime list from PerfectNumbers.Core to the extent of sqrt(p)
-		var primes = PrimesGenerator.SmallPrimes;
-		var primesPow2 = PrimesGenerator.SmallPrimesPow2;
-		int i, len = primes.Length;
-		bool divisible;
-		for (i = 0; i < len; i++)
-		{
-			if (primesPow2[i] > p) { break; }
+        private static bool IsCompositeByResidues(ulong p)
+        {
+                var tracker = PResidue.Value!;
+                tracker.BeginMerge(p);
+                // Use the small prime list from PerfectNumbers.Core to the extent of sqrt(p)
+                var primes = PrimesGenerator.SmallPrimes;
+                var primesPow2 = PrimesGenerator.SmallPrimesPow2;
+                int len = primes.Length;
+                int primeIndex = 0;
+                bool divisible = false;
+                for (; primeIndex < len; primeIndex++)
+                {
+                        if (primesPow2[primeIndex] > p)
+                        {
+                                break;
+                        }
 
-			if (tracker.MergeOrAppend(p, primes[i], out divisible) && divisible)
-			{
-				return true;
-			}
-		}
+                        if (tracker.MergeOrAppend(p, primes[primeIndex], out divisible) && divisible)
+                        {
+                                return true;
+                        }
+                }
 
 		return false;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void ComputeBitStats(ulong value, out int bitLen, out int zeroCount, out int maxZeroBlock)
-	{
-		bitLen = 64 - int.CreateChecked(ulong.LeadingZeroCount(value));
-		zeroCount = 0;
-		maxZeroBlock = 0;
-		if (bitLen <= 0)
-		{
-			return;
-		}
+        private static void ComputeBitStats(ulong value, out int bitLen, out int zeroCount, out int maxZeroBlock)
+        {
+                bitLen = 64 - int.CreateChecked(ulong.LeadingZeroCount(value));
+                zeroCount = 0;
+                maxZeroBlock = 0;
+                if (bitLen <= 0)
+                {
+                        return;
+                }
 
-		int msbIndex = (bitLen - 1) >> 3;                 // 0..7
-		int bitsInTopByte = ((bitLen - 1) & 7) + 1;        // 1..8
-		int currentRun = 0;
+                int msbIndex = (bitLen - 1) >> 3;                 // 0..7
+                int bitsInTopByte = ((bitLen - 1) & 7) + 1;        // 1..8
+                int currentRun = 0;
+                byte inspectedByte = 0;
+                int zeroCountInByte = 0;
+                int prefixZeros = 0;
+                int suffixZeros = 0;
+                int maxZeroRunInByte = 0;
+                int candidate = 0;
+                int byteIndex = msbIndex;
 
-		for (int bi = msbIndex; bi >= 0; bi--)
-		{
-			byte b = (byte)(value >> (bi * 8));
-			if (bi == msbIndex && bitsInTopByte < 8)
-			{
-				// Mask off leading unused bits by setting them to 1 (ignore)
-				b |= (byte)(0xFF << bitsInTopByte);
-			}
+                for (; byteIndex >= 0; byteIndex--)
+                {
+                        inspectedByte = (byte)(value >> (byteIndex * 8));
+                        if (byteIndex == msbIndex && bitsInTopByte < 8)
+                        {
+                                // Mask off leading unused bits by setting them to 1 (ignore)
+                                inspectedByte |= (byte)(0xFF << bitsInTopByte);
+                        }
 
-			int zc = ByteZeroCount[b];
-			zeroCount += zc;
+                        zeroCountInByte = ByteZeroCount[inspectedByte];
+                        zeroCount += zeroCountInByte;
 
-			if (zc == 8)
-			{
-				currentRun += 8;
-				if (currentRun > maxZeroBlock)
-				{
-					maxZeroBlock = currentRun;
+                        if (zeroCountInByte == 8)
+                        {
+                                currentRun += 8;
+                                if (currentRun > maxZeroBlock)
+                                {
+                                        maxZeroBlock = currentRun;
 				}
 
-				continue;
-			}
+                                continue;
+                        }
 
-			int pref = BytePrefixZero[b];
-			int suff = ByteSuffixZero[b];
-			int maxIn = ByteMaxZeroRun[b];
+                        prefixZeros = BytePrefixZero[inspectedByte];
+                        suffixZeros = ByteSuffixZero[inspectedByte];
+                        maxZeroRunInByte = ByteMaxZeroRun[inspectedByte];
 
-			int candidate = currentRun + pref;
-			if (candidate > maxZeroBlock)
-			{
-				maxZeroBlock = candidate;
-			}
+                        candidate = currentRun + prefixZeros;
+                        if (candidate > maxZeroBlock)
+                        {
+                                maxZeroBlock = candidate;
+                        }
 
-			if (maxIn > maxZeroBlock)
-			{
-				maxZeroBlock = maxIn;
-			}
+                        if (maxZeroRunInByte > maxZeroBlock)
+                        {
+                                maxZeroBlock = maxZeroRunInByte;
+                        }
 
-			currentRun = suff;
-		}
+                        currentRun = suffixZeros;
+                }
 
-		if (currentRun > maxZeroBlock)
-		{
-			maxZeroBlock = currentRun;
+                if (currentRun > maxZeroBlock)
+                {
+                        maxZeroBlock = currentRun;
 		}
 	}
 
 	// LUTs for fast per-byte zero stats (MSB-first in each byte)
 	private static readonly byte[] ByteZeroCount = new byte[256];
 	private static readonly byte[] BytePrefixZero = new byte[256];
-	private static readonly byte[] ByteSuffixZero = new byte[256];
-	private static readonly byte[] ByteMaxZeroRun = new byte[256];
+        private static readonly byte[] ByteSuffixZero = new byte[256];
+        private static readonly byte[] ByteMaxZeroRun = new byte[256];
 
-	static Program()
-	{
-		for (int v = 0; v < 256; v++)
-		{
-			int zeros = 0;
-			int pref = 0;
-			int suff = 0;
-			int maxIn = 0;
-			int run = 0;
+        static Program()
+        {
+                int valueIndex = 0;
+                int zeros = 0;
+                int pref = 0;
+                int suff = 0;
+                int maxIn = 0;
+                int run = 0;
+                int bit = 0;
+                bool isZero = false;
+                int boundaryCounter = 0;
+                int boundaryBitIndex = 0;
+                for (; valueIndex < 256; valueIndex++)
+                {
+                        zeros = 0;
+                        pref = 0;
+                        suff = 0;
+                        maxIn = 0;
+                        run = 0;
 
-			// MSB-first within byte: bit 7 .. bit 0
-			for (int bit = 7; bit >= 0; bit--)
-			{
-				bool isZero = ((v >> bit) & 1) == 0;
-				if (isZero)
-				{
-					zeros++;
-					run++;
-					if (run > maxIn)
+                        // MSB-first within byte: bit 7 .. bit 0
+                        for (bit = 7; bit >= 0; bit--)
+                        {
+                                isZero = ((valueIndex >> bit) & 1) == 0;
+                                if (isZero)
+                                {
+                                        zeros++;
+                                        run++;
+                                        if (run > maxIn)
 					{
 						maxIn = run;
 					}
@@ -1771,37 +1802,52 @@ internal static class Program
 				else
 				{
 					run = 0;
-				}
+                                }
 
-				if (bit == 7)
-				{
-					// leading zeros (prefix)
-					int t = 0;
-					for (int b2 = 7; b2 >= 0; b2--)
-					{
-						if (((v >> b2) & 1) == 0) { t++; } else { break; }
-					}
-					pref = t;
-				}
+                                if (bit == 7)
+                                {
+                                        // leading zeros (prefix)
+                                        boundaryCounter = 0;
+                                        for (boundaryBitIndex = 7; boundaryBitIndex >= 0; boundaryBitIndex--)
+                                        {
+                                                if (((valueIndex >> boundaryBitIndex) & 1) == 0)
+                                                {
+                                                        boundaryCounter++;
+                                                }
+                                                else
+                                                {
+                                                        break;
+                                                }
+                                        }
+                                        pref = boundaryCounter;
+                                }
 
-				if (bit == 0)
-				{
-					// trailing zeros (suffix)
-					int t = 0;
-					for (int b2 = 0; b2 < 8; b2++)
-					{
-						if (((v >> b2) & 1) == 0) { t++; } else { break; }
-					}
-					suff = t;
-				}
-			}
+                                if (bit == 0)
+                                {
+                                        // trailing zeros (suffix)
+                                        // Reusing boundaryCounter to count trailing zeros after prefix detection above.
+                                        boundaryCounter = 0;
+                                        for (boundaryBitIndex = 0; boundaryBitIndex < 8; boundaryBitIndex++)
+                                        {
+                                                if (((valueIndex >> boundaryBitIndex) & 1) == 0)
+                                                {
+                                                        boundaryCounter++;
+                                                }
+                                                else
+                                                {
+                                                        break;
+                                                }
+                                        }
+                                        suff = boundaryCounter;
+                                }
+                        }
 
-			ByteZeroCount[v] = (byte)zeros;
-			BytePrefixZero[v] = (byte)pref;
-			ByteSuffixZero[v] = (byte)suff;
-			ByteMaxZeroRun[v] = (byte)maxIn;
-		}
-	}
+                        ByteZeroCount[valueIndex] = (byte)zeros;
+                        BytePrefixZero[valueIndex] = (byte)pref;
+                        ByteSuffixZero[valueIndex] = (byte)suff;
+                        ByteMaxZeroRun[valueIndex] = (byte)maxIn;
+                }
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static bool IsCompositeByGcd(ulong p)
