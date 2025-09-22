@@ -9,15 +9,29 @@ public static class UIntExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint Mod3(this uint value)
     {
-        uint quotient = (uint)(((ulong)value * 0xAAAAAAABUL) >> 33);
-        return value - quotient * 3U;
+        ulong wideValue = 0UL;
+        uint quotient = 0U;
+        uint remainder = 0U;
+
+        wideValue = (ulong)value * 0xAAAAAAABUL;
+        quotient = (uint)(wideValue >> 33);
+        remainder = value - quotient * 3U;
+
+        return remainder;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint Mod5(this uint value)
     {
-        uint quotient = (uint)(((ulong)value * 0xCCCCCCCDUL) >> 34);
-        return value - quotient * 5U;
+        ulong wideValue = 0UL;
+        uint quotient = 0U;
+        uint remainder = 0U;
+
+        wideValue = (ulong)value * 0xCCCCCCCDUL;
+        quotient = (uint)(wideValue >> 34);
+        remainder = value - quotient * 5U;
+
+        return remainder;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -30,11 +44,14 @@ public static class UIntExtensions
     public static uint Mod7(this uint value)
     {
         uint remainder = 0U;
-        uint temp = value;
+        uint temp = 0U;
+        uint chunk = 0U;
 
+        temp = value;
         while (temp != 0U)
         {
-            remainder += temp & 7U;
+            chunk = temp & 7U;
+            remainder += chunk;
             temp >>= 3;
             if (remainder >= 7U)
             {
@@ -51,18 +68,29 @@ public static class UIntExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint Mod10(this uint value)
     {
-        return value - (uint)(((ulong)value * 0xCCCCCCCDUL) >> 35) * 10U;
+        ulong wideValue = 0UL;
+        uint quotient = 0U;
+        uint remainder = 0U;
+
+        wideValue = (ulong)value * 0xCCCCCCCDUL;
+        quotient = (uint)(wideValue >> 35);
+        remainder = value - quotient * 10U;
+
+        return remainder;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint Mod11(this uint value)
     {
         uint remainder = 0U;
-        uint temp = value;
+        uint temp = 0U;
+        uint chunk = 0U;
 
+        temp = value;
         while (temp != 0U)
         {
-            remainder += temp & 1023U;
+            chunk = temp & 1023U;
+            remainder += chunk;
             temp >>= 10;
             remainder -= 11U * (remainder / 11U);
         }
