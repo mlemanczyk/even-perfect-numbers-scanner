@@ -377,14 +377,10 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
         private static ulong MontgomeryMultiply(ulong a, ulong b, ulong modulus, ulong nPrime)
         {
                 ulong tLow = unchecked(a * b);
-                ulong tHigh = MultiplyHigh(a, b);
                 ulong m = unchecked(tLow * nPrime);
-                ulong mnLow = unchecked(m * modulus);
-                ulong mnHigh = MultiplyHigh(m, modulus);
-
-                ulong sumLow = unchecked(tLow + mnLow);
+                ulong sumLow = unchecked(tLow + m * modulus);
                 ulong carry = sumLow < tLow ? 1UL : 0UL;
-                ulong sumHigh = unchecked(tHigh + mnHigh + carry);
+                ulong sumHigh = unchecked(MultiplyHigh(a, b) + MultiplyHigh(m, modulus) + carry);
 
                 ulong result = sumHigh;
                 if (result >= modulus)
