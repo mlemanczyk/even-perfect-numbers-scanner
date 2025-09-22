@@ -221,8 +221,7 @@ public static class ULongExtensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Mod6(this ulong value)
         {
-                ulong key = (value.Mod3() << 1) | (value & 1UL);
-                return Mod6Lookup[(int)key];
+                return Mod6Lookup[(int)(((value.Mod3() << 1) | (value & 1UL)))];
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

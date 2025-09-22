@@ -23,8 +23,7 @@ public static class UIntExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint Mod6(this uint value)
     {
-        uint key = (value.Mod3() << 1) | (value & 1U);
-        return Mod6Lookup[(int)key];
+        return Mod6Lookup[(int)(((value.Mod3() << 1) | (value & 1U)))];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

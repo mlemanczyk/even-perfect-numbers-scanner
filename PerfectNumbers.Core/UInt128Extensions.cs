@@ -241,9 +241,7 @@ public static class UInt128Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Mod6(this UInt128 value)
         {
-                ulong mod3 = value.Mod3();
-                ulong key = (mod3 << 1) | ((ulong)value & 1UL);
-                return key switch
+                return ((value.Mod3() << 1) | ((ulong)value & 1UL)) switch
                 {
                         0UL => 0UL,
                         1UL => 3UL,
