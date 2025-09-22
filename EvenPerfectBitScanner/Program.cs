@@ -43,6 +43,7 @@ internal static class Program
 	private static string? _resultsDir;
 	private static string? _resultsPrefix;
 	private static readonly Optimized PrimeIterator = new();
+	private static ulong _byDivisorStartPrime;
 
 	[ThreadStatic]
 	private static bool _lastCompositeP;
@@ -111,19 +112,20 @@ internal static class Program
 		bool mersenneOnGpu = true;   // controls Lucas/incremental/pow2mod device
 		bool orderOnGpu = true;      // controls order computations device
 		int scanBatchSize = 2_097_152, sliceSize = 32;
-                ulong residueKMax = 5_000_000UL;
-                string filterFile = string.Empty;
-                string cyclesPath = DefaultCyclesPath;
-                int cyclesBatchSize = 512;
-                bool continueCyclesGeneration = false;
-                ulong divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
-                int argIndex = 0;
-                string arg = string.Empty;
-                ReadOnlySpan<char> mersenneOption = default;
-                ulong parsedLimit = 0UL;
-                ulong parsedResidueMax = 0UL;
+		ulong residueKMax = 5_000_000UL;
+		string filterFile = string.Empty;
+		string cyclesPath = DefaultCyclesPath;
+		int cyclesBatchSize = 512;
+		bool continueCyclesGeneration = false;
+		ulong divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
+		int argIndex = 0;
+		string arg = string.Empty;
+		ReadOnlySpan<char> mersenneOption = default;
+		ulong parsedLimit = 0UL;
+		ulong parsedResidueMax = 0UL;
+		bool startPrimeProvided = false;
 
-                // NTT backend selection (GPU): reference vs staged
+		// NTT backend selection (GPU): reference vs staged
                 for (; argIndex < args.Length; argIndex++)
                 {
                         arg = args[argIndex];
@@ -135,6 +137,7 @@ internal static class Program
                         else if (arg.StartsWith("--prime=", StringComparison.OrdinalIgnoreCase))
                         {
                                 currentP = ulong.Parse(arg.AsSpan(arg.IndexOf('=') + 1));
+                                startPrimeProvided = true;
                         }
 			else if (arg.Equals("--increment=bit", StringComparison.OrdinalIgnoreCase))
 			{
@@ -386,6 +389,15 @@ internal static class Program
 			{
 				continueCyclesGeneration = true;
 			}
+                }
+
+		if (useByDivisor)
+		{
+			_byDivisorStartPrime = startPrimeProvided ? currentP : 0UL;
+		}
+		else
+		{
+			_byDivisorStartPrime = 0UL;
 		}
 
 		if (useByDivisor && string.IsNullOrEmpty(filterFile))
@@ -756,8 +768,16 @@ internal static class Program
                 ulong allowedMax = 0UL;
 
                 _byDivisorPrecheckOnly = true;
+                ulong startPrime = _byDivisorStartPrime;
+                bool applyStartPrime = startPrime > 0UL;
+
                 foreach (ulong prime in primes)
                 {
+                        if (applyStartPrime && prime < startPrime)
+                        {
+                                continue;
+                        }
+
                         if (!IsEvenPerfectCandidate(prime, divisorCyclesSearchLimit, out searched, out detailed))
                         {
                                 PrintResult(prime, searched, detailed, false);
@@ -786,6 +806,11 @@ internal static class Program
 
                 if (states.Count == 0)
                 {
+                        if (applyStartPrime)
+                        {
+                                Console.WriteLine($"No primes greater than or equal to {startPrime.ToString(CultureInfo.InvariantCulture)} were found for --mersenne=bydivisor.");
+                        }
+
                         return;
                 }
 

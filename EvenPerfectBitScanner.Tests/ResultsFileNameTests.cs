@@ -19,7 +19,7 @@ public class ResultsFileNameTests
             types: new[]
             {
                 typeof(bool), typeof(int), typeof(int), typeof(global::PerfectNumbers.Core.GpuKernelType),
-                typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(NttBackend), typeof(int), typeof(int), typeof(int), typeof(ulong), typeof(ModReductionMode), typeof(string), typeof(string), typeof(string)
+                typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(NttBackend), typeof(int), typeof(int), typeof(int), typeof(ulong), typeof(ModReductionMode), typeof(string), typeof(string), typeof(string)
             },
             modifiers: null)!;
 
@@ -31,6 +31,7 @@ public class ResultsFileNameTests
             global::PerfectNumbers.Core.GpuKernelType.Incremental,
             false,           // useLucasFlag
             false,           // useDivisorFlag
+            false,           // useByDivisorFlag
             true,            // mersenneOnGpu (unused inside name content, devices passed explicitly below)
             false,           // useOrder
             false,           // useModWorkaround
