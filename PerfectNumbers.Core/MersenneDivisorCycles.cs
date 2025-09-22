@@ -189,7 +189,7 @@ public class MersenneDivisorCycles
 						for (int i = 0; i < localCycleIndex; i++)
 						{
 							(d, cycle) = localCycles[i];
-							if (d % 3UL == 0UL || d % 5UL == 0UL || d % 7UL == 0UL || d % 11UL == 0UL)
+                                                    if (d.Mod3() == 0UL || d.Mod5() == 0UL || d.Mod7() == 0UL || d.Mod11() == 0UL)
 								continue;
 
 							writer.Write(d);
@@ -249,7 +249,7 @@ public class MersenneDivisorCycles
 		{
 			while (skipCount > 0L && start <= maxDivisor)
 			{
-				if ((start & 1UL) == 0UL || start % 3UL == 0UL || start % 5UL == 0UL || start % 7UL == 0UL || start % 11UL == 0UL)
+                            if ((start & 1UL) == 0UL || start.Mod3() == 0UL || start.Mod5() == 0UL || start.Mod7() == 0UL || start.Mod11() == 0UL)
 				{
 					start++;
 					continue;
@@ -296,7 +296,7 @@ public class MersenneDivisorCycles
 				{
 					d = divisors[i];
 
-					if (d % 3UL == 0UL || d % 5UL == 0UL || d % 7UL == 0UL || d % 11UL == 0UL)
+                                    if (d.Mod3() == 0UL || d.Mod5() == 0UL || d.Mod7() == 0UL || d.Mod11() == 0UL)
 						continue;
 
 					writer.Write(d);

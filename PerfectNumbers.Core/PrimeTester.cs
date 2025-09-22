@@ -53,7 +53,7 @@ public sealed class PrimeTester(bool useInternal = false)
         {
             result = false;
         }
-        else if (n > 5UL && (n % 5UL) == 0UL)
+        else if (n > 5UL && n.Mod5() == 0UL)
         {
             result = false;
         }
@@ -260,7 +260,7 @@ public sealed class PrimeTester(bool useInternal = false)
             return;
         }
 
-        if ((n & 1UL) == 0UL || (n > 5UL && (n % 5UL) == 0UL))
+        if ((n & 1UL) == 0UL || (n > 5UL && n.Mod5() == 0UL))
         {
             results[index] = 0;
             return;

@@ -1,3 +1,4 @@
+using System;
 using BenchmarkDotNet.Running;
 
 namespace EvenPerfectBitScanner.Benchmarks;

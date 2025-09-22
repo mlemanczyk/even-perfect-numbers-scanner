@@ -46,6 +46,16 @@ public class ULongExtensionsTests
     [InlineData(0UL)]
     [InlineData(ulong.MaxValue)]
     [InlineData(1234567890123456789UL)]
+    public void Mod6_matches_operator(ulong value)
+    {
+        value.Mod6().Should().Be(value % 6UL);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(0UL)]
+    [InlineData(ulong.MaxValue)]
+    [InlineData(1234567890123456789UL)]
     public void Mod7_matches_operator(ulong value)
     {
         value.Mod7().Should().Be(value % 7UL);
@@ -99,6 +109,22 @@ public class ULongExtensionsTests
         step8.Should().Be(expected8);
         step5.Should().Be(expected5);
         step3.Should().Be(expected3);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(0UL)]
+    [InlineData(1UL)]
+    [InlineData(1234567890123456789UL)]
+    [InlineData(ulong.MaxValue)]
+    public void Mod11_7_5_3_matches_operator(ulong value)
+    {
+        value.Mod11_7_5_3(out ulong mod11, out ulong mod7, out ulong mod5, out ulong mod3);
+
+        mod11.Should().Be(value % 11UL);
+        mod7.Should().Be(value % 7UL);
+        mod5.Should().Be(value % 5UL);
+        mod3.Should().Be(value % 3UL);
     }
 
     [Theory]

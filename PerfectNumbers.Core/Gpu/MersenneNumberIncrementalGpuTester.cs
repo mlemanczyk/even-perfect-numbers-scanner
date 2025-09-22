@@ -25,8 +25,8 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
                 var incKernel = gpuLease.IncrementalKernel;
                 ulong step10 = (exponent.Mod10() << 1).Mod10();
                 ulong step8 = ((exponent & 7UL) << 1) & 7UL;
-                ulong step3 = ((exponent % 3UL) << 1) % 3UL;
-                ulong step5 = ((exponent % 5UL) << 1) % 5UL;
+                ulong step3 = (exponent.Mod3() << 1).Mod3();
+                ulong step5 = (exponent.Mod5() << 1).Mod5();
                 GpuUInt128 twoPGpu = (GpuUInt128)twoP;
                 var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
                 ResiduePrimeViews primeViews = default;

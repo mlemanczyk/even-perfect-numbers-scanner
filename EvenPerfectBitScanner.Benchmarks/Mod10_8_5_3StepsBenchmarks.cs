@@ -26,7 +26,7 @@ public class Mod10_8_5_3StepsBenchmarks
     {
 		Value.Mod10_8_5_3(out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3);
 		// Step residues for q += 2*p
-		mod10 = mod10.Mod10();
+                mod10 %= 10UL;
         return (mod10, mod8, mod3, mod5);
     }
 }

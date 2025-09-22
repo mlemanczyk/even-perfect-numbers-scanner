@@ -121,44 +121,48 @@ public static class UInt128Extensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void Mod10_8_5_3(this UInt128 value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)
-	{
-		UInt128 temp = value;
-		uint byteSum = 0U;
+        public static void Mod10_8_5_3(this UInt128 value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)
+        {
+                UInt128 temp = UInt128.Zero;
+                uint byteSum = 0U;
+                byte current = 0;
+                uint accumulator = 0U;
 
-		do
-		{
-			byteSum += (byte)temp;
-			temp >>= 8;
-		}
-		while (temp != UInt128.Zero);
+                temp = value;
+                do
+                {
+                        current = (byte)temp;
+                        byteSum += current;
+                        temp >>= 8;
+                }
+                while (temp != UInt128.Zero);
 
-		mod8 = (ulong)value & 7UL;
+                mod8 = (ulong)value & 7UL;
 
-		uint mod5Value = PerfectNumbersMath.FastRemainder5(byteSum);
-		uint mod3Value = PerfectNumbersMath.FastRemainder3(byteSum);
-
+                accumulator = byteSum.Mod5();
+                mod5 = accumulator;
                 mod10 = (mod8 & 1UL) == 0UL
-                                ? mod5Value switch
+                                ? accumulator switch
                                 {
                                         0U => 0UL,
                                         1U => 6UL,
-					2U => 2UL,
-					3U => 8UL,
-					_ => 4UL,
-				}
-				: mod5Value switch
-				{
-					0U => 5UL,
-					1U => 1UL,
-					2U => 7UL,
-					3U => 3UL,
-					_ => 9UL,
-				};
+                                        2U => 2UL,
+                                        3U => 8UL,
+                                        _ => 4UL,
+                                }
+                                : accumulator switch
+                                {
+                                        0U => 5UL,
+                                        1U => 1UL,
+                                        2U => 7UL,
+                                        3U => 3UL,
+                                        _ => 9UL,
+                                };
 
-		mod5 = mod5Value;
-		mod3 = mod3Value;
-	}
+                // Reusing accumulator to hold the mod 3 reduction now that the mod 5 value has been stored.
+                accumulator = byteSum.Mod3();
+                mod3 = accumulator;
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static UInt128 Pow(this UInt128 value, ulong exponent)
@@ -236,6 +240,20 @@ public static class UInt128Extensions
         {
                 ulong remainder = ((ulong)value).Mod5() + ((ulong)(value >> 64)).Mod5();
                 return remainder >= 5UL ? remainder - 5UL : remainder;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Mod6(this UInt128 value)
+        {
+                return ((value.Mod3() << 1) | ((ulong)value & 1UL)) switch
+                {
+                        0UL => 0UL,
+                        1UL => 3UL,
+                        2UL => 4UL,
+                        3UL => 1UL,
+                        4UL => 2UL,
+                        _ => 5UL,
+                };
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
