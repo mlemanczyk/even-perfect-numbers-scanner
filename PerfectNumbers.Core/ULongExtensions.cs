@@ -75,8 +75,7 @@ public static class ULongExtensions
                 uint mod5Value = PerfectNumbersMath.FastRemainder5(byteSum);
                 uint mod3Value = PerfectNumbersMath.FastRemainder3(byteSum);
 
-                ulong parity = mod8 & 1UL;
-                mod10 = parity == 0UL
+                mod10 = (mod8 & 1UL) == 0UL
                                 ? mod5Value switch
                                 {
                                         0U => 0UL,
@@ -137,10 +136,9 @@ public static class ULongExtensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Mod10(this ulong value)
         {
-                ulong parity = value & 1UL;
                 ulong mod5 = value.Mod5();
 
-                if (parity == 0UL)
+                if ((value & 1UL) == 0UL)
                 {
                         return mod5 switch
                         {
@@ -265,253 +263,282 @@ public static class ULongExtensions
 	public static ulong MulMod64(this ulong a, ulong b, ulong modulus) => (ulong)(UInt128)(((a % modulus) * (b % modulus)) % modulus);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static UInt128 PowMod(this ulong exponent, UInt128 modulus)
-	{
-		// Return 1 because 2^0 = 1
-		if (exponent == 0UL)
-			return UInt128.One;
+        public static UInt128 PowMod(this ulong exponent, UInt128 modulus)
+        {
+                UInt128 result = UInt128.One;
+                ulong exponentLoopIndex = 0UL;
 
-		// Any number mod 1 is 0
-		if (modulus == UInt128.One)
-			return UInt128.Zero;
+                // Return 1 because 2^0 = 1
+                if (exponent == 0UL)
+                        return result;
 
-		UInt128 result;
-		// For small exponents, do classic method
-		if (exponent < 64 || modulus < 4)
-		{
-			result = UInt128.One;
-			for (ulong i = 0; i < exponent; i++)
-			{
-				result <<= 1;
-				if (result >= modulus)
-					result -= modulus;
-			}
+                // Any number mod 1 is 0
+                if (modulus == UInt128.One)
+                        return UInt128.Zero;
 
-			return result;
-		}
+                // For small exponents, do classic method
+                if (exponent < 64 || modulus < 4)
+                {
+                        for (; exponentLoopIndex < exponent; exponentLoopIndex++)
+                        {
+                                result <<= 1;
+                                if (result >= modulus)
+                                        result -= modulus;
+                        }
 
-		// Special case: if modulus is a power of two, use bitmasking for efficiency and correctness
-		if ((modulus & (modulus - 1)) == 0)
-		{
-			result = UInt128.One << (int)(exponent & 127);
-			return result & (modulus - 1);
-		}
+                        return result;
+                }
 
-		// For general modulus, use classic left-to-right binary method for 2^exponent mod modulus
-		UInt128 resultBin = UInt128.One;
-		for (ulong i = 0; i < exponent; i++)
-		{
-			resultBin <<= 1;
-			if (resultBin >= modulus)
-				resultBin -= modulus;
-		}
+                // Special case: if modulus is a power of two, use bitmasking for efficiency and correctness
+                if ((modulus & (modulus - 1)) == 0)
+                {
+                        result = UInt128.One << (int)(exponent & 127);
+                        return result & (modulus - 1);
+                }
 
-		return resultBin;
-	}
+                // Reusing exponentLoopIndex to iterate again over the exponent range for the general-case accumulation.
+                exponentLoopIndex = 0UL;
+                // Reusing result after resetting it for the general modulus accumulation phase.
+                result = UInt128.One;
+                for (; exponentLoopIndex < exponent; exponentLoopIndex++)
+                {
+                        result <<= 1;
+                        if (result >= modulus)
+                                result -= modulus;
+                }
 
-	/// <summary>
-	/// Computes 2^exponent mod modulus using a known cycle length.
-	/// </summary>
-	public static UInt128 PowModWithCycle(this ulong exponent, UInt128 modulus, ulong cycleLength)
-	{
-		// Return 1 because 2^0 = 1
-		if (exponent == 0UL)
-			return UInt128.One;
-
-		// Any number mod 1 is 0
-		if (modulus == UInt128.One)
-			return UInt128.Zero;
-
-		// For small exponents, do classic method
-		UInt128 result;
-		if (exponent < 64 || modulus < 4)
-		{
-			result = UInt128.One;
-			for (ulong i = 0; i < exponent; i++)
-			{
-				result <<= 1;
-				if (result >= modulus)
-					result -= modulus;
-			}
-
-			return result;
-		}
-
-		// Special case: if modulus is a power of two, use bitmasking for efficiency and correctness
-		if ((modulus & (modulus - 1)) == 0)
-		{
-			result = UInt128.One << (int)(exponent & 127);
-			return result & (modulus - 1);
-		}
-
-		// For general modulus, use classic left-to-right binary method for 2^exponent mod modulus
-		result = UInt128.One;
-		UInt128 rotations = exponent % cycleLength;
-		for (ulong i = 0; i < rotations; i++)
-		{
-			result <<= 1;
-			if (result >= modulus)
-				result -= modulus;
-		}
-
-		return result;
-	}
+                return result;
+        }
 
 	/// <summary>
 	/// Computes 2^exponent mod modulus using a known cycle length.
 	/// </summary>
-	public static UInt128 PowModWithCycle(this ulong exponent, UInt128 modulus, UInt128 cycleLength)
-	{
-		// Return 1 because 2^0 = 1
-		if (exponent == UInt128.Zero)
-			return UInt128.One;
-			
-		// Any number mod 1 is 0
-		if (modulus == UInt128.One)
-			return UInt128.Zero;
+        public static UInt128 PowModWithCycle(this ulong exponent, UInt128 modulus, ulong cycleLength)
+        {
+                UInt128 result = UInt128.One;
+                ulong exponentLoopIndex = 0UL;
+                ulong rotationCount = 0UL;
 
-		// For small exponents, do classic method
-		UInt128 result;
-		if (exponent < UInt128Numbers.SixtyFour || modulus < UInt128Numbers.Four)
-		{
-			result = UInt128.One;
-			for (ulong i = 0; i < exponent; i++)
-			{
-				result <<= 1;
-				if (result >= modulus)
-					result -= modulus;
-			}
+                // Return 1 because 2^0 = 1
+                if (exponent == 0UL)
+                        return result;
 
-			return result;
-		}
+                // Any number mod 1 is 0
+                if (modulus == UInt128.One)
+                        return UInt128.Zero;
 
-		// Special case: if modulus is a power of two, use bitmasking for efficiency and correctness
-		if ((modulus & (modulus - UInt128.One)) == UInt128.Zero)
-		{
-			result = UInt128.One << (int)(exponent & UInt128Numbers.OneHundredTwentySeven);
-			return result & (modulus - 1);
-		}
+                // For small exponents, do classic method
+                if (exponent < 64 || modulus < 4)
+                {
+                        for (; exponentLoopIndex < exponent; exponentLoopIndex++)
+                        {
+                                result <<= 1;
+                                if (result >= modulus)
+                                        result -= modulus;
+                        }
 
-		// For general modulus, use classic left-to-right binary method for 2^exponent mod modulus
-		result = UInt128.One;
-		UInt128 rotations = exponent % cycleLength;
-		for (UInt128 i = 0; i < rotations; i++)
-		{
-			result <<= 1;
-			if (result >= modulus)
-				result -= modulus;
-		}
+                        return result;
+                }
 
-		return result;
-	}
+                // Special case: if modulus is a power of two, use bitmasking for efficiency and correctness
+                if ((modulus & (modulus - 1)) == 0)
+                {
+                        result = UInt128.One << (int)(exponent & 127);
+                        return result & (modulus - 1);
+                }
+
+                // Reusing exponentLoopIndex to iterate over the rotation count for the cycle-aware path.
+                exponentLoopIndex = 0UL;
+                // Reusing result after resetting it for the rotation-accumulation pass.
+                result = UInt128.One;
+                rotationCount = exponent % cycleLength;
+                for (; exponentLoopIndex < rotationCount; exponentLoopIndex++)
+                {
+                        result <<= 1;
+                        if (result >= modulus)
+                                result -= modulus;
+                }
+
+                return result;
+        }
 
 	/// <summary>
 	/// Computes 2^exponent mod modulus using a known cycle length.
 	/// </summary>
-	public static UInt128 PowModWithCycle(this UInt128 exponent, UInt128 modulus, UInt128 cycleLength)
-	{
-		// Return 1 because 2^0 = 1
-		if (exponent == UInt128.Zero)
-			return UInt128.One;
+        public static UInt128 PowModWithCycle(this ulong exponent, UInt128 modulus, UInt128 cycleLength)
+        {
+                UInt128 result = UInt128.One;
+                ulong exponentLoopIndex = 0UL;
+                UInt128 rotationIndex = UInt128.Zero;
+                UInt128 rotationCount = UInt128.Zero;
 
-		// Any number mod 1 is 0
-		if (modulus == UInt128.One)
-			return UInt128.Zero;
+                // Return 1 because 2^0 = 1
+                if (exponent == UInt128.Zero)
+                        return result;
 
-		UInt128 result;
+                // Any number mod 1 is 0
+                if (modulus == UInt128.One)
+                        return UInt128.Zero;
 
-		// For small exponents, do classic method
-		if (exponent < UInt128Numbers.SixtyFour || modulus < UInt128Numbers.Four)
-		{
-			result = UInt128.One;
-			for (ulong i = 0; i < exponent; i++)
-			{
-				result <<= 1;
-				if (result >= modulus)
-					result -= modulus;
-			}
+                // For small exponents, do classic method
+                if (exponent < UInt128Numbers.SixtyFour || modulus < UInt128Numbers.Four)
+                {
+                        for (; exponentLoopIndex < exponent; exponentLoopIndex++)
+                        {
+                                result <<= 1;
+                                if (result >= modulus)
+                                        result -= modulus;
+                        }
 
-			return result;
-		}
+                        return result;
+                }
 
-		// Special case: if modulus is a power of two, use bitmasking for efficiency and correctness
-		if ((modulus & (modulus - UInt128.One)) == UInt128.Zero)
-		{
-			result = UInt128.One << (int)(exponent & UInt128Numbers.OneHundredTwentySeven);
-			return result & (modulus - 1);
-		}
+                // Special case: if modulus is a power of two, use bitmasking for efficiency and correctness
+                if ((modulus & (modulus - UInt128.One)) == UInt128.Zero)
+                {
+                        result = UInt128.One << (int)(exponent & UInt128Numbers.OneHundredTwentySeven);
+                        return result & (modulus - 1);
+                }
 
-		// For general modulus, use classic left-to-right binary method for 2^exponent mod modulus
-		result = UInt128.One;
-		UInt128 rotations = exponent % cycleLength;
-		for (UInt128 i = 0; i < rotations; i++)
-		{
-			result <<= 1;
-			if (result >= modulus)
-				result -= modulus;
-		}
+                // Reusing result after resetting it for the rotation-driven accumulation phase.
+                result = UInt128.One;
+                rotationCount = exponent % cycleLength;
+                rotationIndex = UInt128.Zero;
+                while (rotationIndex < rotationCount)
+                {
+                        result <<= 1;
+                        if (result >= modulus)
+                                result -= modulus;
 
-		return result;
-	}
+                        rotationIndex += UInt128.One;
+                }
+
+                return result;
+        }
+
+	/// <summary>
+	/// Computes 2^exponent mod modulus using a known cycle length.
+	/// </summary>
+        public static UInt128 PowModWithCycle(this UInt128 exponent, UInt128 modulus, UInt128 cycleLength)
+        {
+                UInt128 result = UInt128.One;
+                ulong exponentLoopIndex = 0UL;
+                UInt128 rotationIndex = UInt128.Zero;
+                UInt128 rotationCount = UInt128.Zero;
+
+                // Return 1 because 2^0 = 1
+                if (exponent == UInt128.Zero)
+                        return result;
+
+                // Any number mod 1 is 0
+                if (modulus == UInt128.One)
+                        return UInt128.Zero;
+
+                // For small exponents, do classic method
+                if (exponent < UInt128Numbers.SixtyFour || modulus < UInt128Numbers.Four)
+                {
+                        for (; exponentLoopIndex < exponent; exponentLoopIndex++)
+                        {
+                                result <<= 1;
+                                if (result >= modulus)
+                                        result -= modulus;
+                        }
+
+                        return result;
+                }
+
+                // Special case: if modulus is a power of two, use bitmasking for efficiency and correctness
+                if ((modulus & (modulus - UInt128.One)) == UInt128.Zero)
+                {
+                        result = UInt128.One << (int)(exponent & UInt128Numbers.OneHundredTwentySeven);
+                        return result & (modulus - 1);
+                }
+
+                // Reusing result after resetting it for the rotation-driven accumulation phase.
+                result = UInt128.One;
+                rotationCount = exponent % cycleLength;
+                rotationIndex = UInt128.Zero;
+                while (rotationIndex < rotationCount)
+                {
+                        result <<= 1;
+                        if (result >= modulus)
+                                result -= modulus;
+
+                        rotationIndex += UInt128.One;
+                }
+
+                return result;
+        }
 
 	/// <summary>
 	/// Computes 2^exponent mod modulus using iterative CRT composition from mod 10 up to modulus.
 	/// Only for modulus >= 10 and reasonable size.
 	/// </summary>
-	public static UInt128 PowModCrt(this ulong exponent, UInt128 modulus, MersenneDivisorCycles cycles)
-	{
-		if (modulus < 10)
-			return PowMod(exponent, modulus); // fallback to classic
+        public static UInt128 PowModCrt(this ulong exponent, UInt128 modulus, MersenneDivisorCycles cycles)
+        {
+                if (modulus < 10)
+                        return PowMod(exponent, modulus); // fallback to classic
 
-		// Use cycle length 4 for mod 10
-		UInt128 result = PowModWithCycle(exponent, 10, 4);
+                // Use cycle length 4 for mod 10
+                UInt128 result = PowModWithCycle(exponent, 10, 4);
+                UInt128 currentModulus = 10;
+                UInt128 modulusCandidate = 11;
+                UInt128 cycle = UInt128.Zero;
+                UInt128 remainderForCandidate = UInt128.Zero;
 
-		UInt128 currentModulus = 10;
-		for (UInt128 m = 11; m <= modulus; m++)
-		{
-			UInt128 cycle = MersenneDivisorCycles.GetCycle(m);
-			UInt128 remM = cycle > 0
-				? PowModWithCycle(exponent, m, cycle)
-				: PowMod(exponent, m);
+                for (; modulusCandidate <= modulus; modulusCandidate++)
+                {
+                        cycle = MersenneDivisorCycles.GetCycle(modulusCandidate);
+                        remainderForCandidate = cycle > UInt128.Zero
+                                ? PowModWithCycle(exponent, modulusCandidate, cycle)
+                                : PowMod(exponent, modulusCandidate);
 
-			// Solve x ≡ result mod currentModulus
-			//      x ≡ remM   mod m
-			// Find x mod (currentModulus * m)
-			// Since currentModulus and m are coprime, use CRT:
-			// x = result + currentModulus * t, where t ≡ (remM - result) * inv(currentModulus, m) mod m
+                        // Solve x ≡ result mod currentModulus
+                        //      x ≡ remM   mod m
+                        // Find x mod (currentModulus * m)
+                        // Since currentModulus and m are coprime, use CRT:
+                        // x = result + currentModulus * t, where t ≡ (remM - result) * inv(currentModulus, m) mod m
 
-			UInt128 inv = ModInverse(currentModulus, m);
-			UInt128 t = ((remM + m - (result % m)) * inv) % m;
-			result += currentModulus * t;
-			currentModulus *= m;
+                        result += currentModulus * ((remainderForCandidate + modulusCandidate - (result % modulusCandidate)) * ModInverse(currentModulus, modulusCandidate) % modulusCandidate);
+                        currentModulus *= modulusCandidate;
 
-			if (currentModulus >= modulus)
-				break;
-		}
+                        if (currentModulus >= modulus)
+                                break;
+                }
 
-		return result % modulus;
-	}
+                return result % modulus;
+        }
 
-	// Helper: modular inverse (extended Euclidean algorithm)
-	private static UInt128 ModInverse(UInt128 a, UInt128 m)
-	{
-		UInt128 m0 = m, t, q;
-		UInt128 x0 = 0, x1 = 1;
-		if (m == 1) return 0;
-		while (a > 1)
-		{
-			q = a / m;
-			t = m;
-			m = a % m; a = t;
-			t = x0;
-			x0 = x1 - q * x0;
-			x1 = t;
-		}
+        // Helper: modular inverse (extended Euclidean algorithm)
+        private static UInt128 ModInverse(UInt128 a, UInt128 m)
+        {
+                UInt128 m0 = m, temp;
+                UInt128 x0 = 0, x1 = 1;
+                UInt128 originalA = UInt128.Zero;
+                UInt128 originalM = UInt128.Zero;
+                if (m == 1)
+                {
+                        return 0;
+                }
 
-		if (x1 < 0) x1 += m0;
+                while (a > 1)
+                {
+                        originalA = a;
+                        originalM = m;
+                        m = originalA % originalM;
+                        a = originalM;
+                        temp = x0;
+                        x0 = x1 - (originalA / originalM) * x0;
+                        x1 = temp;
+                }
 
-		return x1;
-	}
+                if (x1 < 0)
+                {
+                        x1 += m0;
+                }
+
+                return x1;
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool SharesFactorWithExponentMinusOne(this ulong exponent)

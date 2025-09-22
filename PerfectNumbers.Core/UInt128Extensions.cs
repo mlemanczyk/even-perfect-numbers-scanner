@@ -96,26 +96,26 @@ public static class UInt128Extensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool IsPrimeCandidate(this UInt128 n)
-	{
-		UInt128 p, zero = UInt128.Zero;
+        public static bool IsPrimeCandidate(this UInt128 n)
+        {
+                UInt128 p;
 
-		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
-		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
-		ulong i, smallPrimesCount = (ulong)smallPrimes.Length;
-		for (i = 0UL; i < smallPrimesCount; i++)
-		{
-			p = smallPrimes[i];
-			if (smallPrimesPow2[i] > n)
-			{
-				break;
-			}
+                uint[] smallPrimes = PrimesGenerator.SmallPrimes;
+                ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
+                ulong i, smallPrimesCount = (ulong)smallPrimes.Length;
+                for (i = 0UL; i < smallPrimesCount; i++)
+                {
+                        p = smallPrimes[i];
+                        if (smallPrimesPow2[i] > n)
+                        {
+                                break;
+                        }
 
-			if (n % p == zero)
-			{
-				return n == p;
-			}
-		}
+                        if (n % p == UInt128.Zero)
+                        {
+                                return n == p;
+                        }
+                }
 
 		return true;
 	}
@@ -138,12 +138,11 @@ public static class UInt128Extensions
 		uint mod5Value = PerfectNumbersMath.FastRemainder5(byteSum);
 		uint mod3Value = PerfectNumbersMath.FastRemainder3(byteSum);
 
-		ulong parity = mod8 & 1UL;
-		mod10 = parity == 0UL
-				? mod5Value switch
-				{
-					0U => 0UL,
-					1U => 6UL,
+                mod10 = (mod8 & 1UL) == 0UL
+                                ? mod5Value switch
+                                {
+                                        0U => 0UL,
+                                        1U => 6UL,
 					2U => 2UL,
 					3U => 8UL,
 					_ => 4UL,
@@ -184,16 +183,16 @@ public static class UInt128Extensions
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static UInt128 ModPow(this UInt128 value, UInt128 exponent, UInt128 modulus)
 	{
-		UInt128 result, one = result = UInt128.One,
-						zero = UInt128.Zero,
-						baseValue = value % modulus;
+                UInt128 zero = UInt128.Zero;
+                UInt128 result = UInt128.One;
+                UInt128 baseValue = value % modulus;
 
-		while (exponent != zero)
-		{
-			if ((exponent & one) != zero)
-			{
-				result = MulMod(result, baseValue, modulus);
-			}
+                while (exponent != zero)
+                {
+                        if ((exponent & UInt128.One) != zero)
+                        {
+                                result = MulMod(result, baseValue, modulus);
+                        }
 
 			baseValue = MulMod(baseValue, baseValue, modulus);
 			exponent >>= 1;
@@ -278,14 +277,15 @@ public static class UInt128Extensions
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static UInt128 MulMod(this UInt128 a, UInt128 b, UInt128 modulus)
 	{
-		UInt128 zero, result = zero = UInt128.Zero, one = UInt128.One;
+                UInt128 zero = UInt128.Zero;
+                UInt128 result = UInt128.Zero;
 
-		while (b != zero)
-		{
-			if ((b & one) != zero)
-			{
-				result += a;
-				if (result >= modulus)
+                while (b != zero)
+                {
+                        if ((b & UInt128.One) != zero)
+                        {
+                                result += a;
+                                if (result >= modulus)
 				{
 					result -= modulus;
 				}
