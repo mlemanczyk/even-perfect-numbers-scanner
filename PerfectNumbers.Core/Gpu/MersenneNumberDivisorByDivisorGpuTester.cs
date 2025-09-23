@@ -322,23 +322,23 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 			MersenneDivisorCycles? divisorCycles = useCycles ? MersenneDivisorCycles.Shared : null;
 			ulong cycle = useCycles ? divisorCycles!.GetCycle(divisor) : 0UL;
 			MontgomeryDivisorData divisorData = CreateMontgomeryDivisorData(divisor);
-                        Span<ulong> primeSpan = _primesHost.AsSpan(0, _owner._gpuBatchSize);
-                        Span<int> indexSpan = _indexHost.AsSpan(0, _owner._gpuBatchSize);
-                        Span<byte> hitSpan = _hitsHost.AsSpan(0, _owner._gpuBatchSize);
-                        int currentSpanSize = _owner._gpuBatchSize;
+			Span<ulong> primeSpan = _primesHost.AsSpan(0, _owner._gpuBatchSize);
+			Span<int> indexSpan = _indexHost.AsSpan(0, _owner._gpuBatchSize);
+			Span<byte> hitSpan = _hitsHost.AsSpan(0, _owner._gpuBatchSize);
+			int currentSpanSize = _owner._gpuBatchSize;
 
-                        while (offset < primes.Length)
-                        {
-                                int batchSize = Math.Min(_owner._gpuBatchSize, primes.Length - offset);
-                                if (batchSize != currentSpanSize)
-                                {
-                                        primeSpan = _primesHost.AsSpan(0, batchSize);
-                                        indexSpan = _indexHost.AsSpan(0, batchSize);
-                                        hitSpan = _hitsHost.AsSpan(0, batchSize);
-                                        currentSpanSize = batchSize;
-                                }
+			while (offset < primes.Length)
+			{
+				int batchSize = Math.Min(_owner._gpuBatchSize, primes.Length - offset);
+				if (batchSize != currentSpanSize)
+				{
+					primeSpan = _primesHost.AsSpan(0, batchSize);
+					indexSpan = _indexHost.AsSpan(0, batchSize);
+					hitSpan = _hitsHost.AsSpan(0, batchSize);
+					currentSpanSize = batchSize;
+				}
 
-                                primes.Slice(offset, batchSize).CopyTo(primeSpan);
+				primes.Slice(offset, batchSize).CopyTo(primeSpan);
 
 				if (++consoleStatus == PerfectNumberConstants.ConsoleInterval)
 				{
@@ -346,11 +346,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 					consoleStatus = 0;
 				}
 
-                                Span<byte> hitsSlice = hits.Slice(offset, batchSize);
-                                int gpuCount = 0;
+				Span<byte> hitsSlice = hits.Slice(offset, batchSize);
+				int gpuCount = 0;
 
-                                if (useCycles)
-                                {
+				if (useCycles)
+				{
 					for (int i = 0; i < batchSize; i++)
 					{
 						ulong primeValue = primeSpan[i];
@@ -367,19 +367,19 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 
 					if (gpuCount > 0)
 					{
-                                                var primesView = _primesBuffer.View.SubView(0, gpuCount);
-                                                var hitsView = _hitsBuffer.View.SubView(0, gpuCount);
+						var primesView = _primesBuffer.View.SubView(0, gpuCount);
+						var hitsView = _hitsBuffer.View.SubView(0, gpuCount);
 
-                                                primesView.CopyFromCPU(ref MemoryMarshal.GetReference(primeSpan), gpuCount);
-                                                _kernel(gpuCount, divisorData, primesView, hitsView);
-                                                _accelerator.Synchronize();
+						primesView.CopyFromCPU(ref MemoryMarshal.GetReference(primeSpan), gpuCount);
+						_kernel(gpuCount, divisorData, primesView, hitsView);
+						_accelerator.Synchronize();
 
-                                                hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitSpan), gpuCount);
-                                                for (int i = 0; i < gpuCount; i++)
-                                                {
-                                                        hitsSlice[indexSpan[i]] = hitSpan[i];
-                                                }
-                                        }
+						hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitSpan), gpuCount);
+						for (int i = 0; i < gpuCount; i++)
+						{
+							hitsSlice[indexSpan[i]] = hitSpan[i];
+						}
+					}
 				}
 				else
 				{
