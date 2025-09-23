@@ -356,7 +356,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 				}
 
 				// We benefit from the constructor, because CopyTo will be called as static function
-				new Span<ulong>(primesHost, offset, batchSize).CopyTo(primeSpan);
+				primes.Slice(offset, batchSize).CopyTo(primeSpan);
 
 				if (++consoleStatus == PerfectNumberConstants.ConsoleInterval)
 				{
