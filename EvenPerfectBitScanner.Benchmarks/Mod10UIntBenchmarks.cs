@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using PerfectNumbers.Core;
@@ -8,10 +9,16 @@ namespace EvenPerfectBitScanner.Benchmarks;
 [MemoryDiagnoser]
 public class Mod10UIntBenchmarks
 {
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static uint Mod10(uint value) => value - (uint)((value * UIntExtensions.Mod5Mask) >> 35) * 10U;
+
     [Params(10U, 2047U, 65535U, 2147483647U)]
     public uint Value { get; set; }
 
-    [Benchmark(Baseline = true)]
+	/// <summary>
+	/// Fastest
+	/// </summary>
+	[Benchmark(Baseline = true)]
     public uint ModuloOperator()
     {
         return Value % 10U;
@@ -20,7 +27,7 @@ public class Mod10UIntBenchmarks
     [Benchmark]
     public uint ExtensionMethod()
     {
-        return Value.Mod10();
+        return Mod10(Value);
     }
 }
 

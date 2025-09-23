@@ -1,4 +1,3 @@
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using PerfectNumbers.Core;
@@ -36,10 +35,13 @@ public class Mod10_8_5_3PropertiesBenchmarks
         return rem >= 5UL ? rem - 5UL : rem;
     }
 
-    [Params(3UL, 8191UL, 131071UL, 2147483647UL)]
+    [Params(3UL, 6UL, 128UL, 256UL, 2_047UL, 8_191UL, 65_535UL, 131_071UL, 2_147_483_647UL, ulong.MaxValue - 1_024UL, ulong.MaxValue - 511UL, ulong.MaxValue - 255UL, ulong.MaxValue - 127UL, ulong.MaxValue - 63UL, ulong.MaxValue - 31UL, ulong.MaxValue - 17UL)]
     public ulong Value { get; set; }
 
-    [Benchmark(Baseline = true)]
+	/// <summary>
+	/// Fastest
+	/// </summary>
+	[Benchmark(Baseline = true)]
     public (ulong Mod10, ulong Mod8, ulong Mod5, ulong Mod3) LegacyModulo()
     {
 		UInt128 value = Value;
@@ -53,12 +55,7 @@ public class Mod10_8_5_3PropertiesBenchmarks
     [Benchmark]
     public (ulong Mod10, ulong Mod8, ulong Mod3, ulong Mod5) ModMethodModulo()
     {
-		Value.Mod10_8_5_3(out var mod10, out ulong mod8, out ulong mod5, out ulong mod3);
-		Mod10R = mod10;
-		Mod8R = mod8;
-		Mod5R = mod5;
-		Mod3R = mod3;
-
+		Value.Mod10_8_5_3(out Mod10R, out Mod8R, out Mod5R, out Mod3R);
         return (Mod10R, Mod8R, Mod3R, Mod5R);
     }
 }

@@ -1,4 +1,3 @@
-using System.Numerics;
 using BenchmarkDotNet.Attributes;
 using PerfectNumbers.Core;
 
@@ -10,7 +9,10 @@ public class Mod10_8_5_3Benchmarks
     [Params(3UL, 8191UL, 131071UL, 2147483647UL)]
     public ulong Value { get; set; }
 
-    [Benchmark(Baseline = true)]
+	/// <summary>
+	/// Fastest
+	/// </summary>
+	[Benchmark(Baseline = true)]
     public (ulong Mod10, ulong Mod8, ulong Mod3, ulong Mod5) ModuloOperator()
     {
         ulong value = Value;

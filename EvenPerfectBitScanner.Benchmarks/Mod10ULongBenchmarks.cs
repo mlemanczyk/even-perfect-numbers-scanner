@@ -1,4 +1,3 @@
-using System.Numerics;
 using BenchmarkDotNet.Attributes;
 using PerfectNumbers.Core;
 
@@ -16,7 +15,10 @@ public class Mod10ULongBenchmarks
 		return Value % 10UL;
     }
 
-    [Benchmark]
+	/// <summary>
+	/// Fastest
+	/// </summary>
+	[Benchmark]
     public ulong ModMethodModulo()
     {
         return Value.Mod10();

@@ -1,5 +1,4 @@
 using BenchmarkDotNet.Attributes;
-using PerfectNumbers.Core;
 
 namespace EvenPerfectBitScanner.Benchmarks;
 
@@ -15,38 +14,45 @@ public class Mod10UInt128Benchmarks
 		return Value % 10UL;
 	}
 
+	/// <summary>
+	/// Fastest
+	/// </summary>
 	[Benchmark]
 	public ulong ModWithHighLowModulo()
 	{
-		// Split and fold under mod 10: 2^64 ≡ 6 (mod 10)
-		ulong value = (ulong)Value;
-		ulong high = value >> 64;
-		ulong low = value;
-                ulong highRem = high % 10UL;
-                ulong lowRem = low % 10UL;
-                ulong combined = lowRem + highRem * 6UL;
-                return combined % 10UL;
+		return ModWithHighLowModuloHelper(Value);
 	}
 
-    [Benchmark]
-    public ulong ModWithLoopModulo()
-    {
-		UInt128 value = Value;
+	private static ulong ModWithHighLowModuloHelper(UInt128 value128)
+	{
+		// Split and fold under mod 10: 2^64 ≡ 6 (mod 10)
+		ulong value = (ulong)value128;
+		return ((value % 10UL) + ((value >> 64) % 10UL) * 6UL) % 10UL;
+	}
+
+	[Benchmark]
+	public ulong ModWithLoopModulo()
+	{
+		return ModWithLoopModuloHelper(Value);
+	}
+
+	private static ulong ModWithLoopModuloHelper(UInt128 value)
+	{
 		UInt128 zero = UInt128.Zero;
 		if (value == zero)
 			return 0UL;
 
 		ulong result = (ulong)value;
-		UInt128 high = value >> 64;
+		value >>= 64;
 
-		while (high != zero)
+		while (value != zero)
 		{
 			// 2^64 ≡ 6 (mod 10)
-                        result = (result + (ulong)high * 6UL) % 10UL;
-                        high >>= 64;
-                }
+			result = (result + (ulong)value * 6UL) % 10UL;
+			value >>= 64;
+		}
 
-                return result % 10UL;
-    }
+		return result % 10UL;
+	}
 }
 

@@ -17,7 +17,11 @@ public class Mod7UInt128Benchmarks
         return (ulong)(Value % 7UL);
     }
 
-    [Benchmark]
+	/// <summary>
+	/// Fastest
+	/// </summary>
+	/// <returns></returns>
+	[Benchmark]
     public ulong ExtensionMethod()
     {
         return Value.Mod7();

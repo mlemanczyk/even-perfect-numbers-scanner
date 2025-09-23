@@ -1,4 +1,4 @@
-using System.Numerics;
+using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using PerfectNumbers.Core;
@@ -9,6 +9,11 @@ namespace EvenPerfectBitScanner.Benchmarks;
 [MemoryDiagnoser]
 public class Mod6ComparisonBenchmarks
 {
+	private static readonly byte[] Mod6Lookup = [0, 3, 4, 1, 2, 5];
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static ulong Mod6(ulong value) => Mod6Lookup[(int)(((value % 3UL) << 1) | (value & 1UL))];
+
     private const int Iterations = 10_000_000;
     private const ulong Divisor = 6UL;
     private static readonly ulong FastDivMul = (ulong)(((UInt128)1 << 64) / Divisor);
@@ -71,7 +76,7 @@ public class Mod6ComparisonBenchmarks
 
         for (int i = 0; i < Iterations; i++)
         {
-            checksum += value.Mod6();
+            checksum += Mod6(value);
             value += (ulong)((i & 15) + 1);
         }
 

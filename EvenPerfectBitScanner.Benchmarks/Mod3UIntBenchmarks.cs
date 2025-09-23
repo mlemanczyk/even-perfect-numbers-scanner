@@ -20,7 +20,7 @@ public class Mod3UIntBenchmarks
     [Benchmark]
     public uint ExtensionMethod()
     {
-        return Value.Mod3();
+        return UIntExtensions.Mod3(Value);
     }
 }
 

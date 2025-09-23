@@ -85,7 +85,7 @@ public class MersenneDivisorCycles
 				}
 			}
 		}
-		
+
 		// Binary search for divisor in sorted _table
 		int mid, right, left = 0;
 		ulong d;
@@ -189,7 +189,7 @@ public class MersenneDivisorCycles
 						for (int i = 0; i < localCycleIndex; i++)
 						{
 							(d, cycle) = localCycles[i];
-                                                    if (d.Mod3() == 0UL || d.Mod5() == 0UL || d.Mod7() == 0UL || d.Mod11() == 0UL)
+							if ((d % 3UL) == 0UL || (d % 5UL) == 0UL || (d % 7UL) == 0UL || (d % 11UL) == 0UL)
 								continue;
 
 							writer.Write(d);
@@ -222,15 +222,15 @@ public class MersenneDivisorCycles
 		int count = (int)Math.Min(batchSizeUL, maxDivisor), i, idx;
 		ulong[] divisors, outCycles, validDivisors;
 
-                divisors = pool.Rent(count);
-                outCycles = pool.Rent(count);
-                var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
-                var accelerator = lease.Accelerator;
-                var stream = accelerator.CreateStream();
-                var kernel = accelerator.LoadAutoGroupedStreamKernel<
-                        Index1D,
-                        ArrayView1D<ulong, Stride1D.Dense>,
-                        ArrayView1D<ulong, Stride1D.Dense>>(GpuDivisorCycleKernel);
+		divisors = pool.Rent(count);
+		outCycles = pool.Rent(count);
+		var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+		var accelerator = lease.Accelerator;
+		var stream = accelerator.CreateStream();
+		var kernel = accelerator.LoadAutoGroupedStreamKernel<
+				Index1D,
+				ArrayView1D<ulong, Stride1D.Dense>,
+				ArrayView1D<ulong, Stride1D.Dense>>(GpuDivisorCycleKernel);
 
 
 		using Stream outputStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, BufferSize10M, useAsync: true);
@@ -249,7 +249,7 @@ public class MersenneDivisorCycles
 		{
 			while (skipCount > 0L && start <= maxDivisor)
 			{
-                            if ((start & 1UL) == 0UL || start.Mod3() == 0UL || start.Mod5() == 0UL || start.Mod7() == 0UL || start.Mod11() == 0UL)
+				if ((start & 1UL) == 0UL || (start % 3UL) == 0UL || (start % 5UL) == 0UL || (start % 7UL) == 0UL || (start % 11UL) == 0UL)
 				{
 					start++;
 					continue;
@@ -280,10 +280,10 @@ public class MersenneDivisorCycles
 				var bufferDiv = accelerator.Allocate1D(validDivisors);
 				var bufferCycle = accelerator.Allocate1D<ulong>(idx);
 
-                                kernel(
-                                        idx,
-                                        bufferDiv.View,
-                                        bufferCycle.View);
+				kernel(
+						idx,
+						bufferDiv.View,
+						bufferCycle.View);
 
 				accelerator.Synchronize();
 
@@ -296,7 +296,7 @@ public class MersenneDivisorCycles
 				{
 					d = divisors[i];
 
-                                    if (d.Mod3() == 0UL || d.Mod5() == 0UL || d.Mod7() == 0UL || d.Mod11() == 0UL)
+					if ((d % 3UL) == 0UL || (d % 5UL) == 0UL || (d % 7UL) == 0UL || (d % 11UL) == 0UL)
 						continue;
 
 					writer.Write(d);
@@ -308,16 +308,16 @@ public class MersenneDivisorCycles
 				start = end + 1UL;
 			}
 		}
-                finally
-                {
-                        pool.Return(divisors, clearArray: false);
-                        pool.Return(outCycles, clearArray: false);
-                }
+		finally
+		{
+			pool.Return(divisors, clearArray: false);
+			pool.Return(outCycles, clearArray: false);
+		}
 
-                stream.Dispose();
-                lease.Dispose();
+		stream.Dispose();
+		lease.Dispose();
 
-        }
+	}
 
 	const byte ByteZero = 0;
 	const byte ByteOne = 1;

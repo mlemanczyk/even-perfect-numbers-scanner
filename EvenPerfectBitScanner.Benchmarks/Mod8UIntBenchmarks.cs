@@ -17,6 +17,9 @@ public class Mod8UIntBenchmarks
         return Value % 8U;
     }
 
+	/// <summary>
+	/// Fastest
+	/// </summary>
     [Benchmark]
     public uint ExtensionMethod()
     {

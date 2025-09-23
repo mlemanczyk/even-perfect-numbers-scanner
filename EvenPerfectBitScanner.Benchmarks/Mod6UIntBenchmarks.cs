@@ -1,6 +1,6 @@
+using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
-using PerfectNumbers.Core;
 
 namespace EvenPerfectBitScanner.Benchmarks;
 
@@ -8,10 +8,18 @@ namespace EvenPerfectBitScanner.Benchmarks;
 [MemoryDiagnoser]
 public class Mod6UIntBenchmarks
 {
+	private static readonly byte[] Mod6Lookup = [0, 3, 4, 1, 2, 5];
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static uint Mod6(uint value) => Mod6Lookup[(int)(((value % 3U) << 1) | (value & 1U))];
+
     [Params(6U, 2047U, 65535U, 2147483647U)]
     public uint Value { get; set; }
 
-    [Benchmark(Baseline = true)]
+	/// <summary>
+	/// Fastest
+	/// </summary>
+	[Benchmark(Baseline = true)]
     public uint ModuloOperator()
     {
         return Value % 6U;
@@ -20,7 +28,7 @@ public class Mod6UIntBenchmarks
     [Benchmark]
     public uint ExtensionMethod()
     {
-        return Value.Mod6();
+        return Mod6(Value);
     }
 }
 

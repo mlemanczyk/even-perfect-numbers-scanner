@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using ILGPU;
 using ILGPU.Runtime;
 using static PerfectNumbers.Core.Gpu.GpuContextPool;
@@ -200,8 +199,8 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         ArrayView1D<uint, Stride1D.Dense> smallCycles)
     {
         ulong idx = (ulong)index.X;
-        ulong idxMod3 = idx.Mod3();
-        ulong idxMod5 = idx.Mod5();
+        ulong idxMod3 = idx % 3UL;
+        ulong idxMod5 = idx % 5UL;
         // residue automaton
         ulong step10 = (exponent.Mod10() << 1).Mod10();
         ulong r10 = q0m10 + (step10 * idx).Mod10();
@@ -217,7 +216,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
 			}
             else
             {
-                ulong step3 = (exponent.Mod3() << 1).Mod3();
+                ulong step3 = ((exponent % 3UL) << 1) % 3UL;
                 ulong r3 = q0m3 + (step3 * idxMod3); r3 -= (r3 >= 3UL) ? 3UL : 0UL;
                 if (r3 == 0UL)
                 {
@@ -225,7 +224,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                 }
                 else
                 {
-                    ulong step5Loc = (exponent.Mod5() << 1).Mod5();
+                    ulong step5Loc = ((exponent % 5UL) << 1) % 5UL;
                     ulong r5 = q0m5 + (step5Loc * idxMod5); if (r5 >= 5UL) r5 -= 5UL;
                     if (r5 == 0UL)
                     {
@@ -360,8 +359,8 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         ArrayView1D<ulong, Stride1D.Dense> smallPrimesPow2LastSeven)
     {
         ulong idx = (ulong)index.X;
-        ulong idxMod3 = idx.Mod3();
-        ulong idxMod5 = idx.Mod5();
+        ulong idxMod3 = idx % 3UL;
+        ulong idxMod5 = idx % 5UL;
         ulong r10 = ra.Q0M10 + (ra.Step10 * idx).Mod10(); r10 -= (r10 >= 10UL) ? 10UL : 0UL;
         bool shouldCheck = r10 != 5UL;
         if (shouldCheck)
@@ -493,8 +492,8 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                 ResidueAutomatonArgs ra, ArrayView<int> found, ArrayView1D<uint, Stride1D.Dense> smallCycles)
     {
         ulong idx = (ulong)index.X;
-        ulong idxMod3 = idx.Mod3();
-        ulong idxMod5 = idx.Mod5();
+        ulong idxMod3 = idx % 3UL;
+        ulong idxMod5 = idx % 5UL;
         ulong r10 = ra.Q0M10 + (ra.Step10 * idx).Mod10(); r10 -= (r10 >= 10UL) ? 10UL : 0UL;
 		bool shouldCheck = r10 != 5UL;
 		if (shouldCheck)
@@ -579,8 +578,8 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                 ResidueAutomatonArgs ra, ArrayView<int> found, ArrayView1D<uint, Stride1D.Dense> smallCycles)
     {
         ulong idx = (ulong)index.X;
-        ulong idxMod3 = idx.Mod3();
-        ulong idxMod5 = idx.Mod5();
+        ulong idxMod3 = idx % 3UL;
+        ulong idxMod5 = idx % 5UL;
         ulong r10 = ra.Q0M10 + (ra.Step10 * idx).Mod10(); r10 -= (r10 >= 10UL) ? 10UL : 0UL;
 		bool shouldCheck = r10 != 5UL;
 		if (shouldCheck)

@@ -9,10 +9,10 @@ public class MersenneNumberLucasLehmerCpuTester
         // - If p ≡ 1 (mod 4) and p shares a factor with (p-1), reject fast.
         // - If p is divisible by divisors specific to numbers ending with 1 or 7, reject fast.
         if (
-            (exponent.Mod3() == 0UL && exponent != 3UL) ||
-            (exponent.Mod5() == 0UL && exponent != 5UL) ||
-            (exponent.Mod7() == 0UL && exponent != 7UL) ||
-            (exponent.Mod11() == 0UL && exponent != 11UL)
+            ((exponent % 3UL) == 0UL && exponent != 3UL) ||
+            ((exponent % 5UL) == 0UL && exponent != 5UL) ||
+            ((exponent % 7UL) == 0UL && exponent != 7UL) ||
+            ((exponent % 11UL) == 0UL && exponent != 11UL)
         )
 		{
 			return false;

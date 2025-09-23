@@ -203,7 +203,7 @@ public sealed class MersenneNumberTester(
     {
         // Safe early rejections using known orders for tiny primes:
         // 7 | M_p iff 3 | p. Avoid rejecting p == 3 where M_3 == 7 is prime.
-        if (exponent.Mod3() == 0UL && exponent != 3UL)
+        if ((exponent % 3UL) == 0UL && exponent != 3UL)
         {
             return false;
         }

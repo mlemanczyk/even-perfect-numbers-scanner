@@ -1,4 +1,3 @@
-using System.Numerics;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using PerfectNumbers.Core;
@@ -18,7 +17,10 @@ public class Mod8UInt128Benchmarks
         return (ulong)(Value % 8UL);
     }
 
-    [Benchmark]
+	/// <summary>
+	/// Fastest
+	/// </summary>
+	[Benchmark]
     public ulong ExtensionMethod()
     {
         return Value.Mod8();

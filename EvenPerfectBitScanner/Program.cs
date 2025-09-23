@@ -3,7 +3,6 @@ using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Threading;
 using Open.Collections;
 using Open.Numeric.Primes;
 using PerfectNumbers.Core;
@@ -1674,7 +1673,7 @@ internal static class Program
 		// Optional: RLE blacklist and binary-threshold filters on p (safe only when configured)
 		if (p <= _rleHardMaxP)
 		{
-                   if (!_rleOnlyLast7 || p % 10UL == 7UL)
+                   if (!_rleOnlyLast7 || p.Mod10() == 7UL)
 			{
 				if (RleBlacklist.IsLoaded() && RleBlacklist.Matches(p))
 				{
