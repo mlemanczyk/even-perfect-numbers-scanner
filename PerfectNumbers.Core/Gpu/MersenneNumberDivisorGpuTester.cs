@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Concurrent;
-using System.Numerics;
 using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;

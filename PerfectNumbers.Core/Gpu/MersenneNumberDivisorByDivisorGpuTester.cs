@@ -1,12 +1,9 @@
-using System;
 using System.Buffers;
 using System.Collections.Concurrent;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ILGPU;
 using ILGPU.Runtime;
-using PerfectNumbers.Core;
 
 namespace PerfectNumbers.Core.Gpu;
 

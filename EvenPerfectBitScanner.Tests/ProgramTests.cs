@@ -1,10 +1,6 @@
 using FluentAssertions;
 using Xunit;
-using System;
-using System.Collections.Generic;
-using System.Numerics;
 using System.Reflection;
-using System.Text;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 

@@ -1,9 +1,5 @@
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Reflection;
 using FluentAssertions;
-using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 using Xunit;
 using UInt128 = System.UInt128;

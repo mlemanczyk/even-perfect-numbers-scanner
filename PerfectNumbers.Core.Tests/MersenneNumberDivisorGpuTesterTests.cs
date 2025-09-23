@@ -1,7 +1,5 @@
 using FluentAssertions;
 using PerfectNumbers.Core.Gpu;
-using System;
-using System.Numerics;
 using System.Reflection;
 using Xunit;
 

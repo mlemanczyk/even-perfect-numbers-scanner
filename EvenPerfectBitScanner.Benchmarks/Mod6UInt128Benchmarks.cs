@@ -1,4 +1,3 @@
-using System.Numerics;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using PerfectNumbers.Core;
