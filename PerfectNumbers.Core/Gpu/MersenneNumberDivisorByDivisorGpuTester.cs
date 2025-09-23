@@ -98,6 +98,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 
 	private bool CheckDivisors(ulong prime, ulong allowedMax, out ulong lastProcessed, out bool coveredRange)
 	{
+		// TODO: We should be able to calculate allowedMax outside in the parent method, unless it depends from some changing value.
 		allowedMax = Math.Min(allowedMax, _divisorLimit);
 		lastProcessed = 0UL;
 
@@ -107,125 +108,125 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 			return false;
 		}
 
+		// TODO: Rent these in the parent method before the loops - batch size doesn't change
 		var gpuLease = GpuContextPool.RentPreferred(preferCpu: false);
 		var accelerator = gpuLease.Accelerator;
 		var kernel = GetKernel(accelerator);
 
 		int batchCapacity = _gpuBatchSize;
+		// TODO: Rent buffers in the parent method before the loops - batch size doesn't change
 		var divisorsBuffer = accelerator.Allocate1D<MontgomeryDivisorData>(batchCapacity);
 		var hitsBuffer = accelerator.Allocate1D<byte>(batchCapacity);
-
 		ulong[] divisors = ArrayPool<ulong>.Shared.Rent(batchCapacity);
 		byte[] hits = ArrayPool<byte>.Shared.Rent(batchCapacity);
 		MontgomeryDivisorData[] divisorData = ArrayPool<MontgomeryDivisorData>.Shared.Rent(batchCapacity);
 
 		bool composite = false;
 		bool processedAll = false;
-		ulong divisor = 3UL;
+		ulong cycle, divisor = 3UL, next;
+		int batchSize, i;
+		bool reachedEndInBatch, useCycles = _useDivisorCycles;
 
-		try
+		Span<MontgomeryDivisorData> divisorDataSpan;
+		Span<ulong> divisorSpan;
+		Span<byte> hitsSpan;
+		MersenneDivisorCycles divisorCycles = MersenneDivisorCycles.Shared;
+		ArrayView1D<MontgomeryDivisorData, Stride1D.Dense> divisorView;
+		ArrayView1D<byte, Stride1D.Dense> hitsView;
+
+		while (divisor <= allowedMax)
 		{
-			bool useCycles = _useDivisorCycles;
-			MersenneDivisorCycles? divisorCycles = useCycles ? MersenneDivisorCycles.Shared : null;
-			while (divisor <= allowedMax)
+			batchSize = 0;
+			reachedEndInBatch = false;
+
+			while (batchSize < batchCapacity && divisor <= allowedMax)
 			{
-				int batchSize = 0;
-				bool reachedEndInBatch = false;
-
-				while (batchSize < batchCapacity && divisor <= allowedMax)
+				if (useCycles)
 				{
-					ulong current = divisor;
-					ulong next = current + 2UL;
-					bool include = true;
-					if (useCycles)
+					cycle = divisorCycles!.GetCycle(divisor);
+					if (cycle == 0UL || prime % cycle != 0UL)
 					{
-						ulong cycle = divisorCycles!.GetCycle(current);
-						if (cycle == 0UL || prime % cycle != 0UL)
-						{
-							include = false;
-							lastProcessed = current;
-							ReportStatus(lastProcessed);
-						}
+						ReportStatus(divisor);
 					}
-
-					if (include)
+					else
 					{
-						divisors[batchSize++] = current;
+						divisors[batchSize++] = divisor;
 					}
+				}
+				else
+				{
+					divisors[batchSize++] = divisor;
+				}
 
-					if (next <= current)
-					{
-						reachedEndInBatch = true;
-						break;
-					}
+				next = divisor + 2UL;
+				if (next <= divisor)
+				{
+					reachedEndInBatch = true;
+					break;
+				}
 
-					if (next > allowedMax)
-					{
-						divisor = next;
-						reachedEndInBatch = true;
-						break;
-					}
-
+				if (next > allowedMax)
+				{
 					divisor = next;
-				}
-
-				if (batchSize == 0)
-				{
+					reachedEndInBatch = true;
 					break;
 				}
 
-				Span<MontgomeryDivisorData> divisorDataSpan = divisorData.AsSpan(0, batchSize);
-				var divisorView = divisorsBuffer.View.SubView(0, batchSize);
-				var hitsView = hitsBuffer.View.SubView(0, batchSize);
+				divisor = next;
+			}
 
-				Span<ulong> divisorSpan = divisors.AsSpan(0, batchSize);
-				Span<byte> hitsSpan = hits.AsSpan(0, batchSize);
+			if (batchSize == 0)
+			{
+				break;
+			}
 
-				for (int i = 0; i < batchSize; i++)
+			divisorDataSpan = divisorData.AsSpan(0, batchSize);
+			divisorView = divisorsBuffer.View.SubView(0, batchSize);
+			hitsView = hitsBuffer.View.SubView(0, batchSize);
+
+			divisorSpan = divisors.AsSpan(0, batchSize);
+			hitsSpan = hits.AsSpan(0, batchSize);
+
+			for (i = 0; i < batchSize; i++)
+			{
+				divisorDataSpan[i] = CreateMontgomeryDivisorData(divisorSpan[i]);
+			}
+
+			divisorView.CopyFromCPU(ref MemoryMarshal.GetReference(divisorDataSpan), batchSize);
+			kernel(batchSize, prime, divisorView, hitsView);
+			accelerator.Synchronize();
+			hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitsSpan), batchSize);
+
+			for (i = 0; i < batchSize; i++)
+			{
+				if (hitsSpan[i] != 0)
 				{
-					divisorDataSpan[i] = CreateMontgomeryDivisorData(divisorSpan[i]);
-				}
-
-				divisorView.CopyFromCPU(ref MemoryMarshal.GetReference(divisorDataSpan), batchSize);
-				kernel(batchSize, prime, divisorView, hitsView);
-				accelerator.Synchronize();
-
-				hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitsSpan), batchSize);
-
-				for (int i = 0; i < batchSize; i++)
-				{
-					lastProcessed = divisorSpan[i];
-					if (hitsSpan[i] != 0)
-					{
-						composite = true;
-						break;
-					}
-				}
-
-				ReportStatus(lastProcessed);
-				if (composite)
-				{
-					break;
-				}
-
-				if (reachedEndInBatch)
-				{
-					processedAll = true;
+					composite = true;
 					break;
 				}
 			}
 
-			coveredRange = composite || processedAll || divisor > allowedMax;
+			ReportStatus(divisorSpan[i < batchSize ? i : i - 1]);
+			if (composite)
+			{
+				break;
+			}
+
+			if (reachedEndInBatch)
+			{
+				processedAll = true;
+				break;
+			}
 		}
-		finally
-		{
-			ArrayPool<byte>.Shared.Return(hits, clearArray: true);
-			ArrayPool<ulong>.Shared.Return(divisors, clearArray: true);
-			ArrayPool<MontgomeryDivisorData>.Shared.Return(divisorData, clearArray: true);
-			hitsBuffer.Dispose();
-			divisorsBuffer.Dispose();
-			gpuLease.Dispose();
-		}
+
+		coveredRange = composite || processedAll || divisor > allowedMax;
+
+		ArrayPool<byte>.Shared.Return(hits, clearArray: true);
+		ArrayPool<ulong>.Shared.Return(divisors, clearArray: true);
+		ArrayPool<MontgomeryDivisorData>.Shared.Return(divisorData, clearArray: true);
+		hitsBuffer.Dispose();
+		divisorsBuffer.Dispose();
+		gpuLease.Dispose();
 
 		return composite;
 	}
@@ -317,7 +318,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 			}
 
 			int offset = 0;
-			int consoleStatus = 0;
 			MersenneNumberDivisorByDivisorGpuTester owner = _owner;
 			int gpuBatchSize = owner._gpuBatchSize;
 			bool useCycles = owner._useDivisorCycles;
@@ -335,83 +335,74 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 			MersenneDivisorCycles? divisorCycles = useCycles ? MersenneDivisorCycles.Shared : null;
 			ulong cycle = useCycles ? divisorCycles!.GetCycle(divisor) : 0UL, primeValue;
 			MontgomeryDivisorData divisorData = CreateMontgomeryDivisorData(divisor);
-                        Span<ulong> primeSpan = Span<ulong>.Empty;
-                        Span<int> indexSpan = Span<int>.Empty;
-                        Span<byte> hitSpan = Span<byte>.Empty;
-                        Span<byte> hitsSlice;
-                        int batchSize, currentSpanSize = -1, gpuCount, i, primesLength = primes.Length;
+			Span<ulong> primeSpan = [];
+			ReadOnlySpan<ulong> primesSlice;
+			Span<int> indexSpan = [];
+			Span<byte> hitSpan = [];
+			Span<byte> hitsSlice;
+			int batchSize, currentSpanSize = -1, gpuCount, i, primesLength = primes.Length;
 
 			while (offset < primesLength)
 			{
-                                batchSize = Math.Min(gpuBatchSize, primesLength - offset);
-                                ReadOnlySpan<ulong> primesSlice = primes.Slice(offset, batchSize);
+				batchSize = Math.Min(gpuBatchSize, primesLength - offset);
+				primesSlice = primes.Slice(offset, batchSize);
+				hitsSlice = hits.Slice(offset, batchSize);
 
-                                if (++consoleStatus == PerfectNumberConstants.ConsoleInterval)
-                                {
-                                        Console.WriteLine($"...processed by-divisor candidate = {primesSlice[0]}");
-                                        consoleStatus = 0;
-                                }
+				if (useCycles)
+				{
+					if (batchSize != currentSpanSize)
+					{
+						primeSpan = primesHost.AsSpan(0, batchSize);
+						indexSpan = indexHost.AsSpan(0, batchSize);
+						hitSpan = hitsHost.AsSpan(0, batchSize);
+						currentSpanSize = batchSize;
+					}
 
-                                hitsSlice = hits.Slice(offset, batchSize);
+					gpuCount = 0;
 
-                                if (useCycles)
-                                {
-                                        if (batchSize != currentSpanSize)
-                                        {
-                                                primeSpan = primesHost.AsSpan(0, batchSize);
-                                                indexSpan = indexHost.AsSpan(0, batchSize);
-                                                hitSpan = hitsHost.AsSpan(0, batchSize);
-                                                currentSpanSize = batchSize;
-                                        }
+					for (i = 0; i < batchSize; i++)
+					{
+						primeValue = primesSlice[i];
+						if (cycle == 0UL || primeValue % cycle != 0UL)
+						{
+							hitsSlice[i] = 0;
+							continue;
+						}
 
-                                        ref ulong primesSpanRef = ref MemoryMarshal.GetReference(primeSpan);
-                                        ref byte hitSpanRef = ref MemoryMarshal.GetReference(hitSpan);
-                                        gpuCount = 0;
+						indexSpan[gpuCount] = i;
+						primeSpan[gpuCount] = primeValue;
+						gpuCount++;
+					}
 
-                                        for (i = 0; i < batchSize; i++)
-                                        {
-                                                primeValue = primesSlice[i];
-                                                if (cycle == 0UL || primeValue % cycle != 0UL)
-                                                {
-                                                        hitsSlice[i] = 0;
-                                                        continue;
-                                                }
+					if (gpuCount > 0)
+					{
+						primesView = primesBufferView.SubView(0, gpuCount);
+						hitsView = hitsBufferView.SubView(0, gpuCount);
 
-                                                indexSpan[gpuCount] = i;
-                                                primeSpan[gpuCount] = primeValue;
-                                                gpuCount++;
-                                        }
+						primesView.CopyFromCPU(ref MemoryMarshal.GetReference(primeSpan), gpuCount);
+						kernel(gpuCount, divisorData, primesView, hitsView);
+						accelerator.Synchronize();
 
-                                        if (gpuCount > 0)
-                                        {
-                                                primesView = primesBufferView.SubView(0, gpuCount);
-                                                hitsView = hitsBufferView.SubView(0, gpuCount);
+						hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitSpan), gpuCount);
+						for (i = 0; i < gpuCount; i++)
+						{
+							hitsSlice[indexSpan[i]] = hitSpan[i];
+						}
+					}
+				}
+				else
+				{
+					primesView = primesBufferView.SubView(0, batchSize);
+					hitsView = hitsBufferView.SubView(0, batchSize);
 
-                                                primesView.CopyFromCPU(ref primesSpanRef, gpuCount);
-                                                kernel(gpuCount, divisorData, primesView, hitsView);
-                                                accelerator.Synchronize();
+					primesView.CopyFromCPU(ref MemoryMarshal.GetReference(primesSlice), batchSize);
+					kernel(batchSize, divisorData, primesView, hitsView);
+					accelerator.Synchronize();
 
-                                                hitsView.CopyToCPU(ref hitSpanRef, gpuCount);
-                                                for (i = 0; i < gpuCount; i++)
-                                                {
-                                                        hitsSlice[indexSpan[i]] = hitSpan[i];
-                                                }
-                                        }
-                                }
-                                else
-                                {
-                                        primesView = primesBufferView.SubView(0, batchSize);
-                                        hitsView = hitsBufferView.SubView(0, batchSize);
+					hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitsSlice), batchSize);
+				}
 
-                                        ref ulong primesSliceRef = ref MemoryMarshal.GetReference(primesSlice);
-                                        primesView.CopyFromCPU(ref primesSliceRef, batchSize);
-                                        kernel(batchSize, divisorData, primesView, hitsView);
-                                        accelerator.Synchronize();
-
-                                        hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitsSlice), batchSize);
-                                }
-
-                                offset += batchSize;
+				offset += batchSize;
 			}
 		}
 
