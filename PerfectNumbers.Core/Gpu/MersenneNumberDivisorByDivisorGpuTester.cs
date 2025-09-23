@@ -159,6 +159,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 				}
 
 				next = divisor + 2UL;
+				
+				// This will be only true when we exceed ulong.MaxValue
 				if (next <= divisor)
 				{
 					reachedEndInBatch = true;
