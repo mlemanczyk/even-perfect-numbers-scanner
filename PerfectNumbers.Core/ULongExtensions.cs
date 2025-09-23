@@ -85,23 +85,27 @@ public static class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Mod10(this ulong value) => (value & 1UL) == 0UL
-			? value % 5UL switch
-			{
-				0UL => 0UL,
-				1UL => 6UL,
-				2UL => 2UL,
-				3UL => 8UL,
-				_ => 4UL,
-			}
-			: value % 5UL switch
-			{
-				0UL => 5UL,
-				1UL => 1UL,
-				2UL => 7UL,
-				3UL => 3UL,
-				_ => 9UL,
-			};
+        public static ulong Mod10(this ulong value)
+        {
+                ulong mod5 = value % 5UL;
+                return (value & 1UL) == 0UL
+                        ? mod5 switch
+                        {
+                                0UL => 0UL,
+                                1UL => 6UL,
+                                2UL => 2UL,
+                                3UL => 8UL,
+                                _ => 4UL,
+                        }
+                        : mod5 switch
+                        {
+                                0UL => 5UL,
+                                1UL => 1UL,
+                                2UL => 7UL,
+                                3UL => 3UL,
+                                _ => 9UL,
+                        };
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong Mod128(this ulong value) => value & 127UL;
@@ -143,14 +147,14 @@ public static class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void Mod10_8_5_3Steps(this ulong value, out ulong step10, out ulong step8, out ulong step5, out ulong step3)
-	{
-		value.Mod10_8_5_3(out step10, out step8, out step5, out step3);
+        public static void Mod10_8_5_3Steps(this ulong value, out ulong step10, out ulong step8, out ulong step5, out ulong step3)
+        {
+                value.Mod10_8_5_3(out step10, out step8, out step5, out step3);
 
-		step10 = (step10 << 1).Mod10();
-		step8 = (step8 << 1) & 7UL;
-		step5 = (step5 << 1) % 5UL;
-		step3 = (step3 << 1) % 3UL;
+                step10 = (step10 << 1).Mod10();
+                step8 = (step8 << 1) & 7UL;
+                step5 = (step5 << 1) % 5UL;
+                step3 = (step3 << 1) % 3UL;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
