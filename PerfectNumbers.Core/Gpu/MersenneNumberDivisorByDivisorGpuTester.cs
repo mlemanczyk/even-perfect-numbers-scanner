@@ -16,20 +16,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 	private ulong _lastStatusDivisor;
 	private bool _useDivisorCycles;
 
-	public readonly struct MontgomeryDivisorData
+	public readonly struct MontgomeryDivisorData(ulong modulus, ulong nPrime, ulong montgomeryOne, ulong montgomeryTwo)
 	{
-		public readonly ulong Modulus;
-		public readonly ulong NPrime;
-		public readonly ulong MontgomeryOne;
-		public readonly ulong MontgomeryTwo;
-
-		public MontgomeryDivisorData(ulong modulus, ulong nPrime, ulong montgomeryOne, ulong montgomeryTwo)
-		{
-			Modulus = modulus;
-			NPrime = nPrime;
-			MontgomeryOne = montgomeryOne;
-			MontgomeryTwo = montgomeryTwo;
-		}
+		public readonly ulong Modulus = modulus;
+		public readonly ulong NPrime = nPrime;
+		public readonly ulong MontgomeryOne = montgomeryOne;
+		public readonly ulong MontgomeryTwo = montgomeryTwo;
 	}
 
 	private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<MontgomeryDivisorData>, ArrayView<byte>>> _kernelCache = new();
@@ -64,36 +56,39 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 
 	public bool IsPrime(ulong prime, out bool divisorsExhausted)
 	{
+		if (!_isConfigured)
+		{
+			throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+		}
+
+		ulong allowedMax = ComputeAllowedMaxDivisor(prime);
+		if (allowedMax < 3UL)
+		{
+			divisorsExhausted = true;
+			return true;
+		}
+
+		bool composite, coveredRange;
+
+		// TODO: Let's rework this to check if the number is prime and check divisors outside of the lock. Lock and update the state afterwards.
 		lock (_sync)
 		{
-			if (!_isConfigured)
-			{
-				throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-			}
-
-			ulong allowedMax = ComputeAllowedMaxDivisor(prime);
-			if (allowedMax < 3UL)
-			{
-				divisorsExhausted = true;
-				return true;
-			}
-
-			bool composite = CheckDivisors(prime, allowedMax, out ulong lastProcessed, out bool coveredRange);
+			composite = CheckDivisors(prime, allowedMax, out ulong lastProcessed, out coveredRange);
 
 			if (lastProcessed != 0UL)
 			{
 				ReportStatus(lastProcessed);
 			}
-
-			if (composite)
-			{
-				divisorsExhausted = true;
-				return false;
-			}
-
-			divisorsExhausted = coveredRange;
-			return true;
 		}
+
+		if (composite)
+		{
+			divisorsExhausted = true;
+			return false;
+		}
+
+		divisorsExhausted = coveredRange;
+		return true;
 	}
 
 	private bool CheckDivisors(ulong prime, ulong allowedMax, out ulong lastProcessed, out bool coveredRange)
@@ -159,7 +154,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 				}
 
 				next = divisor + 2UL;
-				
+
 				// This will be only true when we exceed ulong.MaxValue
 				if (next <= divisor)
 				{
