@@ -318,27 +318,45 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 
 			int offset = 0;
 			int consoleStatus = 0;
-			bool useCycles = _owner._useDivisorCycles;
+			MersenneNumberDivisorByDivisorGpuTester owner = _owner;
+			int gpuBatchSize = owner._gpuBatchSize;
+			bool useCycles = owner._useDivisorCycles;
+			byte[] hitsHost = _hitsHost;
+			int[] indexHost = _indexHost;
+			ulong[] primesHost = _primesHost;
+			Accelerator accelerator = _accelerator;
+			MemoryBuffer1D<byte, Stride1D.Dense> hitsBuffer = _hitsBuffer;
+			MemoryBuffer1D<ulong, Stride1D.Dense> primesBuffer = _primesBuffer;
+			ArrayView1D<ulong, Stride1D.Dense> primesBufferView = primesBuffer.View;
+			ArrayView1D<byte, Stride1D.Dense> hitsBufferView = hitsBuffer.View;
+			Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<byte>> kernel = _kernel;
+			ArrayView1D<ulong, Stride1D.Dense> primesView;
+			ArrayView1D<byte, Stride1D.Dense> hitsView;
 			MersenneDivisorCycles? divisorCycles = useCycles ? MersenneDivisorCycles.Shared : null;
-			ulong cycle = useCycles ? divisorCycles!.GetCycle(divisor) : 0UL;
+			ulong cycle = useCycles ? divisorCycles!.GetCycle(divisor) : 0UL, primeValue;
 			MontgomeryDivisorData divisorData = CreateMontgomeryDivisorData(divisor);
-			Span<ulong> primeSpan = _primesHost.AsSpan(0, _owner._gpuBatchSize);
-			Span<int> indexSpan = _indexHost.AsSpan(0, _owner._gpuBatchSize);
-			Span<byte> hitSpan = _hitsHost.AsSpan(0, _owner._gpuBatchSize);
-			int currentSpanSize = _owner._gpuBatchSize;
+			Span<ulong> primeSpan = primesHost.AsSpan(0, gpuBatchSize);
+			ref ulong primesSpanRef = ref MemoryMarshal.GetReference(primeSpan);
+			Span<int> indexSpan = indexHost.AsSpan(0, gpuBatchSize);
+			Span<byte> hitsSlice, hitSpan = hitsHost.AsSpan(0, gpuBatchSize);
+			ref byte hitSpanRef = ref MemoryMarshal.GetReference(hitSpan);
+			int batchSize, currentSpanSize = gpuBatchSize, gpuCount, i, primesLength = primes.Length;
 
-			while (offset < primes.Length)
+			while (offset < primesLength)
 			{
-				int batchSize = Math.Min(_owner._gpuBatchSize, primes.Length - offset);
+				batchSize = Math.Min(gpuBatchSize, primesLength - offset);
 				if (batchSize != currentSpanSize)
 				{
-					primeSpan = _primesHost.AsSpan(0, batchSize);
-					indexSpan = _indexHost.AsSpan(0, batchSize);
-					hitSpan = _hitsHost.AsSpan(0, batchSize);
+					primeSpan = primesHost.AsSpan(0, batchSize);
+					primesSpanRef = ref MemoryMarshal.GetReference(primeSpan);
+					indexSpan = indexHost.AsSpan(0, batchSize);
+					hitSpan = hitsHost.AsSpan(0, batchSize);
+					hitSpanRef = ref MemoryMarshal.GetReference(hitSpan);
 					currentSpanSize = batchSize;
 				}
 
-				primes.Slice(offset, batchSize).CopyTo(primeSpan);
+				// We benefit from the constructor, because CopyTo will be called as static function
+				new Span<ulong>(primesHost, offset, batchSize).CopyTo(primeSpan);
 
 				if (++consoleStatus == PerfectNumberConstants.ConsoleInterval)
 				{
@@ -346,14 +364,14 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 					consoleStatus = 0;
 				}
 
-				Span<byte> hitsSlice = hits.Slice(offset, batchSize);
-				int gpuCount = 0;
+				hitsSlice = hits.Slice(offset, batchSize);
+				gpuCount = 0;
 
 				if (useCycles)
 				{
-					for (int i = 0; i < batchSize; i++)
+					for (i = 0; i < batchSize; i++)
 					{
-						ulong primeValue = primeSpan[i];
+						primeValue = primeSpan[i];
 						if (cycle == 0UL || primeValue % cycle != 0UL)
 						{
 							hitsSlice[i] = 0;
@@ -367,15 +385,15 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 
 					if (gpuCount > 0)
 					{
-						var primesView = _primesBuffer.View.SubView(0, gpuCount);
-						var hitsView = _hitsBuffer.View.SubView(0, gpuCount);
+						primesView = primesBufferView.SubView(0, gpuCount);
+						hitsView = hitsBufferView.SubView(0, gpuCount);
 
-						primesView.CopyFromCPU(ref MemoryMarshal.GetReference(primeSpan), gpuCount);
-						_kernel(gpuCount, divisorData, primesView, hitsView);
-						_accelerator.Synchronize();
+						primesView.CopyFromCPU(ref primesSpanRef, gpuCount);
+						kernel(gpuCount, divisorData, primesView, hitsView);
+						accelerator.Synchronize();
 
-						hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitSpan), gpuCount);
-						for (int i = 0; i < gpuCount; i++)
+						hitsView.CopyToCPU(ref hitSpanRef, gpuCount);
+						for (i = 0; i < gpuCount; i++)
 						{
 							hitsSlice[indexSpan[i]] = hitSpan[i];
 						}
@@ -383,12 +401,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 				}
 				else
 				{
-					var primesView = _primesBuffer.View.SubView(0, batchSize);
-					var hitsView = _hitsBuffer.View.SubView(0, batchSize);
+					primesView = primesBufferView.SubView(0, batchSize);
+					hitsView = hitsBufferView.SubView(0, batchSize);
 
-					primesView.CopyFromCPU(ref MemoryMarshal.GetReference(primeSpan), batchSize);
-					_kernel(batchSize, divisorData, primesView, hitsView);
-					_accelerator.Synchronize();
+					primesView.CopyFromCPU(ref primesSpanRef, batchSize);
+					kernel(batchSize, divisorData, primesView, hitsView);
+					accelerator.Synchronize();
 
 					hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitSpan), batchSize);
 					hitSpan.CopyTo(hitsSlice);
