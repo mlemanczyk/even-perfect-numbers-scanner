@@ -335,84 +335,83 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 			MersenneDivisorCycles? divisorCycles = useCycles ? MersenneDivisorCycles.Shared : null;
 			ulong cycle = useCycles ? divisorCycles!.GetCycle(divisor) : 0UL, primeValue;
 			MontgomeryDivisorData divisorData = CreateMontgomeryDivisorData(divisor);
-			Span<ulong> primeSpan = primesHost.AsSpan(0, gpuBatchSize);
-			ref ulong primesSpanRef = ref MemoryMarshal.GetReference(primeSpan);
-			Span<int> indexSpan = indexHost.AsSpan(0, gpuBatchSize);
-			Span<byte> hitsSlice, hitSpan = hitsHost.AsSpan(0, gpuBatchSize);
-			ref byte hitSpanRef = ref MemoryMarshal.GetReference(hitSpan);
-			int batchSize, currentSpanSize = gpuBatchSize, gpuCount, i, primesLength = primes.Length;
+                        Span<ulong> primeSpan = Span<ulong>.Empty;
+                        Span<int> indexSpan = Span<int>.Empty;
+                        Span<byte> hitSpan = Span<byte>.Empty;
+                        Span<byte> hitsSlice;
+                        int batchSize, currentSpanSize = -1, gpuCount, i, primesLength = primes.Length;
 
 			while (offset < primesLength)
 			{
-				batchSize = Math.Min(gpuBatchSize, primesLength - offset);
-				if (batchSize != currentSpanSize)
-				{
-					primeSpan = primesHost.AsSpan(0, batchSize);
-					primesSpanRef = ref MemoryMarshal.GetReference(primeSpan);
-					indexSpan = indexHost.AsSpan(0, batchSize);
-					hitSpan = hitsHost.AsSpan(0, batchSize);
-					hitSpanRef = ref MemoryMarshal.GetReference(hitSpan);
-					currentSpanSize = batchSize;
-				}
+                                batchSize = Math.Min(gpuBatchSize, primesLength - offset);
+                                ReadOnlySpan<ulong> primesSlice = primes.Slice(offset, batchSize);
 
-				// We benefit from the constructor, because CopyTo will be called as static function
-				primes.Slice(offset, batchSize).CopyTo(primeSpan);
+                                if (++consoleStatus == PerfectNumberConstants.ConsoleInterval)
+                                {
+                                        Console.WriteLine($"...processed by-divisor candidate = {primesSlice[0]}");
+                                        consoleStatus = 0;
+                                }
 
-				if (++consoleStatus == PerfectNumberConstants.ConsoleInterval)
-				{
-					Console.WriteLine($"...processed by-divisor candidate = {primes[0]}");
-					consoleStatus = 0;
-				}
+                                hitsSlice = hits.Slice(offset, batchSize);
 
-				hitsSlice = hits.Slice(offset, batchSize);
-				gpuCount = 0;
+                                if (useCycles)
+                                {
+                                        if (batchSize != currentSpanSize)
+                                        {
+                                                primeSpan = primesHost.AsSpan(0, batchSize);
+                                                indexSpan = indexHost.AsSpan(0, batchSize);
+                                                hitSpan = hitsHost.AsSpan(0, batchSize);
+                                                currentSpanSize = batchSize;
+                                        }
 
-				if (useCycles)
-				{
-					for (i = 0; i < batchSize; i++)
-					{
-						primeValue = primeSpan[i];
-						if (cycle == 0UL || primeValue % cycle != 0UL)
-						{
-							hitsSlice[i] = 0;
-							continue;
-						}
+                                        ref ulong primesSpanRef = ref MemoryMarshal.GetReference(primeSpan);
+                                        ref byte hitSpanRef = ref MemoryMarshal.GetReference(hitSpan);
+                                        gpuCount = 0;
 
-						indexSpan[gpuCount] = i;
-						primeSpan[gpuCount] = primeValue;
-						gpuCount++;
-					}
+                                        for (i = 0; i < batchSize; i++)
+                                        {
+                                                primeValue = primesSlice[i];
+                                                if (cycle == 0UL || primeValue % cycle != 0UL)
+                                                {
+                                                        hitsSlice[i] = 0;
+                                                        continue;
+                                                }
 
-					if (gpuCount > 0)
-					{
-						primesView = primesBufferView.SubView(0, gpuCount);
-						hitsView = hitsBufferView.SubView(0, gpuCount);
+                                                indexSpan[gpuCount] = i;
+                                                primeSpan[gpuCount] = primeValue;
+                                                gpuCount++;
+                                        }
 
-						primesView.CopyFromCPU(ref primesSpanRef, gpuCount);
-						kernel(gpuCount, divisorData, primesView, hitsView);
-						accelerator.Synchronize();
+                                        if (gpuCount > 0)
+                                        {
+                                                primesView = primesBufferView.SubView(0, gpuCount);
+                                                hitsView = hitsBufferView.SubView(0, gpuCount);
 
-						hitsView.CopyToCPU(ref hitSpanRef, gpuCount);
-						for (i = 0; i < gpuCount; i++)
-						{
-							hitsSlice[indexSpan[i]] = hitSpan[i];
-						}
-					}
-				}
-				else
-				{
-					primesView = primesBufferView.SubView(0, batchSize);
-					hitsView = hitsBufferView.SubView(0, batchSize);
+                                                primesView.CopyFromCPU(ref primesSpanRef, gpuCount);
+                                                kernel(gpuCount, divisorData, primesView, hitsView);
+                                                accelerator.Synchronize();
 
-					primesView.CopyFromCPU(ref primesSpanRef, batchSize);
-					kernel(batchSize, divisorData, primesView, hitsView);
-					accelerator.Synchronize();
+                                                hitsView.CopyToCPU(ref hitSpanRef, gpuCount);
+                                                for (i = 0; i < gpuCount; i++)
+                                                {
+                                                        hitsSlice[indexSpan[i]] = hitSpan[i];
+                                                }
+                                        }
+                                }
+                                else
+                                {
+                                        primesView = primesBufferView.SubView(0, batchSize);
+                                        hitsView = hitsBufferView.SubView(0, batchSize);
 
-					hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitSpan), batchSize);
-					hitSpan.CopyTo(hitsSlice);
-				}
+                                        ref ulong primesSliceRef = ref MemoryMarshal.GetReference(primesSlice);
+                                        primesView.CopyFromCPU(ref primesSliceRef, batchSize);
+                                        kernel(batchSize, divisorData, primesView, hitsView);
+                                        accelerator.Synchronize();
 
-				offset += batchSize;
+                                        hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitsSlice), batchSize);
+                                }
+
+                                offset += batchSize;
 			}
 		}
 
