@@ -88,39 +88,35 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 		var accelerator = gpuLease.Accelerator;
 		var kernel = GetKernel(accelerator);
 
+		// TODO: Can we move the creation of the buffers to one of the parent methods, outside of all loops and initialize them once for all divisors / candidates? Instead of creating buffers for each thread separately, let's pre-allocate them and re-use in threads.
 		var divisorsBuffer = accelerator.Allocate1D<MontgomeryDivisorData>(batchCapacity);
 		var hitsBuffer = accelerator.Allocate1D<byte>(batchCapacity);
 		ulong[] divisors = ArrayPool<ulong>.Shared.Rent(batchCapacity);
 		byte[] hits = ArrayPool<byte>.Shared.Rent(batchCapacity);
 		MontgomeryDivisorData[] divisorData = ArrayPool<MontgomeryDivisorData>.Shared.Rent(batchCapacity);
 
-		try
-		{
-			composite = CheckDivisors(
-					prime,
-					allowedMax,
-					useCycles,
-					accelerator,
-					kernel,
-					divisorsBuffer,
-					hitsBuffer,
-					divisors,
-					hits,
-					divisorData,
-					out lastProcessed,
-					out coveredRange,
-					out processedCount
-			);
-		}
-		finally
-		{
-			ArrayPool<byte>.Shared.Return(hits, clearArray: true);
-			ArrayPool<ulong>.Shared.Return(divisors, clearArray: true);
-			ArrayPool<MontgomeryDivisorData>.Shared.Return(divisorData, clearArray: true);
-			hitsBuffer.Dispose();
-			divisorsBuffer.Dispose();
-			gpuLease.Dispose();
-		}
+		composite = CheckDivisors(
+				prime,
+				allowedMax,
+				useCycles,
+				accelerator,
+				kernel,
+				divisorsBuffer,
+				hitsBuffer,
+				divisors,
+				hits,
+				divisorData,
+				out lastProcessed,
+				out coveredRange,
+				out processedCount
+		);
+
+		ArrayPool<byte>.Shared.Return(hits, clearArray: true);
+		ArrayPool<ulong>.Shared.Return(divisors, clearArray: true);
+		ArrayPool<MontgomeryDivisorData>.Shared.Return(divisorData, clearArray: true);
+		hitsBuffer.Dispose();
+		divisorsBuffer.Dispose();
+		gpuLease.Dispose();
 
 		if (processedCount > 0UL)
 		{
@@ -140,7 +136,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 		return true;
 	}
 
-	private bool CheckDivisors(
+	private static bool CheckDivisors(
 			ulong prime,
 			ulong allowedMax,
 			bool useCycles,
@@ -168,7 +164,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 
 		bool composite = false;
 		bool processedAll = false;
-		ulong cycle, divisor = 3UL, next;
+		ulong cycle, currentDivisor, divisor = 3UL, next, nextDivisor;
 		int batchSize, i;
 		bool reachedEndInBatch;
 
@@ -186,12 +182,14 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 
 			while (batchSize < batchCapacity && divisor <= allowedMax)
 			{
-				ulong currentDivisor = divisor;
-				ulong nextDivisor = currentDivisor + 2UL;
+				currentDivisor = divisor;
+				nextDivisor = currentDivisor + 2UL;
 				processedCount++;
 
+				// TODO: Let's move all the pre-checks to GPU.
 				if (useCycles)
 				{
+					// TODO: Let's not use the divisor cache but instead calculate it on GPU. Let's move the entire check of cycle's divisibility to GPU. We should already be able to calculate in on GPU. There should be classes for that.
 					cycle = divisorCycles!.GetCycle(currentDivisor);
 					if (cycle == 0UL || prime % cycle != 0UL)
 					{
@@ -331,7 +329,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 			return;
 		}
 
-		ulong interval = (ulong)PerfectNumberConstants.ConsoleInterval;
+		ulong interval = PerfectNumberConstants.ConsoleInterval;
 		if (interval == 0UL)
 		{
 			_lastStatusDivisor = 0UL;
@@ -342,6 +340,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 		ulong messages = total / interval;
 		_lastStatusDivisor = total % interval;
 
+		// TODO: Why do we output so many the same lines? Let's remove this printing to console.
 		for (ulong i = 0; i < messages; i++)
 		{
 			Console.WriteLine($"...processed by-divisor candidate = {lastProcessed}");
@@ -505,8 +504,10 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 		_sessionPool.Add(session);
 	}
 
+	// TODO: This method with all related should be moved to ULongExtensions and converted to extension method. We should already have similar methods. How this one is different?
 	private static ulong Pow2Mod(ulong exponent, in MontgomeryDivisorData divisor)
 	{
+		// TODO: Do we use the dependency and the residue for the previous p in the calculations? Let's make use of the previous residue for the previous p when calculating the residue for the same divisor but different candidate. The candidates should be processed in increasing order.
 		ulong modulus = divisor.Modulus;
 		if (modulus <= 1UL || (modulus & 1UL) == 0UL)
 		{
