@@ -478,6 +478,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 					accelerator.Synchronize();
 					resultView.CopyToCPU(ref MemoryMarshal.GetReference(exponentSlice), computeCount);
 
+					// TODO: Can we move this somehow to GPU? MulMod64 takes half of the time in CheckDivisor
 					for (int i = 0; i < computeCount; i++)
 					{
 						int position = positionSpan[i];
