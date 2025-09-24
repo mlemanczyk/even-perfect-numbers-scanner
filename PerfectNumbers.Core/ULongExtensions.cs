@@ -163,18 +163,15 @@ public static class ULongExtensions
         {
                 ulong xLow = (uint)x;
                 ulong xHigh = x >> 32;
-		ulong yLow = (uint)y;
-		ulong yHigh = y >> 32;
+                ulong yLow = (uint)y;
+                ulong yHigh = y >> 32;
 
-		ulong w1 = xLow * yHigh;
-		ulong w2 = xHigh * yLow;
+                ulong w1 = xLow * yHigh;
+                ulong w2 = xHigh * yLow;
 
-		return (xHigh * yHigh) + (w1 >> 32) + (w2 >> 32) +
-			(
-				((xLow * yLow) >> 32) +
-				(uint)w1 +
-				(uint)w2
-			) >> 32;
+                ulong result = (xHigh * yHigh) + (w1 >> 32) + (w2 >> 32);
+                result += (((xLow * yLow) >> 32) + (uint)w1 + (uint)w2) >> 32;
+                return result;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

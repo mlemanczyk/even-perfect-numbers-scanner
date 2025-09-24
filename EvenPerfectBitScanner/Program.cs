@@ -813,7 +813,16 @@ internal static class Program
                         return;
                 }
 
-                states.Sort((left, right) => left.AllowedMax.CompareTo(right.AllowedMax));
+                states.Sort(static (left, right) =>
+                {
+                        int compare = left.AllowedMax.CompareTo(right.AllowedMax);
+                        if (compare != 0)
+                        {
+                                return compare;
+                        }
+
+                        return left.Prime.CompareTo(right.Prime);
+                });
 
                 int stateCount = states.Count;
                 ulong[] primeValues = new ulong[stateCount];
