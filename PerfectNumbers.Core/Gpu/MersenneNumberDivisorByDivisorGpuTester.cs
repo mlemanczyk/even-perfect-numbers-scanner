@@ -9,7 +9,7 @@ using PerfectNumbers.Core;
 
 namespace PerfectNumbers.Core.Gpu;
 
-public sealed class MersenneNumberDivisorByDivisorGpuTester
+public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDivisorByDivisorTester
 {
 	private int _gpuBatchSize = GpuConstants.ScanBatchSize;
 	private readonly object _sync = new();
@@ -39,11 +39,17 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 	private Action<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>> GetCycleKernel(Accelerator accelerator) =>
 			_cycleKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>>(CheckPrimeCycleKernel));
 
-	public int GpuBatchSize
-	{
-		get => _gpuBatchSize;
-		set => _gpuBatchSize = Math.Max(1, value);
-	}
+        public int GpuBatchSize
+        {
+                get => _gpuBatchSize;
+                set => _gpuBatchSize = Math.Max(1, value);
+        }
+
+        int IMersenneNumberDivisorByDivisorTester.BatchSize
+        {
+                get => GpuBatchSize;
+                set => GpuBatchSize = value;
+        }
 
 	public bool UseDivisorCycles
 	{
@@ -348,8 +354,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                 hits[index] = exponent.Pow2MontgomeryMod(divisor) == 1UL ? (byte)1 : (byte)0;
         }
 
-	public sealed class DivisorScanSession : IDisposable
-	{
+        public sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
+        {
 		private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
 		private readonly GpuContextPool.GpuContextLease _lease;
 		private readonly Accelerator _accelerator;
@@ -754,11 +760,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 		}
 	}
 
-	public DivisorScanSession CreateDivisorSession()
-	{
-		lock (_sync)
-		{
-			if (!_isConfigured)
+        public DivisorScanSession CreateDivisorSession()
+        {
+                lock (_sync)
+                {
+                        if (!_isConfigured)
 			{
 				throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
 			}
@@ -767,10 +773,15 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 			{
 				session.Reset();
 				return session;
-			}
+                        }
 
-			return new DivisorScanSession(this);
-		}
-	}
+                        return new DivisorScanSession(this);
+                }
+        }
+
+        IMersenneNumberDivisorByDivisorTester.IDivisorScanSession IMersenneNumberDivisorByDivisorTester.CreateDivisorSession()
+        {
+                return CreateDivisorSession();
+        }
 }
 
