@@ -389,12 +389,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                         _positionBuffer = ArrayPool<int>.Shared.Rent(_capacity);
                 }
 
-		public void CheckDivisor(ulong divisor, ReadOnlySpan<ulong> primes, Span<byte> hits)
-		{
-			if (_disposed)
-			{
-				throw new ObjectDisposedException(nameof(DivisorScanSession));
-			}
+                public void CheckDivisor(ulong divisor, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
+                {
+                        if (_disposed)
+                        {
+                                throw new ObjectDisposedException(nameof(DivisorScanSession));
+                        }
 
 			int primesLength = primes.Length;
 			if (primesLength == 0)
@@ -413,14 +413,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 				return;
 			}
 
-                        bool useCycles = owner._useDivisorCycles;
-                        ulong cycle = 0UL;
-                        bool cycleEnabled = false;
-                        if (useCycles)
-                        {
-                                cycle = MersenneDivisorCycles.CalculateCycleLengthGpu(modulus);
-                                cycleEnabled = cycle != 0UL;
-                        }
+                        bool cycleEnabled = owner._useDivisorCycles && divisorCycle != 0UL;
 
 			Accelerator accelerator = _accelerator;
 			Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> kernel = _kernel;
@@ -448,11 +441,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
                                 for (int i = 0; i < batchSize; i++)
                                 {
                                         ulong prime = primesSlice[i];
-                                        if (cycleEnabled && prime % cycle != 0UL)
-					{
-						hitsSlice[i] = 0;
-						continue;
-					}
+                                        if (cycleEnabled && prime % divisorCycle != 0UL)
+                                        {
+                                                hitsSlice[i] = 0;
+                                                continue;
+                                        }
 
                                         primeSpan[computeCount] = prime;
                                         positionSpan[computeCount] = i;

@@ -9,9 +9,9 @@ namespace PerfectNumbers.Core;
 
 public class MersenneDivisorCycles
 {
-	private List<(ulong divisor, ulong cycleLength)> _table = [];
-	// Lightweight read-mostly cache for small divisors (<= 4,000,000). 0 => unknown
-	private uint[]? _smallCycles;
+        private List<(ulong divisor, ulong cycleLength)> _table = [];
+        // Lightweight read-mostly cache for small divisors (<= 4,000,000). 0 => unknown
+        private ulong[]? _smallCycles;
 
 	public static MersenneDivisorCycles Shared { get; } = new MersenneDivisorCycles();
 
@@ -22,15 +22,15 @@ public class MersenneDivisorCycles
 	public void LoadFrom(string path)
 	{
 		EnsureSmallBuffer();
-		List<(ulong divisor, ulong cycle)> cycles = [];
+                List<(ulong divisor, ulong cycle)> cycles = [];
 		using Stream outputStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize10M, useAsync: false);
 		foreach (var (d, c) in EnumerateStream(outputStream))
 		{
 			cycles.Add((d, c));
-			if (d <= PerfectNumberConstants.MaxQForDivisorCycles)
-			{
-				_smallCycles![(int)d] = (uint)Math.Min(uint.MaxValue, c == 0UL ? 1UL : c);
-			}
+                        if (d <= PerfectNumberConstants.MaxQForDivisorCycles)
+                        {
+                                _smallCycles![(int)d] = c == 0UL ? 1UL : c;
+                        }
 		}
 
 		cycles.Sort((a, b) => a.divisor < b.divisor ? -1 : (a.divisor > b.divisor ? 1 : 0));
@@ -41,13 +41,13 @@ public class MersenneDivisorCycles
 
 	// Provides a snapshot array of small cycles [0..PerfectNumberConstants.MaxQForDivisorCycles]. Index is the divisor.
 	// The returned array is a copy safe for use across threads and device uploads.
-	public uint[] ExportSmallCyclesSnapshot()
-	{
-		EnsureSmallBuffer();
-		uint[] snapshot = new uint[PerfectNumberConstants.MaxQForDivisorCycles + 1];
-		Array.Copy(_smallCycles!, snapshot, snapshot.Length);
-		return snapshot;
-	}
+        public ulong[] ExportSmallCyclesSnapshot()
+        {
+                EnsureSmallBuffer();
+                ulong[] snapshot = new ulong[PerfectNumberConstants.MaxQForDivisorCycles + 1];
+                Array.Copy(_smallCycles!, snapshot, snapshot.Length);
+                return snapshot;
+        }
 
 	public static IEnumerable<(ulong divisor, ulong cycleLength)> EnumerateStream(Stream compressor)
 	{
@@ -75,14 +75,14 @@ public class MersenneDivisorCycles
 		// Fast-path: in-memory array for small divisors
 		if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
 		{
-			var arr = _smallCycles;
+                        var arr = _smallCycles;
 			if (arr is not null)
 			{
-				uint cached = arr[(int)divisor];
-				if (cached != 0U)
-				{
-					return cached;
-				}
+                                ulong cached = arr[(int)divisor];
+                                if (cached != 0UL)
+                                {
+                                        return cached;
+                                }
 			}
 		}
 
@@ -112,7 +112,7 @@ public class MersenneDivisorCycles
 			}
 		}
 
-		return CalculateCycleLength(divisor);
+                return CalculateCycleLength(divisor);
 	}
 
 	public static UInt128 GetCycle(UInt128 divisor)
@@ -396,9 +396,9 @@ public class MersenneDivisorCycles
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private void EnsureSmallBuffer()
 	{
-		if (_smallCycles is null)
-		{
-			_smallCycles = new uint[PerfectNumberConstants.MaxQForDivisorCycles + 1];
-		}
-	}
+                if (_smallCycles is null)
+                {
+                        _smallCycles = new ulong[PerfectNumberConstants.MaxQForDivisorCycles + 1];
+                }
+        }
 }
