@@ -315,28 +315,38 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 		// Removed noisy console output; status is tracked internally only.
 	}
 
-	private static void CheckKernel(Index1D index, ulong prime, byte useCycleChecks, ArrayView<MontgomeryDivisorData> divisors, ArrayView<byte> hits)
-	{
-		MontgomeryDivisorData divisor = divisors[index];
-		ulong modulus = divisor.Modulus;
-		if (modulus <= 1UL || (modulus & 1UL) == 0UL)
-		{
-			hits[index] = 0;
-			return;
-		}
+        private static void CheckKernel(Index1D index, ulong prime, byte useCycleChecks, ArrayView<MontgomeryDivisorData> divisors, ArrayView<byte> hits)
+        {
+                MontgomeryDivisorData divisor = divisors[index];
+                ulong modulus = divisor.Modulus;
+                if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+                {
+                        hits[index] = 0;
+                        return;
+                }
 
-		if (useCycleChecks != 0)
-		{
-			ulong cycle = MersenneDivisorCycles.CalculateCycleLengthGpu(modulus);
-			if (cycle == 0UL || prime % cycle != 0UL)
-			{
-				hits[index] = 0;
-				return;
-			}
-		}
+                ulong exponent = prime;
+                if (useCycleChecks != 0)
+                {
+                        ulong cycle = MersenneDivisorCycles.CalculateCycleLengthGpu(modulus);
+                        if (cycle == 0UL)
+                        {
+                                hits[index] = 0;
+                                return;
+                        }
 
-		hits[index] = prime.Pow2MontgomeryMod(divisor) == 1UL ? (byte)1 : (byte)0;
-	}
+                        ulong remainder = prime % cycle;
+                        if (remainder != 0UL)
+                        {
+                                hits[index] = 0;
+                                return;
+                        }
+
+                        exponent = remainder;
+                }
+
+                hits[index] = exponent.Pow2MontgomeryMod(divisor) == 1UL ? (byte)1 : (byte)0;
+        }
 
 	public sealed class DivisorScanSession : IDisposable
 	{
@@ -426,7 +436,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 				return;
 			}
 
-			bool cycleEnabled = owner._useDivisorCycles && divisorCycle != 0UL;
+                        ulong cycle = divisorCycle;
+                        bool cycleEnabled = owner._useDivisorCycles && cycle != 0UL;
 
 			Accelerator accelerator = _accelerator;
 			Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> kernel = _kernel;
@@ -452,18 +463,18 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 				int computeCount = 0;
 				Span<byte> cycleMaskSpan = default;
 
-				if (cycleEnabled)
-				{
-					cycleMaskSpan = _cycleMaskHost.AsSpan(0, batchSize);
-					ArrayView1D<ulong, Stride1D.Dense> primeInputView = _resultsBuffer.View.SubView(0, batchSize);
-					primeInputView.CopyFromCPU(ref MemoryMarshal.GetReference(primesSlice), batchSize);
-					ArrayView1D<byte, Stride1D.Dense> cycleMaskView = cycleMaskViewFull.SubView(0, batchSize);
-					cycleKernel(batchSize, divisorCycle, primeInputView, cycleMaskView);
-					accelerator.Synchronize();
-					cycleMaskView.CopyToCPU(ref MemoryMarshal.GetReference(cycleMaskSpan), batchSize);
-				}
+                                if (cycleEnabled)
+                                {
+                                        cycleMaskSpan = _cycleMaskHost.AsSpan(0, batchSize);
+                                        ArrayView1D<ulong, Stride1D.Dense> primeInputView = _resultsBuffer.View.SubView(0, batchSize);
+                                        primeInputView.CopyFromCPU(ref MemoryMarshal.GetReference(primesSlice), batchSize);
+                                        ArrayView1D<byte, Stride1D.Dense> cycleMaskView = cycleMaskViewFull.SubView(0, batchSize);
+                                        cycleKernel(batchSize, cycle, primeInputView, cycleMaskView);
+                                        accelerator.Synchronize();
+                                        cycleMaskView.CopyToCPU(ref MemoryMarshal.GetReference(cycleMaskSpan), batchSize);
+                                }
 
-				for (int i = 0; i < batchSize; i++)
+                                for (int i = 0; i < batchSize; i++)
 				{
 					if (cycleEnabled && cycleMaskSpan[i] == 0)
 					{
@@ -480,24 +491,32 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 				if (computeCount > 0)
 				{
 					Span<ulong> exponentSlice = hostSpan[..computeCount];
-					ulong currentPrime = hasPreviousResidue ? previousPrime : 0UL;
-					bool hasDeltaSource = hasPreviousResidue;
+                                        ulong currentPrime = hasPreviousResidue ? previousPrime : 0UL;
+                                        bool hasDeltaSource = hasPreviousResidue;
 
-					for (int i = 0; i < computeCount; i++)
-					{
-						ulong prime = primeSpan[i];
-						if (hasDeltaSource)
-						{
-							exponentSlice[i] = prime - currentPrime;
-						}
-						else
-						{
-							exponentSlice[i] = prime;
-							hasDeltaSource = true;
-						}
+                                        for (int i = 0; i < computeCount; i++)
+                                        {
+                                                ulong prime = primeSpan[i];
+                                                ulong exponentValue;
+                                                if (hasDeltaSource)
+                                                {
+                                                        exponentValue = prime - currentPrime;
+                                                }
+                                                else
+                                                {
+                                                        exponentValue = prime;
+                                                        hasDeltaSource = true;
+                                                }
 
-						currentPrime = prime;
-					}
+                                                if (cycleEnabled)
+                                                {
+                                                        exponentValue %= cycle;
+                                                }
+
+                                                exponentSlice[i] = exponentValue;
+
+                                                currentPrime = prime;
+                                        }
 
 					ArrayView1D<ulong, Stride1D.Dense> exponentView = exponentsView.SubView(0, computeCount);
 					exponentView.CopyFromCPU(ref MemoryMarshal.GetReference(exponentSlice), computeCount);
