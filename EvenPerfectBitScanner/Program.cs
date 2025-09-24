@@ -447,16 +447,18 @@ internal static class Program
 		}
 
 		Console.WriteLine($"Loading divisor cycles into memory...");
-		if (string.Equals(Path.GetExtension(cyclesPath), ".csv", StringComparison.OrdinalIgnoreCase))
-		{
-			MersenneDivisorCycles.Shared.LoadFrom(cyclesPath);
-		}
-		else
-		{
-			MersenneDivisorCycles.Shared.LoadFrom(cyclesPath);
-		}
+                if (string.Equals(Path.GetExtension(cyclesPath), ".csv", StringComparison.OrdinalIgnoreCase))
+                {
+                        MersenneDivisorCycles.Shared.LoadFrom(cyclesPath);
+                }
+                else
+                {
+                        MersenneDivisorCycles.Shared.LoadFrom(cyclesPath);
+                }
 
-		Console.WriteLine("Divisor cycles are ready");
+                DivisorCycleCache.Shared.ReloadFromCurrentSnapshot();
+
+                Console.WriteLine("Divisor cycles are ready");
 
 		if (useByDivisor)
 		{
@@ -882,12 +884,18 @@ internal static class Program
 				bool exhausted = false;
 				ulong divisor = 0UL;
 				int activeCount = 0;
-				Span<byte> hitsSpan = default;
-				int hitIndex = 0;
-				int index = 0;
+                                Span<byte> hitsSpan = default;
+                                int hitIndex = 0;
+                                int index = 0;
+                                bool useCycleFilter = _byDivisorTester!.UseDivisorCycles;
+                                DivisorCycleCache.Lease cycleLease = default;
+                                ulong cycleLeaseStart = 0UL;
+                                ulong cycleLeaseEnd = 0UL;
+                                ulong[]? cycleValues = null;
+                                ulong divisorCycle = 0UL;
 
-				try
-				{
+                                try
+                                {
 					while (true)
 					{
 						if (Volatile.Read(ref remainingStates) == 0)
@@ -900,11 +908,11 @@ internal static class Program
 
 						divisor = AcquireNextDivisor(ref nextDivisor, divisorLimit, ref divisorsExhaustedFlag, ref finalDivisorBits, out exhausted, ref localDivisorCursor, ref localDivisorsRemaining);
 
-						if (divisor == 0UL)
-						{
-							if (!exhausted)
-							{
-								if (Volatile.Read(ref remainingStates) == 0)
+                                                if (divisor == 0UL)
+                                                {
+                                                        if (!exhausted)
+                                                        {
+                                                                if (Volatile.Read(ref remainingStates) == 0)
 								{
 									break;
 								}
@@ -937,11 +945,48 @@ internal static class Program
 								break;
 							}
 
-							continue;
-						}
+                                                        continue;
+                                                }
 
-						// Can we prepare as many buffers as many threads were requested upfront and have them prepared in separate task, so that they're always ready when needed?
-						activeCount = BuildPrimeBuffer(divisor, primeValues, allowedMaxValues, stateFlags, primeBuffer, indexBuffer, completionsBuffer, ref completionsCount, ref remainingStates, activeStateMask, ref activeStartIndex);
+                                                if (useCycleFilter)
+                                                {
+                                                        if (!cycleLease.IsValid || divisor < cycleLeaseStart || divisor > cycleLeaseEnd)
+                                                        {
+                                                                cycleLease.Dispose();
+                                                                cycleLease = DivisorCycleCache.Shared.Acquire(divisor);
+                                                                cycleLeaseStart = cycleLease.Start;
+                                                                cycleLeaseEnd = cycleLease.End;
+                                                                cycleValues = cycleLease.Values;
+                                                        }
+                                                        else if (cycleValues is null)
+                                                        {
+                                                                cycleValues = cycleLease.Values;
+                                                        }
+
+                                                        if (cycleValues is not null && divisor >= cycleLeaseStart)
+                                                        {
+                                                                ulong offset = divisor - cycleLeaseStart;
+                                                                if (offset < (ulong)cycleValues.Length)
+                                                                {
+                                                                        divisorCycle = cycleValues[(int)offset];
+                                                                }
+                                                                else
+                                                                {
+                                                                        divisorCycle = cycleLease.GetCycle(divisor);
+                                                                }
+                                                        }
+                                                        else
+                                                        {
+                                                                divisorCycle = cycleLease.GetCycle(divisor);
+                                                        }
+                                                }
+                                                else
+                                                {
+                                                        divisorCycle = 0UL;
+                                                }
+
+                                                // Can we prepare as many buffers as many threads were requested upfront and have them prepared in separate task, so that they're always ready when needed?
+                                                activeCount = BuildPrimeBuffer(divisor, primeValues, allowedMaxValues, stateFlags, primeBuffer, indexBuffer, completionsBuffer, ref completionsCount, ref remainingStates, activeStateMask, ref activeStartIndex);
 
 						if (completionsCount > 0)
 						{
@@ -953,9 +998,9 @@ internal static class Program
 							continue;
 						}
 
-						hitsSpan = hitsBuffer.AsSpan(0, activeCount);
-						hitsSpan.Clear();
-						session.CheckDivisor(divisor, primeBuffer.AsSpan(0, activeCount), hitsSpan);
+                                                hitsSpan = hitsBuffer.AsSpan(0, activeCount);
+                                                hitsSpan.Clear();
+                                                session.CheckDivisor(divisor, divisorCycle, primeBuffer.AsSpan(0, activeCount), hitsSpan);
 
 						for (hitIndex = 0; hitIndex < activeCount; hitIndex++)
 						{
@@ -993,14 +1038,15 @@ internal static class Program
 					{
 						FlushPendingResults(compositesBuffer, ref compositesCount);
 					}
-				}
-				finally
-				{
-					ArrayPool<PendingResult>.Shared.Return(compositesBuffer, clearArray: true);
-					ArrayPool<PendingResult>.Shared.Return(completionsBuffer, clearArray: true);
-					ArrayPool<int>.Shared.Return(indexBuffer, clearArray: true);
-					ArrayPool<ulong>.Shared.Return(primeBuffer, clearArray: true);
-					ArrayPool<byte>.Shared.Return(hitsBuffer, clearArray: true);
+                                }
+                                finally
+                                {
+                                        cycleLease.Dispose();
+                                        ArrayPool<PendingResult>.Shared.Return(compositesBuffer, clearArray: true);
+                                        ArrayPool<PendingResult>.Shared.Return(completionsBuffer, clearArray: true);
+                                        ArrayPool<int>.Shared.Return(indexBuffer, clearArray: true);
+                                        ArrayPool<ulong>.Shared.Return(primeBuffer, clearArray: true);
+                                        ArrayPool<byte>.Shared.Return(hitsBuffer, clearArray: true);
 				}
 			});
 		}

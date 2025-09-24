@@ -1,4 +1,5 @@
 using FluentAssertions;
+using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 using System.Reflection;
 using Xunit;
@@ -36,7 +37,7 @@ public class MersenneNumberDivisorGpuTesterTests
         var tester = new MersenneNumberDivisorGpuTester();
         typeof(MersenneNumberDivisorGpuTester)
             .GetField("_divisorCandidates", BindingFlags.NonPublic | BindingFlags.Static)!
-            .SetValue(null, Array.Empty<(ulong, uint)>());
+            .SetValue(null, Array.Empty<(ulong, ulong)>());
 
         tester.IsPrime(11UL, UInt128.Zero, 0UL, out bool divisorsExhausted).Should().BeTrue();
         divisorsExhausted.Should().BeFalse();
@@ -112,11 +113,13 @@ public class MersenneNumberDivisorGpuTesterTests
         ulong[] primes = { 5UL, 7UL, 11UL, 13UL };
         byte[] hits = new byte[primes.Length];
 
-        session.CheckDivisor(23UL, primes, hits);
+        ulong cycle23 = MersenneDivisorCycles.CalculateCycleLength(23UL);
+        session.CheckDivisor(23UL, cycle23, primes, hits);
         hits.Should().ContainInOrder(new byte[] { 0, 0, 1, 0 });
 
         Array.Fill(hits, (byte)0);
-        session.CheckDivisor(31UL, primes, hits);
+        ulong cycle31 = MersenneDivisorCycles.CalculateCycleLength(31UL);
+        session.CheckDivisor(31UL, cycle31, primes, hits);
         hits.Should().ContainInOrder(new byte[] { 1, 0, 0, 0 });
     }
 }

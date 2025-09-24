@@ -15,9 +15,9 @@ public sealed class MersenneNumberDivisorGpuTester
 
 	public static void BuildDivisorCandidates()
 	{
-		uint[] snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
-		(ulong divisor, uint cycle)[] list = new (ulong divisor, uint cycle)[snapshot.Length / 2];
-		uint cycle;
+                ulong[] snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
+                (ulong divisor, ulong cycle)[] list = new (ulong divisor, ulong cycle)[snapshot.Length / 2];
+                ulong cycle;
 		int count = 0, i, snapshotLength = snapshot.Length;
 		for (i = 3; i < snapshotLength; i += 2)
 		{
@@ -30,7 +30,7 @@ public sealed class MersenneNumberDivisorGpuTester
 			list[count++] = ((ulong)i, cycle);
 		}
 
-		_divisorCandidates = count == 0 ? [] : list[..count];
+                _divisorCandidates = count == 0 ? [] : list[..count];
 	}
 
 	public bool IsDivisible(ulong exponent, UInt128 divisor)
@@ -52,7 +52,7 @@ public sealed class MersenneNumberDivisorGpuTester
 		return divisible;
 	}
 
-	private static (ulong divisor, uint cycle)[]? _divisorCandidates = Array.Empty<(ulong divisor, uint cycle)>();
+        private static (ulong divisor, ulong cycle)[]? _divisorCandidates = Array.Empty<(ulong divisor, ulong cycle)>();
 
 	public bool IsPrime(ulong p, UInt128 d, ulong divisorCyclesSearchLimit, out bool divisorsExhausted)
 	{
@@ -71,7 +71,7 @@ public sealed class MersenneNumberDivisorGpuTester
 		if (_divisorCandidates is { Length: > 0 } candidates)
 		{
 			int len = candidates.Length;
-			uint cycle;
+                        ulong cycle;
 			for (int k = 0; k < len; k++)
 			{
 				(ulong dSmall, cycle) = candidates[k];

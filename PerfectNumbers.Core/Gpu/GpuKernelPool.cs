@@ -27,19 +27,19 @@ public sealed class KernelContainer
 {
 	// Serializes first-time initialization of kernels/buffers per accelerator.
         public Action<AcceleratorStream, Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>? Order;
+        public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
+        ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>>? Incremental;
     public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
-        ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>>? Incremental;
-    public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
-        ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>,
+        ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>,
         ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>,
         ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2Mod;
         public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
-                ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>? IncrementalOrder;
+                ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>? IncrementalOrder;
     public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
-        ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>? Pow2ModOrder;
+        ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2ModOrder;
 
     // Optional device buffer with small divisor cycles (<= 4M). Index = divisor, value = cycle length.
-    public MemoryBuffer1D<uint, Stride1D.Dense>? SmallCycles;
+    public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallCycles;
     public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastOne;
     public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimesPow2LastOne;
     public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastSeven;
@@ -123,7 +123,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                 }
         }
 
-    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> Pow2ModKernel
+    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> Pow2ModKernel
         {
                 get
                 {
@@ -132,15 +132,15 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                         {
                                 return KernelContainer.InitOnce(ref _kernels.Pow2Mod, () =>
                                 {
-                                        var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernelScan);
+                                        var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernelScan);
                                         var kernel = KernelUtil.GetKernel(loaded);
-                                        return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+                                        return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
                                 });
                         }
                 }
         }
 
-    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>> IncrementalKernel
+    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>> IncrementalKernel
         {
                 get
                 {
@@ -149,15 +149,15 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                         {
                                 return KernelContainer.InitOnce(ref _kernels.Incremental, () =>
                                 {
-                                        var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>>(IncrementalKernelScan);
+                                        var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>>(IncrementalKernelScan);
                                         var kernel = KernelUtil.GetKernel(loaded);
-                                        return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<uint, Stride1D.Dense>>>();
+                                        return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>>>();
                                 });
                         }
                 }
         }
 
-    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>> IncrementalOrderKernel
+    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>> IncrementalOrderKernel
         {
                 get
                 {
@@ -166,15 +166,15 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                         {
                                 return KernelContainer.InitOnce(ref _kernels.IncrementalOrder, () =>
                                 {
-                                        var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>(IncrementalOrderKernelScan);
+                                        var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>(IncrementalOrderKernelScan);
                                         var kernel = KernelUtil.GetKernel(loaded);
-                                        return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>>();
+                                        return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
                                 });
                         }
                 }
         }
 
-    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>> Pow2ModOrderKernel
+    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>> Pow2ModOrderKernel
         {
                 get
                 {
@@ -183,9 +183,9 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                         {
                                 return KernelContainer.InitOnce(ref _kernels.Pow2ModOrder, () =>
                                 {
-                                        var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>(Pow2ModOrderKernelScan);
+                                        var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModOrderKernelScan);
                                         var kernel = KernelUtil.GetKernel(loaded);
-                                        return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<uint, Stride1D.Dense>>>();
+                                        return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
                                 });
                         }
                 }
@@ -196,7 +196,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
 
     private static void IncrementalKernelScan(Index1D index, ulong exponent, GpuUInt128 twoP, GpuUInt128 kStart, byte lastIsSeven, ulong divMul,
         ulong q0m10, ulong q0m8, ulong q0m3, ulong q0m5, ArrayView<ulong> orders,
-        ArrayView1D<uint, Stride1D.Dense> smallCycles)
+        ArrayView1D<ulong, Stride1D.Dense> smallCycles)
     {
         ulong idx = (ulong)index.X;
         ulong idxMod3 = idx % 3UL;
@@ -246,15 +246,11 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         // Small-cycles in-kernel early rejection from device table
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
         {
-            uint cyc = smallCycles[(int)q.Low];
-            if (cyc != 0U)
+            ulong cycle = smallCycles[(int)q.Low];
+            if (cycle != 0UL && cycle <= exponent && (exponent % cycle) != 0UL)
             {
-                ulong cycle = cyc;
-                if (cycle <= exponent && (exponent % cycle) != 0UL)
-                {
-                    orders[index] = 0UL;
-                    return;
-                }
+                orders[index] = 0UL;
+                return;
             }
         }
 
@@ -352,7 +348,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
 
     private static void Pow2ModKernelScan(Index1D index, ulong exponent, GpuUInt128 twoP, GpuUInt128 kStart, byte lastIsSeven, ulong _,
         ResidueAutomatonArgs ra, ArrayView<ulong> orders,
-        ArrayView1D<uint, Stride1D.Dense> smallCycles,
+        ArrayView1D<ulong, Stride1D.Dense> smallCycles,
         ArrayView1D<uint, Stride1D.Dense> smallPrimesLastOne,
         ArrayView1D<uint, Stride1D.Dense> smallPrimesLastSeven,
         ArrayView1D<ulong, Stride1D.Dense> smallPrimesPow2LastOne,
@@ -402,15 +398,11 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         GpuUInt128 q = twoP.Mul64(k) + GpuUInt128.One;
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
         {
-            uint cyc = smallCycles[(int)q.Low];
-            if (cyc != 0U)
+            ulong cycle = smallCycles[(int)q.Low];
+            if (cycle != 0UL && cycle <= exponent && (exponent % cycle) != 0UL)
             {
-                ulong cycle = cyc;
-                if (cycle <= exponent && (exponent % cycle) != 0UL)
-                {
-                    orders[index] = 0UL;
-                    return;
-                }
+                orders[index] = 0UL;
+                return;
             }
         }
         if (GpuUInt128.Pow2Minus1Mod(exponent, q) != GpuUInt128.Zero)
@@ -489,7 +481,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
     }
 
     private static void IncrementalOrderKernelScan(Index1D index, ulong exponent, GpuUInt128 twoP, GpuUInt128 kStart, byte lastIsSeven, ulong divMul,
-                ResidueAutomatonArgs ra, ArrayView<int> found, ArrayView1D<uint, Stride1D.Dense> smallCycles)
+                ResidueAutomatonArgs ra, ArrayView<int> found, ArrayView1D<ulong, Stride1D.Dense> smallCycles)
     {
         ulong idx = (ulong)index.X;
         ulong idxMod3 = idx % 3UL;
@@ -536,14 +528,10 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         // Small-cycles in-kernel early rejection from device table
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
         {
-            uint cyc = smallCycles[(int)q.Low];
-            if (cyc != 0U)
+            ulong cycle = smallCycles[(int)q.Low];
+            if (cycle != 0UL && cycle <= exponent && (exponent % cycle) != 0UL)
             {
-                ulong cycle = cyc;
-                if (cycle <= exponent && (exponent % cycle) != 0UL)
-                {
-                    return;
-                }
+                return;
             }
         }
         GpuUInt128 phi = q - GpuUInt128.One;
@@ -575,7 +563,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
     }
 
     private static void Pow2ModOrderKernelScan(Index1D index, ulong exponent, GpuUInt128 twoP, GpuUInt128 kStart, byte lastIsSeven, ulong _,
-                ResidueAutomatonArgs ra, ArrayView<int> found, ArrayView1D<uint, Stride1D.Dense> smallCycles)
+                ResidueAutomatonArgs ra, ArrayView<int> found, ArrayView1D<ulong, Stride1D.Dense> smallCycles)
     {
         ulong idx = (ulong)index.X;
         ulong idxMod3 = idx % 3UL;
@@ -621,14 +609,10 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         // Small-cycles in-kernel early rejection from device table
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
         {
-            uint cyc = smallCycles[(int)q.Low];
-            if (cyc != 0U)
+            ulong cycle = smallCycles[(int)q.Low];
+            if (cycle != 0UL && cycle <= exponent && (exponent % cycle) != 0UL)
             {
-                ulong cycle = cyc;
-                if (cycle <= exponent && (exponent % cycle) != 0UL)
-                {
-                    return;
-                }
+                return;
             }
         }
         if (GpuUInt128.Pow2Mod(exponent, q) != GpuUInt128.One)
@@ -681,7 +665,7 @@ public class GpuKernelPool
 
     // Ensures the small cycles table is uploaded to the device for the given accelerator.
     // Returns the ArrayView to pass into kernels (when kernels are extended to accept it).
-    public static ArrayView1D<uint, Stride1D.Dense> EnsureSmallCyclesOnDevice(Accelerator accelerator)
+    public static ArrayView1D<ulong, Stride1D.Dense> EnsureSmallCyclesOnDevice(Accelerator accelerator)
     {
         var kernels = GetKernels(accelerator);
         if (kernels.SmallCycles is { } buffer)
@@ -698,7 +682,7 @@ public class GpuKernelPool
             }
 
             var host = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
-            var device = accelerator.Allocate1D<uint>(host.Length);
+            var device = accelerator.Allocate1D<ulong>(host.Length);
             device.View.CopyFromCPU(host);
             kernels.SmallCycles = device;
             return device.View;

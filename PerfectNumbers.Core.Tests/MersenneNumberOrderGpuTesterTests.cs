@@ -50,8 +50,8 @@ public class MersenneNumberOrderGpuTesterTests
             var smallCyclesField = typeof(MersenneDivisorCycles).GetField("_smallCycles", BindingFlags.NonPublic | BindingFlags.Instance)!;
 
             var originalTable = ((List<(ulong Divisor, ulong Cycle)>)tableField.GetValue(cycles)!).Select(x => x).ToList();
-            var originalSmall = (uint[]?)smallCyclesField.GetValue(cycles);
-            uint[]? backupSmall = originalSmall is null ? null : (uint[])originalSmall.Clone();
+            var originalSmall = (ulong[]?)smallCyclesField.GetValue(cycles);
+            ulong[]? backupSmall = originalSmall is null ? null : (ulong[])originalSmall.Clone();
 
             cycles.LoadFrom(tempPath);
             GpuContextPool.DisposeAll();
