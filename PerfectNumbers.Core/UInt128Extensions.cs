@@ -146,27 +146,34 @@ public static class UInt128Extensions
 	};
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Mod7(this UInt128 value)
-	{
-		ulong remainder = (((ulong)value) % 7UL) + (((ulong)(value >> 64)) % 7UL) << 1;
-		while (remainder >= 7UL)
-		{
-			remainder -= 7UL;
-		}
+        public static ulong Mod7(this UInt128 value)
+        {
+                ulong low = (ulong)value % 7UL;
+                ulong high = (ulong)(value >> 64) % 7UL;
+                ulong remainder = low + (high * 2UL);
+                if (remainder >= 7UL)
+                {
+                        remainder -= 7UL;
+                        if (remainder >= 7UL)
+                        {
+                                remainder -= 7UL;
+                        }
+                }
 
-		return remainder;
-	}
+                return remainder;
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong Mod8(this UInt128 value) => (ulong)value & 7UL;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Mod10(this UInt128 value128)
-	{
-		// Split and fold under mod 10: 2^64 ≡ 6 (mod 10)
-		ulong value = (ulong)value128;
-		return ((value % 10UL) + ((value >> 64) % 10UL) * 6UL) % 10UL;
-	}
+        public static ulong Mod10(this UInt128 value128)
+        {
+                // Split and fold under mod 10: 2^64 ≡ 6 (mod 10)
+                ulong low = (ulong)value128;
+                ulong high = (ulong)(value128 >> 64);
+                return ((low % 10UL) + ((high % 10UL) * 6UL)) % 10UL;
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void Mod10_8_5_3(this UInt128 value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)

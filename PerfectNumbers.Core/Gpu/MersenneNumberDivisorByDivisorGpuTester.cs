@@ -24,8 +24,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 		public readonly ulong MontgomeryTwo = montgomeryTwo;
 	}
 
-	private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<MontgomeryDivisorData>, ArrayView<byte>>> _kernelCache = new();
-	private readonly ConcurrentDictionary<Accelerator, Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<byte>>> _kernelByPrimeCache = new();
+        private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<MontgomeryDivisorData>, ArrayView<byte>>> _kernelCache = new();
+        private readonly ConcurrentDictionary<Accelerator, Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<byte>>> _kernelByPrimeCache = new();
+        private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
 
 	private Action<Index1D, ulong, ArrayView<MontgomeryDivisorData>, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
 									_kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<MontgomeryDivisorData>, ArrayView<byte>>(CheckKernel));
@@ -56,76 +57,125 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 
 	public bool IsPrime(ulong prime, out bool divisorsExhausted)
 	{
-		if (!_isConfigured)
-		{
-			throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-		}
+                ulong allowedMax;
+                bool useCycles;
+                int batchCapacity;
 
-		ulong allowedMax = ComputeAllowedMaxDivisor(prime);
-		if (allowedMax < 3UL)
-		{
-			divisorsExhausted = true;
-			return true;
-		}
+                lock (_sync)
+                {
+                        if (!_isConfigured)
+                        {
+                                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+                        }
 
-		bool composite, coveredRange;
+                        allowedMax = ComputeAllowedMaxDivisor(prime, _divisorLimit);
+                        useCycles = _useDivisorCycles;
+                        batchCapacity = _gpuBatchSize;
+                }
 
-		// TODO: Let's rework this to check if the number is prime and check divisors outside of the lock. Lock and update the state afterwards.
-		lock (_sync)
-		{
-			composite = CheckDivisors(prime, allowedMax, out ulong lastProcessed, out coveredRange);
+                if (allowedMax < 3UL)
+                {
+                        divisorsExhausted = true;
+                        return true;
+                }
 
-			if (lastProcessed != 0UL)
-			{
-				ReportStatus(lastProcessed);
-			}
-		}
+                bool composite;
+                bool coveredRange;
+                ulong processedCount;
+                ulong lastProcessed;
 
-		if (composite)
-		{
-			divisorsExhausted = true;
-			return false;
+                var gpuLease = GpuContextPool.RentPreferred(preferCpu: false);
+                var accelerator = gpuLease.Accelerator;
+                var kernel = GetKernel(accelerator);
+
+                var divisorsBuffer = accelerator.Allocate1D<MontgomeryDivisorData>(batchCapacity);
+                var hitsBuffer = accelerator.Allocate1D<byte>(batchCapacity);
+                ulong[] divisors = ArrayPool<ulong>.Shared.Rent(batchCapacity);
+                byte[] hits = ArrayPool<byte>.Shared.Rent(batchCapacity);
+                MontgomeryDivisorData[] divisorData = ArrayPool<MontgomeryDivisorData>.Shared.Rent(batchCapacity);
+
+                try
+                {
+                        composite = CheckDivisors(
+                                prime,
+                                allowedMax,
+                                useCycles,
+                                accelerator,
+                                kernel,
+                                divisorsBuffer,
+                                hitsBuffer,
+                                divisors,
+                                hits,
+                                divisorData,
+                                out lastProcessed,
+                                out coveredRange,
+                                out processedCount
+                        );
+                }
+                finally
+                {
+                        ArrayPool<byte>.Shared.Return(hits, clearArray: true);
+                        ArrayPool<ulong>.Shared.Return(divisors, clearArray: true);
+                        ArrayPool<MontgomeryDivisorData>.Shared.Return(divisorData, clearArray: true);
+                        hitsBuffer.Dispose();
+                        divisorsBuffer.Dispose();
+                        gpuLease.Dispose();
+                }
+
+                if (processedCount > 0UL)
+                {
+                        lock (_sync)
+                        {
+                                UpdateStatusUnsafe(lastProcessed, processedCount);
+                        }
+                }
+
+                if (composite)
+                {
+                        divisorsExhausted = true;
+                        return false;
 		}
 
 		divisorsExhausted = coveredRange;
 		return true;
 	}
 
-	private bool CheckDivisors(ulong prime, ulong allowedMax, out ulong lastProcessed, out bool coveredRange)
-	{
-		// TODO: We should be able to calculate allowedMax outside in the parent method, unless it depends from some changing value.
-		allowedMax = Math.Min(allowedMax, _divisorLimit);
-		lastProcessed = 0UL;
+        private bool CheckDivisors(
+                ulong prime,
+                ulong allowedMax,
+                bool useCycles,
+                Accelerator accelerator,
+                Action<Index1D, ulong, ArrayView<MontgomeryDivisorData>, ArrayView<byte>> kernel,
+                MemoryBuffer1D<MontgomeryDivisorData, Stride1D.Dense> divisorsBuffer,
+                MemoryBuffer1D<byte, Stride1D.Dense> hitsBuffer,
+                ulong[] divisors,
+                byte[] hits,
+                MontgomeryDivisorData[] divisorData,
+                out ulong lastProcessed,
+                out bool coveredRange,
+                out ulong processedCount)
+        {
+                lastProcessed = 0UL;
+                processedCount = 0UL;
 
-		if (allowedMax < 3UL)
-		{
-			coveredRange = true;
-			return false;
-		}
+                if (allowedMax < 3UL)
+                {
+                        coveredRange = true;
+                        return false;
+                }
 
-		// TODO: Rent these in the parent method before the loops - batch size doesn't change
-		var gpuLease = GpuContextPool.RentPreferred(preferCpu: false);
-		var accelerator = gpuLease.Accelerator;
-		var kernel = GetKernel(accelerator);
+                int batchCapacity = (int)divisorsBuffer.Length;
 
-		int batchCapacity = _gpuBatchSize;
-		// TODO: Rent buffers in the parent method before the loops - batch size doesn't change
-		var divisorsBuffer = accelerator.Allocate1D<MontgomeryDivisorData>(batchCapacity);
-		var hitsBuffer = accelerator.Allocate1D<byte>(batchCapacity);
-		ulong[] divisors = ArrayPool<ulong>.Shared.Rent(batchCapacity);
-		byte[] hits = ArrayPool<byte>.Shared.Rent(batchCapacity);
-		MontgomeryDivisorData[] divisorData = ArrayPool<MontgomeryDivisorData>.Shared.Rent(batchCapacity);
+                bool composite = false;
+                bool processedAll = false;
+                ulong cycle, divisor = 3UL, next;
+                int batchSize, i;
+                bool reachedEndInBatch;
 
-		bool composite = false;
-		bool processedAll = false;
-		ulong cycle, divisor = 3UL, next;
-		int batchSize, i;
-		bool reachedEndInBatch, useCycles = _useDivisorCycles;
-
-		Span<MontgomeryDivisorData> divisorDataSpan;
-		Span<ulong> divisorSpan;
-		Span<byte> hitsSpan;
-		MersenneDivisorCycles divisorCycles = MersenneDivisorCycles.Shared;
+                Span<MontgomeryDivisorData> divisorDataSpan;
+                Span<ulong> divisorSpan;
+                Span<byte> hitsSpan;
+                MersenneDivisorCycles divisorCycles = MersenneDivisorCycles.Shared;
 		ArrayView1D<MontgomeryDivisorData, Stride1D.Dense> divisorView;
 		ArrayView1D<byte, Stride1D.Dense> hitsView;
 
@@ -134,31 +184,45 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 			batchSize = 0;
 			reachedEndInBatch = false;
 
-			while (batchSize < batchCapacity && divisor <= allowedMax)
-			{
-				if (useCycles)
-				{
-					cycle = divisorCycles!.GetCycle(divisor);
-					if (cycle == 0UL || prime % cycle != 0UL)
-					{
-						ReportStatus(divisor);
-					}
-					else
-					{
-						divisors[batchSize++] = divisor;
-					}
-				}
-				else
-				{
-					divisors[batchSize++] = divisor;
-				}
+                        while (batchSize < batchCapacity && divisor <= allowedMax)
+                        {
+                                ulong currentDivisor = divisor;
+                                ulong nextDivisor = currentDivisor + 2UL;
+                                processedCount++;
 
-				next = divisor + 2UL;
+                                if (useCycles)
+                                {
+                                        cycle = divisorCycles!.GetCycle(currentDivisor);
+                                        if (cycle == 0UL || prime % cycle != 0UL)
+                                        {
+                                                lastProcessed = currentDivisor;
 
-				// This will be only true when we exceed ulong.MaxValue
-				if (next <= divisor)
-				{
-					reachedEndInBatch = true;
+                                                if (nextDivisor <= currentDivisor)
+                                                {
+                                                        reachedEndInBatch = true;
+                                                        break;
+                                                }
+
+                                                if (nextDivisor > allowedMax)
+                                                {
+                                                        divisor = nextDivisor;
+                                                        reachedEndInBatch = true;
+                                                        break;
+                                                }
+
+                                                divisor = nextDivisor;
+                                                continue;
+                                        }
+                                }
+
+                                divisors[batchSize++] = currentDivisor;
+                                lastProcessed = currentDivisor;
+                                next = nextDivisor;
+
+                                // This will be only true when we exceed ulong.MaxValue
+                                if (next <= divisor)
+                                {
+                                        reachedEndInBatch = true;
 					break;
 				}
 
@@ -172,10 +236,15 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 				divisor = next;
 			}
 
-			if (batchSize == 0)
-			{
-				break;
-			}
+                        if (batchSize == 0)
+                        {
+                                if (reachedEndInBatch)
+                                {
+                                        processedAll = true;
+                                }
+
+                                break;
+                        }
 
 			divisorDataSpan = divisorData.AsSpan(0, batchSize);
 			divisorView = divisorsBuffer.View.SubView(0, batchSize);
@@ -194,16 +263,20 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 			accelerator.Synchronize();
 			hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitsSpan), batchSize);
 
-			for (i = 0; i < batchSize; i++)
-			{
-				if (hitsSpan[i] != 0)
-				{
-					composite = true;
-					break;
-				}
-			}
+                        for (i = 0; i < batchSize; i++)
+                        {
+                                if (hitsSpan[i] != 0)
+                                {
+                                        composite = true;
+                                        lastProcessed = divisorSpan[i];
+                                        break;
+                                }
+                        }
 
-			ReportStatus(divisorSpan[i < batchSize ? i : i - 1]);
+                        if (!composite)
+                        {
+                                lastProcessed = divisorSpan[batchSize - 1];
+                        }
 			if (composite)
 			{
 				break;
@@ -216,26 +289,10 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 			}
 		}
 
-		coveredRange = composite || processedAll || divisor > allowedMax;
+                coveredRange = composite || processedAll || divisor > allowedMax;
 
-		ArrayPool<byte>.Shared.Return(hits, clearArray: true);
-		ArrayPool<ulong>.Shared.Return(divisors, clearArray: true);
-		ArrayPool<MontgomeryDivisorData>.Shared.Return(divisorData, clearArray: true);
-		hitsBuffer.Dispose();
-		divisorsBuffer.Dispose();
-		gpuLease.Dispose();
-
-		return composite;
-	}
-
-	private void ReportStatus(ulong divisor)
-	{
-		if (++_lastStatusDivisor == PerfectNumberConstants.ConsoleInterval)
-		{
-			Console.WriteLine($"...processed by-divisor candidate = {divisor}");
-			_lastStatusDivisor = 0;
-		}
-	}
+                return composite;
+        }
 
 	private static ulong ComputeDivisorLimitFromMaxPrime(ulong maxPrime)
 	{
@@ -252,20 +309,44 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 		return (1UL << (int)(maxPrime - 1UL)) - 1UL;
 	}
 
-	private ulong ComputeAllowedMaxDivisor(ulong prime)
-	{
-		if (prime <= 1UL)
-		{
-			return 0UL;
-		}
+        private static ulong ComputeAllowedMaxDivisor(ulong prime, ulong divisorLimit)
+        {
+                if (prime <= 1UL)
+                {
+                        return 0UL;
+                }
 
-		if (prime - 1UL >= 64UL)
-		{
-			return _divisorLimit;
-		}
+                if (prime - 1UL >= 64UL)
+                {
+                        return divisorLimit;
+                }
 
-		return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, _divisorLimit);
-	}
+                return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
+        }
+
+        private void UpdateStatusUnsafe(ulong lastProcessed, ulong processedCount)
+        {
+                if (processedCount == 0UL)
+                {
+                        return;
+                }
+
+                ulong interval = (ulong)PerfectNumberConstants.ConsoleInterval;
+                if (interval == 0UL)
+                {
+                        _lastStatusDivisor = 0UL;
+                        return;
+                }
+
+                ulong total = _lastStatusDivisor + processedCount;
+                ulong messages = total / interval;
+                _lastStatusDivisor = total % interval;
+
+                for (ulong i = 0; i < messages; i++)
+                {
+                        Console.WriteLine($"...processed by-divisor candidate = {lastProcessed}");
+                }
+        }
 
 	private static void CheckKernel(Index1D index, ulong prime, ArrayView<MontgomeryDivisorData> divisors, ArrayView<byte> hits)
 	{
@@ -280,37 +361,41 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 		hits[index] = Pow2Mod(prime, divisor) == 1UL ? (byte)1 : (byte)0;
 	}
 
-	// TODO: Let's create a pool for these and let's rent them and return, when not needed
-	public sealed class DivisorScanSession : IDisposable
-	{
-		private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
-		private readonly GpuContextPool.GpuContextLease _lease;
-		private readonly Accelerator _accelerator;
+        public sealed class DivisorScanSession : IDisposable
+        {
+                private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
+                private readonly GpuContextPool.GpuContextLease _lease;
+                private readonly Accelerator _accelerator;
 		private readonly Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<byte>> _kernel;
 		private readonly MemoryBuffer1D<ulong, Stride1D.Dense> _primesBuffer;
 		private readonly MemoryBuffer1D<byte, Stride1D.Dense> _hitsBuffer;
 		private readonly ulong[] _primesHost;
-		private readonly byte[] _hitsHost;
-		private readonly int[] _indexHost;
-		private bool _disposed;
+                private readonly byte[] _hitsHost;
+                private readonly int[] _indexHost;
+                private bool _disposed;
 
-		internal DivisorScanSession(MersenneNumberDivisorByDivisorGpuTester owner)
-		{
-			_owner = owner;
-			_lease = GpuContextPool.RentPreferred(preferCpu: false);
+                internal DivisorScanSession(MersenneNumberDivisorByDivisorGpuTester owner)
+                {
+                        _owner = owner;
+                        _lease = GpuContextPool.RentPreferred(preferCpu: false);
 			_accelerator = _lease.Accelerator;
 			_kernel = owner.GetKernelByPrime(_accelerator);
 			_primesBuffer = _accelerator.Allocate1D<ulong>(owner._gpuBatchSize);
 			_hitsBuffer = _accelerator.Allocate1D<byte>(owner._gpuBatchSize);
 			_primesHost = ArrayPool<ulong>.Shared.Rent(owner._gpuBatchSize);
-			_hitsHost = ArrayPool<byte>.Shared.Rent(owner._gpuBatchSize);
-			_indexHost = ArrayPool<int>.Shared.Rent(owner._gpuBatchSize);
-		}
+                        _hitsHost = ArrayPool<byte>.Shared.Rent(owner._gpuBatchSize);
+                        _indexHost = ArrayPool<int>.Shared.Rent(owner._gpuBatchSize);
+                }
 
-		public void CheckDivisor(ulong divisor, ReadOnlySpan<ulong> primes, Span<byte> hits)
-		{
-			if (_disposed)
-			{
+                internal void Reset()
+                {
+                        _disposed = false;
+                }
+
+                public void CheckDivisor(ulong divisor, ReadOnlySpan<ulong> primes, Span<byte> hits)
+                {
+                        if (_disposed)
+                        {
 				throw new ObjectDisposedException(nameof(DivisorScanSession));
 			}
 
@@ -401,24 +486,24 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 
 				offset += batchSize;
 			}
-		}
+                }
 
-		public void Dispose()
-		{
-			if (_disposed)
-			{
-				return;
-			}
+                public void Dispose()
+                {
+                        if (_disposed)
+                        {
+                                return;
+                        }
 
-			_disposed = true;
-			ArrayPool<ulong>.Shared.Return(_primesHost, clearArray: true);
-			ArrayPool<byte>.Shared.Return(_hitsHost, clearArray: true);
-			ArrayPool<int>.Shared.Return(_indexHost, clearArray: true);
-			_primesBuffer.Dispose();
-			_hitsBuffer.Dispose();
-			_lease.Dispose();
-		}
-	}
+                        _disposed = true;
+                        _owner.ReturnSession(this);
+                }
+        }
+
+        internal void ReturnSession(DivisorScanSession session)
+        {
+                _sessionPool.Add(session);
+        }
 
 	private static ulong Pow2Mod(ulong exponent, in MontgomeryDivisorData divisor)
 	{
@@ -539,26 +624,32 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 	{
 		lock (_sync)
 		{
-			if (!_isConfigured)
-			{
-				throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-			}
+                        if (!_isConfigured)
+                        {
+                                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+                        }
 
-			return ComputeAllowedMaxDivisor(prime);
-		}
-	}
+                        return ComputeAllowedMaxDivisor(prime, _divisorLimit);
+                }
+        }
 
-	public DivisorScanSession CreateDivisorSession()
-	{
-		lock (_sync)
-		{
-			if (!_isConfigured)
-			{
-				throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-			}
+        public DivisorScanSession CreateDivisorSession()
+        {
+                lock (_sync)
+                {
+                        if (!_isConfigured)
+                        {
+                                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+                        }
 
-			return new DivisorScanSession(this);
-		}
-	}
+                        if (_sessionPool.TryTake(out DivisorScanSession? session))
+                        {
+                                session.Reset();
+                                return session;
+                        }
+
+                        return new DivisorScanSession(this);
+                }
+        }
 }
 

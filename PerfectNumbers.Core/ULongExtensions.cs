@@ -46,16 +46,17 @@ public static class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong FastDiv64(this ulong value, ulong divisor, ulong mul)
-	{
-		mul = value.MulHigh(mul);
-		if ((UInt128)value - mul.Mul64(divisor) >= divisor)
-		{
-			mul++;
-		}
+        public static ulong FastDiv64(this ulong value, ulong divisor, ulong mul)
+        {
+                ulong quotient = (ulong)(((UInt128)value * mul) >> 64);
+                UInt128 remainder = (UInt128)value - ((UInt128)quotient * divisor);
+                if (remainder >= divisor)
+                {
+                        quotient++;
+                }
 
-		return mul;
-	}
+                return quotient;
+        }
 
 	public const ulong WordBitMask = 0xFFFFUL;
 

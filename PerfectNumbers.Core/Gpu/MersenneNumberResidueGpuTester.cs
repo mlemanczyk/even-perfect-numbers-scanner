@@ -21,13 +21,12 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
 		ResiduePrimeViews primeViews = GpuKernelPool.EnsureSmallPrimesOnDevice(accelerator);
 		int batchSize = GpuConstants.ScanBatchSize;
-		UInt128 kStart = 1UL;
+                UInt128 kStart = 1UL;
+                UInt128 limit = maxK + UInt128.One;
 		byte last = lastIsSeven ? (byte)1 : (byte)0;
 		var kernel = gpuLease.Pow2ModKernel;
-		ulong step3 = exponent % 3UL,
-			  step5 = exponent % 5UL,
-			  step8 = exponent % 8UL,
-			  step10 = exponent.Mod10();
+                twoP.Mod10_8_5_3(out ulong step10, out ulong step8, out ulong step5, out ulong step3);
+                step10 = step10.Mod10();
 
 		GpuUInt128 twoPGpu = (GpuUInt128)twoP;
 
@@ -41,14 +40,14 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		orderBuffer.MemSetToZero();
 		ulong[] orderArray = ArrayPool<ulong>.Shared.Rent(batchSize);
 		UInt128 batchSize128 = (UInt128)batchSize;
-		UInt128 fullBatchStep = twoP * batchSize128;
-		UInt128 q = twoP * kStart + UInt128.One;
+                UInt128 fullBatchStep = twoP * batchSize128;
+                UInt128 q = twoP * kStart + UInt128.One;
 
 		try
 		{
-			while (kStart < maxK && Volatile.Read(ref isPrime))
-			{
-				UInt128 remaining = maxK - kStart;
+                        while (kStart < limit && Volatile.Read(ref isPrime))
+                        {
+                                UInt128 remaining = limit - kStart;
 				int currentSize = remaining > batchSize128 ? batchSize : (int)remaining;
 				Span<ulong> orders = orderArray.AsSpan(0, currentSize);
 				ref ulong ordersRef = ref MemoryMarshal.GetReference(orders);
@@ -60,7 +59,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 						kernelArgs, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
 
 				accelerator.Synchronize();
-				orderBuffer.View.CopyToCPU(ref ordersRef, currentSize);
+                                orderBuffer.View.CopyToCPU(ref ordersRef, currentSize);
 				if (!Volatile.Read(ref isPrime))
 				{
 					break;
@@ -83,11 +82,11 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 				}
 
 				UInt128 processed = (UInt128)currentSize;
-				kStart += processed;
-				if (kStart < maxK)
-				{
-					if (processed == batchSize128)
-					{
+                                kStart += processed;
+                                if (kStart < limit)
+                                {
+                                        if (processed == batchSize128)
+                                        {
 						q += fullBatchStep;
 					}
 					else
