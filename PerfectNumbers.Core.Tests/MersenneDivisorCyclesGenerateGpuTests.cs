@@ -49,4 +49,57 @@ public class MersenneDivisorCyclesGenerateGpuTests
             }
         }
     }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void Generate_produces_unique_cycles_for_expected_divisors()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            MersenneDivisorCycles.Generate(path, maxDivisor: 50UL, threads: 4);
+
+            var pairs = new List<(ulong divisor, ulong cycle)>();
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read);
+            using var reader = new BinaryReader(stream);
+            while (stream.Position < stream.Length)
+            {
+                ulong divisor = reader.ReadUInt64();
+                ulong cycle = reader.ReadUInt64();
+                pairs.Add((divisor, cycle));
+            }
+
+            var expected = new List<ulong>();
+            for (ulong divisor = 3; divisor <= 50; divisor++)
+            {
+                if ((divisor & 1UL) == 0UL || divisor % 3UL == 0UL || divisor % 5UL == 0UL || divisor % 7UL == 0UL || divisor % 11UL == 0UL)
+                {
+                    continue;
+                }
+
+                expected.Add(divisor);
+            }
+
+            pairs.Should().HaveCount(expected.Count);
+
+            HashSet<ulong> uniqueDivisors = new();
+            foreach (var pair in pairs)
+            {
+                uniqueDivisors.Add(pair.divisor).Should().BeTrue();
+                pair.cycle.Should().Be(MersenneDivisorCycles.CalculateCycleLength(pair.divisor));
+            }
+
+            uniqueDivisors.Should().BeEquivalentTo(expected);
+
+            var (_, completeCount) = MersenneDivisorCycles.FindLast(path);
+            completeCount.Should().Be(expected.Count);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
 }
