@@ -264,23 +264,23 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 			return _divisorLimit;
 		}
 
-		ulong maxByPrime = (1UL << (int)(prime - 1UL)) - 1UL;
-		return Math.Min(maxByPrime, _divisorLimit);
+		return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, _divisorLimit);
 	}
 
 	private static void CheckKernel(Index1D index, ulong prime, ArrayView<MontgomeryDivisorData> divisors, ArrayView<byte> hits)
 	{
 		MontgomeryDivisorData divisor = divisors[index];
-		if (divisor.Modulus <= 1UL || (divisor.Modulus & 1UL) == 0UL)
+		ulong modulus = divisor.Modulus;
+		if (modulus <= 1UL || (modulus & 1UL) == 0UL)
 		{
 			hits[index] = 0;
 			return;
 		}
 
-		ulong pow = Pow2Mod(prime, divisor);
-		hits[index] = pow == 1UL ? (byte)1 : (byte)0;
+		hits[index] = Pow2Mod(prime, divisor) == 1UL ? (byte)1 : (byte)0;
 	}
 
+	// TODO: Let's create a pool for these and let's rent them and return, when not needed
 	public sealed class DivisorScanSession : IDisposable
 	{
 		private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
@@ -329,7 +329,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 			Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<byte>> kernel = _kernel;
 			ArrayView1D<ulong, Stride1D.Dense> primesView;
 			ArrayView1D<byte, Stride1D.Dense> hitsView;
-			MersenneDivisorCycles? divisorCycles = useCycles ? MersenneDivisorCycles.Shared : null;
+			MersenneDivisorCycles? divisorCycles = MersenneDivisorCycles.Shared;
 			ulong cycle = useCycles ? divisorCycles!.GetCycle(divisor) : 0UL, primeValue;
 			MontgomeryDivisorData divisorData = CreateMontgomeryDivisorData(divisor);
 			Span<ulong> primeSpan = [];
@@ -420,7 +420,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 		}
 	}
 
-	private static ulong Pow2Mod(ulong exponent, MontgomeryDivisorData divisor)
+	private static ulong Pow2Mod(ulong exponent, in MontgomeryDivisorData divisor)
 	{
 		ulong modulus = divisor.Modulus;
 		if (modulus <= 1UL || (modulus & 1UL) == 0UL)
@@ -430,24 +430,24 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 
 		ulong result = divisor.MontgomeryOne;
 		ulong baseVal = divisor.MontgomeryTwo;
-		ulong exp = exponent;
-		while (exp > 0UL)
+		ulong nPrime = divisor.NPrime;
+		while (exponent > 0UL)
 		{
-			if ((exp & 1UL) != 0UL)
+			if ((exponent & 1UL) != 0UL)
 			{
-				result = MontgomeryMultiply(result, baseVal, modulus, divisor.NPrime);
+				result = MontgomeryMultiply(result, baseVal, modulus, nPrime);
 			}
 
-			exp >>= 1;
-			if (exp == 0UL)
+			exponent >>= 1;
+			if (exponent == 0UL)
 			{
 				break;
 			}
 
-			baseVal = MontgomeryMultiply(baseVal, baseVal, modulus, divisor.NPrime);
+			baseVal = MontgomeryMultiply(baseVal, baseVal, modulus, nPrime);
 		}
 
-		return MontgomeryMultiply(result, 1UL, modulus, divisor.NPrime);
+		return MontgomeryMultiply(result, 1UL, modulus, nPrime);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -455,51 +455,45 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 	{
 		ulong tLow = unchecked(a * b);
 		ulong m = unchecked(tLow * nPrime);
-		ulong sumLow = unchecked(tLow + m * modulus);
-		ulong carry = sumLow < tLow ? 1UL : 0UL;
-		ulong sumHigh = unchecked(MultiplyHigh(a, b) + MultiplyHigh(m, modulus) + carry);
-
-		ulong result = sumHigh;
-		if (result >= modulus)
+		
+		// We're reusing tLow variable as the result to perform just a little bit better
+		tLow = unchecked(MultiplyHigh(a, b) + MultiplyHigh(m, modulus) + (unchecked(tLow + m * modulus) < tLow ? 1UL : 0UL));
+		if (tLow >= modulus)
 		{
-			result -= modulus;
+			tLow -= modulus;
 		}
 
-		return result;
+		return tLow;
 	}
 
 	private static void CheckKernelByPrime(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> primes, ArrayView<byte> hits)
 	{
-		ulong prime = primes[index];
-		if (divisor.Modulus <= 1UL || (divisor.Modulus & 1UL) == 0UL)
+		ulong modulus = divisor.Modulus;
+		if (modulus <= 1UL || (modulus & 1UL) == 0UL)
 		{
 			hits[index] = 0;
 			return;
 		}
 
-		ulong pow = Pow2Mod(prime, divisor);
-		hits[index] = pow == 1UL ? (byte)1 : (byte)0;
+		hits[index] = Pow2Mod(primes[index], divisor) == 1UL ? (byte)1 : (byte)0;
 	}
 
 	private static MontgomeryDivisorData CreateMontgomeryDivisorData(ulong modulus)
 	{
 		if (modulus <= 1UL || (modulus & 1UL) == 0UL)
 		{
-			return new MontgomeryDivisorData(modulus, 0UL, 0UL, 0UL);
+			return new(modulus, 0UL, 0UL, 0UL);
 		}
 
-		ulong nPrime = ComputeMontgomeryNPrime(modulus);
-		ulong montgomeryOne = ComputeMontgomeryResidue(1UL, modulus);
-		ulong montgomeryTwo = ComputeMontgomeryResidue(2UL, modulus);
-		return new MontgomeryDivisorData(modulus, nPrime, montgomeryOne, montgomeryTwo);
+		return new(
+			modulus,
+			ComputeMontgomeryNPrime(modulus),
+			ComputeMontgomeryResidue(1UL, modulus),
+			ComputeMontgomeryResidue(2UL, modulus)
+		);
 	}
 
-	private static ulong ComputeMontgomeryResidue(ulong value, ulong modulus)
-	{
-		UInt128 r = UInt128.One << 64;
-		UInt128 result = ((UInt128)value * r) % modulus;
-		return (ulong)result;
-	}
+	private static ulong ComputeMontgomeryResidue(ulong value, ulong modulus) => (ulong)((UInt128)value * (UInt128.One << 64) % modulus);
 
 	private static ulong ComputeMontgomeryNPrime(ulong modulus)
 	{
@@ -521,14 +515,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester
 		ulong yLow = (uint)y;
 		ulong yHigh = y >> 32;
 
-		ulong lowProduct = xLow * yLow;
-		ulong mid = xHigh * yLow + (lowProduct >> 32);
-		ulong midLow = mid & 0xFFFFFFFFUL;
-		ulong midHigh = mid >> 32;
-		midLow += xLow * yHigh;
-
-		ulong resultHigh = xHigh * yHigh + midHigh + (midLow >> 32);
-		return resultHigh;
+		ulong mid = xHigh * yLow + ((xLow * yLow) >> 32);
+		return xHigh * yHigh + (mid >> 32) + (((mid & 0xFFFFFFFFUL) + xLow * yHigh) >> 32);
 	}
 
 	public ulong DivisorLimit
