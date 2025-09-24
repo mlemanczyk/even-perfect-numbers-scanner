@@ -6,6 +6,7 @@ using System.Text;
 using Open.Collections;
 using Open.Numeric.Primes;
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Cpu;
 using PerfectNumbers.Core.Gpu;
 
 namespace EvenPerfectBitScanner;
@@ -33,8 +34,8 @@ internal static class Program
 	private static bool _useByDivisorMode;
 	private static bool _byDivisorPrecheckOnly;
 	private static UInt128 _divisor;
-	private static MersenneNumberDivisorGpuTester? _divisorTester;
-	private static MersenneNumberDivisorByDivisorGpuTester? _byDivisorTester;
+        private static MersenneNumberDivisorGpuTester? _divisorTester;
+        private static IMersenneNumberDivisorByDivisorTester? _byDivisorTester;
 	private static ulong? _orderWarmupLimitOverride;
 	private static unsafe delegate*<ulong, ref ulong, ulong> _transformP;
 	private static long _state;
@@ -518,14 +519,14 @@ internal static class Program
 
 			_divisorTester = new MersenneNumberDivisorGpuTester();
 		}
-		else if (useByDivisor)
-		{
-			_byDivisorTester = new MersenneNumberDivisorByDivisorGpuTester
-			{
-				GpuBatchSize = scanBatchSize,
-				UseDivisorCycles = useDivisorCycles,
-			};
-		}
+                else if (useByDivisor)
+                {
+                        _byDivisorTester = mersenneOnGpu
+                                ? new MersenneNumberDivisorByDivisorGpuTester()
+                                : new MersenneNumberDivisorByDivisorCpuTester();
+                        _byDivisorTester.BatchSize = scanBatchSize;
+                        _byDivisorTester.UseDivisorCycles = useDivisorCycles;
+                }
 
 		// Load RLE blacklist (optional)
 		if (!string.IsNullOrEmpty(_rleBlacklistPath))
