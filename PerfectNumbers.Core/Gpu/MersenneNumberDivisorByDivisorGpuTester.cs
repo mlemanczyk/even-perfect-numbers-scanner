@@ -39,17 +39,17 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 	private Action<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>> GetCycleKernel(Accelerator accelerator) =>
 			_cycleKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>>(CheckPrimeCycleKernel));
 
-        public int GpuBatchSize
-        {
-                get => _gpuBatchSize;
-                set => _gpuBatchSize = Math.Max(1, value);
-        }
+	public int GpuBatchSize
+	{
+		get => _gpuBatchSize;
+		set => _gpuBatchSize = Math.Max(1, value);
+	}
 
-        int IMersenneNumberDivisorByDivisorTester.BatchSize
-        {
-                get => GpuBatchSize;
-                set => GpuBatchSize = value;
-        }
+	int IMersenneNumberDivisorByDivisorTester.BatchSize
+	{
+		get => GpuBatchSize;
+		set => GpuBatchSize = value;
+	}
 
 	public bool UseDivisorCycles
 	{
@@ -301,6 +301,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
 	}
 
+	// TODO: Since lastProcessed is unused, let's remove it.
 	private void UpdateStatusUnsafe(ulong lastProcessed, ulong processedCount)
 	{
 		if (processedCount == 0UL)
@@ -315,47 +316,46 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			return;
 		}
 
+		// Can we avoid the modulo calculation here? For the higher divisors it may become very expensive. Do we need to calculate the total, too?
 		ulong total = _lastStatusDivisor + processedCount;
 		_lastStatusDivisor = total % interval;
-
-		// Removed noisy console output; status is tracked internally only.
 	}
 
-        private static void CheckKernel(Index1D index, ulong prime, byte useCycleChecks, ArrayView<MontgomeryDivisorData> divisors, ArrayView<byte> hits)
-        {
-                MontgomeryDivisorData divisor = divisors[index];
-                ulong modulus = divisor.Modulus;
-                if (modulus <= 1UL || (modulus & 1UL) == 0UL)
-                {
-                        hits[index] = 0;
-                        return;
-                }
+	private static void CheckKernel(Index1D index, ulong prime, byte useCycleChecks, ArrayView<MontgomeryDivisorData> divisors, ArrayView<byte> hits)
+	{
+		MontgomeryDivisorData divisor = divisors[index];
+		ulong modulus = divisor.Modulus;
+		if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+		{
+			hits[index] = 0;
+			return;
+		}
 
-                ulong exponent = prime;
-                if (useCycleChecks != 0)
-                {
-                        ulong cycle = MersenneDivisorCycles.CalculateCycleLengthGpu(modulus);
-                        if (cycle == 0UL)
-                        {
-                                hits[index] = 0;
-                                return;
-                        }
+		ulong exponent = prime;
+		if (useCycleChecks != 0)
+		{
+			ulong cycle = MersenneDivisorCycles.CalculateCycleLengthGpu(modulus);
+			if (cycle == 0UL)
+			{
+				hits[index] = 0;
+				return;
+			}
+			// TODO: Can we move this back before the GPU call and let CPU handle it? We significantly slowed down after this was moved to GPU.
+			ulong remainder = prime % cycle;
+			if (remainder != 0UL)
+			{
+				hits[index] = 0;
+				return;
+			}
 
-                        ulong remainder = prime % cycle;
-                        if (remainder != 0UL)
-                        {
-                                hits[index] = 0;
-                                return;
-                        }
+			exponent = remainder;
+		}
 
-                        exponent = remainder;
-                }
+		hits[index] = exponent.Pow2MontgomeryMod(divisor) == 1UL ? (byte)1 : (byte)0;
+	}
 
-                hits[index] = exponent.Pow2MontgomeryMod(divisor) == 1UL ? (byte)1 : (byte)0;
-        }
-
-        public sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
-        {
+	public sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
+	{
 		private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
 		private readonly GpuContextPool.GpuContextLease _lease;
 		private readonly Accelerator _accelerator;
@@ -442,8 +442,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 				return;
 			}
 
-                        ulong cycle = divisorCycle;
-                        bool cycleEnabled = owner._useDivisorCycles && cycle != 0UL;
+			ulong cycle = divisorCycle;
+			bool cycleEnabled = owner._useDivisorCycles && cycle != 0UL;
 
 			Accelerator accelerator = _accelerator;
 			Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> kernel = _kernel;
@@ -469,18 +469,19 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 				int computeCount = 0;
 				Span<byte> cycleMaskSpan = default;
 
-                                if (cycleEnabled)
-                                {
-                                        cycleMaskSpan = _cycleMaskHost.AsSpan(0, batchSize);
-                                        ArrayView1D<ulong, Stride1D.Dense> primeInputView = _resultsBuffer.View.SubView(0, batchSize);
-                                        primeInputView.CopyFromCPU(ref MemoryMarshal.GetReference(primesSlice), batchSize);
-                                        ArrayView1D<byte, Stride1D.Dense> cycleMaskView = cycleMaskViewFull.SubView(0, batchSize);
-                                        cycleKernel(batchSize, cycle, primeInputView, cycleMaskView);
-                                        accelerator.Synchronize();
-                                        cycleMaskView.CopyToCPU(ref MemoryMarshal.GetReference(cycleMaskSpan), batchSize);
-                                }
+				if (cycleEnabled)
+				{
+					// TODO: Can we move this back before the GPU call and let CPU handle it? We significantly slowed down after this was moved to GPU.
+					cycleMaskSpan = _cycleMaskHost.AsSpan(0, batchSize);
+					ArrayView1D<ulong, Stride1D.Dense> primeInputView = _resultsBuffer.View.SubView(0, batchSize);
+					primeInputView.CopyFromCPU(ref MemoryMarshal.GetReference(primesSlice), batchSize);
+					ArrayView1D<byte, Stride1D.Dense> cycleMaskView = cycleMaskViewFull.SubView(0, batchSize);
+					cycleKernel(batchSize, cycle, primeInputView, cycleMaskView);
+					accelerator.Synchronize();
+					cycleMaskView.CopyToCPU(ref MemoryMarshal.GetReference(cycleMaskSpan), batchSize);
+				}
 
-                                for (int i = 0; i < batchSize; i++)
+				for (int i = 0; i < batchSize; i++)
 				{
 					if (cycleEnabled && cycleMaskSpan[i] == 0)
 					{
@@ -488,6 +489,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 						continue;
 					}
 
+					// TODO: Avoid one-time use variables like prime here.
 					ulong prime = primesSlice[i];
 					primeSpan[computeCount] = prime;
 					positionSpan[computeCount] = i;
@@ -497,32 +499,32 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 				if (computeCount > 0)
 				{
 					Span<ulong> exponentSlice = hostSpan[..computeCount];
-                                        ulong currentPrime = hasPreviousResidue ? previousPrime : 0UL;
-                                        bool hasDeltaSource = hasPreviousResidue;
+					ulong currentPrime = hasPreviousResidue ? previousPrime : 0UL;
+					bool hasDeltaSource = hasPreviousResidue;
 
-                                        for (int i = 0; i < computeCount; i++)
-                                        {
-                                                ulong prime = primeSpan[i];
-                                                ulong exponentValue;
-                                                if (hasDeltaSource)
-                                                {
-                                                        exponentValue = prime - currentPrime;
-                                                }
-                                                else
-                                                {
-                                                        exponentValue = prime;
-                                                        hasDeltaSource = true;
-                                                }
+					for (int i = 0; i < computeCount; i++)
+					{
+						ulong prime = primeSpan[i];
+						ulong exponentValue;
+						if (hasDeltaSource)
+						{
+							exponentValue = prime - currentPrime;
+						}
+						else
+						{
+							exponentValue = prime;
+							hasDeltaSource = true;
+						}
 
-                                                if (cycleEnabled)
-                                                {
-                                                        exponentValue %= cycle;
-                                                }
+						if (cycleEnabled)
+						{
+							exponentValue %= cycle;
+						}
 
-                                                exponentSlice[i] = exponentValue;
+						exponentSlice[i] = exponentValue;
 
-                                                currentPrime = prime;
-                                        }
+						currentPrime = prime;
+					}
 
 					ArrayView1D<ulong, Stride1D.Dense> exponentView = exponentsView.SubView(0, computeCount);
 					exponentView.CopyFromCPU(ref MemoryMarshal.GetReference(exponentSlice), computeCount);
@@ -537,6 +539,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 					for (int i = 0; i < computeCount; i++)
 					{
+						// TODO: Avoid one-time use variables like prime and position here.
 						int position = positionSpan[i];
 						ulong stepResidue = exponentSlice[i];
 						ulong prime = primeSpan[i];
@@ -760,11 +763,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		}
 	}
 
-        public DivisorScanSession CreateDivisorSession()
-        {
-                lock (_sync)
-                {
-                        if (!_isConfigured)
+	public DivisorScanSession CreateDivisorSession()
+	{
+		lock (_sync)
+		{
+			if (!_isConfigured)
 			{
 				throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
 			}
@@ -773,15 +776,15 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			{
 				session.Reset();
 				return session;
-                        }
+			}
 
-                        return new DivisorScanSession(this);
-                }
-        }
+			return new DivisorScanSession(this);
+		}
+	}
 
-        IMersenneNumberDivisorByDivisorTester.IDivisorScanSession IMersenneNumberDivisorByDivisorTester.CreateDivisorSession()
-        {
-                return CreateDivisorSession();
-        }
+	IMersenneNumberDivisorByDivisorTester.IDivisorScanSession IMersenneNumberDivisorByDivisorTester.CreateDivisorSession()
+	{
+		return CreateDivisorSession();
+	}
 }
 
