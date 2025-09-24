@@ -73,7 +73,7 @@ public class MersenneDivisorCycles
 	public ulong GetCycle(ulong divisor)
 	{
 		// Fast-path: in-memory array for small divisors
-		if (divisor <= (ulong)PerfectNumberConstants.MaxQForDivisorCycles)
+		if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
 		{
 			var arr = _smallCycles;
 			if (arr is not null)
