@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace PerfectNumbers.Core;
 
@@ -9,6 +7,7 @@ public sealed class DivisorCycleCache
 {
 	internal sealed class CycleBlock
 	{
+		// TODO: This can be removed. See other comments.
 		private int _referenceCount;
 
 		internal CycleBlock(int index, ulong start, ulong[] cycles)
@@ -19,6 +18,7 @@ public sealed class DivisorCycleCache
 			End = start + (ulong)cycles.Length - 1UL;
 		}
 
+		// TODO: Let's use fields instead of the properties below for better performance
 		internal int Index { get; }
 
 		internal ulong Start { get; }
@@ -27,23 +27,27 @@ public sealed class DivisorCycleCache
 
 		internal ulong[] Cycles { get; }
 
+		// TODO: We don't need full reference tracking. It's enough to assign divisor block to a task, instead. We can remove excessive blocks as required.
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		internal void AddRef()
 		{
 			Interlocked.Increment(ref _referenceCount);
 		}
 
+		// TODO: We don't need full reference tracking. It's enough to assign divisor block to a task, instead. We can remove excessive blocks as required.
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		internal void Release()
 		{
 			Interlocked.Decrement(ref _referenceCount);
 		}
 
+		// TODO: We don't need full reference tracking. It's enough to assign divisor block to a task, instead. This can be removed
 		internal bool IsInUse => Volatile.Read(ref _referenceCount) > 0;
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		internal ulong GetCycle(ulong divisor)
 		{
+			// TODO: The production code should guarantee that this will never occur and we'll use divisors with their corresponding blocks, only. This can be removed and we can simplify this method to =>
 			if (divisor < Start || divisor > End)
 			{
 				return 0UL;
@@ -55,6 +59,7 @@ public sealed class DivisorCycleCache
 
 	public struct Lease : IDisposable
 	{
+		// TODO: We can probably remove _owner, if we don't need full cycle management which will help GC to clear these out
 		private readonly DivisorCycleCache? _owner;
 		private CycleBlock? _block;
 
@@ -65,22 +70,22 @@ public sealed class DivisorCycleCache
 			_block.AddRef();
 		}
 
-		public bool IsValid => _block is not null;
+		// TODO: We're highly over-complicating this. _block is always assigned by the constructor. We don't need to make it nullable. This can be removed.
+		public readonly bool IsValid => _block is not null;
 
-		public ulong Start => _block?.Start ?? 0UL;
+		// TODO: Once we make _block non-nullable we can simplify these to just fields assigned during the creation for the best performance.
+		public readonly ulong Start => _block?.Start ?? 0UL;
 
-		public ulong End => _block?.End ?? 0UL;
+		public readonly ulong End => _block?.End ?? 0UL;
 
-		public ulong[]? Values => _block?.Cycles;
+		public readonly ulong[]? Values => _block?.Cycles;
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public ulong GetCycle(ulong divisor)
-		{
-			return _block?.GetCycle(divisor) ?? 0UL;
-		}
+		public readonly ulong GetCycle(ulong divisor) => _block?.GetCycle(divisor) ?? 0UL;
 
 		public void Dispose()
 		{
+			// TODO: We don't need full cycle block management. We can rely on GC to do its job. Thanks to that we could possibly make the struct read-only.
 			CycleBlock? block = _block;
 			if (block is null)
 			{
@@ -95,12 +100,14 @@ public sealed class DivisorCycleCache
 
 	private readonly object _sync = new();
 	private readonly ConcurrentDictionary<int, Task<CycleBlock>> _pending = new();
+	// TODO: _baseBlock should be like no other block. Why do we need a separate property for it? It should become current upon initialization
 	private CycleBlock _baseBlock = null!;
 	private CycleBlock? _previous;
 	private CycleBlock? _current;
 	private CycleBlock? _next;
 	private bool _initialized;
 
+	// TODO: Let's not use lazy but directly create the instance, instead for better performance. Then we can remove _lazy and just assign the instance to Shared.
 	private static readonly Lazy<DivisorCycleCache> _lazy = new(() => new DivisorCycleCache());
 
 	public static DivisorCycleCache Shared => _lazy.Value;
@@ -133,11 +140,13 @@ public sealed class DivisorCycleCache
 
 	public Lease Acquire(ulong divisor)
 	{
+		// TODO: We don't need _initialized. The constructor calls Initialize and makes sure it's always initialized, before use. This check can be removed, too.
 		if (!_initialized)
 		{
 			throw new InvalidOperationException("DivisorCycleCache must be initialized before use.");
 		}
 
+		// TODO: Do we need Lease instances, if we don't care who is using our blocks once they were given and just remove them internally from future use?
 		if (divisor <= _baseBlock.End)
 		{
 			return new Lease(this, _baseBlock);
@@ -253,11 +262,13 @@ public sealed class DivisorCycleCache
 
 	private void StartPrefetchLocked(int blockIndex)
 	{
+		// TODO: Why do we need this check? This should never happen in production code.
 		if (blockIndex <= 0)
 		{
 			return;
 		}
 
+		// TODO: Why do we need this check? This should never happen in production code.
 		if (_next is { Index: var nextIndex } next && nextIndex == blockIndex)
 		{
 			return;
@@ -382,6 +393,7 @@ public sealed class DivisorCycleCache
 
 	private int GetBlockLength(int blockIndex)
 	{
+		// TODO: We're over-complicating this again. We should just remember and use the _baseBlock.Cycles.Length. Remember it in a field for better performance during initialization / creation
 		if (blockIndex == 0)
 		{
 			return _baseBlock.Cycles.Length;
@@ -392,6 +404,7 @@ public sealed class DivisorCycleCache
 
 	private ulong GetBlockStart(int blockIndex)
 	{
+		// TODO: We're over-complicating this. There should be only 3 blocks kept. We should simply check all 3 to return the correct one, instead of expensive multiplications.
 		if (blockIndex == 0)
 		{
 			return 0UL;
@@ -403,6 +416,7 @@ public sealed class DivisorCycleCache
 
 	private int GetBlockIndex(ulong divisor)
 	{
+		// TODO: We're over-complicating this. There should be only 3 blocks kept. We should simply check all 3 to return the correct one, instead of expensive multiplications.
 		if (divisor <= _baseBlock.End)
 		{
 			return 0;
