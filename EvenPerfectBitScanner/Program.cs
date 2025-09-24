@@ -756,6 +756,7 @@ internal static class Program
 		StringBuilderPool.Return(_outputBuilder!);
 	}
 
+	// TODO: We should create a scanner class and move this there to keep functionality encapsulated and avoid too big files.
 	private static void RunByDivisorMode(List<ulong> primes, ulong divisorCyclesSearchLimit, int threadCount)
 	{
 		if (primes.Count == 0)
@@ -801,6 +802,7 @@ internal static class Program
 				Composite = false,
 				DetailedCheck = false,
 			};
+
 			states.Add(stateToAdd);
 		}
 
@@ -816,6 +818,7 @@ internal static class Program
 			return;
 		}
 
+		// TODO: The list of primes should be always in ascending order. Why do we need to separately sort it?
 		states.Sort(static (left, right) =>
 		{
 			int compare = left.AllowedMax.CompareTo(right.AllowedMax);
@@ -870,12 +873,15 @@ internal static class Program
 		for (; workerIndex < workers.Length; workerIndex++)
 		{
 			int capturedStateCount = stateCount;
+			// TODO: I don't like that we schedule tasks and don't control how many get actually executed at the same time. This results in not enough threads being created and only some tasks running in parallel.
 			workers[workerIndex] = Task.Run(() =>
 			{
+				// TODO: Much of this should be probably moved to MersenneNumberDivisorByDivisorGpuTester / MersenneNumberDivisorByDivisorCpuTester and adjusted for the best performance depending on the device. The goal of CPU implementation is to avoid as much as possible of work caused only by GPU support.
 				using var session = _byDivisorTester!.CreateDivisorSession();
 				byte[] hitsBuffer = ArrayPool<byte>.Shared.Rent(capturedStateCount);
 				ulong[] primeBuffer = ArrayPool<ulong>.Shared.Rent(capturedStateCount);
 				int[] indexBuffer = ArrayPool<int>.Shared.Rent(capturedStateCount);
+				// TODO: This is probably not necessary for the CPU path. We might be able to handle it better.
 				PendingResult[] completionsBuffer = ArrayPool<PendingResult>.Shared.Rent(capturedStateCount);
 				PendingResult[] compositesBuffer = ArrayPool<PendingResult>.Shared.Rent(capturedStateCount);
 				int completionsCount = 0;
@@ -885,9 +891,11 @@ internal static class Program
 				bool exhausted = false;
 				ulong divisor = 0UL;
 				int activeCount = 0;
+				// TODO: We probably shouldn't need hits array on the CPU path, as we can calculate & report things on the fly
 				Span<byte> hitsSpan = default;
 				int hitIndex = 0;
 				int index = 0;
+				// TODO: We should be consistent in naming things. This should be called useDivisorCycles.
 				bool useCycleFilter = _byDivisorTester!.UseDivisorCycles;
 				DivisorCycleCache.Lease cycleLease = default;
 				ulong cycleLeaseStart = 0UL;
@@ -907,8 +915,10 @@ internal static class Program
 							}
 						}
 
+						// TODO: Can we assign block of divisors to tasks instead of giving them one by one to improve thread concurrency? Say - the next 10 divisors are yours
 						divisor = AcquireNextDivisor(ref nextDivisor, divisorLimit, ref divisorsExhaustedFlag, ref finalDivisorBits, out exhausted, ref localDivisorCursor, ref localDivisorsRemaining);
 
+						// TODO: This condition should be reversed as it should highly simplify the code. We currently have a gigantic if block.
 						if (divisor == 0UL)
 						{
 							if (!exhausted)
@@ -964,6 +974,7 @@ internal static class Program
 								cycleValues = cycleLease.Values;
 							}
 
+							// TODO: This should never happen in production code. We should only have the acquired cycles. I.e. cycleValues should always be != null and always for the given divisor.
 							if (cycleValues is not null && divisor >= cycleLeaseStart)
 							{
 								ulong offset = divisor - cycleLeaseStart;
@@ -986,7 +997,7 @@ internal static class Program
 							divisorCycle = 0UL;
 						}
 
-						// Can we prepare as many buffers as many threads were requested upfront and have them prepared in separate task, so that they're always ready when needed?
+						// TODO: Can we prepare as many buffers as many threads were requested upfront and have them prepared in separate task, so that they're always ready when needed? Do we really need to always call BuildPrimeBuffer in the loop? The list of primes should be constant between divisors, because we always process the list of primes from the file. If the buffer is big enough, we can create one common list of primes and reuse it for all divisors.
 						activeCount = BuildPrimeBuffer(divisor, primeValues, allowedMaxValues, stateFlags, primeBuffer, indexBuffer, completionsBuffer, ref completionsCount, ref remainingStates, activeStateMask, ref activeStartIndex);
 
 						if (completionsCount > 0)
@@ -1001,8 +1012,10 @@ internal static class Program
 
 						hitsSpan = hitsBuffer.AsSpan(0, activeCount);
 						hitsSpan.Clear();
+						// TODO: The goal of the CPU implementation was to avoid all the hassle with playing with hitSpan buffer as it can directly compute things.
 						session.CheckDivisor(divisor, divisorCycle, primeBuffer.AsSpan(0, activeCount), hitsSpan);
 
+						// TODO: This implementation is highly over-complicated for CPU. We shouldn't probably even need the indexBuffer and hitsSpan.
 						for (hitIndex = 0; hitIndex < activeCount; hitIndex++)
 						{
 							if (hitsSpan[hitIndex] == 0)
@@ -1058,6 +1071,7 @@ internal static class Program
 	private static ulong AcquireNextDivisor(ref ulong nextDivisor, ulong divisorLimit, ref int divisorsExhaustedFlag, ref long finalDivisorBits, out bool exhausted, ref ulong localDivisorCursor, ref int localDivisorsRemaining)
 	{
 		ref long nextDivisorBits = ref Unsafe.As<ulong, long>(ref nextDivisor);
+		// TODO: You should avoid unnecessary assignment of variables, if the initial value is unused
 		ulong currentValue = 0UL;
 		long currentBits = 0L;
 		ulong maximumNext = 0UL;
@@ -1134,6 +1148,7 @@ internal static class Program
 		int length = primeValues.Length;
 		int startIndex = Volatile.Read(ref activeStartIndex);
 		int index = startIndex;
+		// TODO: You should avoid unnecessary assignment of variables, if the initial value is unused
 		int wordIndex = 0;
 		ulong word = 0UL;
 		int bitOffset = 0;
