@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
 
@@ -157,11 +158,11 @@ public static class ULongExtensions
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static UInt128 Mul64(this ulong a, ulong b) => ((UInt128)a.MulHigh(b) << 64) | (UInt128)(a * b);
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong MulHigh(this ulong x, ulong y)
-	{
-		ulong xLow = (uint)x;
-		ulong xHigh = x >> 32;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong MulHigh(this ulong x, ulong y)
+        {
+                ulong xLow = (uint)x;
+                ulong xHigh = x >> 32;
 		ulong yLow = (uint)y;
 		ulong yHigh = y >> 32;
 
@@ -174,11 +175,11 @@ public static class ULongExtensions
 				(uint)w1 +
 				(uint)w2
 			) >> 32;
-	}
+        }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong ModPow64(this ulong value, ulong exponent, ulong modulus)
-	{
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong ModPow64(this ulong value, ulong exponent, ulong modulus)
+        {
 		ulong result = 1UL;
 		value %= modulus;
 
@@ -196,8 +197,57 @@ public static class ULongExtensions
 		return result;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong MulMod64(this ulong a, ulong b, ulong modulus) => (ulong)(UInt128)(((a % modulus) * (b % modulus)) % modulus);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong MulMod64(this ulong a, ulong b, ulong modulus) => (ulong)(UInt128)(((a % modulus) * (b % modulus)) % modulus);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong MontgomeryMultiply(this ulong a, ulong b, ulong modulus, ulong nPrime)
+        {
+                ulong tLow = unchecked(a * b);
+                ulong m = unchecked(tLow * nPrime);
+                ulong mTimesModulusLow = unchecked(m * modulus);
+
+                ulong result = unchecked(a.MulHigh(b) + m.MulHigh(modulus) + (unchecked(tLow + mTimesModulusLow) < tLow ? 1UL : 0UL));
+                if (result >= modulus)
+                {
+                        result -= modulus;
+                }
+
+                return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Pow2MontgomeryMod(this ulong exponent, in MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData divisor)
+        {
+                ulong modulus = divisor.Modulus;
+                if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+                {
+                        return 0UL;
+                }
+
+                ulong result = divisor.MontgomeryOne;
+                ulong baseVal = divisor.MontgomeryTwo;
+                ulong nPrime = divisor.NPrime;
+                ulong remainingExponent = exponent;
+
+                while (remainingExponent > 0UL)
+                {
+                        if ((remainingExponent & 1UL) != 0UL)
+                        {
+                                result = result.MontgomeryMultiply(baseVal, modulus, nPrime);
+                        }
+
+                        remainingExponent >>= 1;
+                        if (remainingExponent == 0UL)
+                        {
+                                break;
+                        }
+
+                        baseVal = baseVal.MontgomeryMultiply(baseVal, modulus, nPrime);
+                }
+
+                return result.MontgomeryMultiply(1UL, modulus, nPrime);
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static UInt128 PowMod(this ulong exponent, UInt128 modulus)
