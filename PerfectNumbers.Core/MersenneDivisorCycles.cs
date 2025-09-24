@@ -150,85 +150,85 @@ public class MersenneDivisorCycles
 
 	private const int BufferSize10M = 10 * 1024 * 1024;
 
-        public static void Generate(string path, ulong maxDivisor, int threads = 16)
-        {
-                // Binary-only generation of (divisor, cycle) pairs. CSV scaffolding removed.
-                ulong start = 2;
-                ulong blockSize = maxDivisor / (ulong)threads + 1UL;
-                Task[] tasks = new Task[threads];
-                using Stream outputStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, BufferSize10M, useAsync: false);
-                // Start fresh to avoid mixing formats
-                outputStream.SetLength(0L);
-                outputStream.Position = 0L;
-                using var writer = new BinaryWriter(outputStream, Encoding.UTF8, leaveOpen: false);
-                for (var taskIndex = 0; taskIndex < threads; taskIndex++)
-                {
-                        ulong threadStart = start + (ulong)taskIndex * blockSize;
-                        if (threadStart > maxDivisor)
-                        {
-                                tasks[taskIndex] = Task.CompletedTask;
-                                continue;
-                        }
+	public static void Generate(string path, ulong maxDivisor, int threads = 16)
+	{
+		// Binary-only generation of (divisor, cycle) pairs. CSV scaffolding removed.
+		ulong start = 2;
+		ulong blockSize = maxDivisor / (ulong)threads + 1UL;
+		Task[] tasks = new Task[threads];
+		using Stream outputStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, BufferSize10M, useAsync: false);
+		// Start fresh to avoid mixing formats
+		outputStream.SetLength(0L);
+		outputStream.Position = 0L;
+		using var writer = new BinaryWriter(outputStream, Encoding.UTF8, leaveOpen: false);
+		for (var taskIndex = 0; taskIndex < threads; taskIndex++)
+		{
+			ulong threadStart = start + (ulong)taskIndex * blockSize;
+			if (threadStart > maxDivisor)
+			{
+				tasks[taskIndex] = Task.CompletedTask;
+				continue;
+			}
 
-                        ulong threadEnd = threadStart + blockSize - 1UL;
-                        if (threadEnd > maxDivisor)
-                        {
-                                threadEnd = maxDivisor;
-                        }
+			ulong threadEnd = threadStart + blockSize - 1UL;
+			if (threadEnd > maxDivisor)
+			{
+				threadEnd = maxDivisor;
+			}
 
-                        ulong localStart = threadStart;
-                        ulong localEnd = threadEnd;
-                        tasks[taskIndex] = Task.Run(() =>
-                        {
-                                ulong rangeLength = localEnd - localStart + 1UL;
-                                (ulong divisor, ulong cycle)[] localCycles = ArrayPool<(ulong, ulong)>.Shared.Rent(checked((int)rangeLength));
-                                int localCycleIndex = 0;
+			ulong localStart = threadStart;
+			ulong localEnd = threadEnd;
+			tasks[taskIndex] = Task.Run(() =>
+			{
+				ulong rangeLength = localEnd - localStart + 1UL;
+				(ulong divisor, ulong cycle)[] localCycles = ArrayPool<(ulong, ulong)>.Shared.Rent(checked((int)rangeLength));
+				int localCycleIndex = 0;
 
-                                try
-                                {
-                                        for (ulong divisor = localStart; divisor <= localEnd; divisor++)
-                                        {
-                                                if ((divisor & 1UL) == 0UL)
-                                                {
-                                                        continue;
-                                                }
+				try
+				{
+					for (ulong divisor = localStart; divisor <= localEnd; divisor++)
+					{
+						if ((divisor & 1UL) == 0UL)
+						{
+							continue;
+						}
 
-                                                if ((divisor % 3UL) == 0UL || (divisor % 5UL) == 0UL || (divisor % 7UL) == 0UL || (divisor % 11UL) == 0UL)
-                                                {
-                                                        continue;
-                                                }
+						if ((divisor % 3UL) == 0UL || (divisor % 5UL) == 0UL || (divisor % 7UL) == 0UL || (divisor % 11UL) == 0UL)
+						{
+							continue;
+						}
 
-                                                ulong cycle = CalculateCycleLength(divisor);
-                                                localCycles[localCycleIndex++] = (divisor, cycle);
-                                        }
+						ulong cycle = CalculateCycleLength(divisor);
+						localCycles[localCycleIndex++] = (divisor, cycle);
+					}
 
-                                        if (localCycleIndex == 0)
-                                        {
-                                                return;
-                                        }
+					if (localCycleIndex == 0)
+					{
+						return;
+					}
 
-                                        lock (writer)
-                                        {
-                                                writer.BaseStream.Position = writer.BaseStream.Length;
-                                                for (int i = 0; i < localCycleIndex; i++)
-                                                {
-                                                        (ulong divisor, ulong cycle) = localCycles[i];
-                                                        writer.Write(divisor);
-                                                        writer.Write(cycle);
-                                                }
+					lock (writer)
+					{
+						writer.BaseStream.Position = writer.BaseStream.Length;
+						for (int i = 0; i < localCycleIndex; i++)
+						{
+							(ulong divisor, ulong cycle) = localCycles[i];
+							writer.Write(divisor);
+							writer.Write(cycle);
+						}
 
-                                                writer.Flush();
-                                        }
-                                }
-                                finally
-                                {
-                                        ArrayPool<(ulong, ulong)>.Shared.Return(localCycles, clearArray: false);
-                                }
-                        });
-                }
+						writer.Flush();
+					}
+				}
+				finally
+				{
+					ArrayPool<(ulong, ulong)>.Shared.Return(localCycles, clearArray: false);
+				}
+			});
+		}
 
-                Task.WaitAll(tasks);
-        }
+		Task.WaitAll(tasks);
+	}
 
 	public static void GenerateGpu(string path, ulong maxDivisor, int batchSize = 1_000_000, long skipCount = 0L, long nextPosition = 0L)
 	{
