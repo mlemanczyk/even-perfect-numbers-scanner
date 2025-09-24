@@ -275,7 +275,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
             return;
         }
 
-        ulong div = phi64.FastDiv64(exponent, divMul);
+        ulong div = FastDiv64Gpu(phi64, exponent, divMul);
         GpuUInt128 divPow = GpuUInt128.Pow2Mod(div, q) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(divPow, q) != GpuUInt128.One)
         {
@@ -311,7 +311,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
             return;
         }
 
-        ulong div = phi64.FastDiv64(exponent, divMul);
+        ulong div = FastDiv64Gpu(phi64, exponent, divMul);
         GpuUInt128 divPow = GpuUInt128.Pow2Mod(div, q) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(divPow, q) != GpuUInt128.One)
         {
@@ -430,6 +430,22 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         }
 
         orders[index] = exponent;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong FastDiv64Gpu(ulong value, ulong divisor, ulong mul)
+    {
+        ulong quotient = GpuUInt128.MulHigh(value, mul);
+        GpuUInt128 remainder = new(0UL, value);
+        GpuUInt128 product = new(GpuUInt128.MulHigh(quotient, divisor), quotient * divisor);
+        remainder.Sub(product);
+
+        if (remainder.High != 0UL || remainder.Low >= divisor)
+        {
+            quotient++;
+        }
+
+        return quotient;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -552,7 +568,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
             return;
         }
 
-        ulong div = phi64.FastDiv64(exponent, divMul);
+        ulong div = FastDiv64Gpu(phi64, exponent, divMul);
         GpuUInt128 divPow = GpuUInt128.Pow2Mod(div, q) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(divPow, q) != GpuUInt128.One)
         {
