@@ -247,6 +247,38 @@ public static class ULongExtensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Pow2MontgomeryModMontgomery(this ulong exponent, in MontgomeryDivisorData divisor)
+        {
+                ulong modulus = divisor.Modulus;
+                if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+                {
+                        return 0UL;
+                }
+
+                ulong result = divisor.MontgomeryOne;
+                ulong baseVal = divisor.MontgomeryTwo;
+                ulong remainingExponent = exponent;
+
+                while (remainingExponent > 0UL)
+                {
+                        if ((remainingExponent & 1UL) != 0UL)
+                        {
+                                result = result.MontgomeryMultiply(baseVal, modulus, divisor.NPrime);
+                        }
+
+                        remainingExponent >>= 1;
+                        if (remainingExponent == 0UL)
+                        {
+                                break;
+                        }
+
+                        baseVal = baseVal.MontgomeryMultiply(baseVal, modulus, divisor.NPrime);
+                }
+
+                return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Pow2MontgomeryModWithCycle(this ulong exponent, ulong cycleLength, in MontgomeryDivisorData divisor)
         {
                 if (cycleLength == 0UL)

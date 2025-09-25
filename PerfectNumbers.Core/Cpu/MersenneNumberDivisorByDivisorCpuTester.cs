@@ -310,6 +310,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             bool cycleEnabled = _owner._useDivisorCycles && divisorCycle != 0UL;
             MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(divisor);
 
+            var exponentStepper = new ExponentRemainderStepper(divisorData);
+            if (!exponentStepper.IsValidModulus)
+            {
+                hits.Clear();
+                return;
+            }
+
             if (cycleEnabled)
             {
                 var stepper = new CycleRemainderStepper(divisorCycle);
@@ -323,8 +330,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                         continue;
                     }
 
-                    ulong residue = remainder.Pow2MontgomeryModFromCycleRemainder(divisorData);
-                    hits[i] = residue == 1UL ? (byte)1 : (byte)0;
+                    hits[i] = exponentStepper.ComputeNextIsUnity(primes[i]) ? (byte)1 : (byte)0;
                 }
 
                 return;
@@ -332,8 +338,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
             for (int i = 0; i < length; i++)
             {
-                ulong residue = primes[i].Pow2MontgomeryMod(divisorData);
-                hits[i] = residue == 1UL ? (byte)1 : (byte)0;
+                hits[i] = exponentStepper.ComputeNextIsUnity(primes[i]) ? (byte)1 : (byte)0;
             }
         }
 
