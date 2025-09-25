@@ -1122,49 +1122,60 @@ internal static class Program
                 return true;
         }
 
-	private static int BuildPrimeBuffer(ulong divisor, in ulong[] primeValues, in ulong[] allowedMaxValues, int[] stateFlags, ulong[] primeBuffer, int[] indexBuffer, PendingResult[] completionsBuffer, ref int completionsCount, ref int remainingStates, long[] activeStateMask, ref int activeStartIndex)
-	{
-		int length = primeValues.Length;
-		int startIndex = Volatile.Read(ref activeStartIndex);
-		int index = startIndex;
+        private static int BuildPrimeBuffer(ulong divisor, in ulong[] primeValues, in ulong[] allowedMaxValues, int[] stateFlags, ulong[] primeBuffer, int[] indexBuffer, PendingResult[] completionsBuffer, ref int completionsCount, ref int remainingStates, long[] activeStateMask, ref int activeStartIndex)
+        {
+                int length = primeValues.Length;
+                int startIndex;
+                while (true)
+                {
+                        startIndex = Volatile.Read(ref activeStartIndex);
+                        if (startIndex >= length || allowedMaxValues[startIndex] >= divisor)
+                        {
+                                break;
+                        }
 
-		while (index < length && allowedMaxValues[index] < divisor)
-		{
-			if (Interlocked.CompareExchange(ref stateFlags[index], ByDivisorStateCompletedDetailed, ByDivisorStateActive) == ByDivisorStateActive)
-			{
-				ClearActiveMask(activeStateMask, index);
-				Interlocked.Decrement(ref remainingStates);
-				if (completionsCount == completionsBuffer.Length)
-				{
-					FlushPendingResults(completionsBuffer, ref completionsCount);
-				}
-				completionsBuffer[completionsCount++] = new PendingResult(primeValues[index], detailedCheck: true, passedAllTests: true);
-			}
-			else
-			{
-				ClearActiveMask(activeStateMask, index);
-			}
+                        // Claim the prefix slot before finalizing to avoid double-counting the same candidate.
+                        if (Interlocked.CompareExchange(ref activeStartIndex, startIndex + 1, startIndex) != startIndex)
+                        {
+                                continue;
+                        }
 
-			index++;
-		}
+                        int state = Volatile.Read(ref stateFlags[startIndex]);
+                        if (state == ByDivisorStateActive)
+                        {
+                                Volatile.Write(ref stateFlags[startIndex], ByDivisorStateCompletedDetailed);
+                                ClearActiveMask(activeStateMask, startIndex);
+                                Interlocked.Decrement(ref remainingStates);
+                                if (completionsCount == completionsBuffer.Length)
+                                {
+                                        FlushPendingResults(completionsBuffer, ref completionsCount);
+                                }
+                                completionsBuffer[completionsCount++] = new PendingResult(primeValues[startIndex], detailedCheck: true, passedAllTests: true);
+                        }
+                        else
+                        {
+                                ClearActiveMask(activeStateMask, startIndex);
+                        }
+                }
 
-		if (index != startIndex)
-		{
-			Volatile.Write(ref activeStartIndex, index);
-		}
-
-		int activeCount = 0;
-		while (index < length)
-		{
-			int wordIndex = index >> 6;
-			ulong word = unchecked((ulong)Volatile.Read(ref activeStateMask[wordIndex]));
-			if (word == 0UL)
-			{
-				index = (wordIndex + 1) << 6;
-				continue;
-			}
-
-			int bitOffset = index & 63;
+                int index = startIndex;
+                int activeCount = 0;
+                while (index < length)
+                {
+                        int wordIndex = index >> 6;
+                        ulong word = unchecked((ulong)activeStateMask[wordIndex]);
+                        if (word == 0UL)
+                        {
+                                // Fallback to a volatile read only when the optimistic read reports no work to
+                                // minimize the number of costly fences on the hot path.
+                                word = unchecked((ulong)Volatile.Read(ref activeStateMask[wordIndex]));
+                                if (word == 0UL)
+                                {
+                                        index = (wordIndex + 1) << 6;
+                                        continue;
+                                }
+                        }
+                        int bitOffset = index & 63;
 			if (bitOffset != 0)
 			{
 				word &= ulong.MaxValue << bitOffset;
@@ -1183,16 +1194,19 @@ internal static class Program
 					return activeCount;
 				}
 
-				if (Volatile.Read(ref stateFlags[candidateIndex]) == ByDivisorStateActive)
-				{
-					primeBuffer[activeCount] = primeValues[candidateIndex];
-					indexBuffer[activeCount] = candidateIndex;
-					activeCount++;
-				}
-				else
-				{
-					ClearActiveMask(activeStateMask, candidateIndex);
-				}
+                                // Intentionally avoid Volatile.Read here; seeing a stale Active value only causes
+                                // redundant work, while seeing a stale non-active value would require the mask bit
+                                // to be set, which means another worker has not finished clearing it yet.
+                                if (stateFlags[candidateIndex] == ByDivisorStateActive)
+                                {
+                                        primeBuffer[activeCount] = primeValues[candidateIndex];
+                                        indexBuffer[activeCount] = candidateIndex;
+                                        activeCount++;
+                                }
+                                else
+                                {
+                                        ClearActiveMask(activeStateMask, candidateIndex);
+                                }
 
 				word &= word - 1UL;
 			}
@@ -1209,17 +1223,18 @@ internal static class Program
 		bool detailed = false;
 		for (; finalizeIndex < primeValues.Length; finalizeIndex++)
 		{
-			if (Volatile.Read(ref stateFlags[finalizeIndex]) != ByDivisorStateActive)
-			{
-				continue;
-			}
+                        if (stateFlags[finalizeIndex] != ByDivisorStateActive)
+                        {
+                                continue;
+                        }
 
-			detailed = unchecked((ulong)Volatile.Read(ref finalDivisorBits)) > allowedMaxValues[finalizeIndex];
+                        ulong finalDivisor = unchecked((ulong)Volatile.Read(ref finalDivisorBits));
+                        detailed = finalDivisor > allowedMaxValues[finalizeIndex];
 
-			if (Interlocked.CompareExchange(ref stateFlags[finalizeIndex], detailed ? ByDivisorStateCompletedDetailed : ByDivisorStateCompleted, ByDivisorStateActive) != ByDivisorStateActive)
-			{
-				continue;
-			}
+                        if (Interlocked.CompareExchange(ref stateFlags[finalizeIndex], detailed ? ByDivisorStateCompletedDetailed : ByDivisorStateCompleted, ByDivisorStateActive) != ByDivisorStateActive)
+                        {
+                                continue;
+                        }
 
 			ClearActiveMask(activeStateMask, finalizeIndex);
 			Interlocked.Decrement(ref remainingStates);
