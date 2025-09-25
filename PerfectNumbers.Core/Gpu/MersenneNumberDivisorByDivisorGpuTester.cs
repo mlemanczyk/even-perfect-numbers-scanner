@@ -386,7 +386,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 			int batchSize, computeCount, i, offset = 0;
 			bool useDivisorCycles = owner._useDivisorCycles;
-			ulong exponentSliceRef, residue;
+			ulong residue;
 			while (offset < primesLength)
 			{
 				batchSize = Math.Min(gpuBatchSize, primesLength - offset);
@@ -426,12 +426,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 					exponentSlice = hostSpan[..computeCount];
 					exponentView = exponentsView.SubView(0, computeCount);
 
-					exponentSliceRef = MemoryMarshal.GetReference(exponentSlice);
-					exponentView.CopyFromCPU(ref exponentSliceRef, computeCount);
+					exponentView.CopyFromCPU(ref MemoryMarshal.GetReference(exponentSlice), computeCount);
 					resultView = resultsView.SubView(0, computeCount);
 					kernel(computeCount, divisorData, exponentView, resultView);
 					accelerator.Synchronize();
-					resultView.CopyToCPU(ref exponentSliceRef, computeCount);
+					resultView.CopyToCPU(ref MemoryMarshal.GetReference(exponentSlice), computeCount);
 
 					for (i = 0; i < computeCount; i++)
 					{
