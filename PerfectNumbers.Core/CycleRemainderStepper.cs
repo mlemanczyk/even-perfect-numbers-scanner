@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 
 namespace PerfectNumbers.Core;
@@ -11,13 +12,16 @@ internal struct CycleRemainderStepper
 
     public CycleRemainderStepper(ulong cycleLength)
     {
+        if (cycleLength == 0UL)
+        {
+            throw new ArgumentOutOfRangeException(nameof(cycleLength), "Cycle length must be non-zero.");
+        }
+
         _cycleLength = cycleLength;
         _previousPrime = 0UL;
         _currentRemainder = 0UL;
         _hasState = false;
     }
-
-    public bool HasCycle => _cycleLength != 0UL;
 
     public void Reset()
     {
@@ -26,52 +30,53 @@ internal struct CycleRemainderStepper
         _hasState = false;
     }
 
-    public void InitializeState(ulong previousPrime, ulong previousRemainder, bool hasState)
+    public ulong Initialize(ulong prime)
     {
-        _previousPrime = previousPrime;
-        _currentRemainder = previousRemainder;
-        _hasState = hasState;
+        ulong cycleLength = _cycleLength;
+        ulong remainder = prime;
+        if (remainder >= cycleLength)
+        {
+            remainder %= cycleLength;
+        }
+        _previousPrime = prime;
+        _currentRemainder = remainder;
+        _hasState = true;
+        return remainder;
     }
 
     public ulong ComputeNext(ulong prime)
     {
-        if (_cycleLength == 0UL)
+        if (!_hasState)
         {
-            _previousPrime = prime;
-            _currentRemainder = 0UL;
-            _hasState = true;
-            return 0UL;
+            throw new InvalidOperationException("CycleRemainderStepper must be initialized before computing.");
         }
 
-        if (!_hasState || prime <= _previousPrime)
+        if (prime <= _previousPrime)
         {
-            _currentRemainder = prime % _cycleLength;
-            _hasState = true;
-        }
-        else
-        {
-            ulong delta = prime - _previousPrime;
-            if (ulong.MaxValue - _currentRemainder < delta)
-            {
-                UInt128 extended = (UInt128)_currentRemainder + delta;
-                _currentRemainder = (ulong)(extended % _cycleLength);
-            }
-            else
-            {
-                _currentRemainder += delta;
-
-                if (_currentRemainder >= _cycleLength)
-                {
-                    _currentRemainder -= _cycleLength;
-                    if (_currentRemainder >= _cycleLength)
-                    {
-                        _currentRemainder %= _cycleLength;
-                    }
-                }
-            }
+            throw new ArgumentOutOfRangeException(nameof(prime), "Primes must be processed in strictly increasing order.");
         }
 
+        ulong cycleLength = _cycleLength;
+        ulong delta = prime - _previousPrime;
         _previousPrime = prime;
+
+        if (ulong.MaxValue - _currentRemainder < delta)
+        {
+            UInt128 extended = (UInt128)_currentRemainder + delta;
+            _currentRemainder = (ulong)(extended % cycleLength);
+            return _currentRemainder;
+        }
+
+        _currentRemainder += delta;
+
+        if (_currentRemainder >= cycleLength)
+        {
+            _currentRemainder -= cycleLength;
+            if (_currentRemainder >= cycleLength)
+            {
+                _currentRemainder %= cycleLength;
+            }
+        }
         return _currentRemainder;
     }
 

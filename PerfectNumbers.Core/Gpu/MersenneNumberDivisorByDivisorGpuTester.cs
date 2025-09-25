@@ -391,8 +391,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                                 return;
                         }
 
-                        EnsureCapacity(gpuBatchSize);
-
                         MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(divisor);
                         var exponentStepper = new ExponentRemainderStepper(divisorData);
                         if (!exponentStepper.IsValidModulus)
@@ -407,7 +405,15 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                                 throw new InvalidOperationException($"Missing divisor cycle for divisor {divisor}.");
                         }
 
-                        CycleRemainderStepper cycleStepper = useDivisorCycles ? new CycleRemainderStepper(divisorCycle) : default;
+                        CycleRemainderStepper cycleStepper = default;
+                        ulong initialCycleRemainder = 0UL;
+                        bool cycleRemainderPending = false;
+                        if (useDivisorCycles)
+                        {
+                                cycleStepper = new CycleRemainderStepper(divisorCycle);
+                                initialCycleRemainder = cycleStepper.Initialize(primes[0]);
+                                cycleRemainderPending = true;
+                        }
 
                         Accelerator accelerator = _accelerator;
                         Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> kernel = _kernel;
@@ -437,7 +443,16 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
                                         if (useDivisorCycles)
                                         {
-                                                ulong remainder = cycleStepper.ComputeNext(primeValue);
+                                                ulong remainder;
+                                                if (cycleRemainderPending)
+                                                {
+                                                        remainder = initialCycleRemainder;
+                                                        cycleRemainderPending = false;
+                                                }
+                                                else
+                                                {
+                                                        remainder = cycleStepper.ComputeNext(primeValue);
+                                                }
                                                 if (remainder != 0UL)
                                                 {
                                                         continue;
@@ -507,43 +522,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                         }
                 }
 
-                private void EnsureCapacity(int requiredCapacity)
+                public void Dispose()
                 {
-                        if (requiredCapacity <= _capacity)
+                        if (_disposed)
                         {
                                 return;
-                        }
-
-                        _exponentsBuffer.Dispose();
-                        _resultsBuffer.Dispose();
-                        ArrayPool<ulong>.Shared.Return(_hostBuffer, clearArray: false);
-                        ArrayPool<int>.Shared.Return(_positionBuffer, clearArray: false);
-                        ArrayPool<byte>.Shared.Return(_modeBuffer, clearArray: false);
-
-                        int newCapacity = _capacity;
-                        if (newCapacity < 1)
-                        {
-                                newCapacity = 1;
-                        }
-
-                        while (newCapacity < requiredCapacity)
-                        {
-                                newCapacity <<= 1;
-                        }
-
-                        _exponentsBuffer = _accelerator.Allocate1D<ulong>(newCapacity);
-                        _resultsBuffer = _accelerator.Allocate1D<ulong>(newCapacity);
-                        _hostBuffer = ArrayPool<ulong>.Shared.Rent(newCapacity);
-                        _positionBuffer = ArrayPool<int>.Shared.Rent(newCapacity);
-                        _modeBuffer = ArrayPool<byte>.Shared.Rent(newCapacity);
-                        _capacity = newCapacity;
-                }
-
-		public void Dispose()
-		{
-			if (_disposed)
-			{
-				return;
 			}
 
                         _disposed = true;

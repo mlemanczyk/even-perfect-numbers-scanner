@@ -307,7 +307,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 return;
             }
 
-            bool cycleEnabled = _owner._useDivisorCycles && divisorCycle != 0UL;
+            bool useDivisorCycles = _owner._useDivisorCycles;
+            if (useDivisorCycles && divisorCycle == 0UL)
+            {
+                throw new InvalidOperationException($"Missing divisor cycle for divisor {divisor}.");
+            }
+
+            bool cycleEnabled = useDivisorCycles;
             MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(divisor);
 
             var exponentStepper = new ExponentRemainderStepper(divisorData);
@@ -321,9 +327,14 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             {
                 var stepper = new CycleRemainderStepper(divisorCycle);
 
-                for (int i = 0; i < length; i++)
+                ulong remainder = stepper.Initialize(primes[0]);
+                hits[0] = remainder == 0UL
+                    ? (exponentStepper.ComputeNextIsUnity(primes[0]) ? (byte)1 : (byte)0)
+                    : (byte)0;
+
+                for (int i = 1; i < length; i++)
                 {
-                    ulong remainder = stepper.ComputeNext(primes[i]);
+                    remainder = stepper.ComputeNext(primes[i]);
                     if (remainder != 0UL)
                     {
                         hits[i] = 0;
