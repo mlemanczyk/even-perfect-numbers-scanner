@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
+using System.Numerics;
 using PerfectNumbers.Core;
-using PerfectNumbers.Core.Gpu;
-using MontgomeryDivisorData = PerfectNumbers.Core.Gpu.MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData;
 
 namespace PerfectNumbers.Core.Cpu;
 
@@ -167,18 +165,22 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             processedCount++;
             lastProcessed = divisor;
 
-            MontgomeryDivisorData divisorData = CreateMontgomeryDivisorData(divisor);
+            MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(divisor);
             byte hit;
+            ulong divisorCycle = 0UL;
+            DivisorCycleCache.CycleBlock? cycleBlock = null;
             if (useCycles)
             {
-                DivisorCycleCache.CycleBlock cycleBlock = DivisorCycleCache.Shared.Acquire(divisor);
-                ulong divisorCycle = cycleBlock.GetCycle(divisor);
+                cycleBlock = DivisorCycleCache.Shared.Acquire(divisor);
+                divisorCycle = cycleBlock.GetCycle(divisor);
                 hit = CheckDivisor(prime, divisorCycle != 0UL, divisorCycle, divisorData);
             }
             else
             {
                 hit = CheckDivisor(prime, false, 0UL, divisorData);
             }
+
+            cycleBlock?.Dispose();
 
             if (hit != 0)
             {
@@ -270,35 +272,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
     }
 
-    private static MontgomeryDivisorData CreateMontgomeryDivisorData(ulong modulus)
-    {
-        if (modulus <= 1UL || (modulus & 1UL) == 0UL)
-        {
-            return new MontgomeryDivisorData(modulus, 0UL, 0UL, 0UL);
-        }
-
-        return new MontgomeryDivisorData(
-                modulus,
-                ComputeMontgomeryNPrime(modulus),
-                ComputeMontgomeryResidue(1UL, modulus),
-                ComputeMontgomeryResidue(2UL, modulus));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ComputeMontgomeryResidue(ulong value, ulong modulus) => (ulong)((UInt128)value * (UInt128.One << 64) % modulus);
-
-    private static ulong ComputeMontgomeryNPrime(ulong modulus)
-    {
-        ulong inv = modulus;
-        inv *= unchecked(2UL - modulus * inv);
-        inv *= unchecked(2UL - modulus * inv);
-        inv *= unchecked(2UL - modulus * inv);
-        inv *= unchecked(2UL - modulus * inv);
-        inv *= unchecked(2UL - modulus * inv);
-        inv *= unchecked(2UL - modulus * inv);
-        return unchecked(0UL - inv);
-    }
-
     private sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
     {
         private readonly MersenneNumberDivisorByDivisorCpuTester _owner;
@@ -335,26 +308,31 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             }
 
             bool cycleEnabled = _owner._useDivisorCycles && divisorCycle != 0UL;
-            MontgomeryDivisorData divisorData = CreateMontgomeryDivisorData(divisor);
+            MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(divisor);
 
-            for (int i = 0; i < length; i++)
+            if (cycleEnabled)
             {
-                ulong prime = primes[i];
+                var stepper = new CycleRemainderStepper(divisorCycle);
 
-                if (cycleEnabled)
+                for (int i = 0; i < length; i++)
                 {
-                    ulong remainder = prime % divisorCycle;
+                    ulong remainder = stepper.ComputeNext(primes[i]);
                     if (remainder != 0UL)
                     {
                         hits[i] = 0;
                         continue;
                     }
+
+                    ulong residue = remainder.Pow2MontgomeryModFromCycleRemainder(divisorData);
+                    hits[i] = residue == 1UL ? (byte)1 : (byte)0;
                 }
 
-                ulong residue = cycleEnabled
-                    ? prime.Pow2MontgomeryModWithCycle(divisorCycle, divisorData)
-                    : prime.Pow2MontgomeryMod(divisorData);
+                return;
+            }
 
+            for (int i = 0; i < length; i++)
+            {
+                ulong residue = primes[i].Pow2MontgomeryMod(divisorData);
                 hits[i] = residue == 1UL ? (byte)1 : (byte)0;
             }
         }

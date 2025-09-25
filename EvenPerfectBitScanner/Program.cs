@@ -899,21 +899,29 @@ internal static class Program
 							divisor = AcquireNextDivisor(ref nextDivisor, divisorLimit, ref divisorsExhaustedFlag, ref finalDivisorBits, out exhausted, ref localDivisorCursor, ref localDivisorsRemaining);
 							if (divisor != 0UL)
 							{
-								divisorCycle = useDivisorCycles
-										? DivisorCycleCache.Shared.Acquire(divisor).GetCycle(divisor)
-										: 0UL;
+							DivisorCycleCache.CycleBlock? cycleBlock = null;
+							if (useDivisorCycles)
+							{
+							cycleBlock = DivisorCycleCache.Shared.Acquire(divisor);
+							divisorCycle = cycleBlock.GetCycle(divisor);
+							}
+							else
+							{
+							divisorCycle = 0UL;
+							}
 
-								activeCount = BuildPrimeBuffer(divisor, primeValues, allowedMaxValues, stateFlags, primeBuffer, indexBuffer, completionsBuffer, ref completionsCount, ref remainingStates, activeStateMask, ref activeStartIndex);
+							activeCount = BuildPrimeBuffer(divisor, primeValues, allowedMaxValues, stateFlags, primeBuffer, indexBuffer, completionsBuffer, ref completionsCount, ref remainingStates, activeStateMask, ref activeStartIndex);
 
-								if (completionsCount > 0)
-								{
-									FlushPendingResults(completionsBuffer, ref completionsCount);
-								}
+							if (completionsCount > 0)
+							{
+							FlushPendingResults(completionsBuffer, ref completionsCount);
+							}
 
-								if (activeCount == 0)
-								{
-									continue;
-								}
+							if (activeCount == 0)
+							{
+							cycleBlock?.Dispose();
+							continue;
+							}
 
 								hitsSpan = hitsBuffer.AsSpan(0, activeCount);
 								hitsSpan.Clear();
@@ -940,10 +948,12 @@ internal static class Program
 									}
 								}
 
-								if (compositesCount > 0)
-								{
-									FlushPendingResults(compositesBuffer, ref compositesCount);
-								}
+							if (compositesCount > 0)
+							{
+							FlushPendingResults(compositesBuffer, ref compositesCount);
+							}
+
+							cycleBlock?.Dispose();
 
 								continue;
 							}

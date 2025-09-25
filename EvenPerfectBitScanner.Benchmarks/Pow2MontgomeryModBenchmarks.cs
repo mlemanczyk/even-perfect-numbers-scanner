@@ -1,9 +1,9 @@
 using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
+using System.Numerics;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
-using System.Numerics;
 
 namespace EvenPerfectBitScanner.Benchmarks;
 
@@ -13,8 +13,8 @@ public class Pow2MontgomeryModBenchmarks
 {
     private const int SampleCount = 256;
 
-    private readonly MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData[] _smallDivisors = new MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData[SampleCount];
-    private readonly MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData[] _largeDivisors = new MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData[SampleCount];
+    private readonly MontgomeryDivisorData[] _smallDivisors = new MontgomeryDivisorData[SampleCount];
+    private readonly MontgomeryDivisorData[] _largeDivisors = new MontgomeryDivisorData[SampleCount];
     private readonly ulong[] _smallExponents = new ulong[SampleCount];
     private readonly ulong[] _largeExponents = new ulong[SampleCount];
     private readonly ulong[] _smallCycles = new ulong[SampleCount];
@@ -184,7 +184,7 @@ public class Pow2MontgomeryModBenchmarks
         return checksum;
     }
 
-    private void GetData(out ulong[] exponents, out MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData[] divisors, out ulong[] cycles)
+    private void GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out ulong[] cycles)
     {
         if (Scale == InputScale.Small)
         {
@@ -217,14 +217,14 @@ public class Pow2MontgomeryModBenchmarks
         return (modulus, (ulong)bitLength);
     }
 
-    private static MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData CreateMontgomeryDivisorData(ulong modulus)
+    private static MontgomeryDivisorData CreateMontgomeryDivisorData(ulong modulus)
     {
         if (modulus <= 1UL || (modulus & 1UL) == 0UL)
         {
-            return new MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData(modulus, 0UL, 0UL, 0UL);
+            return new MontgomeryDivisorData(modulus, 0UL, 0UL, 0UL);
         }
 
-        return new MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData(
+        return new MontgomeryDivisorData(
             modulus,
             ComputeMontgomeryNPrime(modulus),
             ComputeMontgomeryResidue(1UL, modulus),
@@ -245,7 +245,7 @@ public class Pow2MontgomeryModBenchmarks
         return unchecked(0UL - inv);
     }
 
-    private static ulong Pow2MontgomeryModLeftToRight(ulong exponent, in MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData divisor)
+    private static ulong Pow2MontgomeryModLeftToRight(ulong exponent, in MontgomeryDivisorData divisor)
     {
         ulong modulus = divisor.Modulus;
         if (modulus <= 1UL || (modulus & 1UL) == 0UL)
@@ -277,7 +277,7 @@ public class Pow2MontgomeryModBenchmarks
         return result.MontgomeryMultiply(1UL, modulus, nPrime);
     }
 
-    private static ulong Pow2MontgomeryModBatched4(ulong exponent, in MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData divisor)
+    private static ulong Pow2MontgomeryModBatched4(ulong exponent, in MontgomeryDivisorData divisor)
     {
         ulong modulus = divisor.Modulus;
         if (modulus <= 1UL || (modulus & 1UL) == 0UL)
@@ -326,7 +326,7 @@ public class Pow2MontgomeryModBenchmarks
         return result.MontgomeryMultiply(1UL, modulus, nPrime);
     }
 
-    private static ulong Pow2MontgomeryModSlidingWindow(ulong exponent, in MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData divisor)
+    private static ulong Pow2MontgomeryModSlidingWindow(ulong exponent, in MontgomeryDivisorData divisor)
     {
         ulong modulus = divisor.Modulus;
         if (modulus <= 1UL || (modulus & 1UL) == 0UL)
