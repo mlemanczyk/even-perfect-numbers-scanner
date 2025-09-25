@@ -171,8 +171,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             byte hit;
             if (useCycles)
             {
-                using DivisorCycleCache.Lease cycleLease = DivisorCycleCache.Shared.Acquire(divisor);
-                ulong divisorCycle = cycleLease.GetCycle(divisor);
+                DivisorCycleCache.CycleBlock cycleBlock = DivisorCycleCache.Shared.Acquire(divisor);
+                ulong divisorCycle = cycleBlock.GetCycle(divisor);
                 hit = CheckDivisor(prime, divisorCycle != 0UL, divisorCycle, divisorData);
             }
             else
