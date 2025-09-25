@@ -136,7 +136,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			Action<Index1D, ulong, byte, ulong, ArrayView<MontgomeryDivisorData>, ArrayView<byte>> kernel,
 			MemoryBuffer1D<MontgomeryDivisorData, Stride1D.Dense> divisorsBuffer,
 			MemoryBuffer1D<byte, Stride1D.Dense> hitsBuffer,
-			ulong[] divisors,
+			in ulong[] divisors,
 			byte[] hits,
 			MontgomeryDivisorData[] divisorData,
 			out ulong lastProcessed,
@@ -167,6 +167,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		ArrayView1D<byte, Stride1D.Dense> hitsView;
 		DivisorCycleCache divisorCyclesCache = DivisorCycleCache.Shared;
 		DivisorCycleCache.CycleBlock? cycleLease = useCycles ? divisorCyclesCache.Acquire(currentDivisor) : null;
+		ulong cycleLeaseEnd = cycleLease?.End ?? 0UL;
 
 		while (currentDivisor <= allowedMax)
 		{
@@ -181,12 +182,13 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 				bool includeDivisor = true;
 				if (useCycles)
 				{
-					if (currentDivisor > cycleLease!.End)
+					if (currentDivisor > cycleLeaseEnd)
 					{
 						cycleLease = divisorCyclesCache.Acquire(currentDivisor);
+						cycleLeaseEnd = cycleLease.End;
 					}
 
-					cycle = prime % cycleLease.GetCycle(currentDivisor);
+					cycle = prime % cycleLease!.GetCycle(currentDivisor);
 					if (cycle != 0UL)
 					{
 						includeDivisor = false;
@@ -358,11 +360,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 		public void CheckDivisor(ulong divisor, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
 		{
-			if (_disposed)
-			{
-				throw new ObjectDisposedException(nameof(DivisorScanSession));
-			}
-
 			MersenneNumberDivisorByDivisorGpuTester owner = _owner;
 			int gpuBatchSize = owner._gpuBatchSize,
 				primesLength = primes.Length;
@@ -379,8 +376,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			ArrayView1D<ulong, Stride1D.Dense> exponentView, exponentsView = _exponentsBuffer.View;
 			ArrayView1D<ulong, Stride1D.Dense> resultView, resultsView = _resultsBuffer.View;
 
-			Span<ulong> exponentSlice, hostSpan = _hostBuffer.AsSpan();
-			Span<int> positionSpan = _positionBuffer.AsSpan();
+			Span<ulong> exponentSlice, hostSpan = new(_hostBuffer);
+			Span<int> positionSpan = new(_positionBuffer);
 			Span<byte> hitsSlice;
 			ReadOnlySpan<ulong> primesSlice;
 
@@ -406,8 +403,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 							continue;
 						}
 
-						hostSpan[computeCount] = residue;
 						positionSpan[computeCount] = i;
+						hostSpan[computeCount] = residue;
 						computeCount++;
 					}
 				}
@@ -415,8 +412,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 				{
 					for (i = 0; i < batchSize; i++)
 					{
-						hostSpan[computeCount] = primesSlice[i];
 						positionSpan[computeCount] = i;
+						hostSpan[computeCount] = primesSlice[i];
 						computeCount++;
 					}
 				}
@@ -450,11 +447,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			}
 
 			_disposed = true;
-			_owner.ReturnSession(this);
+			_owner._sessionPool.Add(this);
 		}
 	}
-
-	internal void ReturnSession(DivisorScanSession session) => _sessionPool.Add(session);
 
 	private static void ComputePrimeExponentKernel(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
 	{
