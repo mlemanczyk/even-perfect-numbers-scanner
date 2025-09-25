@@ -12,61 +12,16 @@ namespace PerfectNumbers.Core;
 
 public sealed class DivisorCycleCache
 {
-    internal sealed class CycleBlock
-    {
-        internal CycleBlock(int index, ulong start, ulong[] cycles)
-        {
-            Index = index;
-            Start = start;
-            Cycles = cycles;
-            End = start + (ulong)cycles.Length - 1UL;
-        }
+    public sealed class CycleBlock(int index, ulong start, ulong[] cycles)
+	{
+		internal readonly int Index = index;
+		internal readonly ulong Start = start;
+		internal readonly ulong End = start + (ulong)cycles.Length - 1UL;
+		internal readonly ulong[] Cycles = cycles;
 
-        internal int Index { get; }
-
-        internal ulong Start { get; }
-
-        internal ulong End { get; }
-
-        internal ulong[] Cycles { get; }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal ulong GetCycle(ulong divisor)
-        {
-            if (divisor < Start || divisor > End)
-            {
-                return 0UL;
-            }
-
-            return Cycles[(int)(divisor - Start)];
-        }
-    }
-
-    public struct Lease : IDisposable
-    {
-        private CycleBlock? _block;
-
-        internal Lease(CycleBlock block)
-        {
-            _block = block;
-        }
-
-        public readonly bool IsValid => _block is not null;
-
-        public readonly ulong Start => _block?.Start ?? 0UL;
-
-        public readonly ulong End => _block?.End ?? 0UL;
-
-        public readonly ulong[]? Values => _block?.Cycles;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly ulong GetCycle(ulong divisor) => _block?.GetCycle(divisor) ?? 0UL;
-
-        public void Dispose()
-        {
-            _block = null;
-        }
-    }
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public ulong GetCycle(ulong divisor) => Cycles[(int)(divisor - Start)];
+	}
 
     private const int CycleGenerationBatchSize = 262_144;
     private const int GpuCycleStepsPerInvocation = 524_288 / 16;
@@ -115,15 +70,14 @@ public sealed class DivisorCycleCache
         }
     }
 
-    public Lease Acquire(ulong divisor)
+    public CycleBlock Acquire(ulong divisor)
     {
         if (divisor <= _baseBlock.End)
         {
-            return new Lease(_baseBlock);
+            return _baseBlock;
         }
 
-        CycleBlock block = AcquireDynamicBlock(divisor);
-        return new Lease(block);
+        return AcquireDynamicBlock(divisor);
     }
 
     private CycleBlock AcquireDynamicBlock(ulong divisor)
