@@ -69,10 +69,13 @@ public sealed class DivisorCycleCache
     }
 
     private const int CycleGenerationBatchSize = 262_144;
+    private const int GpuCycleStepsPerInvocation = 524_288;
+    private const byte ByteZero = 0;
+    private const byte ByteOne = 1;
 
     private readonly object _sync = new();
     private readonly ConcurrentDictionary<int, Task<CycleBlock>> _pending = new();
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>> _gpuKernelCache = new(AcceleratorReferenceComparer.Instance);
+    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>> _gpuKernelCache = new(AcceleratorReferenceComparer.Instance);
     private CycleBlock _baseBlock = null!;
     private CycleBlock? _activeBlock;
     private CycleBlock? _prefetchedBlock;
@@ -328,42 +331,102 @@ public sealed class DivisorCycleCache
         try
         {
             Accelerator accelerator = gpuLease.Accelerator;
-            Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> kernel = _gpuKernelCache.GetOrAdd(accelerator, LoadKernel);
+            Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> kernel = _gpuKernelCache.GetOrAdd(accelerator, LoadKernel);
 
             int length = destination.Length;
             int chunkCapacity = Math.Min(length, CycleGenerationBatchSize);
             ulong[] divisors = ArrayPool<ulong>.Shared.Rent(chunkCapacity);
+            ulong[] powScratch = ArrayPool<ulong>.Shared.Rent(chunkCapacity);
+            ulong[] orderScratch = ArrayPool<ulong>.Shared.Rent(chunkCapacity);
+            byte[] statusScratch = ArrayPool<byte>.Shared.Rent(chunkCapacity);
 
             try
             {
                 using MemoryBuffer1D<ulong, Stride1D.Dense> divisorBuffer = accelerator.Allocate1D<ulong>(chunkCapacity);
+                using MemoryBuffer1D<ulong, Stride1D.Dense> powBuffer = accelerator.Allocate1D<ulong>(chunkCapacity);
+                using MemoryBuffer1D<ulong, Stride1D.Dense> orderBuffer = accelerator.Allocate1D<ulong>(chunkCapacity);
                 using MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = accelerator.Allocate1D<ulong>(chunkCapacity);
+                using MemoryBuffer1D<byte, Stride1D.Dense> statusBuffer = accelerator.Allocate1D<byte>(chunkCapacity);
 
                 int offset = 0;
                 while (offset < length)
                 {
                     int batchSize = Math.Min(chunkCapacity, length - offset);
                     Span<ulong> divisorsSpan = divisors.AsSpan(0, batchSize);
+                    Span<ulong> destinationSpan = destination.AsSpan(offset, batchSize);
+                    Span<ulong> powSpan = powScratch.AsSpan(0, batchSize);
+                    Span<ulong> orderSpan = orderScratch.AsSpan(0, batchSize);
+                    Span<byte> statusSpan = statusScratch.AsSpan(0, batchSize);
+
+                    int pending = 0;
                     for (int i = 0; i < batchSize; i++)
                     {
-                        divisorsSpan[i] = start + (ulong)(offset + i);
+                        ulong divisorValue = start + (ulong)(offset + i);
+                        divisorsSpan[i] = divisorValue;
+
+                        if ((divisorValue & (divisorValue - 1UL)) == 0UL)
+                        {
+                            destinationSpan[i] = 1UL;
+                            powSpan[i] = 0UL;
+                            orderSpan[i] = 1UL;
+                            statusSpan[i] = ByteOne;
+                        }
+                        else
+                        {
+                            ulong initialPow = 2UL;
+                            if (initialPow >= divisorValue)
+                            {
+                                initialPow -= divisorValue;
+                            }
+
+                            destinationSpan[i] = 0UL;
+                            powSpan[i] = initialPow;
+                            orderSpan[i] = 1UL;
+                            statusSpan[i] = ByteZero;
+                            pending++;
+                        }
                     }
 
                     ArrayView1D<ulong, Stride1D.Dense> divisorView = divisorBuffer.View.SubView(0, batchSize);
+                    ArrayView1D<ulong, Stride1D.Dense> powView = powBuffer.View.SubView(0, batchSize);
+                    ArrayView1D<ulong, Stride1D.Dense> orderView = orderBuffer.View.SubView(0, batchSize);
                     ArrayView1D<ulong, Stride1D.Dense> resultView = resultBuffer.View.SubView(0, batchSize);
+                    ArrayView1D<byte, Stride1D.Dense> statusView = statusBuffer.View.SubView(0, batchSize);
 
                     divisorView.CopyFromCPU(ref MemoryMarshal.GetReference(divisorsSpan), batchSize);
-                    kernel(batchSize, divisorView, resultView);
-                    accelerator.Synchronize();
+                    powView.CopyFromCPU(ref MemoryMarshal.GetReference(powSpan), batchSize);
+                    orderView.CopyFromCPU(ref MemoryMarshal.GetReference(orderSpan), batchSize);
+                    resultView.CopyFromCPU(ref MemoryMarshal.GetReference(destinationSpan), batchSize);
+                    statusView.CopyFromCPU(ref MemoryMarshal.GetReference(statusSpan), batchSize);
 
-                    Span<ulong> destinationSpan = destination.AsSpan(offset, batchSize);
+                    while (pending > 0)
+                    {
+                        kernel(batchSize, divisorView, powView, orderView, resultView, statusView);
+                        accelerator.Synchronize();
+
+                        statusView.CopyToCPU(ref MemoryMarshal.GetReference(statusSpan), batchSize);
+
+                        pending = 0;
+                        for (int i = 0; i < batchSize; i++)
+                        {
+                            if (statusSpan[i] == ByteZero)
+                            {
+                                pending++;
+                            }
+                        }
+                    }
+
                     resultView.CopyToCPU(ref MemoryMarshal.GetReference(destinationSpan), batchSize);
+
                     offset += batchSize;
                 }
             }
             finally
             {
                 ArrayPool<ulong>.Shared.Return(divisors, clearArray: false);
+                ArrayPool<ulong>.Shared.Return(powScratch, clearArray: false);
+                ArrayPool<ulong>.Shared.Return(orderScratch, clearArray: false);
+                ArrayPool<byte>.Shared.Return(statusScratch, clearArray: false);
             }
         }
         finally
@@ -373,14 +436,52 @@ public sealed class DivisorCycleCache
         }
     }
 
-    private static Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> LoadKernel(Accelerator accelerator)
+    private static Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> LoadKernel(Accelerator accelerator)
     {
-        return accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(GpuDivisorCycleKernel);
+        return accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>(GpuAdvanceDivisorCyclesKernel);
     }
 
-    private static void GpuDivisorCycleKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> divisors, ArrayView1D<ulong, Stride1D.Dense> cycles)
+    private static void GpuAdvanceDivisorCyclesKernel(
+        Index1D index,
+        ArrayView1D<ulong, Stride1D.Dense> divisors,
+        ArrayView1D<ulong, Stride1D.Dense> pow,
+        ArrayView1D<ulong, Stride1D.Dense> order,
+        ArrayView1D<ulong, Stride1D.Dense> cycles,
+        ArrayView1D<byte, Stride1D.Dense> status)
     {
-        cycles[index] = MersenneDivisorCycles.CalculateCycleLengthGpu(divisors[index]);
+        if (status[index] != ByteZero)
+        {
+            return;
+        }
+
+        ulong divisor = divisors[index];
+        ulong currentPow = pow[index];
+        ulong currentOrder = order[index];
+        int steps = GpuCycleStepsPerInvocation;
+
+        do
+        {
+            currentPow += currentPow;
+            if (currentPow >= divisor)
+            {
+                currentPow -= divisor;
+            }
+
+            currentOrder++;
+
+            if (currentPow == 1UL)
+            {
+                cycles[index] = currentOrder;
+                status[index] = ByteOne;
+                pow[index] = currentPow;
+                order[index] = currentOrder;
+                return;
+            }
+        }
+        while (--steps != 0);
+
+        pow[index] = currentPow;
+        order[index] = currentOrder;
     }
 
     private sealed class AcceleratorReferenceComparer : IEqualityComparer<Accelerator>
