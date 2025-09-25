@@ -1,8 +1,9 @@
+using System;
+using System.Reflection;
 using FluentAssertions;
 using PerfectNumbers.Core;
-using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Cpu;
-using System.Reflection;
+using PerfectNumbers.Core.Gpu;
 using Xunit;
 
 namespace PerfectNumbers.Core.Tests;
