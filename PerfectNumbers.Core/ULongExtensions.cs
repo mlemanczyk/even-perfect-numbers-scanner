@@ -246,6 +246,23 @@ public static class ULongExtensions
                 return result.MontgomeryMultiply(1UL, modulus, nPrime);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Pow2MontgomeryModWithCycle(this ulong exponent, ulong cycleLength, in MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData divisor)
+        {
+                if (cycleLength == 0UL)
+                {
+                        return exponent.Pow2MontgomeryMod(divisor);
+                }
+
+                ulong rotationCount = exponent % cycleLength;
+                if (rotationCount == 0UL)
+                {
+                        return 1UL;
+                }
+
+                return rotationCount.Pow2MontgomeryMod(divisor);
+        }
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static UInt128 PowMod(this ulong exponent, UInt128 modulus)
 	{

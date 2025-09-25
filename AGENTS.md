@@ -56,7 +56,9 @@ Never ever run tests marked with trait Category = Slow. Only run tests with cate
 
 There is only one agents file - this one. Don't search for another one.
 
-Always use indentation with 4 spaces and / or 1 tab in source code files.
+Always use indentation with 4 spaces in source code files. Do not use 8-space indentation or tabs.
+
+Keep the divisor cycle cache limited to three blocks in memory (the base snapshot plus at most two additional blocks) and always start background computation of the next block immediately after loading the first block from disk and whenever work begins on the most recently generated block.
 
 All code, comments, commit messages, branch names and PR descriptions must be written in American English.
 

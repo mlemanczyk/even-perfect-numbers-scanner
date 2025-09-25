@@ -457,7 +457,8 @@ internal static class Program
 			MersenneDivisorCycles.Shared.LoadFrom(cyclesPath);
 		}
 
-		DivisorCycleCache.Shared.ReloadFromCurrentSnapshot();
+                DivisorCycleCache.Shared.ConfigureGeneratorDevice(orderOnGpu);
+                DivisorCycleCache.Shared.ReloadFromCurrentSnapshot();
 
 		Console.WriteLine("Divisor cycles are ready");
 
