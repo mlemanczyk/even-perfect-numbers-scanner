@@ -13,25 +13,25 @@ public sealed class MersenneNumberDivisorGpuTester
 	private Action<Index1D, ulong, GpuUInt128, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
 			_kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, ArrayView<byte>>(Kernel));
 
-	public static void BuildDivisorCandidates()
-	{
+        public static void BuildDivisorCandidates()
+        {
                 ulong[] snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
-                (ulong divisor, ulong cycle)[] list = new (ulong divisor, ulong cycle)[snapshot.Length / 2];
+                (ulong divisor, uint cycle)[] list = new (ulong divisor, uint cycle)[snapshot.Length / 2];
                 ulong cycle;
-		int count = 0, i, snapshotLength = snapshot.Length;
-		for (i = 3; i < snapshotLength; i += 2)
-		{
-			cycle = snapshot[i];
-			if (cycle == 0U)
-			{
-				continue;
-			}
+                int count = 0, i, snapshotLength = snapshot.Length;
+                for (i = 3; i < snapshotLength; i += 2)
+                {
+                        cycle = snapshot[i];
+                        if (cycle == 0U)
+                        {
+                                continue;
+                        }
 
-			list[count++] = ((ulong)i, cycle);
-		}
+                        list[count++] = ((ulong)i, (uint)cycle);
+                }
 
                 _divisorCandidates = count == 0 ? [] : list[..count];
-	}
+        }
 
 	public bool IsDivisible(ulong exponent, UInt128 divisor)
 	{
@@ -52,7 +52,7 @@ public sealed class MersenneNumberDivisorGpuTester
 		return divisible;
 	}
 
-        private static (ulong divisor, ulong cycle)[]? _divisorCandidates = Array.Empty<(ulong divisor, ulong cycle)>();
+        private static (ulong divisor, uint cycle)[]? _divisorCandidates = Array.Empty<(ulong divisor, uint cycle)>();
 
 	public bool IsPrime(ulong p, UInt128 d, ulong divisorCyclesSearchLimit, out bool divisorsExhausted)
 	{
@@ -68,17 +68,17 @@ public sealed class MersenneNumberDivisorGpuTester
 			return true;
 		}
 
-		if (_divisorCandidates is { Length: > 0 } candidates)
-		{
-			int len = candidates.Length;
-                        ulong cycle;
-			for (int k = 0; k < len; k++)
-			{
-				(ulong dSmall, cycle) = candidates[k];
-				if (p % cycle != 0UL)
-				{
-					continue;
-				}
+                if (_divisorCandidates is { Length: > 0 } candidates)
+                {
+                        int len = candidates.Length;
+                        uint cycle;
+                        for (int k = 0; k < len; k++)
+                        {
+                                (ulong dSmall, cycle) = candidates[k];
+                                if (p % cycle != 0UL)
+                                {
+                                        continue;
+                                }
 
 				if (IsDivisible(p, dSmall))
 				{

@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using ILGPU;
 using ILGPU.Runtime;
@@ -12,16 +13,52 @@ namespace PerfectNumbers.Core;
 
 public sealed class DivisorCycleCache
 {
-    public sealed class CycleBlock(int index, ulong start, ulong[] cycles)
-	{
-		internal readonly int Index = index;
-		internal readonly ulong Start = start;
-		internal readonly ulong End = start + (ulong)cycles.Length - 1UL;
-		internal readonly ulong[] Cycles = cycles;
+    public sealed class CycleBlock : IDisposable
+    {
+        private readonly DivisorCycleCache _owner;
+        private int _referenceCount;
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public ulong GetCycle(ulong divisor) => Cycles[(int)(divisor - Start)];
-	}
+        internal CycleBlock(DivisorCycleCache owner, int index, ulong start, in ulong[] cycles)
+        {
+            _owner = owner;
+            Index = index;
+            Start = start;
+            End = start + (ulong)cycles.Length - 1UL;
+            Cycles = cycles;
+        }
+
+        internal int Index { get; }
+
+        internal ulong Start { get; }
+
+        internal ulong End { get; }
+
+        internal ulong[] Cycles { get; }
+
+        internal int ReferenceCount => Volatile.Read(ref _referenceCount);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ulong GetCycle(ulong divisor) => Cycles[(int)(divisor - Start)];
+
+        internal void Retain()
+        {
+            Interlocked.Increment(ref _referenceCount);
+        }
+
+        public void Dispose()
+        {
+            int remaining = Interlocked.Decrement(ref _referenceCount);
+            if (remaining < 0)
+            {
+                throw new InvalidOperationException("Cycle block released more times than it was acquired.");
+            }
+
+            if (remaining == 0)
+            {
+                _owner.OnCycleBlockReleased(this);
+            }
+        }
+    }
 
     private const int CycleGenerationBatchSize = 262_144;
     private const byte ByteZero = 0;
@@ -63,24 +100,37 @@ public sealed class DivisorCycleCache
 
     private void Initialize(ulong[] snapshot)
     {
+        CycleBlock? activeToDispose = null;
+        CycleBlock? prefetchedToDispose = null;
+
         lock (_sync)
         {
+            if (_activeBlock is not null && _activeBlock.Index != 0)
+            {
+                activeToDispose = _activeBlock;
+            }
+
+            if (_prefetchedBlock is not null && _prefetchedBlock.Index != 0)
+            {
+                prefetchedToDispose = _prefetchedBlock;
+            }
+
             _pending.Clear();
-            _baseBlock = new CycleBlock(index: 0, start: 0UL, snapshot);
+            _baseBlock = new CycleBlock(this, index: 0, start: 0UL, snapshot);
             _activeBlock = null;
             _prefetchedBlock = null;
             StartPrefetchLocked(1);
         }
+
+        activeToDispose?.Dispose();
+        prefetchedToDispose?.Dispose();
     }
 
     public CycleBlock Acquire(ulong divisor)
     {
-        if (divisor <= _baseBlock.End)
-        {
-            return _baseBlock;
-        }
-
-        return AcquireDynamicBlock(divisor);
+        CycleBlock block = divisor <= _baseBlock.End ? _baseBlock : AcquireDynamicBlock(divisor);
+        block.Retain();
+        return block;
     }
 
     private CycleBlock AcquireDynamicBlock(ulong divisor)
@@ -149,19 +199,40 @@ public sealed class DivisorCycleCache
             return;
         }
 
+        CycleBlock? previousActive = _activeBlock;
         _activeBlock = prefetched;
         _prefetchedBlock = null;
+        prefetched.Retain();
+        prefetched.Dispose();
+
+        if (previousActive is not null && previousActive.Index != 0 && previousActive.Index != prefetched.Index)
+        {
+            previousActive.Dispose();
+        }
+
         StartPrefetchLocked(prefetched.Index + 1);
     }
 
     private void SetActiveBlockLocked(CycleBlock block)
     {
+        CycleBlock? previousActive = _activeBlock;
         _activeBlock = block;
+        block.Retain();
 
         CycleBlock? prefetched = _prefetchedBlock;
         if (prefetched is not null && prefetched.Index != block.Index + 1)
         {
+            if (prefetched.Index != 0)
+            {
+                prefetched.Dispose();
+            }
+
             _prefetchedBlock = null;
+        }
+
+        if (previousActive is not null && previousActive.Index != 0 && previousActive.Index != block.Index)
+        {
+            previousActive.Dispose();
         }
 
         StartPrefetchLocked(block.Index + 1);
@@ -216,12 +287,59 @@ public sealed class DivisorCycleCache
         CycleBlock? active = _activeBlock;
         if (active is not null && blockIndex != active.Index + 1)
         {
+            MontgomeryDivisorDataCache.ReleaseBlock(block);
             return;
         }
 
-        if (_prefetchedBlock is null || _prefetchedBlock.Index < blockIndex)
+        CycleBlock? previousPrefetched = _prefetchedBlock;
+        if (ReferenceEquals(previousPrefetched, block))
         {
+            return;
+        }
+
+        if (_prefetchedBlock is null || _prefetchedBlock.Index <= blockIndex)
+        {
+            if (previousPrefetched is not null && previousPrefetched.Index != 0)
+            {
+                previousPrefetched.Dispose();
+            }
+
             _prefetchedBlock = block;
+            block.Retain();
+        }
+        else
+        {
+            MontgomeryDivisorDataCache.ReleaseBlock(block);
+        }
+    }
+
+    private void OnCycleBlockReleased(CycleBlock block)
+    {
+        if (block.Index == 0)
+        {
+            return;
+        }
+
+        for (int attempt = 0; attempt < 8; attempt++)
+        {
+            if (block.ReferenceCount != 0)
+            {
+                return;
+            }
+
+            Thread.SpinWait(1 << attempt);
+        }
+
+        bool stillTracked;
+
+        lock (_sync)
+        {
+            stillTracked = ReferenceEquals(_activeBlock, block) || ReferenceEquals(_prefetchedBlock, block);
+        }
+
+        if (!stillTracked && block.ReferenceCount == 0)
+        {
+            MontgomeryDivisorDataCache.ReleaseBlock(block);
         }
     }
 
@@ -245,7 +363,7 @@ public sealed class DivisorCycleCache
             ComputeCyclesCpu(start, cycles);
         }
 
-        return new CycleBlock(blockIndex, start, cycles);
+        return new CycleBlock(this, blockIndex, start, cycles);
     }
 
     private int GetBlockIndex(ulong divisor)

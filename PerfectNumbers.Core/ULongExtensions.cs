@@ -214,7 +214,7 @@ public static class ULongExtensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ulong Pow2MontgomeryMod(this ulong exponent, in MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData divisor)
+        public static ulong Pow2MontgomeryMod(this ulong exponent, in MontgomeryDivisorData divisor)
         {
                 ulong modulus = divisor.Modulus;
                 if (modulus <= 1UL || (modulus & 1UL) == 0UL)
@@ -247,7 +247,7 @@ public static class ULongExtensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ulong Pow2MontgomeryModWithCycle(this ulong exponent, ulong cycleLength, in MersenneNumberDivisorByDivisorGpuTester.MontgomeryDivisorData divisor)
+        public static ulong Pow2MontgomeryModWithCycle(this ulong exponent, ulong cycleLength, in MontgomeryDivisorData divisor)
         {
                 if (cycleLength == 0UL)
                 {
@@ -255,12 +255,18 @@ public static class ULongExtensions
                 }
 
                 ulong rotationCount = exponent % cycleLength;
-                if (rotationCount == 0UL)
+                return rotationCount.Pow2MontgomeryModFromCycleRemainder(divisor);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong Pow2MontgomeryModFromCycleRemainder(this ulong reducedExponent, in MontgomeryDivisorData divisor)
+        {
+                if (reducedExponent == 0UL)
                 {
                         return 1UL;
                 }
 
-                return rotationCount.Pow2MontgomeryMod(divisor);
+                return reducedExponent.Pow2MontgomeryMod(divisor);
         }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

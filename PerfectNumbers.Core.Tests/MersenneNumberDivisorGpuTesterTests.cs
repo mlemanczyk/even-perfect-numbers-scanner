@@ -1,6 +1,7 @@
 using FluentAssertions;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
+using PerfectNumbers.Core.Cpu;
 using System.Reflection;
 using Xunit;
 
@@ -37,7 +38,7 @@ public class MersenneNumberDivisorGpuTesterTests
         var tester = new MersenneNumberDivisorGpuTester();
         typeof(MersenneNumberDivisorGpuTester)
             .GetField("_divisorCandidates", BindingFlags.NonPublic | BindingFlags.Static)!
-            .SetValue(null, Array.Empty<(ulong, ulong)>());
+            .SetValue(null, Array.Empty<(ulong, uint)>());
 
         tester.IsPrime(11UL, UInt128.Zero, 0UL, out bool divisorsExhausted).Should().BeTrue();
         divisorsExhausted.Should().BeFalse();
@@ -104,6 +105,22 @@ public class MersenneNumberDivisorGpuTesterTests
 
     [Fact]
     [Trait("Category", "Fast")]
+    public void ByDivisor_gpu_tester_uses_cycle_remainders_per_divisor()
+    {
+        var tester = new MersenneNumberDivisorByDivisorGpuTester
+        {
+            UseDivisorCycles = true,
+            GpuBatchSize = 8,
+        };
+
+        tester.ConfigureFromMaxPrime(13UL);
+
+        tester.IsPrime(11UL, out bool divisorsExhausted).Should().BeFalse();
+        divisorsExhausted.Should().BeTrue();
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
     public void ByDivisor_session_checks_divisors_across_primes()
     {
         var tester = new MersenneNumberDivisorByDivisorGpuTester();
@@ -121,6 +138,50 @@ public class MersenneNumberDivisorGpuTesterTests
         ulong cycle31 = MersenneDivisorCycles.CalculateCycleLength(31UL);
         session.CheckDivisor(31UL, cycle31, primes, hits);
         hits.Should().ContainInOrder(new byte[] { 1, 0, 0, 0 });
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void ByDivisor_gpu_session_reuses_cycle_remainders_across_batches()
+    {
+        var tester = new MersenneNumberDivisorByDivisorGpuTester
+        {
+            UseDivisorCycles = true,
+            GpuBatchSize = 2,
+        };
+
+        tester.ConfigureFromMaxPrime(17UL);
+
+        using var session = tester.CreateDivisorSession();
+        ulong[] primes = { 5UL, 7UL, 11UL, 13UL, 17UL };
+        byte[] hits = new byte[primes.Length];
+
+        ulong cycle23 = MersenneDivisorCycles.CalculateCycleLength(23UL);
+        session.CheckDivisor(23UL, cycle23, primes, hits);
+
+        hits.Should().ContainInOrder(new byte[] { 0, 0, 1, 0, 0 });
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void ByDivisor_cpu_session_reuses_cycle_remainders_across_primes()
+    {
+        var tester = new MersenneNumberDivisorByDivisorCpuTester
+        {
+            UseDivisorCycles = true,
+            BatchSize = 2,
+        };
+
+        tester.ConfigureFromMaxPrime(17UL);
+
+        using var session = tester.CreateDivisorSession();
+        ulong[] primes = { 5UL, 7UL, 11UL, 13UL, 17UL };
+        byte[] hits = new byte[primes.Length];
+
+        ulong cycle23 = MersenneDivisorCycles.CalculateCycleLength(23UL);
+        session.CheckDivisor(23UL, cycle23, primes, hits);
+
+        hits.Should().ContainInOrder(new byte[] { 0, 0, 1, 0, 0 });
     }
 }
 
