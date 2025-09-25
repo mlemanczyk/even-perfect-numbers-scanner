@@ -381,7 +381,7 @@ internal static class Program
 			{
 				useGpuCycles = !arg.AsSpan(arg.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
 			}
-			else if (arg.StartsWith("--divisor-cycles-batch-size=", StringComparison.OrdinalIgnoreCase))
+			else if (arg.StartsWith("--divisor-cycles-batch=", StringComparison.OrdinalIgnoreCase))
 			{
 				cyclesBatchSize = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
 			}
@@ -457,6 +457,7 @@ internal static class Program
 			MersenneDivisorCycles.Shared.LoadFrom(cyclesPath);
 		}
 
+		DivisorCycleCache.SetDivisorCyclesBatchSize(cyclesBatchSize);
 		DivisorCycleCache.Shared.ConfigureGeneratorDevice(orderOnGpu);
 		DivisorCycleCache.Shared.ReloadFromCurrentSnapshot();
 
@@ -521,7 +522,7 @@ internal static class Program
 			_divisorTester = new MersenneNumberDivisorGpuTester();
 		}
 		else if (useByDivisor)
-		{
+		{			
 			_byDivisorTester = mersenneOnGpu
 					? new MersenneNumberDivisorByDivisorGpuTester()
 					: new MersenneNumberDivisorByDivisorCpuTester();
@@ -1313,7 +1314,7 @@ internal static class Program
 		Console.WriteLine("  --results-prefix=<text> prefix to prepend to results filename");
 		Console.WriteLine("  --divisor-cycles=<path>       divisor cycles data file");
 		Console.WriteLine("  --divisor-cycles-device=cpu|gpu  device for cycles generation (default gpu)");
-		Console.WriteLine("  --divisor-cycles-batch-size=<value> batch size for cycles generation (default 512)");
+		Console.WriteLine("  --divisor-cycles-batch=<value> batch size for cycles generation (default 512)");
 		Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
 		Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor");
 		Console.WriteLine("  --use-divisor-cycles=true|false  enable divisor cycle filtering in --mersenne=bydivisor (default false)");

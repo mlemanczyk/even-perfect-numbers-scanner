@@ -24,25 +24,28 @@ public sealed class DivisorCycleCache
 	}
 
     private const int CycleGenerationBatchSize = 262_144;
-    private const int GpuCycleStepsPerInvocation = 524_288 / 16;
     private const byte ByteZero = 0;
     private const byte ByteOne = 1;
 
     private readonly object _sync = new();
     private readonly ConcurrentDictionary<int, Task<CycleBlock>> _pending = new();
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>> _gpuKernelCache = new(AcceleratorReferenceComparer.Instance);
+    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>> _gpuKernelCache = new(AcceleratorReferenceComparer.Instance);
     private CycleBlock _baseBlock = null!;
     private CycleBlock? _activeBlock;
     private CycleBlock? _prefetchedBlock;
     private bool _useGpuGeneration = true;
+	private readonly int _divisorCyclesBatchSize;
+	private static int _sharedDivisorCyclesBatchSize = GpuConstants.GpuCycleStepsPerInvocation;
 
-    public static DivisorCycleCache Shared { get; } = new DivisorCycleCache();
+	public static void SetDivisorCyclesBatchSize(int divisorCyclesBatchSize) => _sharedDivisorCyclesBatchSize = divisorCyclesBatchSize;
+    public static DivisorCycleCache Shared { get; } = new DivisorCycleCache(_sharedDivisorCyclesBatchSize);
 
-    private DivisorCycleCache()
+    private DivisorCycleCache(int divisorCyclesBatchSize)
     {
+		_divisorCyclesBatchSize = divisorCyclesBatchSize;
         ulong[] snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
         Initialize(snapshot);
-    }
+	}
 
     public void ReloadFromCurrentSnapshot()
     {
@@ -235,7 +238,7 @@ public sealed class DivisorCycleCache
 
         if (_useGpuGeneration)
         {
-            ComputeCyclesGpu(start, cycles);
+            ComputeCyclesGpu(start, cycles, _divisorCyclesBatchSize);
         }
         else
         {
@@ -277,7 +280,7 @@ public sealed class DivisorCycleCache
         }
     }
 
-    private void ComputeCyclesGpu(ulong start, ulong[] destination)
+    private void ComputeCyclesGpu(ulong start, ulong[] destination, int divisorCyclesBatchSize)
     {
         var gpuLease = GpuKernelPool.GetKernel(_useGpuGeneration);
         var execution = gpuLease.EnterExecutionScope();
@@ -285,7 +288,7 @@ public sealed class DivisorCycleCache
         try
         {
             Accelerator accelerator = gpuLease.Accelerator;
-            Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> kernel = _gpuKernelCache.GetOrAdd(accelerator, LoadKernel);
+            Action<Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> kernel = _gpuKernelCache.GetOrAdd(accelerator, LoadKernel);
 
             int length = destination.Length;
             int chunkCapacity = Math.Min(length, CycleGenerationBatchSize);
@@ -355,7 +358,7 @@ public sealed class DivisorCycleCache
 
                     while (pending > 0)
                     {
-                        kernel(batchSize, divisorView, powView, orderView, resultView, statusView);
+                        kernel(batchSize, divisorCyclesBatchSize, divisorView, powView, orderView, resultView, statusView);
                         accelerator.Synchronize();
 
                         statusView.CopyToCPU(ref MemoryMarshal.GetReference(statusSpan), batchSize);
@@ -390,13 +393,14 @@ public sealed class DivisorCycleCache
         }
     }
 
-    private static Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> LoadKernel(Accelerator accelerator)
+    private static Action<Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> LoadKernel(Accelerator accelerator)
     {
-        return accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>(GpuAdvanceDivisorCyclesKernel);
+        return accelerator.LoadAutoGroupedStreamKernel<Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>(GpuAdvanceDivisorCyclesKernel);
     }
 
     private static void GpuAdvanceDivisorCyclesKernel(
         Index1D index,
+		int steps,
         ArrayView1D<ulong, Stride1D.Dense> divisors,
         ArrayView1D<ulong, Stride1D.Dense> pow,
         ArrayView1D<ulong, Stride1D.Dense> order,
@@ -411,7 +415,6 @@ public sealed class DivisorCycleCache
         ulong divisor = divisors[index];
         ulong currentPow = pow[index];
         ulong currentOrder = order[index];
-        int steps = GpuCycleStepsPerInvocation;
 
         do
         {
