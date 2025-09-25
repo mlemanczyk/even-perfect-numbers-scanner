@@ -453,14 +453,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			_disposed = true;
 			_owner.ReturnSession(this);
 		}
-
-
 	}
 
-	internal void ReturnSession(DivisorScanSession session)
-	{
-		_sessionPool.Add(session);
-	}
+	internal void ReturnSession(DivisorScanSession session) => _sessionPool.Add(session);
 
 	private static void ComputePrimeExponentKernel(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
 	{
@@ -521,28 +516,21 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 	private BatchResources RentBatchResources(Accelerator accelerator, int capacity)
 	{
-		var bag = _resourcePools.GetOrAdd(accelerator, static _ => new ConcurrentBag<BatchResources>());
+		var bag = _resourcePools.GetOrAdd(accelerator, static _ => []);
 		if (bag.TryTake(out BatchResources? resources))
 		{
-			resources.EnsureCapacity(capacity);
 			return resources;
 		}
 
 		return new BatchResources(accelerator, capacity);
 	}
 
-	private void ReturnBatchResources(Accelerator accelerator, BatchResources resources)
-	{
-		_resourcePools.GetOrAdd(accelerator, static _ => []).Add(resources);
-	}
+	private void ReturnBatchResources(Accelerator accelerator, BatchResources resources) => _resourcePools.GetOrAdd(accelerator, static _ => []).Add(resources);
 
 	private sealed class BatchResources : IDisposable
 	{
-		private readonly Accelerator _accelerator;
-
 		internal BatchResources(Accelerator accelerator, int capacity)
 		{
-			_accelerator = accelerator;
 			DivisorsBuffer = accelerator.Allocate1D<MontgomeryDivisorData>(capacity);
 			HitsBuffer = accelerator.Allocate1D<byte>(capacity);
 			Divisors = ArrayPool<ulong>.Shared.Rent(capacity);
@@ -551,43 +539,17 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			Capacity = capacity;
 		}
 
-		internal MemoryBuffer1D<MontgomeryDivisorData, Stride1D.Dense> DivisorsBuffer { get; private set; }
+		internal readonly MemoryBuffer1D<MontgomeryDivisorData, Stride1D.Dense> DivisorsBuffer;
 
-		internal MemoryBuffer1D<byte, Stride1D.Dense> HitsBuffer { get; private set; }
+		internal readonly MemoryBuffer1D<byte, Stride1D.Dense> HitsBuffer;
 
-		internal ulong[] Divisors { get; private set; }
+		internal readonly ulong[] Divisors;
 
-		internal byte[] Hits { get; private set; }
+		internal readonly byte[] Hits;
 
-		internal MontgomeryDivisorData[] DivisorData { get; private set; }
+		internal readonly MontgomeryDivisorData[] DivisorData;
 
-		internal int Capacity { get; private set; }
-
-		public void EnsureCapacity(int requiredCapacity)
-		{
-			if (requiredCapacity <= Capacity)
-			{
-				return;
-			}
-
-			Resize(requiredCapacity);
-		}
-
-		private void Resize(int newCapacity)
-		{
-			DivisorsBuffer.Dispose();
-			HitsBuffer.Dispose();
-			ArrayPool<ulong>.Shared.Return(Divisors, clearArray: false);
-			ArrayPool<byte>.Shared.Return(Hits, clearArray: false);
-			ArrayPool<MontgomeryDivisorData>.Shared.Return(DivisorData, clearArray: false);
-
-			DivisorsBuffer = _accelerator.Allocate1D<MontgomeryDivisorData>(newCapacity);
-			HitsBuffer = _accelerator.Allocate1D<byte>(newCapacity);
-			Divisors = ArrayPool<ulong>.Shared.Rent(newCapacity);
-			Hits = ArrayPool<byte>.Shared.Rent(newCapacity);
-			DivisorData = ArrayPool<MontgomeryDivisorData>.Shared.Rent(newCapacity);
-			Capacity = newCapacity;
-		}
+		internal readonly int Capacity;
 
 		public void Dispose()
 		{
