@@ -15,7 +15,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     private readonly object _sync = new();
     private ulong _divisorLimit;
     private bool _isConfigured;
-    private ulong _lastStatusDivisor;
     private bool _useDivisorCycles;
 
     public readonly struct MontgomeryDivisorData(ulong modulus, ulong nPrime, ulong montgomeryOne, ulong montgomeryTwo)
@@ -62,7 +61,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         lock (_sync)
         {
             _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
-            _lastStatusDivisor = 0UL;
             _isConfigured = true;
         }
     }
@@ -125,14 +123,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             gpuLease.Dispose();
         }
 
-        if (processedCount > 0UL)
-        {
-            lock (_sync)
-            {
-                UpdateStatusUnsafe(processedCount);
-            }
-        }
-
         if (composite)
         {
             divisorsExhausted = true;
@@ -181,6 +171,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         Span<byte> hitsSpan;
         ArrayView1D<MontgomeryDivisorData, Stride1D.Dense> divisorView;
         ArrayView1D<byte, Stride1D.Dense> hitsView;
+		DivisorCycleCache divisorCyclesCache = DivisorCycleCache.Shared;
 
         while (divisor <= allowedMax)
         {
@@ -195,18 +186,20 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                 processedCount++;
 
                 bool includeDivisor = true;
-                if (useCycles)
-                {
-                    using DivisorCycleCache.Lease cycleLease = DivisorCycleCache.Shared.Acquire(currentDivisor);
-                    ulong cycle = cycleLease.GetCycle(currentDivisor);
-                    if (cycle == 0UL)
-                    {
-                        requiresCycleKernelCheck = true;
-                    }
-                    else if (prime % cycle != 0UL)
-                    {
-                        includeDivisor = false;
-                    }
+				if (useCycles)
+				{
+					DivisorCycleCache.Lease cycleLease = divisorCyclesCache.Acquire(currentDivisor);
+					ulong cycle = cycleLease.GetCycle(currentDivisor);
+					if (cycle == 0UL)
+					{
+						requiresCycleKernelCheck = true;
+					}
+					else if (prime % cycle != 0UL)
+					{
+						includeDivisor = false;
+					}
+
+					cycleLease.Dispose();
                 }
 
                 if (includeDivisor)
@@ -321,25 +314,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         }
 
         return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
-    }
-
-    private void UpdateStatusUnsafe(ulong processedCount)
-    {
-        if (processedCount == 0UL)
-        {
-            return;
-        }
-
-        ulong interval = PerfectNumberConstants.ConsoleInterval;
-        if (interval == 0UL)
-        {
-            _lastStatusDivisor = 0UL;
-            return;
-        }
-
-        // Can we avoid the modulo calculation here? For the higher divisors it may become very expensive. Do we need to calculate the total, too?
-        ulong total = _lastStatusDivisor + processedCount;
-        _lastStatusDivisor = total % interval;
     }
 
     private static void CheckKernel(Index1D index, ulong prime, byte useCycleChecks, ArrayView<MontgomeryDivisorData> divisors, ArrayView<byte> hits)
