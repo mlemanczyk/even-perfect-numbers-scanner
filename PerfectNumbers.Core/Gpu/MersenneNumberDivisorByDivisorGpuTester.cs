@@ -356,25 +356,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			_disposed = false;
 		}
 
-		private void EnsureCapacity(int requiredCapacity)
-		{
-			if (requiredCapacity <= _capacity)
-			{
-				return;
-			}
-
-			_exponentsBuffer.Dispose();
-			_resultsBuffer.Dispose();
-			ArrayPool<ulong>.Shared.Return(_hostBuffer, clearArray: false);
-			ArrayPool<int>.Shared.Return(_positionBuffer, clearArray: false);
-
-			_capacity = requiredCapacity;
-			_exponentsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
-			_resultsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
-			_hostBuffer = ArrayPool<ulong>.Shared.Rent(_capacity);
-			_positionBuffer = ArrayPool<int>.Shared.Rent(_capacity);
-		}
-
 		public void CheckDivisor(ulong divisor, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
 		{
 			if (_disposed)
@@ -386,8 +367,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			int gpuBatchSize = owner._gpuBatchSize,
 				primesLength = primes.Length;
 
-			EnsureCapacity(gpuBatchSize);
-
 			MontgomeryDivisorData divisorData = CreateMontgomeryDivisorData(divisor);
 			ulong modulus = divisorData.Modulus;
 			if (modulus <= 1UL || (modulus & 1UL) == 0UL)
@@ -395,33 +374,35 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 				return;
 			}
 
-
 			Accelerator accelerator = _accelerator;
 			Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> kernel = _kernel;
-			ArrayView1D<ulong, Stride1D.Dense> exponentsView = _exponentsBuffer.View;
-			ArrayView1D<ulong, Stride1D.Dense> resultsView = _resultsBuffer.View;
+			ArrayView1D<ulong, Stride1D.Dense> exponentView, exponentsView = _exponentsBuffer.View;
+			ArrayView1D<ulong, Stride1D.Dense> resultView, resultsView = _resultsBuffer.View;
 
-			Span<ulong> hostSpan = _hostBuffer.AsSpan();
+			Span<ulong> exponentSlice, hostSpan = _hostBuffer.AsSpan();
 			Span<int> positionSpan = _positionBuffer.AsSpan();
+			Span<byte> hitsSlice;
+			ReadOnlySpan<ulong> primesSlice;
 
-			int offset = 0;
-			bool cycleEnabled = owner._useDivisorCycles;
+			int batchSize, computeCount, i, offset = 0;
+			bool useDivisorCycles = owner._useDivisorCycles;
+			ulong exponentSliceRef, residue;
 			while (offset < primesLength)
 			{
-				int batchSize = Math.Min(gpuBatchSize, primesLength - offset);
-				ReadOnlySpan<ulong> primesSlice = primes.Slice(offset, batchSize);
-				Span<byte> hitsSlice = hits.Slice(offset, batchSize);
+				batchSize = Math.Min(gpuBatchSize, primesLength - offset);
+				primesSlice = primes.Slice(offset, batchSize);
+				hitsSlice = hits.Slice(offset, batchSize);
 
-				int computeCount = 0;
+				computeCount = 0;
 
-				if (cycleEnabled && divisorCycle != 0UL)
+				if (useDivisorCycles)
 				{
-					for (int i = 0; i < batchSize; i++)
+					for (i = 0; i < batchSize; i++)
 					{
-						ulong residue = primesSlice[i] % divisorCycle;
+						residue = primesSlice[i] % divisorCycle;
 						if (residue != 0UL)
 						{
-							hitsSlice[i] = 0;
+							// We don't need to clear hitsSlice[i] because the parent function calls .Clear() on the buffer
 							continue;
 						}
 
@@ -432,7 +413,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 				}
 				else
 				{
-					for (int i = 0; i < batchSize; i++)
+					for (i = 0; i < batchSize; i++)
 					{
 						hostSpan[computeCount] = primesSlice[i];
 						positionSpan[computeCount] = i;
@@ -442,20 +423,19 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 				if (computeCount > 0)
 				{
-					Span<ulong> exponentSlice = hostSpan[..computeCount];
+					exponentSlice = hostSpan[..computeCount];
+					exponentView = exponentsView.SubView(0, computeCount);
 
-					ArrayView1D<ulong, Stride1D.Dense> exponentView = exponentsView.SubView(0, computeCount);
-					exponentView.CopyFromCPU(ref MemoryMarshal.GetReference(exponentSlice), computeCount);
-					ArrayView1D<ulong, Stride1D.Dense> resultView = resultsView.SubView(0, computeCount);
+					exponentSliceRef = MemoryMarshal.GetReference(exponentSlice);
+					exponentView.CopyFromCPU(ref exponentSliceRef, computeCount);
+					resultView = resultsView.SubView(0, computeCount);
 					kernel(computeCount, divisorData, exponentView, resultView);
 					accelerator.Synchronize();
-					resultView.CopyToCPU(ref MemoryMarshal.GetReference(exponentSlice), computeCount);
+					resultView.CopyToCPU(ref exponentSliceRef, computeCount);
 
-					for (int i = 0; i < computeCount; i++)
+					for (i = 0; i < computeCount; i++)
 					{
-						int position = positionSpan[i];
-						ulong residue = exponentSlice[i];
-						hitsSlice[position] = residue == 1UL ? (byte)1 : (byte)0;
+						hitsSlice[positionSpan[i]] = exponentSlice[i] == 1UL ? (byte)1 : (byte)0;
 					}
 				}
 
