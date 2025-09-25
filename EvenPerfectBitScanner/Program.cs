@@ -881,11 +881,7 @@ internal static class Program
 							Span<byte> hitsSpan = default;
 							int hitIndex = 0;
 							int index;
-							bool useDivisorCycles = _byDivisorTester!.UseDivisorCycles;
-							DivisorCycleCache.Lease cycleLease = default;
-							ulong cycleLeaseStart = 0UL;
-							ulong cycleLeaseEnd = 0UL;
-							ulong[]? cycleValues = null;
+                                                        bool useDivisorCycles = _byDivisorTester!.UseDivisorCycles;
 							ulong divisorCycle = 0UL;
 
 							try
@@ -903,27 +899,9 @@ internal static class Program
 									divisor = AcquireNextDivisor(ref nextDivisor, divisorLimit, ref divisorsExhaustedFlag, ref finalDivisorBits, out exhausted, ref localDivisorCursor, ref localDivisorsRemaining);
 									if (divisor != 0UL)
 									{
-										if (useDivisorCycles)
-										{
-											if (!cycleLease.IsValid || divisor < cycleLeaseStart || divisor > cycleLeaseEnd)
-											{
-												cycleLease.Dispose();
-												cycleLease = DivisorCycleCache.Shared.Acquire(divisor);
-												cycleLeaseStart = cycleLease.Start;
-												cycleLeaseEnd = cycleLease.End;
-												cycleValues = cycleLease.Values ?? throw new InvalidOperationException("Divisor cycle cache returned no values for acquired lease.");
-											}
-											else if (cycleValues is null)
-											{
-												cycleValues = cycleLease.Values ?? throw new InvalidOperationException("Divisor cycle cache returned no values for acquired lease.");
-											}
-
-											divisorCycle = cycleValues[(int)(divisor - cycleLeaseStart)];
-										}
-										else
-										{
-											divisorCycle = 0UL;
-										}
+                                                                                divisorCycle = useDivisorCycles
+                                                                                        ? DivisorCycleCache.Shared.Acquire(divisor).GetCycle(divisor)
+                                                                                        : 0UL;
 
 										activeCount = BuildPrimeBuffer(divisor, primeValues, allowedMaxValues, stateFlags, primeBuffer, indexBuffer, completionsBuffer, ref completionsCount, ref remainingStates, activeStateMask, ref activeStartIndex);
 
@@ -1016,10 +994,9 @@ internal static class Program
 									FlushPendingResults(compositesBuffer, ref compositesCount);
 								}
 							}
-							finally
-							{
-								cycleLease.Dispose();
-								ArrayPool<PendingResult>.Shared.Return(compositesBuffer, clearArray: true);
+                                                        finally
+                                                        {
+                                                                ArrayPool<PendingResult>.Shared.Return(compositesBuffer, clearArray: true);
 								ArrayPool<PendingResult>.Shared.Return(completionsBuffer, clearArray: true);
 								ArrayPool<int>.Shared.Return(indexBuffer, clearArray: true);
 								ArrayPool<ulong>.Shared.Return(primeBuffer, clearArray: true);
