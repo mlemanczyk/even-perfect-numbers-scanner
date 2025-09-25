@@ -13,7 +13,6 @@ public sealed class PrimeTester(bool useInternal = false)
     public bool IsPrime(ulong n, CancellationToken ct) => IsPrimeInternal(n, ct);
 
     // Optional GPU-assisted primality: batched small-prime sieve on device.
-    // TODO: Consider extending with deterministic Miller–Rabin bases for 64-bit range when stable on ILGPU.
     public bool IsPrimeGpu(ulong n, CancellationToken ct)
     {
         if (GpuContextPool.ForceCpu)
@@ -33,14 +32,12 @@ public sealed class PrimeTester(bool useInternal = false)
 
         // Defensive fallback: GPU sieve produced a composite verdict.
         // Confirm with CPU logic to prevent false negatives observed on
-        // some accelerators (see TODO below for dedicated regression).
-        // TODO: Investigate ILGPU small-prime sieve divergence on discrete GPUs
-        //       so that the CPU confirmation can be removed once resolved.
+        // some accelerators.
         return IsPrimeInternal(n, ct);
     }
 
     // Note: GPU-backed primality path is implemented via IsPrimeGpu/IsPrimeBatchGpu and is routed
-    // from EvenPerfectBitScanner based on --primes-device. Follow-up: add deterministic MR rounds.
+    // from EvenPerfectBitScanner based on --primes-device.
 
     internal static bool IsPrimeInternal(ulong n, CancellationToken ct)
     {
@@ -89,6 +86,7 @@ public sealed class PrimeTester(bool useInternal = false)
 
     public static int GpuBatchSize { get; set; } = 262_144;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void IsPrimeBatchGpu(ReadOnlySpan<ulong> values, Span<byte> results)
     {
         // Limit concurrency and declare variables outside loops for performance and reuse
@@ -250,7 +248,6 @@ public sealed class PrimeTester(bool useInternal = false)
     }
 
     // GPU kernel: small-prime sieve only. Returns 1 if passes sieve (probable prime), 0 otherwise.
-    // TODO: Follow-up: consider integration with MR rounds for bases {2,3,5,7,11,13} to make it deterministic for 64-bit.
     private static void SmallPrimeSieveKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<uint> smallPrimes, ArrayView<byte> results)
     {
         ulong n = numbers[index];
