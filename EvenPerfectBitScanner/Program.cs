@@ -918,8 +918,7 @@ internal static class Program
 												cycleValues = cycleLease.Values ?? throw new InvalidOperationException("Divisor cycle cache returned no values for acquired lease.");
 											}
 
-											ulong offset = divisor - cycleLeaseStart;
-											divisorCycle = offset < (ulong)cycleValues.Length ? cycleValues[(int)offset] : cycleLease.GetCycle(divisor);
+											divisorCycle = cycleValues[(int)(divisor - cycleLeaseStart)];
 										}
 										else
 										{

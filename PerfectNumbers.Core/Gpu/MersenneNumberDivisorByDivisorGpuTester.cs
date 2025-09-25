@@ -1,11 +1,9 @@
-using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ILGPU;
 using ILGPU.Runtime;
-using PerfectNumbers.Core;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -401,14 +399,10 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 				throw new ObjectDisposedException(nameof(DivisorScanSession));
 			}
 
-			int primesLength = primes.Length;
-			if (primesLength == 0)
-			{
-				return;
-			}
-
 			MersenneNumberDivisorByDivisorGpuTester owner = _owner;
-			int gpuBatchSize = owner._gpuBatchSize;
+			int gpuBatchSize = owner._gpuBatchSize,
+				primesLength = primes.Length;
+
 			EnsureCapacity(gpuBatchSize);
 
 			MontgomeryDivisorData divisorData = CreateMontgomeryDivisorData(divisor);
@@ -418,8 +412,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 				return;
 			}
 
-			ulong cycle = divisorCycle;
-			bool cycleEnabled = owner._useDivisorCycles && cycle != 0UL;
 
 			Accelerator accelerator = _accelerator;
 			Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> kernel = _kernel;
@@ -428,11 +420,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			ArrayView1D<ulong, Stride1D.Dense> resultsView = _resultsBuffer.View;
 			ArrayView1D<byte, Stride1D.Dense> cycleMaskViewFull = _cycleMaskBuffer.View;
 
-			int offset = 0;
 			Span<ulong> hostSpan = _hostBuffer.AsSpan();
 			Span<ulong> primeSpan = _primeBuffer.AsSpan();
 			Span<int> positionSpan = _positionBuffer.AsSpan();
 
+			int offset = 0;
+			bool cycleEnabled = owner._useDivisorCycles;
 			while (offset < primesLength)
 			{
 				int batchSize = Math.Min(gpuBatchSize, primesLength - offset);
@@ -447,7 +440,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 					ArrayView1D<ulong, Stride1D.Dense> primeInputView = _resultsBuffer.View.SubView(0, batchSize);
 					primeInputView.CopyFromCPU(ref MemoryMarshal.GetReference(primesSlice), batchSize);
 					ArrayView1D<byte, Stride1D.Dense> cycleMaskView = cycleMaskViewFull.SubView(0, batchSize);
-					cycleKernel(batchSize, cycle, primeInputView, cycleMaskView);
+					// TODO: Move this back to CPU side and make sure that we only pass primes here which passed the cycle test, when cycles are in use.
+					cycleKernel(batchSize, divisorCycle, primeInputView, cycleMaskView);
 					accelerator.Synchronize();
 					cycleMaskView.CopyToCPU(ref MemoryMarshal.GetReference(cycleMaskSpan), batchSize);
 
@@ -480,7 +474,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 					for (int i = 0; i < computeCount; i++)
 					{
 						ulong prime = primeSpan[i];
-						exponentSlice[i] = cycleEnabled ? prime % cycle : prime;
+						// TODO: Let's calculate prime % divisorCycle on CPU side, too. When we check the cycle, we calculate the residue. Let's put them into an array and re-use here.
+						exponentSlice[i] = cycleEnabled ? prime % divisorCycle : prime;
 					}
 
 					ArrayView1D<ulong, Stride1D.Dense> exponentView = exponentsView.SubView(0, computeCount);
@@ -541,8 +536,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			return;
 		}
 
-		ulong exponent = exponents[index];
-		results[index] = exponent.Pow2MontgomeryMod(divisor);
+		results[index] = exponents[index].Pow2MontgomeryMod(divisor);
 	}
 
 	private static MontgomeryDivisorData CreateMontgomeryDivisorData(ulong modulus)
@@ -604,7 +598,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 	private void ReturnBatchResources(Accelerator accelerator, BatchResources resources)
 	{
-		_resourcePools.GetOrAdd(accelerator, static _ => new ConcurrentBag<BatchResources>()).Add(resources);
+		_resourcePools.GetOrAdd(accelerator, static _ => []).Add(resources);
 	}
 
 	private sealed class BatchResources : IDisposable
@@ -711,9 +705,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		}
 	}
 
-	IMersenneNumberDivisorByDivisorTester.IDivisorScanSession IMersenneNumberDivisorByDivisorTester.CreateDivisorSession()
-	{
-		return CreateDivisorSession();
-	}
+	IMersenneNumberDivisorByDivisorTester.IDivisorScanSession IMersenneNumberDivisorByDivisorTester.CreateDivisorSession() => CreateDivisorSession();
 }
 
