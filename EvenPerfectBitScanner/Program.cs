@@ -811,30 +811,32 @@ internal static class Program
 
 			_byDivisorPrecheckOnly = false;
 
-			if (states.Count == 0)
-			{
-				if (applyStartPrime)
-				{
-					Console.WriteLine($"No primes greater than or equal to {startPrime.ToString(CultureInfo.InvariantCulture)} were found for --mersenne=bydivisor.");
-				}
+                        if (states.Count == 0)
+                        {
+                                if (applyStartPrime)
+                                {
+                                        Console.WriteLine($"No primes greater than or equal to {startPrime.ToString(CultureInfo.InvariantCulture)} were found for --mersenne=bydivisor.");
+                                }
 
-				return;
-			}
+                                return;
+                        }
 
-			int stateCount = states.Count;
-			ulong[] primeValues = new ulong[stateCount];
-			ulong[] allowedMaxValues = new ulong[stateCount];
-			int[] stateFlags = new int[stateCount];
+                        states.Sort(static (left, right) => left.Prime.CompareTo(right.Prime));
 
-			int stateIndex = 0;
-			ByDivisorPrimeState currentState;
-			for (; stateIndex < stateCount; stateIndex++)
-			{
-				currentState = states[stateIndex];
-				primeValues[stateIndex] = currentState.Prime;
-				allowedMaxValues[stateIndex] = currentState.AllowedMax;
-				stateFlags[stateIndex] = ByDivisorStateActive;
-			}
+                        int stateCount = states.Count;
+                        ulong[] primeValues = new ulong[stateCount];
+                        ulong[] allowedMaxValues = new ulong[stateCount];
+                        int[] stateFlags = new int[stateCount];
+
+                        int stateIndex = 0;
+                        ByDivisorPrimeState currentState;
+                        for (; stateIndex < stateCount; stateIndex++)
+                        {
+                                currentState = states[stateIndex];
+                                primeValues[stateIndex] = currentState.Prime;
+                                allowedMaxValues[stateIndex] = currentState.AllowedMax;
+                                stateFlags[stateIndex] = ByDivisorStateActive;
+                        }
 
 			states.Clear();
 

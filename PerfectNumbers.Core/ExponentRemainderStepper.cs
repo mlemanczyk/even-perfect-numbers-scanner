@@ -1,0 +1,124 @@
+namespace PerfectNumbers.Core;
+
+internal struct ExponentRemainderStepper
+{
+    private readonly MontgomeryDivisorData _divisor;
+    private readonly ulong _modulus;
+    private readonly ulong _nPrime;
+    private readonly ulong _montgomeryOne;
+    private ulong _previousExponent;
+    private ulong _currentMontgomery;
+    private bool _hasState;
+
+    public ExponentRemainderStepper(in MontgomeryDivisorData divisor)
+    {
+        _divisor = divisor;
+        _modulus = divisor.Modulus;
+        _nPrime = divisor.NPrime;
+        _montgomeryOne = divisor.MontgomeryOne;
+        _previousExponent = 0UL;
+        _currentMontgomery = divisor.MontgomeryOne;
+        _hasState = false;
+    }
+
+    public bool IsValidModulus => _modulus > 1UL && (_modulus & 1UL) != 0UL;
+
+    public bool HasState => _hasState;
+
+    public ulong PreviousExponent => _previousExponent;
+
+    public void Reset()
+    {
+        _previousExponent = 0UL;
+        _currentMontgomery = _montgomeryOne;
+        _hasState = false;
+    }
+
+    public ulong ComputeNext(ulong exponent)
+    {
+        if (!IsValidModulus)
+        {
+            _hasState = false;
+            return 0UL;
+        }
+
+        if (!_hasState || exponent <= _previousExponent)
+        {
+            _currentMontgomery = exponent.Pow2MontgomeryModMontgomery(_divisor);
+            _previousExponent = exponent;
+            _hasState = true;
+            return ReduceCurrent();
+        }
+
+        ulong delta = exponent - _previousExponent;
+        ulong multiplier = delta.Pow2MontgomeryModMontgomery(_divisor);
+        _currentMontgomery = _currentMontgomery.MontgomeryMultiply(multiplier, _modulus, _nPrime);
+        _previousExponent = exponent;
+        return ReduceCurrent();
+    }
+
+    public bool ComputeNextIsUnity(ulong exponent)
+    {
+        if (!IsValidModulus)
+        {
+            _hasState = false;
+            return false;
+        }
+
+        if (!_hasState || exponent <= _previousExponent)
+        {
+            _currentMontgomery = exponent.Pow2MontgomeryModMontgomery(_divisor);
+            _previousExponent = exponent;
+            _hasState = true;
+            return _currentMontgomery == _montgomeryOne;
+        }
+
+        ulong delta = exponent - _previousExponent;
+        ulong multiplier = delta.Pow2MontgomeryModMontgomery(_divisor);
+        _currentMontgomery = _currentMontgomery.MontgomeryMultiply(multiplier, _modulus, _nPrime);
+        _previousExponent = exponent;
+        return _currentMontgomery == _montgomeryOne;
+    }
+
+    public bool TryInitializeFromMontgomeryResult(ulong exponent, ulong montgomeryResult, out bool isUnity)
+    {
+        if (!IsValidModulus)
+        {
+            _hasState = false;
+            isUnity = false;
+            return false;
+        }
+
+        _currentMontgomery = montgomeryResult;
+        _previousExponent = exponent;
+        _hasState = true;
+        isUnity = _currentMontgomery == _montgomeryOne;
+        return true;
+    }
+
+    public bool TryAdvanceWithMontgomeryDelta(ulong exponent, ulong montgomeryDelta, out bool isUnity)
+    {
+        if (!IsValidModulus)
+        {
+            _hasState = false;
+            isUnity = false;
+            return false;
+        }
+
+        if (!_hasState || exponent <= _previousExponent)
+        {
+            _currentMontgomery = exponent.Pow2MontgomeryModMontgomery(_divisor);
+            _previousExponent = exponent;
+            _hasState = true;
+            isUnity = _currentMontgomery == _montgomeryOne;
+            return true;
+        }
+
+        _currentMontgomery = _currentMontgomery.MontgomeryMultiply(montgomeryDelta, _modulus, _nPrime);
+        _previousExponent = exponent;
+        isUnity = _currentMontgomery == _montgomeryOne;
+        return true;
+    }
+
+    private ulong ReduceCurrent() => _currentMontgomery.MontgomeryMultiply(1UL, _modulus, _nPrime);
+}
