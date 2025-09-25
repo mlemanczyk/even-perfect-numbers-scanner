@@ -69,7 +69,7 @@ public sealed class DivisorCycleCache
     }
 
     private const int CycleGenerationBatchSize = 262_144;
-    private const int GpuCycleStepsPerInvocation = 524_288;
+    private const int GpuCycleStepsPerInvocation = 524_288 / 16;
     private const byte ByteZero = 0;
     private const byte ByteOne = 1;
 
