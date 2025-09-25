@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using ILGPU;
 using ILGPU.Runtime;
@@ -66,6 +67,8 @@ public sealed class DivisorCycleCache
             _block = null;
         }
     }
+
+    private const int CycleGenerationBatchSize = 262_144;
 
     private readonly object _sync = new();
     private readonly ConcurrentDictionary<int, Task<CycleBlock>> _pending = new();
@@ -328,22 +331,35 @@ public sealed class DivisorCycleCache
             Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> kernel = _gpuKernelCache.GetOrAdd(accelerator, LoadKernel);
 
             int length = destination.Length;
-            ulong[] divisors = ArrayPool<ulong>.Shared.Rent(length);
+            int chunkCapacity = Math.Min(length, CycleGenerationBatchSize);
+            ulong[] divisors = ArrayPool<ulong>.Shared.Rent(chunkCapacity);
 
             try
             {
-                for (int i = 0; i < length; i++)
+                using MemoryBuffer1D<ulong, Stride1D.Dense> divisorBuffer = accelerator.Allocate1D<ulong>(chunkCapacity);
+                using MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = accelerator.Allocate1D<ulong>(chunkCapacity);
+
+                int offset = 0;
+                while (offset < length)
                 {
-                    divisors[i] = start + (ulong)i;
+                    int batchSize = Math.Min(chunkCapacity, length - offset);
+                    Span<ulong> divisorsSpan = divisors.AsSpan(0, batchSize);
+                    for (int i = 0; i < batchSize; i++)
+                    {
+                        divisorsSpan[i] = start + (ulong)(offset + i);
+                    }
+
+                    ArrayView1D<ulong, Stride1D.Dense> divisorView = divisorBuffer.View.SubView(0, batchSize);
+                    ArrayView1D<ulong, Stride1D.Dense> resultView = resultBuffer.View.SubView(0, batchSize);
+
+                    divisorView.CopyFromCPU(ref MemoryMarshal.GetReference(divisorsSpan), batchSize);
+                    kernel(batchSize, divisorView, resultView);
+                    accelerator.Synchronize();
+
+                    Span<ulong> destinationSpan = destination.AsSpan(offset, batchSize);
+                    resultView.CopyToCPU(ref MemoryMarshal.GetReference(destinationSpan), batchSize);
+                    offset += batchSize;
                 }
-
-                using MemoryBuffer1D<ulong, Stride1D.Dense> divisorBuffer = accelerator.Allocate1D<ulong>(length);
-                using MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = accelerator.Allocate1D<ulong>(length);
-
-                divisorBuffer.View.CopyFromCPU(ref divisors[0], length);
-                kernel(length, divisorBuffer.View, resultBuffer.View);
-                accelerator.Synchronize();
-                resultBuffer.View.CopyToCPU(ref destination[0], length);
             }
             finally
             {
