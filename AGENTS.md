@@ -14,7 +14,7 @@ To build `EvenPerfectScanner` run:
 dotnet build EvenPerfectScanner.sln
 ```
 
-Run only the tests related to the solution you modify. Always run tests without --no-build parameter to avoid run failures due to missing assembly files. Tests should be always written using XUnit with FluentAssertions. Before executing any tests, make sure their running time is reasonable; skip test suites that are expected to take excessively long.
+Run only the tests related to the solution you modify. Always run tests without --no-build parameter to avoid run failures due to missing assembly files. Tests should be always written using XUnit with FluentAssertions. Before executing any tests, make sure their running time is reasonable; skip test suites that are expected to take excessively long. When running tests, always provide both an explicit timeout guard and the Category=Fast filter so that only the fast suite executes.
 
 ### Test execution time policy
 
@@ -35,7 +35,8 @@ Run only the tests related to the solution you modify. Always run tests without 
 
 - Linux/macOS (bash):
   - Use GNU timeout (install coreutils if needed on macOS):
-    - `timeout 120s dotnet test <path-to>.csproj -c Debug --filter "FullyQualifiedName~SomeTests"`
+    - `timeout 120s dotnet test <path-to>.csproj -c Debug --filter "Category=Fast&FullyQualifiedName~SomeTests"`
+    - Always specify `timeout 120s` (or a shorter limit when appropriate) and include `Category=Fast` in every filter.
     - Note: exit code 124 indicates timeout; handle accordingly in scripts.
 
 - Codex/agent runs: when invoked as separate steps where inline time control isn’t available, wrap calls through the shell using the guards above rather than calling `dotnet test` directly from the tool.
@@ -52,11 +53,11 @@ The only .Net SDK available in Codex environment is .Net 8.0. It'll be periodica
 
 Always enter blank line after closing "}" parenthesis, unless there is a consecutive closing "}" bracket. IF's, loops, in practice all code blocks should be put in their "{ (...) }" blocks. Even if there is only a single line in such a code block. Always use the latest officially released language features. All .csproj files should define nullable = enabled and we should always use "?" and/or "!" where appropriate.
 
-Never ever run tests marked with trait Category = Slow. Only run tests with category "Fast", when you want to validate if you haven't broken anything. If there are no categories assigned to the tests, when you attempt running them always watch out the 2 mins execution time, to prevent hanging up on test execution. In such case, marked all timeout out tests with category Slow and tests which executed within time limit, even if they failed, mark with category Fast, so that we can recognize them in the future.
+Never ever run tests marked with trait Category = Slow. Always invoke `dotnet test` (or equivalent wrappers) with both an explicit timeout and the `Category=Fast` filter; never run tests without specifying these arguments. If there are no categories assigned yet, categorize them before running or skip the execution.
 
 There is only one agents file - this one. Don't search for another one.
 
-Always use indentation with 4 spaces in source code files. Do not use 8-space indentation or tabs.
+Always use indentation with four space characters in source code files, even if a file currently uses tabs. Increase indentation level by exactly one indentation unit (four spaces) per nested block. When parameters or long expressions wrap, indent the continuation with two indentation units for clarity.
 
 Keep the divisor cycle cache limited to three blocks in memory (the base snapshot plus at most two additional blocks) and always start background computation of the next block immediately after loading the first block from disk and whenever work begins on the most recently generated block.
 
