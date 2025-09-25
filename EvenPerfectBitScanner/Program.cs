@@ -1014,72 +1014,113 @@ internal static class Program
 
 	private static void RunByDivisorMode(List<ulong> primes, ulong divisorCyclesSearchLimit, int threadCount) => ByDivisorScanner.Run(primes, divisorCyclesSearchLimit, threadCount);
 
-	private static ulong AcquireNextDivisor(ref ulong nextDivisor, ulong divisorLimit, ref int divisorsExhaustedFlag, ref long finalDivisorBits, out bool exhausted, ref ulong localDivisorCursor, ref int localDivisorsRemaining)
-	{
-		ref long nextDivisorBits = ref Unsafe.As<ulong, long>(ref nextDivisor);
-		ulong blockStride = unchecked(DivisorAllocationBlockSize * 2);
+        private static ulong AcquireNextDivisor(ref ulong nextDivisor, ulong divisorLimit, ref int divisorsExhaustedFlag, ref long finalDivisorBits, out bool exhausted, ref ulong localDivisorCursor, ref int localDivisorsRemaining)
+        {
+                ref long nextDivisorBits = ref Unsafe.As<ulong, long>(ref nextDivisor);
+                ulong blockStride = unchecked(DivisorAllocationBlockSize * 2);
 
-		if (localDivisorsRemaining > 0)
-		{
-			ulong currentValue = localDivisorCursor;
-			localDivisorCursor += 2UL;
-			localDivisorsRemaining--;
-			exhausted = false;
-			return currentValue;
-		}
+                if (TryAcquireLocalDivisor(ref localDivisorCursor, ref localDivisorsRemaining, out ulong localDivisor))
+                {
+                        exhausted = false;
+                        return localDivisor;
+                }
 
-		while (true)
-		{
-			if (Volatile.Read(ref divisorsExhaustedFlag) != 0)
-			{
-				exhausted = true;
-				return 0UL;
-			}
+                while (true)
+                {
+                        if (Volatile.Read(ref divisorsExhaustedFlag) != 0)
+                        {
+                                exhausted = true;
+                                return 0UL;
+                        }
 
-			long currentBits = Volatile.Read(ref nextDivisorBits);
-			ulong currentValue = unchecked((ulong)currentBits);
-			if (currentValue > divisorLimit)
-			{
-				if (Interlocked.CompareExchange(ref divisorsExhaustedFlag, 1, 0) == 0)
-				{
-					Volatile.Write(ref finalDivisorBits, currentBits);
-				}
+                        long currentBits = Volatile.Read(ref nextDivisorBits);
+                        ulong currentValue = unchecked((ulong)currentBits);
+                        if (currentValue > divisorLimit)
+                        {
+                                if (Interlocked.CompareExchange(ref divisorsExhaustedFlag, 1, 0) == 0)
+                                {
+                                        Volatile.Write(ref finalDivisorBits, currentBits);
+                                }
 
-				exhausted = true;
-				return 0UL;
-			}
+                                exhausted = true;
+                                return 0UL;
+                        }
 
-			ulong maximumNext = divisorLimit >= ulong.MaxValue - 1UL ? ulong.MaxValue : divisorLimit + 2UL;
-			ulong requestedNext = currentValue > ulong.MaxValue - blockStride ? ulong.MaxValue : currentValue + blockStride;
-			if (requestedNext > maximumNext)
-			{
-				requestedNext = maximumNext;
-			}
+                        ulong maximumNext = divisorLimit >= ulong.MaxValue - 1UL ? ulong.MaxValue : divisorLimit + 2UL;
+                        ulong requestedNext = currentValue > ulong.MaxValue - blockStride ? ulong.MaxValue : currentValue + blockStride;
+                        if (requestedNext > maximumNext)
+                        {
+                                requestedNext = maximumNext;
+                        }
 
-			long nextBits = unchecked((long)requestedNext);
-			if (Interlocked.CompareExchange(ref nextDivisorBits, nextBits, currentBits) != currentBits)
-			{
-				continue;
-			}
+                        long nextBits = unchecked((long)requestedNext);
+                        if (Interlocked.CompareExchange(ref nextDivisorBits, nextBits, currentBits) != currentBits)
+                        {
+                                continue;
+                        }
 
-			ulong available = requestedNext - currentValue;
-			if (available == 0UL)
-			{
-				continue;
-			}
+                        ulong available = requestedNext - currentValue;
+                        if (available == 0UL)
+                        {
+                                continue;
+                        }
 
-			int count = (int)(available >> 1);
-			if (count <= 0)
-			{
-				continue;
-			}
+                        int count = (int)(available >> 1);
+                        if (count <= 0)
+                        {
+                                continue;
+                        }
 
-			localDivisorCursor = currentValue + 2UL;
-			localDivisorsRemaining = count - 1;
-			exhausted = false;
-			return currentValue;
-		}
-	}
+                        localDivisorCursor = currentValue;
+                        localDivisorsRemaining = count;
+
+                        if (TryAcquireLocalDivisor(ref localDivisorCursor, ref localDivisorsRemaining, out ulong candidate))
+                        {
+                                exhausted = false;
+                                return candidate;
+                        }
+
+                        // No valid divisor was found in this range; attempt to acquire the next block.
+                        localDivisorCursor = 0UL;
+                        localDivisorsRemaining = 0;
+                }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryAcquireLocalDivisor(ref ulong cursor, ref int remaining, out ulong divisor)
+        {
+                while (remaining > 0)
+                {
+                        ulong candidate = cursor;
+                        cursor += 2UL;
+                        remaining--;
+
+                        if (IsAllowedDivisorCandidate(candidate))
+                        {
+                                divisor = candidate;
+                                return true;
+                        }
+                }
+
+                divisor = 0UL;
+                return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsAllowedDivisorCandidate(ulong divisor)
+        {
+                if ((divisor & 1UL) == 0UL)
+                {
+                        return false;
+                }
+
+                if ((divisor % 3UL) == 0UL || (divisor % 5UL) == 0UL || (divisor % 7UL) == 0UL || (divisor % 11UL) == 0UL)
+                {
+                        return false;
+                }
+
+                return true;
+        }
 
 	private static int BuildPrimeBuffer(ulong divisor, in ulong[] primeValues, in ulong[] allowedMaxValues, int[] stateFlags, ulong[] primeBuffer, int[] indexBuffer, PendingResult[] completionsBuffer, ref int completionsCount, ref int remainingStates, long[] activeStateMask, ref int activeStartIndex)
 	{
