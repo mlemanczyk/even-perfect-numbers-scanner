@@ -26,15 +26,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 	private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, byte, ulong, ArrayView<MontgomeryDivisorData>, ArrayView<byte>>> _kernelCache = new();
 	private readonly ConcurrentDictionary<Accelerator, Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>>> _kernelExponentCache = new();
 	private readonly ConcurrentDictionary<Accelerator, ConcurrentBag<BatchResources>> _resourcePools = new(AcceleratorReferenceComparer.Instance);
-	private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>>> _cycleKernelCache = new();
 	private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
 
 	private Action<Index1D, ulong, byte, ulong, ArrayView<MontgomeryDivisorData>, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
 																	_kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, byte, ulong, ArrayView<MontgomeryDivisorData>, ArrayView<byte>>(CheckKernel));
 	private Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> GetKernelByPrimeExponent(Accelerator accelerator) =>
 																														  _kernelExponentCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>>(ComputePrimeExponentKernel));
-	private Action<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>> GetCycleKernel(Accelerator accelerator) =>
-			_cycleKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>>(CheckPrimeCycleKernel));
 
 	public int GpuBatchSize
 	{
@@ -333,34 +330,26 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
 		private readonly GpuContextPool.GpuContextLease _lease;
 		private readonly Accelerator _accelerator;
-		private readonly Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> _kernel;
-		private readonly Action<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>> _cycleKernel;
-		private MemoryBuffer1D<ulong, Stride1D.Dense> _exponentsBuffer;
-		private MemoryBuffer1D<ulong, Stride1D.Dense> _resultsBuffer;
-		private MemoryBuffer1D<byte, Stride1D.Dense> _cycleMaskBuffer;
-		private ulong[] _hostBuffer;
-		private ulong[] _primeBuffer;
-		private int[] _positionBuffer;
-		private byte[] _cycleMaskHost;
-		private int _capacity;
-		private bool _disposed;
+                private readonly Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> _kernel;
+                private MemoryBuffer1D<ulong, Stride1D.Dense> _exponentsBuffer;
+                private MemoryBuffer1D<ulong, Stride1D.Dense> _resultsBuffer;
+                private ulong[] _hostBuffer;
+                private int[] _positionBuffer;
+                private int _capacity;
+                private bool _disposed;
 
-		internal DivisorScanSession(MersenneNumberDivisorByDivisorGpuTester owner)
-		{
-			_owner = owner;
-			_lease = GpuContextPool.RentPreferred(preferCpu: false);
-			_accelerator = _lease.Accelerator;
-			_kernel = owner.GetKernelByPrimeExponent(_accelerator);
-			_cycleKernel = owner.GetCycleKernel(_accelerator);
-			_capacity = Math.Max(1, owner._gpuBatchSize);
-			_exponentsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
-			_resultsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
-			_cycleMaskBuffer = _accelerator.Allocate1D<byte>(_capacity);
-			_hostBuffer = ArrayPool<ulong>.Shared.Rent(_capacity);
-			_primeBuffer = ArrayPool<ulong>.Shared.Rent(_capacity);
-			_positionBuffer = ArrayPool<int>.Shared.Rent(_capacity);
-			_cycleMaskHost = ArrayPool<byte>.Shared.Rent(_capacity);
-		}
+                internal DivisorScanSession(MersenneNumberDivisorByDivisorGpuTester owner)
+                {
+                        _owner = owner;
+                        _lease = GpuContextPool.RentPreferred(preferCpu: false);
+                        _accelerator = _lease.Accelerator;
+                        _kernel = owner.GetKernelByPrimeExponent(_accelerator);
+                        _capacity = Math.Max(1, owner._gpuBatchSize);
+                        _exponentsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
+                        _resultsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
+                        _hostBuffer = ArrayPool<ulong>.Shared.Rent(_capacity);
+                        _positionBuffer = ArrayPool<int>.Shared.Rent(_capacity);
+                }
 
 		internal void Reset()
 		{
@@ -376,21 +365,15 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 			_exponentsBuffer.Dispose();
 			_resultsBuffer.Dispose();
-			_cycleMaskBuffer.Dispose();
-			ArrayPool<ulong>.Shared.Return(_hostBuffer, clearArray: false);
-			ArrayPool<ulong>.Shared.Return(_primeBuffer, clearArray: false);
-			ArrayPool<int>.Shared.Return(_positionBuffer, clearArray: false);
-			ArrayPool<byte>.Shared.Return(_cycleMaskHost, clearArray: false);
+                        ArrayPool<ulong>.Shared.Return(_hostBuffer, clearArray: false);
+                        ArrayPool<int>.Shared.Return(_positionBuffer, clearArray: false);
 
-			_capacity = requiredCapacity;
-			_exponentsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
-			_resultsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
-			_cycleMaskBuffer = _accelerator.Allocate1D<byte>(_capacity);
-			_hostBuffer = ArrayPool<ulong>.Shared.Rent(_capacity);
-			_primeBuffer = ArrayPool<ulong>.Shared.Rent(_capacity);
-			_positionBuffer = ArrayPool<int>.Shared.Rent(_capacity);
-			_cycleMaskHost = ArrayPool<byte>.Shared.Rent(_capacity);
-		}
+                        _capacity = requiredCapacity;
+                        _exponentsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
+                        _resultsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
+                        _hostBuffer = ArrayPool<ulong>.Shared.Rent(_capacity);
+                        _positionBuffer = ArrayPool<int>.Shared.Rent(_capacity);
+                }
 
 		public void CheckDivisor(ulong divisor, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
 		{
@@ -414,73 +397,56 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 
 			Accelerator accelerator = _accelerator;
-			Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> kernel = _kernel;
-			Action<Index1D, ulong, ArrayView<ulong>, ArrayView<byte>> cycleKernel = _cycleKernel;
-			ArrayView1D<ulong, Stride1D.Dense> exponentsView = _exponentsBuffer.View;
-			ArrayView1D<ulong, Stride1D.Dense> resultsView = _resultsBuffer.View;
-			ArrayView1D<byte, Stride1D.Dense> cycleMaskViewFull = _cycleMaskBuffer.View;
+                        Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> kernel = _kernel;
+                        ArrayView1D<ulong, Stride1D.Dense> exponentsView = _exponentsBuffer.View;
+                        ArrayView1D<ulong, Stride1D.Dense> resultsView = _resultsBuffer.View;
 
-			Span<ulong> hostSpan = _hostBuffer.AsSpan();
-			Span<ulong> primeSpan = _primeBuffer.AsSpan();
-			Span<int> positionSpan = _positionBuffer.AsSpan();
+                        Span<ulong> hostSpan = _hostBuffer.AsSpan();
+                        Span<int> positionSpan = _positionBuffer.AsSpan();
 
-			int offset = 0;
-			bool cycleEnabled = owner._useDivisorCycles;
+                        int offset = 0;
+                        bool cycleEnabled = owner._useDivisorCycles;
 			while (offset < primesLength)
 			{
 				int batchSize = Math.Min(gpuBatchSize, primesLength - offset);
 				ReadOnlySpan<ulong> primesSlice = primes.Slice(offset, batchSize);
-				Span<byte> hitsSlice = hits.Slice(offset, batchSize);
+                                Span<byte> hitsSlice = hits.Slice(offset, batchSize);
 
-				int computeCount = 0;
+                                int computeCount = 0;
 
-				if (cycleEnabled)
-				{
-					Span<byte> cycleMaskSpan = _cycleMaskHost.AsSpan(0, batchSize);
-					ArrayView1D<ulong, Stride1D.Dense> primeInputView = _resultsBuffer.View.SubView(0, batchSize);
-					primeInputView.CopyFromCPU(ref MemoryMarshal.GetReference(primesSlice), batchSize);
-					ArrayView1D<byte, Stride1D.Dense> cycleMaskView = cycleMaskViewFull.SubView(0, batchSize);
-					// TODO: Move this back to CPU side and make sure that we only pass primes here which passed the cycle test, when cycles are in use.
-					cycleKernel(batchSize, divisorCycle, primeInputView, cycleMaskView);
-					accelerator.Synchronize();
-					cycleMaskView.CopyToCPU(ref MemoryMarshal.GetReference(cycleMaskSpan), batchSize);
+                                if (cycleEnabled && divisorCycle != 0UL)
+                                {
+                                        for (int i = 0; i < batchSize; i++)
+                                        {
+                                                ulong residue = primesSlice[i] % divisorCycle;
+                                                if (residue != 0UL)
+                                                {
+                                                        hitsSlice[i] = 0;
+                                                        continue;
+                                                }
 
-					for (int i = 0; i < batchSize; i++)
-					{
-						if (cycleMaskSpan[i] == 0)
-						{
-							hitsSlice[i] = 0;
-							continue;
-						}
+                                                hostSpan[computeCount] = residue;
+                                                positionSpan[computeCount] = i;
+                                                computeCount++;
+                                        }
+                                }
+                                else
+                                {
+                                        for (int i = 0; i < batchSize; i++)
+                                        {
+                                                hostSpan[computeCount] = primesSlice[i];
+                                                positionSpan[computeCount] = i;
+                                                computeCount++;
+                                        }
+                                }
 
-						primeSpan[computeCount] = primesSlice[i];
-						positionSpan[computeCount] = i;
-						computeCount++;
-					}
-				}
-				else
-				{
-					for (int i = 0; i < batchSize; i++)
-					{
-						primeSpan[computeCount] = primesSlice[i];
-						positionSpan[computeCount] = i;
-						computeCount++;
-					}
-				}
+                                if (computeCount > 0)
+                                {
+                                        Span<ulong> exponentSlice = hostSpan[..computeCount];
 
-				if (computeCount > 0)
-				{
-					Span<ulong> exponentSlice = hostSpan[..computeCount];
-					for (int i = 0; i < computeCount; i++)
-					{
-						ulong prime = primeSpan[i];
-						// TODO: Let's calculate prime % divisorCycle on CPU side, too. When we check the cycle, we calculate the residue. Let's put them into an array and re-use here.
-						exponentSlice[i] = cycleEnabled ? prime % divisorCycle : prime;
-					}
-
-					ArrayView1D<ulong, Stride1D.Dense> exponentView = exponentsView.SubView(0, computeCount);
-					exponentView.CopyFromCPU(ref MemoryMarshal.GetReference(exponentSlice), computeCount);
-					ArrayView1D<ulong, Stride1D.Dense> resultView = resultsView.SubView(0, computeCount);
+                                        ArrayView1D<ulong, Stride1D.Dense> exponentView = exponentsView.SubView(0, computeCount);
+                                        exponentView.CopyFromCPU(ref MemoryMarshal.GetReference(exponentSlice), computeCount);
+                                        ArrayView1D<ulong, Stride1D.Dense> resultView = resultsView.SubView(0, computeCount);
 					kernel(computeCount, divisorData, exponentView, resultView);
 					accelerator.Synchronize();
 					resultView.CopyToCPU(ref MemoryMarshal.GetReference(exponentSlice), computeCount);
@@ -491,11 +457,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 						ulong residue = exponentSlice[i];
 						hitsSlice[position] = residue == 1UL ? (byte)1 : (byte)0;
 					}
-				}
+                                }
 
-				offset += batchSize;
-			}
-		}
+                                offset += batchSize;
+                        }
+                }
 
 		public void Dispose()
 		{
@@ -516,20 +482,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		_sessionPool.Add(session);
 	}
 
-	private static void CheckPrimeCycleKernel(Index1D index, ulong cycle, ArrayView<ulong> primes, ArrayView<byte> mask)
-	{
-		if (cycle == 0UL)
-		{
-			mask[index] = 1;
-			return;
-		}
-
-		mask[index] = primes[index] % cycle == 0UL ? (byte)1 : (byte)0;
-	}
-
-	private static void ComputePrimeExponentKernel(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
-	{
-		ulong modulus = divisor.Modulus;
+        private static void ComputePrimeExponentKernel(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
+        {
+                ulong modulus = divisor.Modulus;
 		if (modulus <= 1UL || (modulus & 1UL) == 0UL)
 		{
 			results[index] = 0UL;
