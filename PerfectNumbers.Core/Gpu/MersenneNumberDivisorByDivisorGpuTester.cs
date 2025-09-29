@@ -128,6 +128,31 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         return true;
     }
 
+    public void PrepareCandidates(ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)
+    {
+        if (allowedMaxValues.Length < primes.Length)
+        {
+            throw new ArgumentException("allowedMaxValues span must be at least as long as primes span.", nameof(allowedMaxValues));
+        }
+
+        ulong divisorLimit;
+
+        lock (_sync)
+        {
+            if (!_isConfigured)
+            {
+                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+            }
+
+            divisorLimit = _divisorLimit;
+        }
+
+        for (int index = 0; index < primes.Length; index++)
+        {
+            allowedMaxValues[index] = ComputeAllowedMaxDivisor(primes[index], divisorLimit);
+        }
+    }
+
     private static bool CheckDivisors(
         ulong prime,
         ulong allowedMax,

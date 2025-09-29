@@ -33,7 +33,6 @@ internal static class Program
 	private static bool _useDivisor;
         private static bool _useResidueMode;
         private static bool _useByDivisorMode;
-        private static bool _byDivisorPrecheckOnly;
         private static UInt128 _divisor;
         private static MersenneNumberDivisorGpuTester? _divisorTester;
         private static IMersenneNumberDivisorByDivisorTester? _byDivisorTester;
@@ -58,37 +57,6 @@ internal static class Program
 	private static double _zeroFracHard = -1.0;                 // disabled when < 0
 	private static double _zeroFracConj = -1.0;                 // disabled when < 0
 	private static int _maxZeroConj = -1;                       // disabled when < 0
-
-	private const int ByDivisorStateActive = 0;
-	private const int ByDivisorStateComposite = 1;
-	private const int ByDivisorStateCompleted = 2;
-	private const int ByDivisorStateCompletedDetailed = 3;
-	private const int DivisorAllocationBlockSize = 64;
-
-	private struct ByDivisorPrimeState
-	{
-		internal ulong Prime;
-		internal ulong AllowedMax;
-		internal bool Completed;
-		internal bool Composite;
-		internal bool DetailedCheck;
-	}
-
-	private readonly struct PendingResult
-	{
-		internal PendingResult(ulong prime, bool detailedCheck, bool passedAllTests)
-		{
-			Prime = prime;
-			DetailedCheck = detailedCheck;
-			PassedAllTests = passedAllTests;
-		}
-
-		internal ulong Prime { get; }
-
-		internal bool DetailedCheck { get; }
-
-		internal bool PassedAllTests { get; }
-	}
 
 	private static unsafe void Main(string[] args)
 	{
@@ -614,53 +582,48 @@ internal static class Program
                         File.WriteAllText(ResultsFileName, $"p,searchedMersenne,detailedCheck,passedAllTests{Environment.NewLine}");
 		}
 
-		bool useFilter = !string.IsNullOrEmpty(filterFile);
-		HashSet<ulong> filter = [];
-		List<ulong> filterList = [];
-		ulong maxP = 0UL;
-		ulong[] localFilter = Array.Empty<ulong>();
-		int filterCount = 0;
-		if (useFilter)
-		{
-			Console.WriteLine("Loading filter...");
-			localFilter = new ulong[1024];
-			filterCount = 0;
-			LoadResultsFile(filterFile, (p, detailedCheck, passedAllTests) =>
-			{
-				if (passedAllTests)
-				{
-					localFilter[filterCount++] = p;
-					if (p > maxP)
-					{
-						maxP = p;
-					}
+                bool useFilter = !string.IsNullOrEmpty(filterFile);
+                HashSet<ulong> filter = [];
+                List<ulong> byDivisorCandidates = [];
+                ulong maxP = 0UL;
+                ulong[] localFilter = Array.Empty<ulong>();
+                int filterCount = 0;
+                if (useFilter)
+                {
+                        Console.WriteLine("Loading filter...");
+                        if (_useByDivisorMode)
+                        {
+                                byDivisorCandidates = LoadByDivisorCandidates(filterFile);
+                        }
+                        else
+                        {
+                                localFilter = new ulong[1024];
+                                filterCount = 0;
+                                LoadResultsFile(filterFile, (p, detailedCheck, passedAllTests) =>
+                                {
+                                        if (passedAllTests)
+                                        {
+                                                localFilter[filterCount++] = p;
+                                                if (p > maxP)
+                                                {
+                                                        maxP = p;
+                                                }
 
-					if (filterCount == 1024)
-					{
-						filter.AddRange(localFilter[..filterCount]);
-						filterCount = 0;
-						Console.WriteLine($"Added {p}");
-					}
-				}
-			});
+                                                if (filterCount == 1024)
+                                                {
+                                                        filter.AddRange(localFilter[..filterCount]);
+                                                        filterCount = 0;
+                                                        Console.WriteLine($"Added {p}");
+                                                }
+                                        }
+                                });
 
-			if (filterCount > 0)
-			{
-				filter.AddRange(localFilter[..filterCount]);
-			}
-			filterList = [.. filter];
-		}
-
-		if (useByDivisor)
-		{
-			if (maxP <= 1UL)
-			{
-				Console.WriteLine("The filter specified by --filter-p must contain at least one prime exponent greater than 1 for --mersenne=bydivisor.");
-				return;
-			}
-
-			_byDivisorTester!.ConfigureFromMaxPrime(maxP);
-		}
+                                if (filterCount > 0)
+                                {
+                                        filter.AddRange(localFilter[..filterCount]);
+                                }
+                        }
+                }
 
 		if (_primeCount >= 2)
 		{
@@ -676,13 +639,13 @@ internal static class Program
 
 		Console.WriteLine("Starting scan...");
 
-		if (_useByDivisorMode)
-		{
-			RunByDivisorMode(filterList, divisorCyclesSearchLimit, threadCount);
-			FlushBuffer();
-			StringBuilderPool.Return(_outputBuilder!);
-			return;
-		}
+                if (_useByDivisorMode)
+                {
+                        RunByDivisorMode(byDivisorCandidates, threadCount);
+                        FlushBuffer();
+                        StringBuilderPool.Return(_outputBuilder!);
+                        return;
+                }
 
 		if (!useDivisor && !useByDivisor)
 		{
@@ -768,552 +731,71 @@ internal static class Program
 		StringBuilderPool.Return(_outputBuilder!);
 	}
 
-	private static class ByDivisorScanner
-	{
-                internal static void Run(List<ulong> primes, ulong divisorCyclesSearchLimit, int threadCount)
-                {
-                        if (primes.Count == 0)
-                        {
-                                return;
-                        }
-
-                        List<ByDivisorPrimeState> states = new(primes.Count);
-                        ByDivisorPrimeState stateToAdd;
-                        bool searched = false;
-                        bool detailed = false;
-                        ulong allowedMax = 0UL;
-                        Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults = _byDivisorPreviousResults;
-                        int skippedByPreviousResults = 0;
-
-                        _byDivisorPrecheckOnly = true;
-                        ulong startPrime = _byDivisorStartPrime;
-                        bool applyStartPrime = startPrime > 0UL;
-
-                        foreach (ulong prime in primes)
-                        {
-                                if (applyStartPrime && prime < startPrime)
-                                {
-                                        continue;
-                                }
-
-                                if (previousResults is not null && previousResults.TryGetValue(prime, out var previousResult) && !previousResult.PassedAllTests)
-                                {
-                                        skippedByPreviousResults++;
-                                        continue;
-                                }
-
-                                if (!IsEvenPerfectCandidate(prime, divisorCyclesSearchLimit, out searched, out detailed))
-                                {
-                                        PrintResult(prime, searched, detailed, false);
-                                        continue;
-                                }
-
-				allowedMax = _byDivisorTester!.GetAllowedMaxDivisor(prime);
-				if (allowedMax < 3UL)
-				{
-					PrintResult(prime, searchedMersenne: true, detailedCheck: true, passedAllTests: true);
-					continue;
-				}
-
-				stateToAdd = new ByDivisorPrimeState
-				{
-					Prime = prime,
-					AllowedMax = allowedMax,
-					Completed = false,
-					Composite = false,
-					DetailedCheck = false,
-				};
-
-                                states.Add(stateToAdd);
-                        }
-
-                        _byDivisorPrecheckOnly = false;
-
-                        if (skippedByPreviousResults > 0)
-                        {
-                                Console.WriteLine($"Skipped {skippedByPreviousResults.ToString(CultureInfo.InvariantCulture)} primes excluded by previous results.");
-                        }
-
-                        if (states.Count == 0)
-                        {
-                                if (applyStartPrime)
-                                {
-                                        Console.WriteLine($"No primes greater than or equal to {startPrime.ToString(CultureInfo.InvariantCulture)} were found for --mersenne=bydivisor.");
-                                }
-
-                                return;
-                        }
-
-                        states.Sort(static (left, right) => left.Prime.CompareTo(right.Prime));
-
-                        int stateCount = states.Count;
-                        ulong[] primeValues = new ulong[stateCount];
-                        ulong[] allowedMaxValues = new ulong[stateCount];
-                        int[] stateFlags = new int[stateCount];
-
-                        int stateIndex = 0;
-                        ByDivisorPrimeState currentState;
-                        for (; stateIndex < stateCount; stateIndex++)
-                        {
-                                currentState = states[stateIndex];
-                                primeValues[stateIndex] = currentState.Prime;
-                                allowedMaxValues[stateIndex] = currentState.AllowedMax;
-                                stateFlags[stateIndex] = ByDivisorStateActive;
-                        }
-
-			states.Clear();
-
-			ulong divisorLimit = _byDivisorTester!.DivisorLimit;
-			ulong nextDivisor = 3UL;
-			long finalDivisorBits = unchecked((long)3UL);
-			int divisorsExhaustedFlag = 0;
-			int finalizerState = 0;
-			int finalizationCompleted = 0;
-			int remainingStates = stateCount;
-			int activeStartIndex = 0;
-			long[] activeStateMask = new long[(stateCount + 63) >> 6];
-
-			int maskStateIndex = 0;
-			int wordIndex = 0;
-			int bitIndex = 0;
-			for (; maskStateIndex < stateCount; maskStateIndex++)
-			{
-				wordIndex = maskStateIndex >> 6;
-				bitIndex = maskStateIndex & 63;
-				activeStateMask[wordIndex] |= 1L << bitIndex;
-			}
-
-			Task[] workers = new Task[Math.Max(1, threadCount)];
-
-			for (int workerIndex = 0; workerIndex < workers.Length; workerIndex++)
-			{
-				int capturedStateCount = stateCount;
-				workers[workerIndex] = Task.Factory.StartNew(() =>
-				{
-					using var session = _byDivisorTester!.CreateDivisorSession();
-					byte[] hitsBuffer = ArrayPool<byte>.Shared.Rent(capturedStateCount);
-					ulong[] primeBuffer = ArrayPool<ulong>.Shared.Rent(capturedStateCount);
-					int[] indexBuffer = ArrayPool<int>.Shared.Rent(capturedStateCount);
-					PendingResult[] completionsBuffer = ArrayPool<PendingResult>.Shared.Rent(capturedStateCount);
-					PendingResult[] compositesBuffer = ArrayPool<PendingResult>.Shared.Rent(capturedStateCount);
-					int completionsCount = 0;
-					int compositesCount = 0;
-					ulong localDivisorCursor = 0UL;
-					int localDivisorsRemaining = 0;
-					bool exhausted = false;
-					ulong divisor;
-					int activeCount;
-					Span<byte> hitsSpan = default;
-					int hitIndex = 0;
-					int index;
-					bool useDivisorCycles = _byDivisorTester!.UseDivisorCycles;
-					ulong divisorCycle = 0UL;
-
-					try
-					{
-						while (true)
-						{
-							if (Volatile.Read(ref remainingStates) == 0)
-							{
-								if (Volatile.Read(ref finalizationCompleted) != 0 || Volatile.Read(ref divisorsExhaustedFlag) == 0)
-								{
-									break;
-								}
-							}
-
-							divisor = AcquireNextDivisor(ref nextDivisor, divisorLimit, ref divisorsExhaustedFlag, ref finalDivisorBits, out exhausted, ref localDivisorCursor, ref localDivisorsRemaining);
-							if (divisor != 0UL)
-							{
-							DivisorCycleCache.CycleBlock? cycleBlock = null;
-							if (useDivisorCycles)
-							{
-							cycleBlock = DivisorCycleCache.Shared.Acquire(divisor);
-							divisorCycle = cycleBlock.GetCycle(divisor);
-							}
-							else
-							{
-							divisorCycle = 0UL;
-							}
-
-							activeCount = BuildPrimeBuffer(divisor, primeValues, allowedMaxValues, stateFlags, primeBuffer, indexBuffer, completionsBuffer, ref completionsCount, ref remainingStates, activeStateMask, ref activeStartIndex);
-
-							if (completionsCount > 0)
-							{
-							FlushPendingResults(completionsBuffer, ref completionsCount);
-							}
-
-							if (activeCount == 0)
-							{
-							cycleBlock?.Dispose();
-							continue;
-							}
-
-								hitsSpan = hitsBuffer.AsSpan(0, activeCount);
-								hitsSpan.Clear();
-								session.CheckDivisor(divisor, divisorCycle, primeBuffer.AsSpan(0, activeCount), hitsSpan);
-
-								for (hitIndex = 0; hitIndex < activeCount; hitIndex++)
-								{
-									if (hitsSpan[hitIndex] == 0)
-									{
-										continue;
-									}
-
-									index = indexBuffer[hitIndex];
-									if (Interlocked.CompareExchange(ref stateFlags[index], ByDivisorStateComposite, ByDivisorStateActive) == ByDivisorStateActive)
-									{
-										ClearActiveMask(activeStateMask, index);
-										Interlocked.Decrement(ref remainingStates);
-										compositesBuffer[compositesCount++] = new PendingResult(primeValues[index], detailedCheck: true, passedAllTests: false);
-									}
-
-									if (compositesCount == compositesBuffer.Length)
-									{
-										FlushPendingResults(compositesBuffer, ref compositesCount);
-									}
-								}
-
-							if (compositesCount > 0)
-							{
-							FlushPendingResults(compositesBuffer, ref compositesCount);
-							}
-
-							cycleBlock?.Dispose();
-
-								continue;
-							}
-
-							if (!exhausted)
-							{
-								if (Volatile.Read(ref remainingStates) == 0)
-								{
-									break;
-								}
-
-								Thread.Yield();
-								continue;
-							}
-
-							if (Interlocked.CompareExchange(ref finalizerState, 1, 0) == 0)
-							{
-								FinalizeRemainingStates(primeValues, allowedMaxValues, stateFlags, ref remainingStates, ref finalDivisorBits, completionsBuffer, ref completionsCount, activeStateMask);
-
-								if (completionsCount > 0)
-								{
-									FlushPendingResults(completionsBuffer, ref completionsCount);
-								}
-
-								Volatile.Write(ref finalizationCompleted, 1);
-							}
-							else
-							{
-								while (Volatile.Read(ref finalizationCompleted) == 0 && Volatile.Read(ref remainingStates) > 0)
-								{
-									Thread.Yield();
-								}
-							}
-
-							if (Volatile.Read(ref remainingStates) == 0)
-							{
-								break;
-							}
-						}
-
-						if (completionsCount > 0)
-						{
-							FlushPendingResults(completionsBuffer, ref completionsCount);
-						}
-
-						if (compositesCount > 0)
-						{
-							FlushPendingResults(compositesBuffer, ref compositesCount);
-						}
-					}
-					finally
-					{
-						ArrayPool<PendingResult>.Shared.Return(compositesBuffer, clearArray: true);
-						ArrayPool<PendingResult>.Shared.Return(completionsBuffer, clearArray: true);
-						ArrayPool<int>.Shared.Return(indexBuffer, clearArray: true);
-						ArrayPool<ulong>.Shared.Return(primeBuffer, clearArray: true);
-						ArrayPool<byte>.Shared.Return(hitsBuffer, clearArray: true);
-					}
-				},
-				CancellationToken.None,
-				TaskCreationOptions.LongRunning,
-				TaskScheduler.Default);
-			}
-
-			Task.WaitAll(workers);
-		}
-	}
-
-	private static void RunByDivisorMode(List<ulong> primes, ulong divisorCyclesSearchLimit, int threadCount) => ByDivisorScanner.Run(primes, divisorCyclesSearchLimit, threadCount);
-
-        private static ulong AcquireNextDivisor(ref ulong nextDivisor, ulong divisorLimit, ref int divisorsExhaustedFlag, ref long finalDivisorBits, out bool exhausted, ref ulong localDivisorCursor, ref int localDivisorsRemaining)
+        private static List<ulong> LoadByDivisorCandidates(string candidateFile)
         {
-                ref long nextDivisorBits = ref Unsafe.As<ulong, long>(ref nextDivisor);
-                ulong blockStride = unchecked(DivisorAllocationBlockSize * 2);
-
-                if (TryAcquireLocalDivisor(ref localDivisorCursor, ref localDivisorsRemaining, out ulong localDivisor))
+                List<ulong> candidates = [];
+                using FileStream readStream = new(candidateFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using StreamReader reader = new(readStream);
+                string? line;
+                ReadOnlySpan<char> span;
+                while ((line = reader.ReadLine()) is not null)
                 {
-                        exhausted = false;
-                        return localDivisor;
-                }
-
-                while (true)
-                {
-                        if (Volatile.Read(ref divisorsExhaustedFlag) != 0)
+                        if (string.IsNullOrWhiteSpace(line))
                         {
-                                exhausted = true;
-                                return 0UL;
+                                continue;
                         }
 
-                        long currentBits = Volatile.Read(ref nextDivisorBits);
-                        ulong currentValue = unchecked((ulong)currentBits);
-                        if (currentValue > divisorLimit)
+                        span = line.AsSpan().Trim();
+                        if (span.IsEmpty || span[0] == '#')
                         {
-                                if (Interlocked.CompareExchange(ref divisorsExhaustedFlag, 1, 0) == 0)
+                                continue;
+                        }
+
+                        int index = 0;
+                        while (index < span.Length)
+                        {
+                                if (!char.IsDigit(span[index]))
                                 {
-                                        Volatile.Write(ref finalDivisorBits, currentBits);
+                                        index++;
+                                        continue;
                                 }
 
-                                exhausted = true;
-                                return 0UL;
+                                int start = index;
+                                index++;
+                                while (index < span.Length && char.IsDigit(span[index]))
+                                {
+                                        index++;
+                                }
+
+                                if (ulong.TryParse(span[start..index], NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsed))
+                                {
+                                        candidates.Add(parsed);
+                                }
                         }
-
-                        ulong maximumNext = divisorLimit >= ulong.MaxValue - 1UL ? ulong.MaxValue : divisorLimit + 2UL;
-                        ulong requestedNext = currentValue > ulong.MaxValue - blockStride ? ulong.MaxValue : currentValue + blockStride;
-                        if (requestedNext > maximumNext)
-                        {
-                                requestedNext = maximumNext;
-                        }
-
-                        long nextBits = unchecked((long)requestedNext);
-                        if (Interlocked.CompareExchange(ref nextDivisorBits, nextBits, currentBits) != currentBits)
-                        {
-                                continue;
-                        }
-
-                        ulong available = requestedNext - currentValue;
-                        if (available == 0UL)
-                        {
-                                continue;
-                        }
-
-                        int count = (int)(available >> 1);
-                        if (count <= 0)
-                        {
-                                continue;
-                        }
-
-                        localDivisorCursor = currentValue;
-                        localDivisorsRemaining = count;
-
-                        if (TryAcquireLocalDivisor(ref localDivisorCursor, ref localDivisorsRemaining, out ulong candidate))
-                        {
-                                exhausted = false;
-                                return candidate;
-                        }
-
-                        // No valid divisor was found in this range; attempt to acquire the next block.
-                        localDivisorCursor = 0UL;
-                        localDivisorsRemaining = 0;
                 }
+
+                return candidates;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool TryAcquireLocalDivisor(ref ulong cursor, ref int remaining, out ulong divisor)
+        private static void RunByDivisorMode(List<ulong> candidates, int threadCount)
         {
-                while (remaining > 0)
+                if (_byDivisorTester is null)
                 {
-                        ulong candidate = cursor;
-                        cursor += 2UL;
-                        remaining--;
-
-                        if (IsAllowedDivisorCandidate(candidate))
-                        {
-                                divisor = candidate;
-                                return true;
-                        }
+                        throw new InvalidOperationException("By-divisor tester has not been initialized.");
                 }
 
-                divisor = 0UL;
-                return false;
+                MersenneNumberDivisorByDivisorTester.Run(
+                        candidates,
+                        _byDivisorTester,
+                        _byDivisorPreviousResults,
+                        _byDivisorStartPrime,
+                        static () => _lastCompositeP = true,
+                        static () => _lastCompositeP = false,
+                        PrintResult,
+                        threadCount);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsAllowedDivisorCandidate(ulong divisor)
-        {
-                if ((divisor & 1UL) == 0UL)
-                {
-                        return false;
-                }
-
-                if ((divisor % 3UL) == 0UL || (divisor % 5UL) == 0UL || (divisor % 7UL) == 0UL || (divisor % 11UL) == 0UL)
-                {
-                        return false;
-                }
-
-                return true;
-        }
-
-        private static int BuildPrimeBuffer(ulong divisor, in ulong[] primeValues, in ulong[] allowedMaxValues, int[] stateFlags, ulong[] primeBuffer, int[] indexBuffer, PendingResult[] completionsBuffer, ref int completionsCount, ref int remainingStates, long[] activeStateMask, ref int activeStartIndex)
-        {
-                int length = primeValues.Length;
-                int startIndex;
-                while (true)
-                {
-                        startIndex = Volatile.Read(ref activeStartIndex);
-                        if (startIndex >= length || allowedMaxValues[startIndex] >= divisor)
-                        {
-                                break;
-                        }
-
-                        // Claim the prefix slot before finalizing to avoid double-counting the same candidate.
-                        if (Interlocked.CompareExchange(ref activeStartIndex, startIndex + 1, startIndex) != startIndex)
-                        {
-                                continue;
-                        }
-
-                        int state = Volatile.Read(ref stateFlags[startIndex]);
-                        if (state == ByDivisorStateActive)
-                        {
-                                Volatile.Write(ref stateFlags[startIndex], ByDivisorStateCompletedDetailed);
-                                ClearActiveMask(activeStateMask, startIndex);
-                                Interlocked.Decrement(ref remainingStates);
-                                if (completionsCount == completionsBuffer.Length)
-                                {
-                                        FlushPendingResults(completionsBuffer, ref completionsCount);
-                                }
-                                completionsBuffer[completionsCount++] = new PendingResult(primeValues[startIndex], detailedCheck: true, passedAllTests: true);
-                        }
-                        else
-                        {
-                                ClearActiveMask(activeStateMask, startIndex);
-                        }
-                }
-
-                int index = startIndex;
-                int activeCount = 0;
-                while (index < length)
-                {
-                        int wordIndex = index >> 6;
-                        ulong word = unchecked((ulong)activeStateMask[wordIndex]);
-                        if (word == 0UL)
-                        {
-                                // Fallback to a volatile read only when the optimistic read reports no work to
-                                // minimize the number of costly fences on the hot path.
-                                word = unchecked((ulong)Volatile.Read(ref activeStateMask[wordIndex]));
-                                if (word == 0UL)
-                                {
-                                        index = (wordIndex + 1) << 6;
-                                        continue;
-                                }
-                        }
-                        int bitOffset = index & 63;
-			if (bitOffset != 0)
-			{
-				word &= ulong.MaxValue << bitOffset;
-				if (word == 0UL)
-				{
-					index = (wordIndex + 1) << 6;
-					continue;
-				}
-			}
-
-			while (word != 0UL)
-			{
-				int candidateIndex = (wordIndex << 6) + BitOperations.TrailingZeroCount(word);
-				if (candidateIndex >= length)
-				{
-					return activeCount;
-				}
-
-                                // Intentionally avoid Volatile.Read here; seeing a stale Active value only causes
-                                // redundant work, while seeing a stale non-active value would require the mask bit
-                                // to be set, which means another worker has not finished clearing it yet.
-                                if (stateFlags[candidateIndex] == ByDivisorStateActive)
-                                {
-                                        primeBuffer[activeCount] = primeValues[candidateIndex];
-                                        indexBuffer[activeCount] = candidateIndex;
-                                        activeCount++;
-                                }
-                                else
-                                {
-                                        ClearActiveMask(activeStateMask, candidateIndex);
-                                }
-
-				word &= word - 1UL;
-			}
-
-			index = (wordIndex + 1) << 6;
-		}
-
-		return activeCount;
-	}
-
-	private static void FinalizeRemainingStates(ulong[] primeValues, ulong[] allowedMaxValues, int[] stateFlags, ref int remainingStates, ref long finalDivisorBits, PendingResult[] completionsBuffer, ref int completionsCount, long[] activeStateMask)
-	{
-		int finalizeIndex = 0;
-		bool detailed = false;
-		for (; finalizeIndex < primeValues.Length; finalizeIndex++)
-		{
-                        if (stateFlags[finalizeIndex] != ByDivisorStateActive)
-                        {
-                                continue;
-                        }
-
-                        ulong finalDivisor = unchecked((ulong)Volatile.Read(ref finalDivisorBits));
-                        detailed = finalDivisor > allowedMaxValues[finalizeIndex];
-
-                        if (Interlocked.CompareExchange(ref stateFlags[finalizeIndex], detailed ? ByDivisorStateCompletedDetailed : ByDivisorStateCompleted, ByDivisorStateActive) != ByDivisorStateActive)
-                        {
-                                continue;
-                        }
-
-			ClearActiveMask(activeStateMask, finalizeIndex);
-			Interlocked.Decrement(ref remainingStates);
-			if (completionsCount == completionsBuffer.Length)
-			{
-				FlushPendingResults(completionsBuffer, ref completionsCount);
-			}
-			completionsBuffer[completionsCount++] = new PendingResult(primeValues[finalizeIndex], detailedCheck: detailed, passedAllTests: true);
-		}
-	}
-
-	private static void FlushPendingResults(PendingResult[] buffer, ref int count)
-	{
-		int flushIndex = 0;
-		for (; flushIndex < count; flushIndex++)
-		{
-			PendingResult result = buffer[flushIndex];
-			PrintResult(result.Prime, searchedMersenne: true, detailedCheck: result.DetailedCheck, passedAllTests: result.PassedAllTests);
-		}
-
-		count = 0;
-	}
-
-	private static void ClearActiveMask(long[] activeStateMask, int index)
-	{
-		int wordIndex = index >> 6;
-		long bit = 1L << (index & 63);
-
-		while (true)
-		{
-			long current = Volatile.Read(ref activeStateMask[wordIndex]);
-			if ((current & bit) == 0)
-			{
-				return;
-			}
-
-			if (Interlocked.CompareExchange(ref activeStateMask[wordIndex], current & ~bit, current) == current)
-			{
-				return;
-			}
-		}
-	}
-
-	private static unsafe void LoadResultsFile(string resultsFileName, Action<ulong, bool, bool> lineProcessorAction)
+        private static unsafe void LoadResultsFile(string resultsFileName, Action<ulong, bool, bool> lineProcessorAction)
 	{
 		using FileStream readStream = new(resultsFileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 		using StreamReader reader = new(readStream);
@@ -1826,17 +1308,10 @@ internal static class Program
 		}
 
 		searchedMersenne = true;
-		if (_useByDivisorMode)
-		{
-			if (_byDivisorPrecheckOnly)
-			{
-				searchedMersenne = false;
-				detailedCheck = false;
-				return true;
-			}
-
-			return _byDivisorTester!.IsPrime(p, out detailedCheck);
-		}
+                if (_useByDivisorMode)
+                {
+                        return _byDivisorTester!.IsPrime(p, out detailedCheck);
+                }
 
 		if (_useDivisor)
 		{

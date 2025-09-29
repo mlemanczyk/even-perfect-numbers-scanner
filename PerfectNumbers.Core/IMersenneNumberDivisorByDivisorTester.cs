@@ -18,6 +18,8 @@ public interface IMersenneNumberDivisorByDivisorTester
 
         IDivisorScanSession CreateDivisorSession();
 
+        void PrepareCandidates(ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues);
+
         public interface IDivisorScanSession : IDisposable
         {
                 void CheckDivisor(ulong divisor, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits);
