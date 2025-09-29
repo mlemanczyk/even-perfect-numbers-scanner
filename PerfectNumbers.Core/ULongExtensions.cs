@@ -155,8 +155,8 @@ public static class ULongExtensions
 		step3 = (step3 << 1) % 3UL;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static UInt128 Mul64(this ulong a, ulong b) => ((UInt128)a.MulHigh(b) << 64) | (UInt128)(a * b);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static UInt128 Mul64(this ulong a, ulong b) => ((UInt128)a.MulHigh(b) << 64) | (UInt128)(a * b);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong MulHigh(this ulong x, ulong y)
@@ -172,6 +172,14 @@ public static class ULongExtensions
                 ulong result = (xHigh * yHigh) + (w1 >> 32) + (w2 >> 32);
                 result += (((xLow * yLow) >> 32) + (uint)w1 + (uint)w2) >> 32;
                 return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong MulHighGpuCompatible(this ulong x, ulong y)
+        {
+                GpuUInt128 product = new(x);
+                product.Mul64(new GpuUInt128(y));
+                return product.High;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
