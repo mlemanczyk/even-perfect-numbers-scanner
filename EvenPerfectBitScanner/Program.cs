@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -30,13 +31,14 @@ internal static class Program
 	private static bool _primeFoundAfterInit;
 	private static bool _useGcdFilter;
 	private static bool _useDivisor;
-	private static bool _useResidueMode;
-	private static bool _useByDivisorMode;
-	private static bool _byDivisorPrecheckOnly;
-	private static UInt128 _divisor;
-	private static MersenneNumberDivisorGpuTester? _divisorTester;
-	private static IMersenneNumberDivisorByDivisorTester? _byDivisorTester;
-	private static ulong? _orderWarmupLimitOverride;
+        private static bool _useResidueMode;
+        private static bool _useByDivisorMode;
+        private static bool _byDivisorPrecheckOnly;
+        private static UInt128 _divisor;
+        private static MersenneNumberDivisorGpuTester? _divisorTester;
+        private static IMersenneNumberDivisorByDivisorTester? _byDivisorTester;
+        private static Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? _byDivisorPreviousResults;
+        private static ulong? _orderWarmupLimitOverride;
 	private static unsafe delegate*<ulong, ref ulong, ulong> _transformP;
 	private static long _state;
 	private static bool _limitReached;
@@ -588,20 +590,28 @@ internal static class Program
 		}
 
 
-		if (File.Exists(ResultsFileName))
-		{
-			Console.WriteLine("Processing previous results...");
-			LoadResultsFile(ResultsFileName, (p, detailedCheck, passedAllTests) =>
-			{
-				if (detailedCheck && passedAllTests)
-				{
-					_primeCount++;
-				}
-			});
-		}
-		else
-		{
-			File.WriteAllText(ResultsFileName, $"p,searchedMersenne,detailedCheck,passedAllTests{Environment.NewLine}");
+                Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults = useByDivisor ? new Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>() : null;
+                _byDivisorPreviousResults = previousResults;
+
+                if (File.Exists(ResultsFileName))
+                {
+                        Console.WriteLine("Processing previous results...");
+                        LoadResultsFile(ResultsFileName, (p, detailedCheck, passedAllTests) =>
+                        {
+                                if (detailedCheck && passedAllTests)
+                                {
+                                        _primeCount++;
+                                }
+
+                                if (previousResults is not null)
+                                {
+                                        previousResults[p] = (detailedCheck, passedAllTests);
+                                }
+                        });
+                }
+                else
+                {
+                        File.WriteAllText(ResultsFileName, $"p,searchedMersenne,detailedCheck,passedAllTests{Environment.NewLine}");
 		}
 
 		bool useFilter = !string.IsNullOrEmpty(filterFile);
@@ -760,35 +770,43 @@ internal static class Program
 
 	private static class ByDivisorScanner
 	{
-		internal static void Run(List<ulong> primes, ulong divisorCyclesSearchLimit, int threadCount)
-		{
-			if (primes.Count == 0)
-			{
-				return;
-			}
+                internal static void Run(List<ulong> primes, ulong divisorCyclesSearchLimit, int threadCount)
+                {
+                        if (primes.Count == 0)
+                        {
+                                return;
+                        }
 
-			List<ByDivisorPrimeState> states = new(primes.Count);
-			ByDivisorPrimeState stateToAdd;
-			bool searched = false;
-			bool detailed = false;
-			ulong allowedMax = 0UL;
+                        List<ByDivisorPrimeState> states = new(primes.Count);
+                        ByDivisorPrimeState stateToAdd;
+                        bool searched = false;
+                        bool detailed = false;
+                        ulong allowedMax = 0UL;
+                        Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults = _byDivisorPreviousResults;
+                        int skippedByPreviousResults = 0;
 
-			_byDivisorPrecheckOnly = true;
-			ulong startPrime = _byDivisorStartPrime;
-			bool applyStartPrime = startPrime > 0UL;
+                        _byDivisorPrecheckOnly = true;
+                        ulong startPrime = _byDivisorStartPrime;
+                        bool applyStartPrime = startPrime > 0UL;
 
-			foreach (ulong prime in primes)
-			{
-				if (applyStartPrime && prime < startPrime)
-				{
-					continue;
-				}
+                        foreach (ulong prime in primes)
+                        {
+                                if (applyStartPrime && prime < startPrime)
+                                {
+                                        continue;
+                                }
 
-				if (!IsEvenPerfectCandidate(prime, divisorCyclesSearchLimit, out searched, out detailed))
-				{
-					PrintResult(prime, searched, detailed, false);
-					continue;
-				}
+                                if (previousResults is not null && previousResults.TryGetValue(prime, out var previousResult) && !previousResult.PassedAllTests)
+                                {
+                                        skippedByPreviousResults++;
+                                        continue;
+                                }
+
+                                if (!IsEvenPerfectCandidate(prime, divisorCyclesSearchLimit, out searched, out detailed))
+                                {
+                                        PrintResult(prime, searched, detailed, false);
+                                        continue;
+                                }
 
 				allowedMax = _byDivisorTester!.GetAllowedMaxDivisor(prime);
 				if (allowedMax < 3UL)
@@ -806,10 +824,15 @@ internal static class Program
 					DetailedCheck = false,
 				};
 
-				states.Add(stateToAdd);
-			}
+                                states.Add(stateToAdd);
+                        }
 
-			_byDivisorPrecheckOnly = false;
+                        _byDivisorPrecheckOnly = false;
+
+                        if (skippedByPreviousResults > 0)
+                        {
+                                Console.WriteLine($"Skipped {skippedByPreviousResults.ToString(CultureInfo.InvariantCulture)} primes excluded by previous results.");
+                        }
 
                         if (states.Count == 0)
                         {
