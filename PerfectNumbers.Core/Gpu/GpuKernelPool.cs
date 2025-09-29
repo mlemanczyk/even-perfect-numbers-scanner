@@ -241,7 +241,9 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
 		}
 
         GpuUInt128 k = kStart + (GpuUInt128)idx;
-        GpuUInt128 q = twoP.Mul64(k) + GpuUInt128.One;
+        GpuUInt128 q = twoP;
+        q.Mul64(k);
+        q.Add(GpuUInt128.One);
         
         // Small-cycles in-kernel early rejection from device table
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
@@ -395,7 +397,9 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         }
 
         GpuUInt128 k = kStart + (GpuUInt128)idx;
-        GpuUInt128 q = twoP.Mul64(k) + GpuUInt128.One;
+        GpuUInt128 q = twoP;
+        q.Mul64(k);
+        q.Add(GpuUInt128.One);
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
         {
             ulong cycle = smallCycles[(int)q.Low];
@@ -539,7 +543,9 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
 		}
 
         GpuUInt128 k = kStart + (GpuUInt128)idx;
-        GpuUInt128 q = twoP.Mul64(k) + GpuUInt128.One;
+        GpuUInt128 q = twoP;
+        q.Mul64(k);
+        q.Add(GpuUInt128.One);
 
         // Small-cycles in-kernel early rejection from device table
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
@@ -621,7 +627,9 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
 		}
 
         GpuUInt128 k = kStart + (GpuUInt128)idx;
-        GpuUInt128 q = twoP.Mul64(k) + GpuUInt128.One;
+        GpuUInt128 q = twoP;
+        q.Mul64(k);
+        q.Add(GpuUInt128.One);
         // Small-cycles in-kernel early rejection from device table
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
         {

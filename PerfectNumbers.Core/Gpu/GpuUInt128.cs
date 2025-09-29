@@ -20,6 +20,13 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public GpuUInt128(ulong low)
+    {
+        High = 0UL;
+        Low = low;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public GpuUInt128(UInt128 value)
     {
         High = (ulong)(value >> 64);
@@ -36,7 +43,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public static implicit operator GpuUInt128(UInt128 value) => new(value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator GpuUInt128(ulong value) => new(0UL, value);
+    public static implicit operator GpuUInt128(ulong value) => new(value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static implicit operator UInt128(GpuUInt128 value) =>
@@ -395,13 +402,12 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly GpuUInt128 Mul64(GpuUInt128 other)
+    public void Mul64(GpuUInt128 other)
     {
         // Multiply this.Low (assumed 64-bit value) by full 128-bit other
-        ulong a = Low;
-        ulong low = a * other.Low;
-        ulong high = a * other.High + MulHigh(a, other.Low);
-        return new(high, low);
+        ulong operand = Low;
+        Low = operand * other.Low;
+        High = operand * other.High + MulHigh(operand, other.Low);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
