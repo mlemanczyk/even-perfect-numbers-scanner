@@ -7,7 +7,7 @@ using PerfectNumbers.Core;
 
 namespace EvenPerfectBitScanner.Benchmarks;
 
-[SimpleJob(RuntimeMoniker.Net80, launchCount: 1, warmupCount: 1, iterationCount: 3)]
+[SimpleJob(RuntimeMoniker.Net80)]
 [MemoryDiagnoser]
 public class MulHighBenchmarks
 {
