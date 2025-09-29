@@ -22,7 +22,6 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public GpuUInt128(ulong low)
     {
-        High = 0UL;
         Low = low;
     }
 
@@ -394,20 +393,25 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
         ulong w1 = xLow * yHigh;
         ulong w2 = xHigh * yLow;
-        ulong carry =
-            (((xLow * yLow) >> 32) +
-            (uint)w1 +
-            (uint)w2) >> 32;
-        return (xHigh * yHigh) + (w1 >> 32) + (w2 >> 32) + carry;
+        return (xHigh * yHigh) + (w1 >> 32) + (w2 >> 32) +
+        (
+            (
+                ((xLow * yLow) >> 32) +
+                (uint)w1 +
+                (uint)w2
+            ) >> 32
+        );
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Mul64(GpuUInt128 other)
     {
         // Multiply this.Low (assumed 64-bit value) by full 128-bit other
-        ulong operand = Low;
-        Low = operand * other.Low;
-        High = operand * other.High + MulHigh(operand, other.Low);
+        ulong operand = Low,
+              otherLow = other.Low;
+              
+        Low = operand * otherLow;
+        High = operand * other.High + MulHigh(operand, otherLow);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
