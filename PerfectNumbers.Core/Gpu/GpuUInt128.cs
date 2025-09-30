@@ -15,8 +15,13 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     private const ulong NativeModuloChunkMask = (1UL << NativeModuloChunkBits) - 1UL;
     private static readonly ulong[] NativeModuloBitMasks = CreateNativeModuloBitMasks();
 
-    public static readonly GpuUInt128 Zero = new(0UL, 0UL);
-    public static readonly GpuUInt128 One = new(0UL, 1UL);
+    public static readonly GpuUInt128 Zero = new();
+    public static readonly GpuUInt128 One = new(1UL);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public GpuUInt128()
+    {
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public GpuUInt128(ulong high, ulong low)
@@ -59,6 +64,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     {
         var low = left.Low + right.Low;
         var high = left.High + right.High + (low < left.Low ? 1UL : 0UL);
+        // TODO: This should operate and return the instance itself, not a copy.
         return new(high, low);
     }
 
@@ -68,6 +74,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         var borrow = left.Low < right.Low ? 1UL : 0UL;
         var low = left.Low - right.Low;
         var high = left.High - right.High - borrow;
+        // TODO: This should operate and return the instance itself, not a copy.
         return new(high, low);
     }
 
@@ -79,12 +86,14 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public static GpuUInt128 operator *(GpuUInt128 left, GpuUInt128 right)
     {
         Multiply(left, right, out var high, out var low);
+        // TODO: This should operate and return the instance itself, not a copy.
         return new(high, low);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GpuUInt128 operator <<(GpuUInt128 value, int shift)
     {
+        // TODO: Reuse variables to reduce register pressure.
         shift &= 127;
         if (shift == 0)
         {
@@ -99,12 +108,14 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
         ulong highPart = (value.High << shift) | (value.Low >> (64 - shift));
         ulong lowPart = value.Low << shift;
+        // TODO: This should operate and return the instance itself, not a copy.
         return new(highPart, lowPart);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GpuUInt128 operator >>(GpuUInt128 value, int shift)
     {
+        // TODO: Reuse variables to reduce register pressure.
         shift &= 127;
         if (shift == 0)
         {
@@ -114,11 +125,12 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         if (shift >= 64)
         {
             ulong low = value.High >> (shift - 64);
-            return new(0UL, low);
+            return new(low);
         }
 
         ulong highPart = value.High >> shift;
         ulong lowPart = (value.Low >> shift) | (value.High << (64 - shift));
+        // TODO: This should operate and return the instance itself, not a copy.
         return new(highPart, lowPart);
     }
 
@@ -186,6 +198,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public void Add(GpuUInt128 other)
     {
         ulong low = Low + other.Low;
+        // TODO: Let's add a version and a benchmark where we assign (low < Low ? 1UL : 0UL) to a local, first.
         High = High + other.High + (low < Low ? 1UL : 0UL);
         Low = low;
     }
@@ -194,7 +207,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public void Add(ulong value)
     {
         ulong low = Low + value;
-        High = High + (low < Low ? 1UL : 0UL);
+        High += (low < Low ? 1UL : 0UL);
         Low = low;
     }
 
@@ -392,6 +405,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong MulHigh(ulong x, ulong y)
     {
+        // TODO: Reuse variables to reduce register pressure.
         ulong xLow = (uint)x;
         ulong xHigh = x >> 32;
         ulong yLow = (uint)y;
@@ -419,6 +433,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             //   otherLow = other.Low;
 
         Low = operand * other.Low;
+        // Let's try a version and add a benchmark for it where operand * other.High is assigned to a local, first.
         High = operand * other.High + MulHigh(operand, other.Low);
     }
 
@@ -431,13 +446,15 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             a.Sub(modulus);
         }
 
+        // TODO: Don't return anything. Return void.
         return a;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GpuUInt128 MulMod(GpuUInt128 a, GpuUInt128 b, GpuUInt128 modulus)
     {
-        GpuUInt128 result = new(0UL, 0UL);
+        // TODO: This should operate on the instance itself, not on a copy. Avoid creating new instances anywhere. We should return void.
+        GpuUInt128 result = new();
         while (!b.IsZero)
         {
             if ((b.Low & 1UL) != 0UL)
@@ -455,7 +472,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             // b >>= 1
             if (b.High == 0UL)
             {
-                b = new GpuUInt128(0UL, b.Low >> 1);
+                b = new GpuUInt128(b.Low >> 1);
             }
             else
             {
@@ -474,13 +491,14 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     {
         if (modulus.IsZero || modulus == One)
         {
-            return new(0UL, 0UL);
+            return new();
         }
 
-        GpuUInt128 result = new(0UL, 1UL);
-		GpuUInt128 baseVal = new(0UL, 2UL);
+        GpuUInt128 result = new(1UL);
+		GpuUInt128 baseVal = new(2UL);
 
         ulong e = exponent;
+        // TODO: Can we modify this loop to process multiple bits at a time? E.g. 64-bit chunks.
         while (e != 0UL)
         {
             if ((e & 1UL) != 0UL)
@@ -509,6 +527,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GpuUInt128 BinaryGcd(GpuUInt128 u, GpuUInt128 v)
     {
+        // TODO: Reuse variables to reduce register pressure.
         if (u.IsZero)
         {
             return v;
@@ -565,6 +584,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SubMod(ulong value, GpuUInt128 modulus)
     {
+        // TODO: Reuse variables to reduce register pressure.
         ulong low, high;
         if (High == 0UL && Low < value)
         {
@@ -615,13 +635,15 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ShiftLeft(int shift)
     {
-        this = this << shift;
+        // TODO: This should operate on the instance itself, not on a copy. Don't use operator. Implement your own logic.
+        this <<= shift;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ShiftRight(int shift)
     {
-        this = this >> shift;
+        // TODO: This should operate on the instance itself, not on a copy. Don't use operator. Implement your own logic.
+        this >>= shift;
     }
 
     public void MulMod(GpuUInt128 other, GpuUInt128 modulus)
@@ -634,8 +656,10 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
         MultiplyFull(this, other, out var p3, out var p2, out var p1, out var p0);
 
-        GpuUInt128 remainder = new(0UL, 0UL);
+        // TODO: This should operate on the instance itself, not on a copy. Avoid creating new instances anywhere.
+        GpuUInt128 remainder = new();
         int bit;
+        // TODO: Can we modify these loops to process multiple bits at a time? E.g. 64-bit chunks.
         for (bit = 63; bit >= 0; bit--)
         {
             remainder <<= 1;
@@ -717,6 +741,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     {
         MultiplyFull(this, other, out var p3, out var p2, out var p1, out var p0);
 
+        // TODO: This should operate on the instance itself, not on a copy. Avoid creating new instances anywhere.
         GpuUInt128 remainder = new(p3, p2);
         while (remainder.CompareTo(modulus) >= 0)
         {
@@ -749,59 +774,76 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             return;
         }
 
-        GpuUInt128 other = new(0UL, value);
+        // TODO: We shouldn't need a new instance to multiply by value.
+        GpuUInt128 other = new(value);
         MulMod(other, modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void MulMod(GpuUInt128 other, ulong modulus)
     {
+        // TODO: Since we always set High = 0, we should return ulong for low instead of modifying the instance.
+        High = 0UL;
         ulong a = Low % modulus;
         ulong b = other.Low % modulus;
-        ulong result;
         if (a == 0UL || b == 0UL)
         {
-            result = 0UL;
+            Low = 0UL;
         }
         else if (b <= ulong.MaxValue / a)
         {
-            result = (a * b) % modulus;
+            Low = (a * b) % modulus;
         }
         else
         {
-            result = MulMod64(a, b, modulus);
+            Low = MulMod64(a, b, modulus);
         }
-
-        High = 0UL;
-        Low = result;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void MulMod(ulong value, ulong modulus)
     {
+        // TODO: Since we always set High = 0, we should return ulong for low instead of modifying the instance.
+        High = 0UL;
+
         ulong a = Low % modulus;
         ulong b = value % modulus;
-        ulong result;
         if (a == 0UL || b == 0UL)
         {
-            result = 0UL;
+            Low = 0UL;
         }
         else if (b <= ulong.MaxValue / a)
         {
-            result = (a * b) % modulus;
+            Low = (a * b) % modulus;
         }
         else
         {
-            result = MulMod64(a, b, modulus);
+            Low = MulMod64(a, b, modulus);
         }
+    }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void MulModSimplified(ulong value, ulong modulus)
+    {
+        // TODO: Since we always set High = 0, we should return ulong for low instead of modifying the instance.
         High = 0UL;
-        Low = result;
+        ulong a = Low % modulus;
+        ulong b = value % modulus;
+        if (a == 0UL || b == 0UL)
+        {
+            Low = 0UL;
+        }
+        else
+        {
+            Low = MulMod64(a, b, modulus);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void MulModWithNativeModulo(ulong value, ulong modulus)
     {
+        // TODO: Since we always set High = 0, we should return ulong for low instead of modifying the instance.
+        // TODO: Reuse variables to reduce register pressure.
         High = 0UL;
 
         ulong a = Low % modulus;
@@ -853,13 +895,12 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     private static ulong MultiplyChunkModulo(ulong value, ulong chunk, ulong modulus)
     {
         ulong result = 0UL;
-        ulong addend = value;
-
+        ulong[] nativeModuloBitMasks = NativeModuloBitMasks;
         for (int bit = 0; bit < NativeModuloChunkBits; bit++)
         {
-            if ((chunk & NativeModuloBitMasks[bit]) != 0UL)
+            if ((chunk & nativeModuloBitMasks[bit]) != 0UL)
             {
-                result = (result + addend) % modulus;
+                result = (result + value) % modulus;
             }
 
             if (bit == NativeModuloChunkBitsMinusOne)
@@ -867,7 +908,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
                 break;
             }
 
-            addend = (addend << 1) % modulus;
+            value = (value << 1) % modulus;
         }
 
         return result;
@@ -876,6 +917,8 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void MulModMontgomery64(GpuUInt128 other, ulong modulus, ulong nPrime, ulong r2)
     {
+        // TODO: Since we always set High = 0, we should return ulong for low instead of modifying the instance.
+        // TODO: Reuse variables to reduce register pressure.
         ulong a = Low % modulus;
         ulong b = other.Low % modulus;
         if (a == 0UL || b == 0UL)
@@ -896,6 +939,8 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void MulModMontgomery64(ulong other, ulong modulus, ulong nPrime, ulong r2)
     {
+        // TODO: Since we always set High = 0, we should return ulong for low instead of modifying the instance.
+        // TODO: Reuse variables to reduce register pressure.
         ulong a = Low % modulus;
         ulong b = other % modulus;
         if (a == 0UL || b == 0UL)
@@ -924,8 +969,10 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
         SquareFull(this, out var p3, out var p2, out var p1, out var p0);
 
-        GpuUInt128 remainder = new(0UL, 0UL);
+        // TODO: This should operate on the instance itself, not on a copy. Avoid creating new instances anywhere.
+        GpuUInt128 remainder = new();
         int bit;
+        // TODO: Can we modify these loops to process multiple bits at a time? E.g. 64-bit chunks.
         for (bit = 63; bit >= 0; bit--)
         {
             remainder <<= 1;
@@ -972,9 +1019,11 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
     public void ModPow(GpuUInt128 exponent, GpuUInt128 modulus)
     {
-        GpuUInt128 result = new(0UL, 1UL);
+        // TODO: This should operate on the instance itself, not on a copy. Avoid creating new instances anywhere.
+        GpuUInt128 result = new(1UL);
         GpuUInt128 baseValue = this;
 
+        // TODO: Can we modify this loop to process multiple bits at a time? E.g. 64-bit chunks.
         while (!exponent.IsZero)
         {
             if ((exponent.Low & 1UL) != 0UL)
@@ -992,9 +1041,11 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
     public void ModPow(ulong exponent, GpuUInt128 modulus)
     {
-        GpuUInt128 result = new(0UL, 1UL);
+        // TODO: This should operate on the instance itself, not on a copy. Avoid creating new instances anywhere.
+        GpuUInt128 result = new(1UL);
         GpuUInt128 baseValue = this;
 
+        // TODO: Can we modify this loop to process multiple bits at a time? E.g. 64-bit chunks.
         while (exponent != 0UL)
         {
             if ((exponent & 1UL) != 0UL)
@@ -1013,7 +1064,8 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void ModInv(ulong modulus)
     {
-        ModPow(modulus - 2UL, new GpuUInt128(0UL, modulus));
+        // TODO: We shouldn't need a new instance here to represent modulus.
+        ModPow(modulus - 2UL, new GpuUInt128(modulus));
     }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1037,6 +1089,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void MultiplyFull(GpuUInt128 left, GpuUInt128 right, out ulong p3, out ulong p2, out ulong p1, out ulong p0)
     {
+        // TODO: Reuse variables to reduce register pressure.
         var (h0, l0) = Mul64(left.Low, right.Low);
         var (h1, l1) = Mul64(left.Low, right.High);
         var (h2, l2) = Mul64(left.High, right.Low);
@@ -1080,17 +1133,21 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Multiply(GpuUInt128 left, GpuUInt128 right, out ulong high, out ulong low)
     {
+        // TODO: Reuse variables to reduce register pressure.
         var (h0, l0) = Mul64(left.Low, right.Low);
-        var (_, l1) = Mul64(left.Low, right.High);
+        low = l0;
+        // TODO: Since we ignore the first result element, can we create a version of the function which calculates and returns only the second element?
+        (_, l0) = Mul64(left.Low, right.High);
         var (_, l2) = Mul64(left.High, right.Low);
 
-        low = l0;
-        high = h0 + l1 + l2;
+        // TODO: Why not just modify left instance directly instead using out parameters?
+        high = h0 + l0 + l2;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static (ulong High, ulong Low) Mul64(ulong left, ulong right)
     {
+        // TODO: Reuse variables to reduce register pressure.
         ulong a0 = (uint)left;
         ulong a1 = left >> 32;
         ulong b0 = (uint)right;
@@ -1098,19 +1155,20 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
         ulong lo = a0 * b0;
         ulong mid1 = a1 * b0;
-        ulong mid2 = a0 * b1;
-        ulong hi = a1 * b1;
+        b0 = a0 * b1;
+        b1 *= a1;
 
-        ulong carry = (lo >> 32) + (uint)mid1 + (uint)mid2;
-        ulong low = (lo & 0xFFFFFFFFUL) | (carry << 32);
-        hi += (mid1 >> 32) + (mid2 >> 32) + (carry >> 32);
+        a0 = (lo >> 32) + (uint)mid1 + (uint)b0;
+        a1 = (lo & 0xFFFFFFFFUL) | (a0 << 32);
+        b1 += (mid1 >> 32) + (b0 >> 32) + (a0 >> 32);
 
-        return (hi, low);
+        return (b1, a1);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void SquareFull(GpuUInt128 value, out ulong p3, out ulong p2, out ulong p1, out ulong p0)
     {
+        // TODO: Reuse variables to reduce register pressure.
         // Compute (H*2^64 + L)^2 = H^2*2^128 + 2*H*L*2^64 + L^2
         ulong L = value.Low;
         ulong H = value.High;
@@ -1149,11 +1207,6 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong MulMod64(ulong a, ulong b, ulong modulus)
     {
-        if (modulus <= 1UL)
-        {
-            return 0UL;
-        }
-
         ulong aReduced = a % modulus;
         ulong bReduced = b % modulus;
         if (aReduced == 0UL || bReduced == 0UL)
@@ -1161,6 +1214,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             return 0UL;
         }
 
+        // TODO: Can we identify where we deal with Mersenne exponent in EvenPerfectBitScanner and directly use MulModMersenne there, removing this branch?
         if (TryGetMersenneExponent(modulus, out int exponent))
         {
             return MulModMersenne(aReduced, bReduced, modulus, exponent);
@@ -1170,6 +1224,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         ulong result = 0UL;
         ulong x = aReduced;
         ulong y = bReduced;
+        // TODO: Can we modify this loop to process multiple bits at a time? E.g. 64-bit chunks.
         while (y != 0UL)
         {
             if ((y & 1UL) != 0UL)
@@ -1196,6 +1251,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong MulModMersenne(ulong a, ulong b, ulong modulus, int exponent)
     {
+        // TODO: Reuse variables to reduce register pressure.
         Mul64Parts(a, b, out ulong productHigh, out ulong productLow);
         ulong mask = exponent == 64 ? ulong.MaxValue : modulus;
 
@@ -1216,6 +1272,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         while (currentHigh != 0UL);
 
         ulong result = currentLow;
+        // TODO: Can we modify this loop to process multiple bits at a time? E.g. 64-bit chunks.
         while (result >= modulus)
         {
             result -= modulus;
@@ -1233,23 +1290,24 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             return false;
         }
 
-        ulong plusOne = modulus + 1UL;
-        if (plusOne == 0UL)
+        modulus++;
+        if (modulus == 0UL)
         {
             exponent = 64;
             return true;
         }
 
-        if ((plusOne & (plusOne - 1UL)) != 0UL)
+        if ((modulus & (modulus - 1UL)) != 0UL)
         {
             exponent = 0;
             return false;
         }
 
         int bits = 0;
-        while ((plusOne & 1UL) == 0UL)
+        // TODO: Can we modify this loop to process multiple bits at a time? E.g. 64-bit chunks.
+        while ((modulus & 1UL) == 0UL)
         {
-            plusOne >>= 1;
+            modulus >>= 1;
             bits++;
         }
 
@@ -1290,15 +1348,13 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong MontMul64(ulong aR, ulong bR, ulong modulus, ulong nPrime)
     {
+        // TODO: Reuse variables to reduce register pressure.
         // t = aR * bR (128-bit)
-        ulong tLow, tHigh;
-        Mul64Parts(aR, bR, out tHigh, out tLow);
+        Mul64Parts(aR, bR, out ulong tHigh, out ulong tLow);
         // m = (tLow * nPrime) mod 2^64 (low 64 bits only)
-        ulong mLow, mHigh;
-        Mul64Parts(tLow, nPrime, out mHigh, out mLow);
+        Mul64Parts(tLow, nPrime, out _, out ulong mLow);
         // u = (t + m * modulus) >> 64
-        ulong mmLow, mmHigh;
-        Mul64Parts(mLow, modulus, out mmHigh, out mmLow);
+        Mul64Parts(mLow, modulus, out ulong mmHigh, out ulong mmLow);
         ulong carry = 0UL;
         ulong low = tLow + mmLow;
         if (low < tLow)
@@ -1320,6 +1376,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Mul64Parts(ulong a, ulong b, out ulong high, out ulong low)
     {
+        // TODO: Reuse variables to reduce register pressure.
         ulong a0 = (uint)a;
         ulong a1 = a >> 32;
         ulong b0 = (uint)b;
@@ -1347,6 +1404,8 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         return masks;
     }
 }
+
+    // TODO: Check if the TODO below is still relevant.
 
     // TODO(MOD-OPT): Montgomery/Barrett integration plan
     // - Introduce caches of modulus-dependent constants:
