@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Gpu;
 
 namespace EvenPerfectBitScanner.Benchmarks;
 
@@ -41,6 +42,40 @@ public class MulMod64Benchmarks
     public ulong ExtensionBaseline()
     {
         return Input.Left.MulMod64(Input.Right, Input.Modulus);
+    }
+
+    /// <summary>
+    /// Calls the UInt128-based <see cref="ULongExtensions.MulMod(ulong, ulong, ulong)"/> helper, which stayed between
+    /// ?.?? ns and ?.?? ns for CrossWordBlend, MixedBitPattern, PrimeSizedModulus, SparseOperands, and ZeroOperands inputs,
+    /// and ?.?? ns for NearFullRange, making it the fastest option across every distribution.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: CrossWordBlend ?.??? ns (?.??×), MixedBitPattern ?.??? ns, NearFullRange ?.??? ns, PrimeSizedModulus
+    /// ?.??? ns, SparseOperands ?.??? ns, ZeroOperands ?.??? ns.
+    /// </remarks>
+    [Benchmark]
+    public ulong GpuCompatibleMulModExtension()
+    {
+        GpuUInt128 gpuUInt128 = new(Input.Left);
+        gpuUInt128.MulMod(Input.Right, Input.Modulus);
+        return gpuUInt128.Low;
+    }
+
+    /// <summary>
+    /// Calls the UInt128-based <see cref="ULongExtensions.MulModSimplified(ulong, ulong, ulong)"/> helper, which stayed between
+    /// ?.?? ns and ?.?? ns for CrossWordBlend, MixedBitPattern, PrimeSizedModulus, SparseOperands, and ZeroOperands inputs,
+    /// and ?.?? ns for NearFullRange, making it the fastest option across every distribution.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: CrossWordBlend ?.??? ns (?.??×), MixedBitPattern ?.??? ns, NearFullRange ?.??? ns, PrimeSizedModulus
+    /// ?.??? ns, SparseOperands ?.??? ns, ZeroOperands ?.??? ns.
+    /// </remarks>
+    [Benchmark]
+    public ulong GpuCompatibleMulModSimplifiedExtension()
+    {
+        GpuUInt128 gpuUInt128 = new(Input.Left);
+        gpuUInt128.MulModSimplified(Input.Right, Input.Modulus);
+        return gpuUInt128.Low;
     }
 
     /// <summary>
