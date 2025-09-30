@@ -79,8 +79,8 @@ public class GpuUInt128Tests
             var a = new GpuUInt128(aVal);
             var b = new GpuUInt128(bVal);
             UInt128 expected = ((UInt128)aVal * bVal) % modulus;
-            a.MulMod(b, modulus);
-            ((UInt128)a).Should().Be(expected);
+            ulong result = a.MulMod(b, modulus);
+            ((UInt128)result).Should().Be(expected);
         }
     }
 
