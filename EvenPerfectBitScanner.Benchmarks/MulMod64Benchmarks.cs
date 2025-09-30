@@ -57,8 +57,7 @@ public class MulMod64Benchmarks
     public ulong GpuCompatibleMulModExtension()
     {
         GpuUInt128 gpuUInt128 = new(Input.Left);
-        gpuUInt128.MulMod(Input.Right, Input.Modulus);
-        return gpuUInt128.Low;
+        return gpuUInt128.MulMod(Input.Right, Input.Modulus);
     }
 
     /// <summary>
@@ -74,8 +73,7 @@ public class MulMod64Benchmarks
     public ulong GpuCompatibleMulModSimplifiedExtension()
     {
         GpuUInt128 gpuUInt128 = new(Input.Left);
-        gpuUInt128.MulModSimplified(Input.Right, Input.Modulus);
-        return gpuUInt128.Low;
+        return gpuUInt128.MulModSimplified(Input.Right, Input.Modulus);
     }
 
     /// <summary>

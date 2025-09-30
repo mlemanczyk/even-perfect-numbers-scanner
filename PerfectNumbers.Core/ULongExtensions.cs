@@ -215,16 +215,14 @@ public static class ULongExtensions
     public static ulong MulMod64GpuCompatible(this ulong a, ulong b, ulong modulus)
     {
         GpuUInt128 state = new(a % modulus);
-        state.MulMod(b, modulus);
-        return state.Low;
+        return state.MulMod(b, modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong MulMod64GpuCompatibleDeferred(this ulong a, ulong b, ulong modulus)
     {
         GpuUInt128 state = new(a);
-        state.MulModWithNativeModulo(b, modulus);
-        return state.Low;
+        return state.MulModWithNativeModulo(b, modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
