@@ -41,6 +41,12 @@ public class MulMod64Benchmarks
     }
 
     [Benchmark]
+    public ulong InlineUInt128OperandsWithReductionFirst()
+    {
+        return MulMod64InlineWithReductionFirst(Input.Left, Input.Right, Input.Modulus);
+    }
+
+    [Benchmark]
     public ulong InlineUInt128OperandsWithOperandReduction()
     {
         return MulMod64InlineWithOperandReduction(Input.Left, Input.Right, Input.Modulus);
@@ -65,10 +71,10 @@ public class MulMod64Benchmarks
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong MulMod64Inline(ulong a, ulong b, ulong modulus)
-    {
-        return (ulong)(((UInt128)a * b) % modulus);
-    }
+    private static ulong MulMod64Inline(ulong a, ulong b, ulong modulus) => (ulong)(((UInt128)a * b) % modulus);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong MulMod64InlineWithReductionFirst(ulong a, ulong b, ulong modulus) => (ulong)(((UInt128)(a % modulus) * (b % modulus)) % modulus);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong MulMod64InlineWithOperandReduction(ulong a, ulong b, ulong modulus)
