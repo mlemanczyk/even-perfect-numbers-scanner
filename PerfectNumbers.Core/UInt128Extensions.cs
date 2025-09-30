@@ -251,12 +251,23 @@ public static class UInt128Extensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static UInt128 Mul64(this UInt128 a, UInt128 b)
-	{
-		ulong aLow = (ulong)a;
-		ulong bLow = (ulong)b;
-		return ((UInt128)(aLow * (ulong)(b >> 64) + aLow.MulHigh(bLow)) << 64) | (aLow * bLow);
-	}
+        public static UInt128 Mul64(this UInt128 a, UInt128 b)
+        {
+                ulong aLow = (ulong)a;
+                ulong bLow = (ulong)b;
+                ulong bHigh = (ulong)(b >> 64);
+
+                ulong low = aLow * bLow;
+
+                // Keep the high-word accumulation in locals so the JIT does not rebuild the
+                // expression tree around the shift. Mirroring the MulHigh layout lets RyuJIT
+                // keep the intermediate sum in registers instead of reloading the partial
+                // product from the stack.
+                ulong high = aLow.MulHigh(bLow);
+                high += aLow * bHigh;
+
+                return ((UInt128)high << 64) | low;
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static UInt128 MulMod(this UInt128 a, UInt128 b, UInt128 modulus)

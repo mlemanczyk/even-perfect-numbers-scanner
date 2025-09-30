@@ -170,6 +170,11 @@ public static class ULongExtensions
         ulong w2 = xHigh * yLow;
         ulong w3 = xLow * yLow;
 
+        // Matching the layout used in GpuUInt128.MulHigh: introducing the
+        // intermediate result looks like one extra store, but it lets RyuJIT keep
+        // the accumulated high word entirely in registers. Without this explicit
+        // local the JIT spills the partial sum, which is where the performance
+        // regression in the benchmarks came from.
         ulong result = (xHigh * yHigh) + (w1 >> 32) + (w2 >> 32);
         result += ((w3 >> 32) + (uint)w1 + (uint)w2) >> 32;
         return result;
