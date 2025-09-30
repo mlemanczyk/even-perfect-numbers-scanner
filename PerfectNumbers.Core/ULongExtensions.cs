@@ -212,6 +212,22 @@ public static class ULongExtensions
     public static ulong MulMod64(this ulong a, ulong b, ulong modulus) => (ulong)(UInt128)(((a % modulus) * (b % modulus)) % modulus);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong MulMod64GpuCompatible(this ulong a, ulong b, ulong modulus)
+    {
+        GpuUInt128 state = new(a % modulus);
+        state.MulMod(b, modulus);
+        return state.Low;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong MulMod64GpuCompatibleDeferred(this ulong a, ulong b, ulong modulus)
+    {
+        GpuUInt128 state = new(a);
+        state.MulModWithNativeModulo(b, modulus);
+        return state.Low;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong MontgomeryMultiply(this ulong a, ulong b, ulong modulus, ulong nPrime)
     {
         ulong tLow = unchecked(a * b);

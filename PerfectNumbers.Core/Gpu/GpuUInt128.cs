@@ -9,6 +9,12 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
     public ulong Low;
 
+    private const int NativeModuloChunkBits = 8;
+    private const int NativeModuloChunkBitsMinusOne = NativeModuloChunkBits - 1;
+    private const int NativeModuloBitMaskTableSize = 1024;
+    private const ulong NativeModuloChunkMask = (1UL << NativeModuloChunkBits) - 1UL;
+    private static readonly ulong[] NativeModuloBitMasks = CreateNativeModuloBitMasks();
+
     public static readonly GpuUInt128 Zero = new(0UL, 0UL);
     public static readonly GpuUInt128 One = new(0UL, 1UL);
 
@@ -794,6 +800,80 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void MulModWithNativeModulo(ulong value, ulong modulus)
+    {
+        High = 0UL;
+
+        ulong a = Low % modulus;
+        ulong b = value % modulus;
+        if (a == 0UL || b == 0UL)
+        {
+            Low = 0UL;
+            return;
+        }
+
+        ulong result = 0UL;
+        while (true)
+        {
+            ulong chunk = b & NativeModuloChunkMask;
+            if (chunk != 0UL)
+            {
+                ulong chunkContribution = MultiplyChunkModulo(a, chunk, modulus);
+                result = (result + chunkContribution) % modulus;
+            }
+
+            b >>= NativeModuloChunkBits;
+            if (b == 0UL)
+            {
+                break;
+            }
+
+            a = ShiftLeftByNativeChunk(a, modulus);
+        }
+
+        Low = result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ShiftLeftByNativeChunk(ulong value, ulong modulus)
+    {
+        value = (value << 1) % modulus;
+        value = (value << 1) % modulus;
+        value = (value << 1) % modulus;
+        value = (value << 1) % modulus;
+        value = (value << 1) % modulus;
+        value = (value << 1) % modulus;
+        value = (value << 1) % modulus;
+        value = (value << 1) % modulus;
+
+        return value;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong MultiplyChunkModulo(ulong value, ulong chunk, ulong modulus)
+    {
+        ulong result = 0UL;
+        ulong addend = value;
+
+        for (int bit = 0; bit < NativeModuloChunkBits; bit++)
+        {
+            if ((chunk & NativeModuloBitMasks[bit]) != 0UL)
+            {
+                result = (result + addend) % modulus;
+            }
+
+            if (bit == NativeModuloChunkBitsMinusOne)
+            {
+                break;
+            }
+
+            addend = (addend << 1) % modulus;
+        }
+
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void MulModMontgomery64(GpuUInt128 other, ulong modulus, ulong nPrime, ulong r2)
     {
         ulong a = Low % modulus;
@@ -1255,6 +1335,17 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         hi += (mid1 >> 32) + (mid2 >> 32) + (carry >> 32);
         high = hi;
     }
+
+    private static ulong[] CreateNativeModuloBitMasks()
+    {
+        ulong[] masks = new ulong[NativeModuloBitMaskTableSize];
+        for (int bit = 0; bit < NativeModuloBitMaskTableSize; bit++)
+        {
+            masks[bit] = bit < 64 ? 1UL << bit : 0UL;
+        }
+
+        return masks;
+    }
 }
 
     // TODO(MOD-OPT): Montgomery/Barrett integration plan
@@ -1265,3 +1356,4 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     // - Expose helpers to retrieve/calc constants once per modulus and reuse in kernels.
     // - Wire these into MulMod and SquareMod hot paths under feature toggles.
     // - Ensure ILGPU compatibility (no BigInteger, no % inside kernels).
+
