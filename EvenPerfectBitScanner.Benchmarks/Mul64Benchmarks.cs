@@ -78,8 +78,8 @@ public class Mul64Benchmarks
     {
         GpuUInt128 gpuLeft = new((ulong)(left >> 64), (ulong)left);
         GpuUInt128 gpuRight = new((ulong)(right >> 64), (ulong)right);
-        GpuUInt128 product = gpuLeft * gpuRight;
-        return (UInt128)product;
+        gpuLeft.Mul(gpuRight);
+        return (UInt128)gpuLeft;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
