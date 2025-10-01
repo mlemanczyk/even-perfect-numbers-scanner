@@ -13,6 +13,8 @@ public class MersenneResidueStepper
             throw new ArgumentException("Modulus must be positive.");
         m = modulus;
         p = p0;
+        // TODO: Replace these `%` reductions with the shared ProcessEightBitWindows helper so initialization benefits from the
+        // windowed pow2mod pipeline proven faster than the generic modulo path.
         M_mod = M_mod_m_at_p0 % m;
         pow2_mod = (M_mod + 1) % m;
     }
@@ -27,18 +29,27 @@ public class MersenneResidueStepper
         ulong absDelta = (ulong)Math.Abs(delta);
         for (ulong i = 0; i < absDelta; i++)
         {
+            // TODO: Replace this repeated doubling with the shared ProcessEightBitWindows helper (or cycle-aware lookup)
+            // once the scalar pow2mod upgrade lands; benchmarking showed the windowed ladder slashes latency for large
+            // deltas compared to this linear loop.
             g <<= 1;
             if (g >= m)
                 g -= m;
         }
         if (delta > 0)
+            // TODO: Once the scalar windowed pow2 helper lands, reroute this `%` path through it to avoid the slower
+            // multiply-and-mod sequence measured in the legacy benchmarks.
             pow2_mod = (pow2_mod * g) % m;
         else
         {
             // Modular inverse for negative delta
+            // TODO: Switch to a cached divisor-cycle remainder instead of computing a fresh modular inverse for every
+            // backward jump; the divisor cycle benchmarks demonstrated significant savings once shared cycle data was used.
             pow2_mod = (pow2_mod * ModInverse(g, m)) % m;
         }
         p = (ulong)((long)p + delta);
+        // TODO: Use the shared pow2mod remainder cache here so this `%` becomes a subtraction-based fold instead of the
+        // slower modulo operator for large moduli.
         M_mod = (pow2_mod + m - 1) % m;
         return State();
     }

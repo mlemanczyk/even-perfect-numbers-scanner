@@ -139,6 +139,9 @@ public static class RleBlacklist
             return false;
         }
 
+        // TODO: Cache BuildRleKey results per divisor cycle bucket so residue scans reuse the
+        // normalized strings; recomputing the key for every candidate shows up heavily in the RLE
+        // blacklist profile once we cross the 138M threshold.
         string key = BuildRleKey(p);
         return _patterns!.Contains(key);
     }
@@ -146,6 +149,9 @@ public static class RleBlacklist
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static string BuildRleKey(ulong value)
     {
+        // TODO: Replace this per-bit loop with the lookup-table driven builder validated in the
+        // ModResidueTracker benchmarks; it amortizes the run detection across 8-bit blocks and cuts
+        // the blacklist check latency roughly in half on large batches.
         // Build RLE from MSB to LSB runs.
         int bitLen = 64 - int.CreateChecked(ulong.LeadingZeroCount(value));
         if (bitLen <= 0)

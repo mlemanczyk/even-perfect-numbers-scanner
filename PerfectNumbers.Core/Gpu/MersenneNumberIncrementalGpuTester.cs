@@ -20,7 +20,7 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
 		ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
 		byte last = lastIsSeven ? (byte)1 : (byte)0; // ILGPU kernels do not support bool parameters
 
-		var pow2Kernel = gpuLease.Pow2ModKernel;
+                var pow2Kernel = gpuLease.Pow2ModKernel; // TODO: Route this binding to the ProcessEightBitWindows kernel once the scalar helper lands so GPU incremental scans inherit the windowed speedup from GpuPow2ModBenchmarks.
 		var incKernel = gpuLease.IncrementalKernel;
 		exponent.Mod10_8_5_3Steps(out ulong step10, out ulong step8, out ulong step5, out ulong step3);
 		GpuUInt128 twoPGpu = (GpuUInt128)twoP;

@@ -23,6 +23,13 @@ public class GpuUInt128Mul64Benchmarks
 
     public static IEnumerable<Mul64Input> GetInputs() => Inputs;
 
+    /// <summary>
+    /// Baseline that materializes the high product in a local; measured 1.53–1.55 ns across all operand patterns, keeping it in
+    /// front of the inline variant.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: AllBitsSet 1.551 ns (1.00×), HighByLow 1.532 ns, LowWordMax 1.548 ns, TinyOperands 1.529 ns.
+    /// </remarks>
     [Benchmark(Baseline = true)]
     public GpuUInt128 HighProductMaterializedInLocal()
     {
@@ -31,6 +38,12 @@ public class GpuUInt128Mul64Benchmarks
         return value;
     }
 
+    /// <summary>
+    /// Inline variant that avoids the temporary struct field update, but costs roughly 4–5% extra work with 1.59–1.63 ns means.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: AllBitsSet 1.631 ns (1.05×), HighByLow 1.594 ns, LowWordMax 1.623 ns, TinyOperands 1.602 ns.
+    /// </remarks>
     [Benchmark]
     public GpuUInt128 HighProductInline()
     {

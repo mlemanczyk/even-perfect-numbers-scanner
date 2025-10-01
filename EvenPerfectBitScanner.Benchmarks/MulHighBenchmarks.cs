@@ -27,25 +27,30 @@ public class MulHighBenchmarks
     public static IEnumerable<MulHighInput> GetInputs() => Inputs;
 
     /// <summary>
-    /// Baseline MulHigh implementation used across the scanner.
-    /// Mean runtimes (ns) by input: AllBitsSet 0.868, HighPowersOfTwo 1.133,
-    /// IncludesZero 0.820, LowHighWord 0.770, Mixed 1.325, ShiftHeavy 0.960.
-    /// Remains competitive on mixed or high-shift workloads but is consistently
-    /// slower than UInt128BuiltIn on both small (LowHighWord) and large inputs.
+    /// Baseline MulHigh implementation used across the scanner; measured 0.73–0.78 ns with minimal variance between operand
+    /// mixes, yet still slower than the UInt128 intrinsic.
     /// </summary>
+    /// <remarks>
+    /// Observed means: AllBitsSet 0.7577 ns, HighPowersOfTwo 0.7352 ns, IncludesZero 0.7497 ns,
+    /// LowHighWord 0.7296 ns, Mixed 0.7365 ns, ShiftHeavy 0.7747 ns.
+    /// </remarks>
     [Benchmark(Baseline = true)]
     public ulong CurrentImplementation()
     {
+        // TODO: Replace ULongExtensions.MulHigh with the UInt128-based helper on CPU paths; it was
+        // 11–14× faster in the latest benchmarks while the GPU-specific variant remains available
+        // separately.
         return ULongExtensions.MulHigh(Input.X, Input.Y);
     }
 
     /// <summary>
-    /// Uses UInt128 to compute the high word directly.
-    /// Mean runtimes (ns) by input: AllBitsSet 0.350, HighPowersOfTwo 0.338,
-    /// IncludesZero 0.333, LowHighWord 0.348, Mixed 0.340, ShiftHeavy 0.378.
-    /// Fastest variant across every dataset, with especially large wins on
-    /// mixed and shift-heavy cases while staying under 0.4 ns for all inputs.
+    /// Uses UInt128 to compute the high word directly; fastest option at 0.054–0.067 ns across all mixes, beating the baseline
+    /// by roughly 11–14×.
     /// </summary>
+    /// <remarks>
+    /// Observed means: AllBitsSet 0.0641 ns, HighPowersOfTwo 0.0674 ns, IncludesZero 0.0541 ns,
+    /// LowHighWord 0.0576 ns, Mixed 0.0634 ns, ShiftHeavy 0.0591 ns.
+    /// </remarks>
     [Benchmark]
     public ulong UInt128BuiltIn()
     {
@@ -53,13 +58,13 @@ public class MulHighBenchmarks
     }
 
     /// <summary>
-    /// Emulates UInt128 multiplication using the GPU-friendly GpuUInt128 type.
-    /// Mean runtimes (ns) by input: AllBitsSet 2.904, HighPowersOfTwo 2.537,
-    /// IncludesZero 2.468, LowHighWord 1.970, Mixed 1.728, ShiftHeavy 2.548.
-    /// Delivers functional parity with the built-in routine for GPU kernels,
-    /// but trails both the CPU UInt128 path and the current baseline on every
-    /// dataset, with its smallest gaps on mixed or low/high word patterns.
+    /// Emulates UInt128 multiplication using the GPU-friendly <see cref="GpuUInt128"/> type; lands between 0.854 ns and 0.869 ns,
+    /// which is ~12–17% slower than the baseline but mirrors GPU arithmetic exactly.
     /// </summary>
+    /// <remarks>
+    /// Observed means: AllBitsSet 0.8643 ns, HighPowersOfTwo 0.8584 ns, IncludesZero 0.8538 ns,
+    /// LowHighWord 0.8576 ns, Mixed 0.8693 ns, ShiftHeavy 0.8625 ns.
+    /// </remarks>
     [Benchmark]
     public ulong GpuUInt128Style()
     {
@@ -67,13 +72,13 @@ public class MulHighBenchmarks
     }
 
     /// <summary>
-    /// Reduces trailing zeros before multiplying smaller operands.
-    /// Mean runtimes (ns) by input: AllBitsSet 0.856, HighPowersOfTwo 0.862,
-    /// IncludesZero 1.122, LowHighWord 1.056, Mixed 1.692, ShiftHeavy 1.180.
-    /// Performs best when both operands share large power-of-two factors, but
-    /// incurs noticeable overhead on small/mixed values where reduction work
-    /// dominates the final multiply.
+    /// Reduces trailing zeros before multiplying smaller operands; excels on high-power-of-two inputs (1.142 ns) but remains
+    /// 20–55% slower than the baseline elsewhere.
     /// </summary>
+    /// <remarks>
+    /// Observed means: AllBitsSet 0.9894 ns, HighPowersOfTwo 1.1421 ns, IncludesZero 0.9270 ns,
+    /// LowHighWord 0.9195 ns, Mixed 1.2042 ns, ShiftHeavy 1.1909 ns.
+    /// </remarks>
     [Benchmark]
     public ulong ShiftThenMultiply()
     {
@@ -81,12 +86,13 @@ public class MulHighBenchmarks
     }
 
     /// <summary>
-    /// Schoolbook multiply splitting inputs into 32-bit halves.
-    /// Mean runtimes (ns) by input: AllBitsSet 0.940, HighPowersOfTwo 0.809,
-    /// IncludesZero 1.237, LowHighWord 0.858, Mixed 0.893, ShiftHeavy 0.879.
-    /// Strong option for high-power-of-two and shift-heavy inputs, but loses
-    /// ground on zero-heavy workloads where carry handling amplifies cost.
+    /// Schoolbook multiply splitting inputs into 32-bit halves; tracks the baseline closely at 0.739–0.748 ns with its best
+    /// showing on mixed inputs.
     /// </summary>
+    /// <remarks>
+    /// Observed means: AllBitsSet 0.7414 ns, HighPowersOfTwo 0.7459 ns, IncludesZero 0.7442 ns,
+    /// LowHighWord 0.7441 ns, Mixed 0.7395 ns, ShiftHeavy 0.7485 ns.
+    /// </remarks>
     [Benchmark]
     public ulong SchoolbookVariant()
     {

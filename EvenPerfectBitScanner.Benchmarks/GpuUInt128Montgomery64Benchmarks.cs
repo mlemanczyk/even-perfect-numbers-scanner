@@ -24,15 +24,31 @@ public class GpuUInt128Montgomery64Benchmarks
 
     public static IEnumerable<MontgomeryInput> GetInputs() => Inputs;
 
+    /// <summary>
+    /// Extension-based Montgomery multiply that ran in 3.64 ns across every operand mix (dense, mixed, near-modulus, tiny),
+    /// making it the reference CPU helper.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: DenseOperands 3.663 ns (1.00×), MixedMagnitude 3.636 ns, NearModulus 3.651 ns, TinyOperands 3.639 ns.
+    /// </remarks>
     [Benchmark(Baseline = true)]
     public ulong ExtensionMontgomeryMultiply()
     {
         return Input.Left.MontgomeryMultiply(Input.Right, Input.Modulus, Input.NPrime);
     }
 
+    /// <summary>
+    /// Struct-based GPU-style multiply; matches device arithmetic but costs 24.9 ns regardless of the operand pattern,
+    /// approximately 6.8× slower than the extension helper.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: DenseOperands 24.904 ns (6.80×), MixedMagnitude 24.886 ns, NearModulus 24.893 ns, TinyOperands 24.869 ns.
+    /// </remarks>
     [Benchmark]
     public ulong GpuStructMontgomeryMultiply()
     {
+        // TODO: Migrate remaining callers of MulModMontgomery64 to the extension helper; the struct
+        // emulation is ~6.8× slower but kept for GPU parity benchmarks.
         GpuUInt128 state = new(Input.Left);
         return state.MulModMontgomery64(Input.Right, Input.Modulus, Input.NPrime, Input.R2);
     }

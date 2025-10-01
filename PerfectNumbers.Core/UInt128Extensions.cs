@@ -66,13 +66,15 @@ public static class UInt128Extensions
 			}
 
 			prime = smallPrimes[i];
-			while (order % prime == 0UL)
-			{
-				temp = order / prime;
-				if (temp.PowModWithCycle(q, cycle) == one)
-				{
-					order = temp;
-				}
+                        while (order % prime == 0UL)
+                        {
+                                temp = order / prime;
+                                // TODO: Switch this divisor-order powmod to the ProcessEightBitWindows helper so the
+                                // cycle factoring loop benefits from the faster windowed pow2 ladder measured in CPU benchmarks.
+                                if (temp.PowModWithCycle(q, cycle) == one)
+                                {
+                                        order = temp;
+                                }
 				else
 				{
 					break;
@@ -103,19 +105,22 @@ public static class UInt128Extensions
 		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
 		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
 		ulong i, smallPrimesCount = (ulong)smallPrimes.Length;
-		for (i = 0UL; i < smallPrimesCount; i++)
-		{
-			if (smallPrimesPow2[i] > n)
-			{
-				break;
-			}
+                for (i = 0UL; i < smallPrimesCount; i++)
+                {
+                        if (smallPrimesPow2[i] > n)
+                        {
+                                break;
+                        }
 
-			p = smallPrimes[i];
-			if (n % p == zero)
-			{
-				return n == p;
-			}
-		}
+                        p = smallPrimes[i];
+                        // TODO: Replace this direct `%` test with the shared divisor-cycle filter once the
+                        // UInt128 path is wired into the cached cycle tables so wide candidates skip the slow
+                        // modulo checks during primality pre-filtering.
+                        if (n % p == zero)
+                        {
+                                return n == p;
+                        }
+                }
 
 		return true;
 	}

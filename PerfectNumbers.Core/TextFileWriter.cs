@@ -50,6 +50,9 @@ public sealed class TextFileWriter : IDisposable
     {
         lock (_lock)
         {
+            // TODO: Buffer these writes through an ArrayPool-backed accumulator so we only flush when the
+            // batch is full; flushing per line shows up as a serialization bottleneck once the scanner emits
+            // millions of candidate summaries.
             TextWriter.WriteLine(line);
             TextWriter.Flush();
         }

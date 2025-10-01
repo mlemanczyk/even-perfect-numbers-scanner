@@ -119,6 +119,8 @@ internal static class MontgomeryDivisorDataCache
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    // TODO: Replace this generic `%` reduction with the UInt128 Montgomery folding helper measured faster in
+    // MontgomeryMultiplyBenchmarks so CPU paths avoid the slow BigInteger-style remainder in hot divisor cache lookups.
     private static ulong ComputeMontgomeryResidue(ulong value, ulong modulus) => (ulong)((UInt128)value * (UInt128.One << 64) % modulus);
 
     private static ulong ComputeMontgomeryNPrime(ulong modulus)

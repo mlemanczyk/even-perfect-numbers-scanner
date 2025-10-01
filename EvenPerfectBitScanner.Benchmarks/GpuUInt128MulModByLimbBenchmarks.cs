@@ -33,12 +33,26 @@ public class GpuUInt128MulModByLimbBenchmarks
 
     public static IEnumerable<MulModByLimbInput> GetInputs() => Inputs;
 
+    /// <summary>
+    /// Legacy implementation that allocates intermediate limbs; delivered 10.7 ns on tiny operands, 12.7 ns on high-word-dominant
+    /// pairs, and 16.3 ns on mixed magnitude, making it the faster choice overall.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: HighWordDominant 12.69 ns (1.00×), MixedMagnitude 16.26 ns, TinyOperands 10.74 ns.
+    /// </remarks>
     [Benchmark(Baseline = true)]
     public GpuUInt128 LegacyAllocating()
     {
         return MulModByLimbLegacy(Input.Left, Input.Right, Input.Modulus);
     }
 
+    /// <summary>
+    /// In-place reduction variant; avoids allocations but costs 12.9–25.1 ns, trailing the legacy path by 20–55% depending on the
+    /// operand mix.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: HighWordDominant 17.88 ns (1.41×), MixedMagnitude 25.14 ns, TinyOperands 12.92 ns.
+    /// </remarks>
     [Benchmark]
     public GpuUInt128 InPlaceReduction()
     {

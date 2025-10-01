@@ -199,6 +199,8 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         ArrayView1D<ulong, Stride1D.Dense> smallCycles)
     {
         ulong idx = (ulong)index.X;
+        // TODO: Replace these `%` computations with the precomputed Mod3/Mod5 tables so GPU kernels reuse cached residues
+        // instead of performing modulo operations that the benchmarks showed slower on wide sweeps.
         ulong idxMod3 = idx % 3UL;
         ulong idxMod5 = idx % 5UL;
         // residue automaton
@@ -216,7 +218,9 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
 			}
             else
             {
-                ulong step3 = ((exponent % 3UL) << 1) % 3UL;
+            // TODO: Swap these `%` filters to the shared Mod helpers so the residue automaton matches the benchmarked
+            // bitmask-based implementation for GPU workloads.
+            ulong step3 = ((exponent % 3UL) << 1) % 3UL;
                 ulong r3 = q0m3 + (step3 * idxMod3); r3 -= (r3 >= 3UL) ? 3UL : 0UL;
                 if (r3 == 0UL)
                 {
@@ -264,6 +268,8 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         }
 
         ulong phi64 = phi.Low;
+        // TODO: Replace these Pow2Mod calls with the ProcessEightBitWindows helper when the shared windowed
+        // scalar implementation lands; benchmarks showed the windowed kernel trimming per-divisor runtime by ~2.4×.
         if (GpuUInt128.Pow2Mod(phi64, q) != GpuUInt128.One)
         {
             orders[index] = 0UL;
@@ -299,6 +305,8 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         }
 
         ulong phi64 = phi.Low;
+        // TODO: Once the ProcessEightBitWindows helper is available, switch this order kernel to that faster
+        // Pow2Mod variant so cycle checks inherit the same gains observed in GpuPow2ModBenchmarks.
         GpuUInt128 pow = GpuUInt128.Pow2Mod(phi64, q);
         if (pow != GpuUInt128.One)
         {
@@ -409,6 +417,8 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                 return;
             }
         }
+        // TODO: Swap Pow2Minus1Mod for the eight-bit window helper once the scalar version switches;
+        // benchmarks show the windowed variant cuts large-divisor scans from ~51 µs to ~21 µs.
         if (GpuUInt128.Pow2Minus1Mod(exponent, q) != GpuUInt128.Zero)
         {
             orders[index] = 0UL;
@@ -563,6 +573,8 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         }
 
         ulong phi64 = phi.Low;
+        // TODO: Upgrade this pow2mod order kernel to the ProcessEightBitWindows helper once available so GPU residue
+        // scans avoid the single-bit ladder that benchmarks found to be 2.3× slower on large exponents.
         if (GpuUInt128.Pow2Mod(phi64, q) != GpuUInt128.One)
         {
             return;
@@ -639,6 +651,8 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                 return;
             }
         }
+        // TODO: Replace this Pow2Mod check with the ProcessEightBitWindows helper once Pow2Minus1Mod adopts it;
+        // residue order scans will then benefit from the same 2× speedup the benchmarked windowed kernel delivered.
         if (GpuUInt128.Pow2Mod(exponent, q) != GpuUInt128.One)
         {
             return;

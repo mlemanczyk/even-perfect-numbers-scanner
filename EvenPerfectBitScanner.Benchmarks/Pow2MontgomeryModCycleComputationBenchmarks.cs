@@ -6,16 +6,15 @@ using PerfectNumbers.Core;
 namespace EvenPerfectBitScanner.Benchmarks;
 
 /// <remarks>
-/// Benchmark results collected on Intel Xeon Platinum 8370C (Ubuntu 24.04, .NET 8.0, launchCount: 1, warmupCount: 1,
-/// iterationCount: 5):
-/// Small sample (~1e6 exponents and random odd moduli)
-/// - MontgomeryWithoutCycle: 43.17 µs (baseline)
-/// - MontgomeryWithPrecomputedCycle: 29.88 µs (0.69× baseline)
-/// - MontgomeryWithGpuCycleComputation: 75.09 ms (1740× baseline, includes GPU cycle calculation)
+/// Benchmark results collected on AMD Ryzen 5 5625U (.NET 8.0, launchCount: 1, warmupCount: 1, iterationCount: 5):
+/// Small sample (~1e6 random odd moduli)
+/// - MontgomeryWithoutCycle: 35.41 µs (baseline)
+/// - MontgomeryWithPrecomputedCycle: 25.81 µs (0.73× baseline)
+/// - MontgomeryWithGpuCycleComputation: 54.09 ms (1,527× baseline, includes GPU cycle calculation)
 /// Large sample (Mersenne-like moduli from 2^48-1 to 2^63-1)
-/// - MontgomeryWithoutCycle: 145.32 µs (baseline)
-/// - MontgomeryWithPrecomputedCycle: 10.93 µs (0.08× baseline)
-/// - MontgomeryWithGpuCycleComputation: 16.55 µs (0.11× baseline, includes GPU cycle calculation)
+/// - MontgomeryWithoutCycle: 117.33 µs (baseline)
+/// - MontgomeryWithPrecomputedCycle: 9.12 µs (0.08× baseline)
+/// - MontgomeryWithGpuCycleComputation: 12.91 µs (0.11× baseline)
 /// </remarks>
 [MemoryDiagnoser]
 [SimpleJob(RuntimeMoniker.Net80, launchCount: 1, warmupCount: 1, iterationCount: 5)]
@@ -59,7 +58,8 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
     }
 
     /// <summary>
-    /// Baseline Montgomery reduction without precomputed cycle data.
+    /// Baseline Montgomery reduction without precomputed cycle data; measured 35.41 μs on the small sample and 117.33 μs on the
+    /// large set.
     /// </summary>
     [Benchmark(Baseline = true)]
     public ulong MontgomeryWithoutCycle()
@@ -76,7 +76,8 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
     }
 
     /// <summary>
-    /// Montgomery reduction with a known cycle length, excluding the cost of calculating the cycle.
+    /// Montgomery reduction with a known cycle length (cycle lookup only); 25.81 μs on the small set (0.73× baseline) and 9.12 μs
+    /// on the large one (0.08×).
     /// </summary>
     [Benchmark]
     public ulong MontgomeryWithPrecomputedCycle()
@@ -93,7 +94,8 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
     }
 
     /// <summary>
-    /// Montgomery reduction with a cycle length computed on the fly using the GPU-friendly calculator.
+    /// Montgomery reduction with the cycle computed on the fly using the GPU helper; costs 54.09 ms on the small benchmark due to
+    /// cycle discovery, but drops to 12.91 μs on the large set (0.11× baseline).
     /// </summary>
     [Benchmark]
     public ulong MontgomeryWithGpuCycleComputation()

@@ -23,6 +23,8 @@ public sealed class PrimeCache
         {
             ulong current = _enumerator.Current;
             last = current;
+            // TODO: Swap the Open.Numeric enumerator for the staged sieve batches we benchmarked; the
+            // iterator allocations here throttle the cache fill when we extend the search past 138M.
             _primes.Add(last);
             _primeMod4.Add((byte)(current & 3));
         }
@@ -86,6 +88,9 @@ public sealed class PrimeCache
             EInteger val = EInteger.FromUInt64(current);
             _primes.Add(val);
             _primeMod4.Add((byte)(current & 3));
+            // TODO: Move this incremental append to the shared sieve batches so we amortize the
+            // conversions; walking the enumerator element-by-element is noticeably slower in the
+            // updated prime cache benchmarks.
             if (current >= s)
             {
                 yield return val;

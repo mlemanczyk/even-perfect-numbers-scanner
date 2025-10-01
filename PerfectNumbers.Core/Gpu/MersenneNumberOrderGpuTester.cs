@@ -18,11 +18,11 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 		ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
 		byte last = lastIsSeven ? (byte)1 : (byte)0; // ILGPU kernels do not support bool parameters
 
-		var kernel = _kernelType switch
-		{
-			GpuKernelType.Pow2Mod => gpuLease.Pow2ModOrderKernel,
-			_ => gpuLease.IncrementalOrderKernel,
-		};
+                var kernel = _kernelType switch
+                {
+                        GpuKernelType.Pow2Mod => gpuLease.Pow2ModOrderKernel,
+                        _ => gpuLease.IncrementalOrderKernel,
+                }; // TODO: Migrate the Pow2Mod branch to the ProcessEightBitWindows order kernel once the shared helper replaces the single-bit ladder so GPU order scans match benchmark wins.
 
 		var foundBuffer = accelerator.Allocate1D<int>(1);
 		exponent.Mod10_8_5_3Steps(out ulong step10, out ulong step8, out ulong step5, out ulong step3);

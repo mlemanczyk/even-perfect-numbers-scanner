@@ -39,29 +39,41 @@ public class MersenneNumberIncrementalCpuTester(GpuKernelType kernelType)
 
 			if (shouldCheck)
 			{
-				if (_kernelType == GpuKernelType.Pow2Mod)
-				{
-					reject = exponent.PowModWithCycle(q, qCycle) == UInt128.One;
-				}
-				else
-				{
-					phi = q - one;
-					reject = false;
-					if (phi <= ulong.MaxValue)
-					{
-						phi64 = (ulong)phi;
-						if (phi64.PowModWithCycle(q, qCycle) == one)
-						{
-							halfPow = (phi64 >> 1).PowModWithCycle(q, qCycle) - one;
-							if (halfPow.BinaryGcd(q) == one)
-							{
-								div = phi64.FastDiv64(exponent, divMul);
-								divPow = div.PowModWithCycle(q, qCycle) - one;
-								if (divPow.BinaryGcd(q) == one)
-								{
-									reject = true;
-								}
-							}
+                                if (_kernelType == GpuKernelType.Pow2Mod)
+                                {
+                                        // TODO: Swap this PowModWithCycle call for the ProcessEightBitWindows helper once
+                                        // the scalar implementation lands so CPU pow2mod scans match the GPU speedups
+                                        // captured in GpuPow2ModBenchmarks.
+                                        reject = exponent.PowModWithCycle(q, qCycle) == UInt128.One;
+                                }
+                                else
+                                {
+                                        phi = q - one;
+                                        reject = false;
+                                        if (phi <= ulong.MaxValue)
+                                        {
+                                                phi64 = (ulong)phi;
+                                                // TODO: Route the phi-based powmods through the upcoming windowed helper to
+                                                // avoid the current square-and-multiply cost highlighted in the Pow2 bench
+                                                // suite when scanning large divisors.
+                                                if (phi64.PowModWithCycle(q, qCycle) == one)
+                                                {
+                                                        // TODO: Once the windowed pow2 helper is available expose a version
+                                                        // that reuses cached windows here instead of recomputing via the slow
+                                                        // bit ladder for every divisor.
+                                                        halfPow = (phi64 >> 1).PowModWithCycle(q, qCycle) - one;
+                                                        if (halfPow.BinaryGcd(q) == one)
+                                                        {
+                                                                div = phi64.FastDiv64(exponent, divMul);
+                                                                // TODO: Replace this divisor powmod with the shared windowed
+                                                                // implementation so each candidate uses the benchmarked fast
+                                                                // path instead of the current per-bit multiply chain.
+                                                                divPow = div.PowModWithCycle(q, qCycle) - one;
+                                                                if (divPow.BinaryGcd(q) == one)
+                                                                {
+                                                                        reject = true;
+                                                                }
+                                                        }
 						}
 					}
 				}

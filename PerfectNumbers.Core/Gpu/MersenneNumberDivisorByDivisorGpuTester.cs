@@ -46,7 +46,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     public bool UseDivisorCycles
     {
         get => _useDivisorCycles;
-        set => _useDivisorCycles = value;
+        set => _useDivisorCycles = value; // TODO: Remove this flag once GPU runs unconditionally fetch cycle lengths so every divisor check benefits from the measured speedups.
     }
 
     public void ConfigureFromMaxPrime(ulong maxPrime)
@@ -295,6 +295,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
             for (int i = 0; i < batchSize; i++)
             {
+                // TODO: Stage MontgomeryDivisorData in a GPU-ready cache keyed by divisor so we can copy
+                // precomputed ProcessEightBitWindows metadata directly instead of rehydrating the slower
+                // Montgomery structs for each batch item.
                 divisorDataSpan[i] = MontgomeryDivisorDataCache.Get(divisorSpan[i]);
             }
 
@@ -397,6 +400,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                         ulong remainder = prime;
                         if (remainder >= cycleLength)
                         {
+                            // TODO: Replace this `%` with the cycle-cache helper that subtracts precomputed
+                            // remainders (or uses a lookup table) so GPU batching avoids modulo in this inner loop.
                             remainder %= cycleLength;
                         }
 
@@ -456,6 +461,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
                 for (int i = 0; i < batchSize; i++)
                 {
+                    // TODO: Preload ProcessEightBitWindows-friendly divisor metadata for GPU batches so this
+                    // hot loop stops rebuilding MontgomeryDivisorData structures for every scan chunk.
                     divisorDataSpan[i] = MontgomeryDivisorDataCache.Get(divisorSpan[i]);
                 }
 
@@ -541,7 +548,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         }
 
         ulong exponent = exponents[index];
-        hits[index] = exponent.Pow2MontgomeryMod(divisor) == 1UL ? (byte)1 : (byte)0;
+        hits[index] = exponent.Pow2MontgomeryMod(divisor) == 1UL ? (byte)1 : (byte)0; // TODO: Replace Pow2MontgomeryMod with the ProcessEightBitWindows helper once available so GPU by-divisor scans reuse the benchmarked fast pow2 ladder.
     }
 
     public sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
@@ -762,6 +769,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
                     if (workValue >= divisorCycle)
                     {
+                        // TODO: Replace this `%` with the divisor-cycle remainder helper so we reuse cached
+                        // modulo results instead of recomputing them in the GPU staging loop.
                         workValue %= divisorCycle;
                     }
 
@@ -831,7 +840,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         ulong exponent = exponents[index];
 
-        results[index] = exponent.Pow2MontgomeryModMontgomery(divisor);
+        results[index] = exponent.Pow2MontgomeryModMontgomery(divisor); // TODO: Swap this Montgomery-domain pow2 with the windowed helper slated to replace the slower ladder in Pow2Minus1Mod benchmarks.
     }
 
     public ulong DivisorLimit

@@ -34,6 +34,8 @@ public static class KRangeFinder
 
     public static bool TryFindForPrime(ERational alphaM, EInteger p, out int? min, out int? max, int kStart, int kEnd)
     {
+        // TODO: Collapse this wrapper once the callers can consume the tuple directly; the extra call adds
+        // measurable overhead when we sweep millions of Euler primes while scanning the large-division range.
         (min, max) = FindForPrime(alphaM, p, kStart, kEnd);
         return min.HasValue && max.HasValue && min.Value <= max.Value;
     }
@@ -72,6 +74,8 @@ public static class KRangeFinder
 
     public static bool TryFind(ERational alphaM, EInteger pMin, EInteger pMax, out int? min, out int? max, int kStart, int kEnd, PrimeCache primes)
     {
+        // TODO: Remove this pass-through once the scanning CLI switches to tuple-returning APIs; flattening
+        // the call chain saves the extra struct copy flagged in the profiler during the large divisor search.
         (min, max) = Find(alphaM, pMin, pMax, kStart, kEnd, primes);
         return min.HasValue && max.HasValue && min.Value <= max.Value;
     }

@@ -131,6 +131,8 @@ public sealed class Ending7Automaton
             }
         }
 
+        // TODO: Pre-register every modulus routed through the automaton so the fallback `%` path disappears;
+        // the benchmarked residue trackers beat this division-heavy branch when scanning millions of values.
         return (_n % modulus) == 0UL;
     }
 
@@ -168,6 +170,8 @@ public sealed class Ending7Automaton
     {
         while (b != 0UL)
         {
+            // TODO: Switch this to the binary GCD helper used in GpuUInt128BinaryGcdBenchmarks so we avoid `%`
+            // inside the residue automaton setup.
             ulong t = a % b;
             a = b;
             b = t;

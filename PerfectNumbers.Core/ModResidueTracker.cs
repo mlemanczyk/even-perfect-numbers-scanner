@@ -197,14 +197,17 @@ public sealed class ModResidueTracker
 		}
 		else
 		{
-			for (; i < divisors.Count; i++)
-			{
-				d = divisors[i];
-				value = PowMod128(UInt128Numbers.Two, delta, d);
-				// r' = pow2Delta*r + (pow2Delta - 1) mod d
-				value = MulMod128(value, residues[i], d) + value - UInt128.One;
-				if (value >= d)
-				{
+                        for (; i < divisors.Count; i++)
+                        {
+                                d = divisors[i];
+                                // TODO: Replace this PowMod128 call with the upcoming eight-bit window helper once the
+                                // ProcessEightBitWindows scalar implementation lands so residue updates benefit from the
+                                // ~2× win recorded in GpuPow2ModBenchmarks for large moduli.
+                                value = PowMod128(UInt128Numbers.Two, delta, d);
+                                // r' = pow2Delta*r + (pow2Delta - 1) mod d
+                                value = MulMod128(value, residues[i], d) + value - UInt128.One;
+                                if (value >= d)
+                                {
 					value -= d;
 				}
 
@@ -238,23 +241,30 @@ public sealed class ModResidueTracker
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private UInt128 ComputeInitialResidue(UInt128 number, UInt128 divisor)
 	{
-		if (_model == ResidueModel.Identity)
-		{
-			// Fast path for 64-bit inputs
-			if (number <= ulong.MaxValue && divisor <= ulong.MaxValue)
-			{
-				return (ulong)number % (ulong)divisor;
-			}
+                if (_model == ResidueModel.Identity)
+                {
+                        // Fast path for 64-bit inputs
+                        if (number <= ulong.MaxValue && divisor <= ulong.MaxValue)
+                        {
+                                // TODO: Swap this modulo fallback for the shared divisor-cycle remainder helper so 64-bit
+                                // residues reuse cached cycles instead of recomputing `%` on every lookup.
+                                return (ulong)number % (ulong)divisor;
+                        }
 
-			return number % divisor;
-		}
+                        // TODO: Use the Montgomery folding helper measured faster in the Pow2Montgomery benchmarks so this
+                        // wide residue path avoids general `%` on UInt128 inputs.
+                        return number % divisor;
+                }
 
-		// residue of Mersenne number M_number = 2^number - 1 modulo divisor
-		UInt128 pow = PowMod128(UInt128Numbers.Two, number, divisor);
+                // residue of Mersenne number M_number = 2^number - 1 modulo divisor
+                // TODO: Consult MersenneDivisorCycles.Shared (or similar caches) here so we reuse precomputed cycle lengths
+                // instead of recomputing powmods for every divisor; the divisor-cycle benchmarks showed large wins once the
+                // cached orders were used across scans.
+                UInt128 pow = PowMod128(UInt128Numbers.Two, number, divisor);
 
-		// q divides M_p ⇔ 2^p ≡ 1 (mod q)  AND  ord_q(2) | p
-		if (pow != UInt128.One)
-			return (pow - UInt128.One) % divisor;
+                // q divides M_p ⇔ 2^p ≡ 1 (mod q)  AND  ord_q(2) | p
+                if (pow != UInt128.One)
+                        return (pow - UInt128.One) % divisor;
 
 		ulong ord = divisor.CalculateOrder();
 		if (ord == 0UL || divisor % ord != UInt128.Zero)
@@ -264,25 +274,28 @@ public sealed class ModResidueTracker
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static UInt128 PowMod128(UInt128 baseValue, UInt128 exponent, UInt128 modulus)
-	{
-		if (modulus == UInt128.One)
-		{
-			return UInt128.Zero;;
-		}
+        private static UInt128 PowMod128(UInt128 baseValue, UInt128 exponent, UInt128 modulus)
+        {
+                if (modulus == UInt128.One)
+                {
+                        return UInt128.Zero;
+                }
 
-		UInt128 result = UInt128.One;
-		UInt128 value = baseValue % modulus;
+                UInt128 result = UInt128.One;
+                UInt128 value = baseValue % modulus;
 
-		while (exponent != UInt128.Zero)
-		{
-			if ((exponent & UInt128.One) != UInt128.Zero)
-			{
-				result = MulMod128(result, value, modulus);
-			}
+                while (exponent != UInt128.Zero)
+                {
+                        if ((exponent & UInt128.One) != UInt128.Zero)
+                        {
+                                // TODO: Route this through the planned UInt128 windowed powmod so the inner MulMod adopts the
+                                // UInt128BuiltIn path that dominated the MulHighBenchmarks on wide operands instead of the
+                                // current square-and-multiply loop.
+                                result = MulMod128(result, value, modulus);
+                        }
 
-			exponent >>= 1;
-			if (exponent != UInt128.Zero)
+                        exponent >>= 1;
+                        if (exponent != UInt128.Zero)
 			{
 				value = MulMod128(value, value, modulus);
 			}
@@ -291,14 +304,17 @@ public sealed class ModResidueTracker
 		return result;
 	}
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static UInt128 MulMod128(UInt128 a, UInt128 b, UInt128 modulus)
-	{
-		// Same approach as MulMod in MersenneNumberTester: double-and-add to avoid overflow.
-		UInt128 result = UInt128.Zero;
-		a %= modulus;
+        private static UInt128 MulMod128(UInt128 a, UInt128 b, UInt128 modulus)
+        {
+                // Same approach as MulMod in MersenneNumberTester: double-and-add to avoid overflow.
+                // TODO: Replace this double-and-add fallback with the UInt128 intrinsic-backed multiplier once the
+                // MulHighBenchmarks-guided implementation lands; the intrinsic path measured dozens of times faster for
+                // dense 128-bit workloads.
+                UInt128 result = UInt128.Zero;
+                a %= modulus;
 
-		while (b != UInt128.Zero)
-		{
+                while (b != UInt128.Zero)
+                {
 			if ((b & UInt128.One) != UInt128.Zero)
 			{
 				result += result < modulus ? a : a - modulus;

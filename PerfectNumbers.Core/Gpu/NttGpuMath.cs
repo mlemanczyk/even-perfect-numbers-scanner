@@ -414,6 +414,8 @@ public static class NttGpuMath
         // load a block of size `len` into shared memory, do butterflies, write back.
         // Requires explicit grouped kernels and chosen group size.
         int t = index.X;
+        // TODO: Replace this `%` with a bitmask when `half` is a power of two so the stage index math matches the faster
+        // residue strategy from the GPU residue benchmarks.
         int j = t % half;
         int block = t / half;
         int k = block * len;
@@ -488,6 +490,8 @@ public static class NttGpuMath
     private static void StageBarrett128Kernel(Index1D index, ArrayView<GpuUInt128> data, int len, int half, int stageOffset, ArrayView<GpuUInt128> twiddles, ulong modHigh, ulong modLow, ulong muHigh, ulong muLow)
     {
         int t = index.X;
+        // TODO: Use the bitmask-based remainder helper here as well to remove `%` from the butterfly stage and align with the
+        // optimized kernels highlighted in the GPU pow2mod benchmarks.
         int j = t % half;
         int block = t / half;
         int k = block * len;
@@ -537,6 +541,7 @@ public static class NttGpuMath
     private static void StageMontKernel(Index1D index, ArrayView<GpuUInt128> data, int len, int half, int stageOffset, ArrayView<GpuUInt128> twiddlesMont, ulong modulus, ulong nPrime)
     {
         int t = index.X;
+        // TODO: Apply the bitmask remainder helper to this stage too so every butterfly path drops the slower `%` operation.
         int j = t % half;
         int block = t / half;
         int k = block * len;
