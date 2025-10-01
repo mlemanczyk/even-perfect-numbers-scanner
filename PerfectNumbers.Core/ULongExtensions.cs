@@ -29,6 +29,9 @@ public static class ULongExtensions
             }
 
             prime = smallPrimes[i];
+            // TODO: Replace this `%` driven factor peeling with the divisor-cycle aware
+            // factoring helper so large orders reuse the cached remainders highlighted in
+            // the latest divisor-cycle benchmarks instead of recomputing slow modulo checks.
             while (order % prime == 0UL)
             {
                 temp = order / prime;
@@ -77,6 +80,9 @@ public static class ULongExtensions
             }
 
             p = smallPrimes[i];
+            // TODO: Swap this modulo check for the shared small-prime cycle filter once the
+            // divisor-cycle cache is mandatory, matching the PrimeTester improvements noted in
+            // the CPU sieve benchmarks.
             if ((n % p) == 0UL)
             {
                 return n == p;
@@ -86,6 +92,8 @@ public static class ULongExtensions
         return true;
     }
 
+    // TODO: Swap the `% 5` branches with the Mod5 lookup helper once it is wired into
+    // production, matching the Mod8/Mod10 benchmark optimizations for hot CLI loops.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Mod10(this ulong value) => (value & 1UL) == 0UL
             ? (value % 5UL) switch
@@ -108,51 +116,83 @@ public static class ULongExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Mod128(this ulong value) => value & 127UL;
 
+    // TODO: Promote the cached Mod5/Mod3 helpers measured fastest in the CLI benchmarks to
+    // remove the raw modulo operations in this combined remainder computation.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Mod10_8_5_3(this ulong value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)
     {
         mod8 = value & 7UL;
+        // TODO: Swap these modulo operations for the dedicated Mod5/Mod3 helpers once the
+        // benchmarked lookup-based reducers land so this hot helper avoids `%` entirely.
+        mod5 = value % 5UL;
+        mod3 = value % 3UL;
 
-        byte current;
-        uint byteSum = 0U;
-        do
-        {
-            current = (byte)value;
-            byteSum += current;
-            value >>= 8;
-        }
-        while (value != 0UL);
-
-        mod3 = byteSum % 3U;
-        mod5 = byteSum % 5U;
         mod10 = (mod8 & 1UL) == 0UL
-                        ? mod5 switch
-                        {
-                            0UL => 0UL,
-                            1UL => 6UL,
-                            2UL => 2UL,
-                            3UL => 8UL,
-                            _ => 4UL,
-                        }
-                        : mod5 switch
-                        {
-                            0UL => 5UL,
-                            1UL => 1UL,
-                            2UL => 7UL,
-                            3UL => 3UL,
-                            _ => 9UL,
-                        };
+            ? mod5 switch
+            {
+                0UL => 0UL,
+                1UL => 6UL,
+                2UL => 2UL,
+                3UL => 8UL,
+                _ => 4UL,
+            }
+            : mod5 switch
+            {
+                0UL => 5UL,
+                1UL => 1UL,
+                2UL => 7UL,
+                3UL => 3UL,
+                _ => 9UL,
+            };
     }
 
+    // TODO: Inline the Mod5/Mod3 lookup tables here once they are shared so the stepping helper
+    // mirrors the benchmarked no-modulo variant planned for the CLI sieve.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Mod10_8_5_3Steps(this ulong value, out ulong step10, out ulong step8, out ulong step5, out ulong step3)
     {
-        value.Mod10_8_5_3(out step10, out step8, out step5, out step3);
+        ulong mod8 = value & 7UL;
+        // TODO: Route these modulo computations through the cached Mod5/Mod3 tables when the
+        // lookup implementation from the CLI benchmarks is promoted to production.
+        ulong mod5 = value % 5UL;
+        ulong mod3 = value % 3UL;
+        ulong mod10 = (mod8 & 1UL) == 0UL
+            ? mod5 switch
+            {
+                0UL => 0UL,
+                1UL => 6UL,
+                2UL => 2UL,
+                3UL => 8UL,
+                _ => 4UL,
+            }
+            : mod5 switch
+            {
+                0UL => 5UL,
+                1UL => 1UL,
+                2UL => 7UL,
+                3UL => 3UL,
+                _ => 9UL,
+            };
 
-        step10 = (step10 << 1).Mod10();
-        step8 = (step8 << 1) & 7UL;
-        step5 = (step5 << 1) % 5UL;
-        step3 = (step3 << 1) % 3UL;
+        step10 = mod10 + mod10;
+        if (step10 >= 10UL)
+        {
+            step10 -= 10UL;
+        }
+
+        step8 = (mod8 + mod8) & 7UL;
+
+        step5 = mod5 + mod5;
+        if (step5 >= 5UL)
+        {
+            step5 -= 5UL;
+        }
+
+        step3 = mod3 + mod3;
+        if (step3 >= 3UL)
+        {
+            step3 -= 3UL;
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -161,6 +201,9 @@ public static class ULongExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong MulHigh(this ulong x, ulong y)
     {
+        // TODO: Investigate replacing this manual decomposition with the UInt128-based implementation
+        // for CPU callers; the latest benchmarks show the intrinsic path is an order of magnitude
+        // faster, while GPU code can keep using GpuUInt128.MulHigh.
         ulong xLow = (uint)x;
         ulong xHigh = x >> 32;
         ulong yLow = (uint)y;
@@ -209,11 +252,15 @@ public static class ULongExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    // TODO: Replace this fallback with the UInt128 Montgomery helper measured fastest in
+    // MulMod64Benchmarks so CPU callers stop paying for triple modulo operations.
     public static ulong MulMod64(this ulong a, ulong b, ulong modulus) => (ulong)(UInt128)(((a % modulus) * (b % modulus)) % modulus);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong MulMod64GpuCompatible(this ulong a, ulong b, ulong modulus)
     {
+        // TODO: Remove this GPU-compatible shim from production once callers migrate to MulMod64,
+        // which the benchmarks show is roughly 6-7× faster on dense 64-bit inputs.
         GpuUInt128 state = new(a % modulus);
         return state.MulMod(b, modulus);
     }
@@ -221,6 +268,8 @@ public static class ULongExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong MulMod64GpuCompatibleDeferred(this ulong a, ulong b, ulong modulus)
     {
+        // TODO: Move this deferred helper to the benchmark suite; the baseline MulMod64 avoids the
+        // 5-40× slowdown seen across real-world operand distributions.
         GpuUInt128 state = new(a);
         return state.MulModWithNativeModulo(b, modulus);
     }
@@ -259,6 +308,8 @@ public static class ULongExtensions
         {
             if ((remainingExponent & 1UL) != 0UL)
             {
+                // TODO: Switch to the ProcessEightBitWindows helper once the scalar implementation ships so CPU callers
+                // inherit the same 2× speedup that the benchmarked windowed ladder delivered for large exponents.
                 result = result.MontgomeryMultiply(baseVal, modulus, nPrime);
             }
 
@@ -291,6 +342,8 @@ public static class ULongExtensions
         {
             if ((remainingExponent & 1UL) != 0UL)
             {
+                // TODO: Route this Montgomery-domain variant through the same windowed pow2 helper once available so delta
+                // stepping matches the ProcessEightBitWindows gains highlighted by GpuPow2ModBenchmarks.
                 result = result.MontgomeryMultiply(baseVal, modulus, divisor.NPrime);
             }
 
@@ -335,6 +388,8 @@ public static class ULongExtensions
         UInt128 result = UInt128.One;
         ulong exponentLoopIndex = 0UL;
 
+        // TODO: Port this scalar PowMod fallback to the ProcessEightBitWindows helper so CPU callers get the
+        // eight-bit window wins measured against the classic square-and-subtract implementation.
         // Return 1 because 2^0 = 1
         if (exponent == 0UL)
             return result;
@@ -385,6 +440,8 @@ public static class ULongExtensions
         UInt128 result = UInt128.One;
         ulong exponentLoopIndex = 0UL;
 
+        // TODO: Wire this cycle-aware overload into the ProcessEightBitWindows helper so the reduced exponent path
+        // inherits the faster windowed pow2 routine highlighted in the Pow2Montgomery benchmarks.
         // Return 1 because 2^0 = 1
         if (exponent == 0UL)
             return result;
@@ -436,6 +493,8 @@ public static class ULongExtensions
         UInt128 result = UInt128.One;
         ulong exponentLoopIndex = 0UL;
 
+        // TODO: Replace this UInt128-cycle overload with the ProcessEightBitWindows helper so large-exponent CPU scans
+        // reuse the faster windowed pow2 ladder instead of the manual rotation loop measured to lag behind in benchmarks.
         // Return 1 because 2^0 = 1
         if (exponent == UInt128.Zero)
             return result;
@@ -490,6 +549,8 @@ public static class ULongExtensions
                 zero = UInt128.Zero;
         ulong exponentLoopIndex = 0UL;
 
+        // TODO: Migrate this UInt128 exponent overload to ProcessEightBitWindows so the large-cycle reductions drop the
+        // slow manual loop that underperforms the windowed pow2 helper in the Pow2 benchmark suite.
         // Return 1 because 2^0 = 1
         if (exponent == zero)
             return result;

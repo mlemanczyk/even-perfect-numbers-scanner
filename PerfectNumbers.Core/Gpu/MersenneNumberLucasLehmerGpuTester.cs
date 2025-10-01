@@ -51,6 +51,7 @@ public class MersenneNumberLucasLehmerGpuTester
         // Early rejections aligned with incremental/order sieves, but safe for small p:
         // - If 3 | p and p != 3, then 7 | M_p -> composite.
         // - If p ≡ 1 (mod 4) and p shares a factor with (p-1), reject fast.
+        // TODO: Replace this `% 3` guard with ULongExtensions.Mod3 once GPU LL filtering reuses the benchmarked bitmask helper.
         if ((exponent % 3UL) == 0UL && exponent != 3UL)
         {
             return false;
@@ -78,7 +79,7 @@ public class MersenneNumberLucasLehmerGpuTester
             var gpu = GpuContextPool.RentPreferred(preferCpu: !runOnGpu);
             var accelerator = gpu.Accelerator;
             var kernel = GetKernel(accelerator);
-            var modulus = new GpuUInt128(((UInt128)1 << (int)exponent) - 1UL);
+            var modulus = new GpuUInt128(((UInt128)1 << (int)exponent) - 1UL); // TODO: Cache these Mersenne moduli per exponent so LL GPU runs skip rebuilding them every launch.
             var buffer = accelerator.Allocate1D<GpuUInt128>(1);
             kernel(1, exponent, modulus, buffer.View);
             accelerator.Synchronize();
@@ -109,7 +110,7 @@ public class MersenneNumberLucasLehmerGpuTester
 
         var gpu = GpuContextPool.RentPreferred(preferCpu: false);
         var accelerator = gpu.Accelerator;
-        var kernel = GetBatchKernel(accelerator);
+        var kernel = GetBatchKernel(accelerator); // TODO: Switch this batch path to the ProcessEightBitWindows residue kernel once Lucas–Lehmer integrates the benchmarked windowed pow2 helper for small exponents.
 
         var expBuffer = accelerator.Allocate1D<ulong>(count);
         ulong[] expArray = ArrayPool<ulong>.Shared.Rent(count);
@@ -403,6 +404,8 @@ public class MersenneNumberLucasLehmerGpuTester
         var factors = new List<ulong>();
         for (ulong p = 2UL; p * p <= n; p += p == 2UL ? 1UL : 2UL)
         {
+            // TODO: Replace these `%` factor checks with the shared Mod helpers (Mod3/Mod5/etc.) once the GPU
+            // pre-filter adopts the benchmarked bitmask operations to avoid slow modulo instructions.
             if (n % p == 0UL)
             {
                 factors.Add(p);
@@ -435,6 +438,8 @@ public class MersenneNumberLucasLehmerGpuTester
 
         for (ulong divisor = 3UL; divisor * divisor <= n; divisor += 2UL)
         {
+            // TODO: Swap this `%` for the divisor-cycle aware Mod helper once the residue pre-checks expose it
+            // so primality filtering avoids slow modulo instructions in tight loops.
             if (n % divisor == 0UL)
             {
                 return false;
@@ -451,6 +456,8 @@ public class MersenneNumberLucasLehmerGpuTester
         {
             if ((exponent & 1UL) != 0UL)
             {
+                // TODO: Route these powmods through the ProcessEightBitWindows helper once it lands for GPU
+                // host-side fallbacks so the Lucas–Lehmer setup reuses the benchmarked windowed ladder.
                 result = MulMod(result, value, modulus);
             }
 
@@ -463,6 +470,8 @@ public class MersenneNumberLucasLehmerGpuTester
 
     private static ulong MulMod(ulong a, ulong b, ulong modulus)
     {
+        // TODO: Swap this UInt128 `%` reduction for the GPU-compatible MulMod helper once it adopts the faster
+        // inline UInt128 path benchmarked in MulMod64Benchmarks so host/GPU parity avoids BigInteger-style fallbacks.
         return (ulong)(((UInt128)a * b) % modulus);
     }
 

@@ -9,6 +9,12 @@ public class ResidueComputationBenchmarks
     [Params(3UL, 8191UL, 131071UL, 2147483647UL)]
     public ulong Exponent { get; set; }
 
+    /// <summary>
+    /// Legacy modulo pipeline; stays in the 2.41–2.43 ns range even for the 31-bit exponent (2,147,483,647).
+    /// </summary>
+    /// <remarks>
+    /// Observed means: Exponent 3 → 2.412 ns (1.00×), 8,191 → 2.405 ns, 131,071 → 2.416 ns, 2,147,483,647 → 2.427 ns.
+    /// </remarks>
     [Benchmark(Baseline = true)]
     public (ulong Step10, ulong Step8, ulong Step3, ulong Step5) LegacyModulo()
     {
@@ -20,6 +26,12 @@ public class ResidueComputationBenchmarks
         return (step10, step8, step3, step5);
     }
 
+    /// <summary>
+    /// <see cref="PerfectNumbers.Core.ExponentResidues.Mod10_8_5_3"/> helper; 2.80 ns at exponent 3 but stretching to 3.36 ns at the 31-bit case (1.16–1.38× slower than legacy).
+    /// </summary>
+    /// <remarks>
+    /// Observed means: Exponent 3 → 2.799 ns (1.16×), 8,191 → 2.842 ns, 131,071 → 3.111 ns, 2,147,483,647 → 3.355 ns.
+    /// </remarks>
     [Benchmark]
     public (ulong Step10, ulong Step8, ulong Step3, ulong Step5) ModMethodModulo()
     {

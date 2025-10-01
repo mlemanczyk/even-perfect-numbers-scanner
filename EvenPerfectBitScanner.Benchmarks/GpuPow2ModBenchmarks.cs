@@ -22,12 +22,28 @@ public class GpuPow2ModBenchmarks
 
     public static IEnumerable<Pow2ModInput> GetInputs() => Inputs;
 
+    /// <summary>
+    /// Windowed (8-bit) exponentiation that dominated every dataset: 21.5 μs for the full-width modulus, 7.87 μs for the large
+    /// set, 265 ns for medium, and 82.97 ns for the small modulus sample.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: FullWidthExponentFullWidthModulus 21,481.71 ns (1.00×), LargeExponentHighWordModulus 7,874.85 ns,
+    /// MediumExponentPrimeModulus 264.97 ns, SmallExponentSmallModulus 82.97 ns.
+    /// </remarks>
     [Benchmark(Baseline = true)]
     public GpuUInt128 ProcessEightBitWindows()
     {
         return GpuUInt128.Pow2Mod(Input.Exponent, Input.Modulus);
     }
 
+    /// <summary>
+    /// Bit-by-bit fallback; competitive only on medium/small moduli (266 ns / 85.39 ns) while trailing badly on the widest
+    /// modulus (50.97 μs, 2.37× slower) and large input (8.85 μs, 1.12× slower).
+    /// </summary>
+    /// <remarks>
+    /// Observed means: FullWidthExponentFullWidthModulus 50,967.07 ns (2.37×), LargeExponentHighWordModulus 8,851.95 ns,
+    /// MediumExponentPrimeModulus 265.98 ns, SmallExponentSmallModulus 85.39 ns.
+    /// </remarks>
     [Benchmark]
     public GpuUInt128 ProcessSingleBits()
     {

@@ -4,7 +4,7 @@ namespace PerfectNumbers.Core;
 
 public interface IMersenneNumberDivisorByDivisorTester
 {
-        bool UseDivisorCycles { get; set; }
+        bool UseDivisorCycles { get; set; } // TODO: Remove the setter once divisor cycle usage becomes mandatory so all implementations always leverage the cached cycles.
 
         int BatchSize { get; set; }
 

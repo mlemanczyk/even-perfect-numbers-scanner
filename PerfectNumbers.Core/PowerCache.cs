@@ -31,8 +31,16 @@ public static class PowerCache
         if (powers[exponent].IsZero)
         {
             for (int i = 1; i <= exponent; i++)
+            {
                 if (powers[i].IsZero)
+                {
+                    // TODO: Swap this BigInteger chain with the UInt128-based Montgomery ladder from
+                    // Pow2MontgomeryMod once callers guarantee 64-bit inputs; the benchmarks show the
+                    // arbitrary-precision multiply is orders of magnitude slower for the exponents we
+                    // scan when p >= 138M.
                     powers[i] = powers[i - 1] * baseVal;
+                }
+            }
         }
         
         return powers[exponent];
@@ -57,8 +65,15 @@ public static class PowerCache
         if (powers[exponent] == null)
         {
             for (int i = 1; i <= exponent; i++)
+            {
                 if (powers[i] == null)
+                {
+                    // TODO: Move the high-precision branch to the benchmark project once production
+                    // switches to the divisor-cycle aware cache; maintaining this BigInteger multiply
+                    // path in the hot pipeline keeps the slower code on the CPU scan.
                     powers[i] = powers[i - 1]! * baseVal;
+                }
+            }
         }
         return powers[exponent]!;
     }

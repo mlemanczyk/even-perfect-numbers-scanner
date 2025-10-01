@@ -112,6 +112,9 @@ public class MersenneDivisorCycles
 			}
 		}
 
+                // TODO: Replace this naive doubling fallback with the unrolled-hex generator from
+                // MersenneDivisorCycleLengthGpuBenchmarks so large divisors avoid the millions of
+                // iterations measured in the scalar loop.
                 return CalculateCycleLength(divisor);
 	}
 
@@ -124,6 +127,9 @@ public class MersenneDivisorCycles
 		}
 
 		// Otherwise, find order of 2 mod divisor
+                // TODO: Port this UInt128 path to the unrolled-hex cycle calculator so wide
+                // divisors stop relying on the slow shift-and-subtract loop measured in the
+                // GPU benchmarks.
 		UInt128 order = UInt128.One, pow = UInt128Numbers.Two;
 		while (pow != UInt128.One)
 		{
@@ -193,11 +199,17 @@ public class MersenneDivisorCycles
 							continue;
 						}
 
-						if ((divisor % 3UL) == 0UL || (divisor % 5UL) == 0UL || (divisor % 7UL) == 0UL || (divisor % 11UL) == 0UL)
+                                                // TODO: Replace this modulo-based filter with the cached Mod3/Mod5/Mod7/Mod11
+                                                // helpers so the CPU generator stops paying for `%` in the small-prime sieve
+                                                // and lines up with the divisor-cycle pipeline.
+                                                if ((divisor % 3UL) == 0UL || (divisor % 5UL) == 0UL || (divisor % 7UL) == 0UL || (divisor % 11UL) == 0UL)
 						{
 							continue;
 						}
 
+						// TODO: Migrate this generation path to the shared
+						// unrolled-hex calculator so the CPU generator matches
+						// the GPU benchmark leader for large divisors.
 						ulong cycle = CalculateCycleLength(divisor);
 						localCycles[localCycleIndex++] = (divisor, cycle);
 					}
@@ -267,13 +279,16 @@ public class MersenneDivisorCycles
 		using var writer = new BinaryWriter(outputStream, Encoding.UTF8, leaveOpen: false);
 		try
 		{
-			while (skipCount > 0L && start <= maxDivisor)
-			{
-				if ((start & 1UL) == 0UL || (start % 3UL) == 0UL || (start % 5UL) == 0UL || (start % 7UL) == 0UL || (start % 11UL) == 0UL)
-				{
-					start++;
-					continue;
-				}
+                        while (skipCount > 0L && start <= maxDivisor)
+                        {
+                                // TODO: Swap these modulo checks for the cached Mod3/Mod5/Mod7/Mod11 helpers so
+                                // range initialization avoids repeated `%` calls before the unrolled-hex pipeline
+                                // takes over.
+                                if ((start & 1UL) == 0UL || (start % 3UL) == 0UL || (start % 5UL) == 0UL || (start % 7UL) == 0UL || (start % 11UL) == 0UL)
+                                {
+                                        start++;
+                                        continue;
+                                }
 
 				start++;
 				skipCount--;
@@ -316,7 +331,9 @@ public class MersenneDivisorCycles
 				{
 					d = divisors[i];
 
-					if ((d % 3UL) == 0UL || (d % 5UL) == 0UL || (d % 7UL) == 0UL || (d % 11UL) == 0UL)
+                                    // TODO: Replace this modulo sieve with the cached Mod helpers once the divisor-cycle cache
+                                    // is mandatory so cycle enumeration can drop the slower `%` operations in this hot loop.
+                                    if ((d % 3UL) == 0UL || (d % 5UL) == 0UL || (d % 7UL) == 0UL || (d % 11UL) == 0UL)
 						continue;
 
 					writer.Write(d);
@@ -436,6 +453,9 @@ public class MersenneDivisorCycles
 		}
 
 		// Otherwise, find order of 2 mod divisor
+                // TODO: Switch this scalar fallback to the unrolled-hex stepping sequence once
+                // the generator is shared with CPU callers; the benchmark shows the unrolled
+                // variant winning decisively for divisors >= 131,071.
 		ulong order = 1UL, pow = 2UL;
 		while (pow != 1)
 		{

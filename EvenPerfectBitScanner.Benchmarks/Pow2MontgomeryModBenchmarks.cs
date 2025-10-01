@@ -49,7 +49,7 @@ public class Pow2MontgomeryModBenchmarks
     }
 
     /// <summary>
-    /// Baseline right-to-left Montgomery ladder that averages ~60 μs on the small set and ~205 μs on the large one.
+    /// Baseline right-to-left Montgomery ladder; measured 36.36 μs on the small sample set and 117.32 μs on the large one.
     /// </summary>
     [Benchmark(Baseline = true)]
     public ulong Baseline()
@@ -66,7 +66,7 @@ public class Pow2MontgomeryModBenchmarks
     }
 
     /// <summary>
-    /// Uses a known divisor cycle to fold the exponent first, cutting runtime to ~0.69× on small inputs (~41.7 μs) and ~0.08× on large ones (~15.9 μs).
+    /// Uses a known divisor cycle to fold the exponent first, dropping runtimes to 26.04 μs on small inputs (0.72× baseline) and 9.53 μs on large inputs (0.08× baseline).
     /// </summary>
     [Benchmark]
     public ulong BaselineWithKnownCycle()
@@ -83,7 +83,7 @@ public class Pow2MontgomeryModBenchmarks
     }
 
     /// <summary>
-    /// Left-to-right Montgomery scan that trailed the baseline by ~15% on small inputs (~69.7 μs) and ~13% on large ones (~231 μs).
+    /// Left-to-right Montgomery scan that trails the baseline: 39.11 μs on small inputs (1.08×) and 126.38 μs on large ones (1.08×).
     /// </summary>
     [Benchmark]
     public ulong LeftToRight()
@@ -100,7 +100,7 @@ public class Pow2MontgomeryModBenchmarks
     }
 
     /// <summary>
-    /// Processes four exponent bits per loop, ending up ~8% slower on small cases (~65.2 μs) and ~10% slower on large ones (~225 μs).
+    /// Processes four exponent bits per loop, finishing at 38.74 μs on small cases (1.07× baseline) and 120.11 μs on large ones (1.02×).
     /// </summary>
     [Benchmark]
     public ulong Batched4()
@@ -117,7 +117,7 @@ public class Pow2MontgomeryModBenchmarks
     }
 
     /// <summary>
-    /// Windowed Montgomery ladder (width 5) that lagged by ~72% on small samples (~104 μs) and ~16% on large samples (~238 μs).
+    /// Windowed Montgomery ladder (width 5) that lags behind the baseline at 52.82 μs on small samples (1.45×) and 124.13 μs on large samples (1.06×).
     /// </summary>
     [Benchmark]
     public ulong SlidingWindow()
@@ -134,7 +134,7 @@ public class Pow2MontgomeryModBenchmarks
     }
 
     /// <summary>
-    /// Classic binary ladder without Montgomery reduction; it was ~3.6× slower on both small (~217 μs) and large (~733 μs) datasets.
+    /// Classic binary ladder without Montgomery reduction; runs 24.75 μs on small inputs (0.68× baseline) but collapses to 295.29 μs on large ones (2.52×).
     /// </summary>
     [Benchmark]
     public ulong BinaryMod()
@@ -151,7 +151,7 @@ public class Pow2MontgomeryModBenchmarks
     }
 
     /// <summary>
-    /// Precomputes all squarings once, landing ~44% slower on small inputs (~87.0 μs) and ~4.9× slower on large ones (~998 μs).
+    /// Precomputes all squarings once; 30.18 μs on small inputs (0.83× baseline) but 289.80 μs on large ones (2.47×).
     /// </summary>
     [Benchmark]
     public ulong PrecomputedTableMod()
@@ -168,7 +168,7 @@ public class Pow2MontgomeryModBenchmarks
     }
 
     /// <summary>
-    /// Relies on <see cref="BigInteger.ModPow"/>, outperforming Montgomery on small inputs (~39.6 μs, 0.66×) but ~4.7× slower on large ones (~954 μs).
+    /// Relies on <see cref="BigInteger.ModPow"/>; fastest on small inputs at 17.21 μs (0.47× baseline) but slowest on large ones at 562.78 μs (4.80×).
     /// </summary>
     [Benchmark]
     public ulong BigIntegerMod()

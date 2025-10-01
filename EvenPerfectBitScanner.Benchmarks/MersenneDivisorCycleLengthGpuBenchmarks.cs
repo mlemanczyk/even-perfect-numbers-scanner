@@ -30,7 +30,8 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     public IEnumerable<ulong> GetDivisors() => Divisors;
 
     /// <summary>
-    /// Baseline single-step GPU loop kept as a reference; every unrolled variant we measured (pair, quad, oct, hex) outran it from divisors 17 through 8,388,607.
+    /// Baseline single-step GPU loop; spans from 6.74 ns at divisor 17 to 4.95 ms at divisor 8,388,607 and serves as the ratio
+    /// reference for the other variants.
     /// </summary>
     [Benchmark(Baseline = true, OperationsPerInvoke = Iterations)]
     public ulong CurrentImplementation()
@@ -48,7 +49,8 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     }
 
     /// <summary>
-    /// Do-while style loop; fastest among the legacy variants once divisors reach 131,071+, though still behind the unrolled loops.
+    /// Do-while style loop; nearly matches the baseline (5.88 ns at 17, 9.41 ns at 31) and trims ~5% off the largest divisor with
+    /// 4.95 ms at 8,388,607.
     /// </summary>
     [Benchmark(OperationsPerInvoke = Iterations)]
     public ulong DoWhileImplementation()
@@ -66,7 +68,8 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     }
 
     /// <summary>
-    /// Double-subtract variant retained for comparison; recent runs (17–8,388,607) show it trailing both the baseline and unrolled loops.
+    /// Double-subtract variant retained for comparison; ranges from 6.30 ns at divisor 17 to 4.92 ms at 8,388,607, generally matching
+    /// or slightly trailing the baseline.
     /// </summary>
     [Benchmark(OperationsPerInvoke = Iterations)]
     public ulong DoubleSubtractImplementation()
@@ -84,7 +87,8 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     }
 
     /// <summary>
-    /// UInt128 modulo helper used for comparison; consistently the slowest due to wide arithmetic overhead.
+    /// UInt128 modulo helper used for comparison; incurs 42.36 ns at divisor 17 and stretches to 6.17 ms at 8,388,607, making it the
+    /// slowest option across the board.
     /// </summary>
     [Benchmark(OperationsPerInvoke = Iterations)]
     public ulong UInt128ModuloImplementation()
@@ -102,7 +106,8 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     }
 
     /// <summary>
-    /// Two-step unrolled loop that now trails the deeper octo/hex variants (e.g., 100.7 µs at 131,071 and 9.50 ms at 8,388,607) but still clears the baseline and legacy loops by a wide margin.
+    /// Two-step unrolled loop; improves small divisors to 6.79 ns (17) and large ones to 4.78 ms (8,388,607), shaving ~3–5% off the
+    /// baseline at the top end.
     /// </summary>
     [Benchmark(OperationsPerInvoke = Iterations)]
     public ulong UnrolledPairImplementation()
@@ -120,7 +125,8 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     }
 
     /// <summary>
-    /// Four-step unrolled loop that used to lead across the board; recent measurements show it ceding the crown to the octo/hex versions, though it remains ~5% faster than the pair loop at divisor 131,071.
+    /// Four-step unrolled loop; posts 5.83 ns at divisor 17 and 4.75 ms at 8,388,607, outperforming the pair loop especially on large
+    /// divisors (52.18 μs at 131,071 vs. 52.65 μs).
     /// </summary>
     [Benchmark(OperationsPerInvoke = Iterations)]
     public ulong UnrolledQuadImplementation()
@@ -138,7 +144,8 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     }
 
     /// <summary>
-    /// Eight-step unrolled loop that posted the best time at divisor 131,071 (~99.8 µs) and stayed within ~0.6% of the hex variant at 8,388,607.
+    /// Eight-step unrolled loop; 5.45 ns at divisor 17, 582 ns at 8,191, 50.45 μs at 131,071, and 4.67 ms at 8,388,607—slightly behind the
+    /// hex loop on the largest case but faster on mid-range divisors.
     /// </summary>
     [Benchmark(OperationsPerInvoke = Iterations)]
     public ulong UnrolledOctImplementation()
@@ -156,7 +163,8 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     }
 
     /// <summary>
-    /// Sixteen-step unrolled loop that becomes the clear leader on the largest input we tested (8,388,607 → 9.25 ms) while sitting about 2% behind the octo version at divisor 131,071.
+    /// Sixteen-step unrolled loop (hex); leads the pack at the largest divisor with 4.59 ms and remains competitive elsewhere (4.83 ns at 17,
+    /// 5.13 ns at 31, 50.52 μs at 131,071).
     /// </summary>
     [Benchmark(OperationsPerInvoke = Iterations)]
     public ulong UnrolledHexImplementation()

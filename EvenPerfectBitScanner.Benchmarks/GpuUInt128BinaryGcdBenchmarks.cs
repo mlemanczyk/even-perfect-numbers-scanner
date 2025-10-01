@@ -26,12 +26,26 @@ public class GpuUInt128BinaryGcdBenchmarks
 
     public static IEnumerable<BinaryGcdInput> GetInputs() => Inputs;
 
+    /// <summary>
+    /// Baseline that reuses locals between iterations; measured 195–196 ns on high-entropy/high-word-only inputs, 157.8 ns on
+    /// low-word-heavy pairs, and 7.32 ns on tiny operands.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: HighEntropy 195.593 ns (1.00×), HighWordOnly 196.218 ns, LowWordHeavy 157.787 ns, SmallOperands 7.317 ns.
+    /// </remarks>
     [Benchmark(Baseline = true)]
     public GpuUInt128 ReusedVariables()
     {
         return BinaryGcdWithReusedVariables(Input.Left, Input.Right);
     }
 
+    /// <summary>
+    /// Allocates a temporary struct per loop iteration; trims 4–9% off the large inputs (186–186 ns) and 18% off small operands
+    /// (5.99 ns), making it the better all-around choice when GC pressure is acceptable.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: HighEntropy 186.615 ns (0.95×), HighWordOnly 185.849 ns, LowWordHeavy 143.686 ns, SmallOperands 5.987 ns.
+    /// </remarks>
     [Benchmark]
     public GpuUInt128 TemporaryStructPerIteration()
     {

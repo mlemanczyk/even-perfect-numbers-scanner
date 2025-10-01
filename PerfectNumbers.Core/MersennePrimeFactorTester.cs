@@ -49,10 +49,14 @@ public static class MersennePrimeFactorTester
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong GetOrderOf2ModPrime(ulong q, CancellationToken ct) =>
+        // TODO: Collapse this wrapper once all callers promote operands to UInt128 so we
+        // can jump straight to OrderOf2ModPrime without bouncing through multiple overloads.
         (ulong)GetOrderOf2ModPrime((UInt128)q, ct);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static UInt128 GetOrderOf2ModPrime(UInt128 q, CancellationToken ct) =>
+        // TODO: Inline this shim once callers can invoke OrderOf2ModPrime directly; the extra
+        // hop shows up on hot perf traces while we chase large-order factors.
         OrderOf2ModPrime(q, ct);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -113,6 +117,7 @@ public static class MersennePrimeFactorTester
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    // TODO: Replace this duplicate powmod with ULongExtensions.ModPow64 so we inherit the optimized MulMod64 path that led the MulMod64Benchmarks on large operands.
     private static ulong ModPow64(ulong value, ulong exponent, ulong modulus, CancellationToken ct)
     {
         ulong result = 1UL;
@@ -144,9 +149,10 @@ public static class MersennePrimeFactorTester
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong MulMod64(ulong a, ulong b, ulong mod) => (ulong)((UInt128)a * b % mod);
+    private static ulong MulMod64(ulong a, ulong b, ulong mod) => (ulong)((UInt128)a * b % mod); // TODO: Route this through ULongExtensions.MulMod64 so the powmod above adopts the inline UInt128 implementation that dominated the MulMod64Benchmarks.
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    // TODO: Switch to UInt128Extensions.ModPow once its MulMod backend adopts the faster UInt128BuiltIn path highlighted in MulHighBenchmarks to avoid the BigInteger fallback.
     private static UInt128 ModPow128(UInt128 value, UInt128 exponent, UInt128 modulus, CancellationToken ct)
     {
         UInt128 result = 1;
@@ -180,7 +186,7 @@ public static class MersennePrimeFactorTester
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static UInt128 MulMod128(UInt128 a, UInt128 b, UInt128 mod)
     {
-        BigInteger product = (BigInteger)a * b;
+        BigInteger product = (BigInteger)a * b; // TODO: Replace this BigInteger reduction with the forthcoming UInt128 intrinsic helper measured faster in Mul64Benchmarks and MulHighBenchmarks for huge operands.
         product %= (BigInteger)mod;
         return (UInt128)product;
     }
@@ -413,6 +419,7 @@ public static class MersennePrimeFactorTester
         return a;
     }
 
+    // TODO: Port this Miller–Rabin routine to UInt128 intrinsics so we avoid the BigInteger.ModPow calls that lag by orders of magnitude on the large inputs highlighted in the Pow2MontgomeryMod benchmarks.
     private static bool IsPrime128(UInt128 n, CancellationToken ct)
     {
         if (n <= 3)

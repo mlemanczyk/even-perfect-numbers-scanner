@@ -18,7 +18,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     public bool UseDivisorCycles
     {
         get => _useDivisorCycles;
-        set => _useDivisorCycles = value;
+        set => _useDivisorCycles = value; // TODO: Delete the toggle once divisor cycle data is always consulted so CPU scans never fall back to the slower pure-Montgomery path.
     }
 
     public int BatchSize
@@ -191,6 +191,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             lastProcessed = divisor;
 
             MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(divisor);
+            // TODO: Hoist MontgomeryDivisorData acquisition into the divisor-cycle cache so we reuse the
+            // staged ProcessEightBitWindows-ready metadata instead of reloading the slower Montgomery
+            // structs for every divisor.
             byte hit;
             ulong divisorCycle = 0UL;
             DivisorCycleCache.CycleBlock? cycleBlock = null;
@@ -202,6 +205,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             }
             else
             {
+                // TODO: Force this path to hydrate divisor cycles from disk once the cache guarantees
+                // coverage so we can retire the slower Montgomery-only fallback highlighted by the CPU
+                // divisor benchmarks.
                 hit = CheckDivisor(prime, false, 0UL, divisorData);
             }
 
@@ -225,6 +231,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             }
 
             divisor += 2UL;
+            // TODO: Replace this linear increment with the batched divisor-cycle walker validated in the
+            // CPU by-divisor benchmarks so we advance directly to the next cached divisor candidate
+            // instead of testing every odd integer.
         }
 
         if (!processedAll)
@@ -244,7 +253,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
             ulong residue = useCycles && divisorCycle != 0UL
                 ? prime.Pow2MontgomeryModWithCycle(divisorCycle, divisorData)
-                : prime.Pow2MontgomeryMod(divisorData);
+                : prime.Pow2MontgomeryMod(divisorData); // TODO: Switch to the upcoming ProcessEightBitWindows helper once the
+                                                        // scalar Pow2Minus1Mod adopts it so CPU scans match the GPU speedups.
 
             return residue == 1UL ? (byte)1 : (byte)0;
         }
@@ -264,6 +274,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         }
 
         ulong total = _lastStatusDivisor + processedCount;
+        // TODO: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI
+        // status benchmarks so we avoid `%` in this hot loop while still wrapping progress correctly.
         _lastStatusDivisor = total % interval;
     }
 
@@ -372,6 +384,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 return;
             }
 
+            // TODO: Remove this no-cycle fallback once divisor cycles are mandatory; the per-prime pow2 ladder here
+            // keeps the slower Montgomery stepping alive even though the benchmarks showed the cached cycle path is far
+            // faster for large divisor sets.
             for (int i = 0; i < length; i++)
             {
                 hits[i] = exponentStepper.ComputeNextIsUnity(primes[i]) ? (byte)1 : (byte)0;

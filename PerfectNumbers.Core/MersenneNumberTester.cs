@@ -91,9 +91,11 @@ public sealed class MersenneNumberTester(
 					continue;
 				}
 
-				ulong ord = q.CalculateOrder();
-				OrderCache[q] = ord;
-			}
+                                // TODO: Swap this fallback to the shared windowed order helper once CalculateOrder migrates
+                                // to the ProcessEightBitWindows pipeline so warm-ups stop invoking the slower legacy powmod.
+                                ulong ord = q.CalculateOrder();
+                                OrderCache[q] = ord;
+                        }
 
 			return;
 		}
@@ -177,6 +179,8 @@ public sealed class MersenneNumberTester(
                                         ulong order = orders[i];
                                         if (order == 0UL)
                                         {
+                                                // TODO: Replace this CalculateOrder call with the upcoming windowed helper so
+                                                // GPU warm-ups reuse the faster pow2 ladder measured in the CPU order benchmarks.
                                                 order = qs[offset + i].CalculateOrder();
                                         }
 
@@ -205,6 +209,8 @@ public sealed class MersenneNumberTester(
         // 7 | M_p iff 3 | p. Avoid rejecting p == 3 where M_3 == 7 is prime.
         if ((exponent % 3UL) == 0UL && exponent != 3UL)
         {
+            // TODO: Replace this `% 3` check with ULongExtensions.Mod3 to align the early rejection with
+            // the benchmarked bitmask helper instead of generic modulo for CPU workloads.
             return false;
         }
 
@@ -309,12 +315,14 @@ public sealed class MersenneNumberTester(
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void LegacyOrderKernel(Index1D index, ulong exponent, ArrayView<UInt128> qs, ArrayView<ulong> orders)
-	{
-		UInt128 q = qs[index];
-		UInt128 pow = exponent.PowMod(q);
-		orders[index] = pow == 1UL ? exponent : 0UL;
-	}
+        private static void LegacyOrderKernel(Index1D index, ulong exponent, ArrayView<UInt128> qs, ArrayView<ulong> orders)
+        {
+                UInt128 q = qs[index];
+                // TODO: Swap this legacy kernel over to the ProcessEightBitWindows helper so GPU order scans share the
+                // eight-bit window pow2 implementation that beat the classic PowMod path in the GpuPow2Mod benchmarks.
+                UInt128 pow = exponent.PowMod(q);
+                orders[index] = pow == 1UL ? exponent : 0UL;
+        }
 
 
 }

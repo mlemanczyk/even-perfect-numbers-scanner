@@ -65,8 +65,8 @@ internal static class Program
 		int blockSize = 1;
 		int gpuPrimeThreads = 1;
 		int gpuPrimeBatch = 262_144;
-		GpuKernelType kernelType = GpuKernelType.Incremental;
-		bool useModuloWorkaround = false;
+                GpuKernelType kernelType = GpuKernelType.Incremental;
+                bool useModuloWorkaround = false; // TODO: Remove once the runtime defaults to the ImmediateModulo path measured fastest in GpuUInt128NativeModuloBenchmarks.
 		// removed: useModAutomaton
 		bool useOrder = false;
 		bool showHelp = false;
@@ -75,7 +75,7 @@ internal static class Program
 		bool useResidue = false;    // M_p test via residue divisors (replaces LL/incremental)
 		bool useDivisor = false;     // M_p divisibility by specific divisor
 		bool useByDivisor = false;   // Iterative divisor scan across primes
-		bool useDivisorCycles = false;
+                bool useDivisorCycles = false; // TODO: Default this flag to true and remove the opt-out once divisor cycle lookups are mandatory per the optimized by-divisor benchmarks.
 		UInt128 divisor = UInt128.Zero;
 		// Device routing
 		bool useGpuCycles = true;
@@ -124,9 +124,9 @@ internal static class Program
 			else if (arg.StartsWith("--mersenne=", StringComparison.OrdinalIgnoreCase))
 			{
 				mersenneOption = arg.AsSpan(arg.IndexOf('=') + 1);
-				if (mersenneOption.Equals("pow2mod", StringComparison.OrdinalIgnoreCase))
-				{
-					kernelType = GpuKernelType.Pow2Mod;
+                                if (mersenneOption.Equals("pow2mod", StringComparison.OrdinalIgnoreCase))
+                                {
+                                        kernelType = GpuKernelType.Pow2Mod; // TODO: Switch this mode to the ProcessEightBitWindows kernel once Pow2Minus1Mod adopts the benchmarked faster windowed ladder.
 				}
 				else if (mersenneOption.Equals("lucas", StringComparison.OrdinalIgnoreCase))
 				{
@@ -409,7 +409,8 @@ internal static class Program
 					Console.WriteLine("Resuming generation...");
 				}
 
-				MersenneDivisorCycles.GenerateGpu(cyclesPath, PerfectNumberConstants.MaxQForDivisorCycles, cyclesBatchSize, skipCount: completeCount, nextPosition: nextPosition);
+                                // TODO: Wire GenerateGpu to the unrolled-hex kernel that led the MersenneDivisorCycleLengthGpuBenchmarks once it lands.
+                                MersenneDivisorCycles.GenerateGpu(cyclesPath, PerfectNumberConstants.MaxQForDivisorCycles, cyclesBatchSize, skipCount: completeCount, nextPosition: nextPosition);
 			}
 			else
 			{
@@ -461,26 +462,27 @@ internal static class Program
 		// Initialize per-thread p residue tracker (Identity model) at currentP
 		if (!useDivisor && !useByDivisor)
 		{
-			MersenneTesters = new ThreadLocal<MersenneNumberTester>(() =>
-{
-	var tester = new MersenneNumberTester(
-						useIncremental: !useLucas,
-						useOrderCache: false,
-						kernelType: kernelType,
-						useModuloWorkaround: useModuloWorkaround,
-						useOrder: useOrder,
-						useGpuLucas: mersenneOnGpu,
-						useGpuScan: mersenneOnGpu,
-						useGpuOrder: orderOnGpu,
-						useResidue: useResidue,
-						maxK: residueKMax);
-	if (!useLucas)
-	{
-		tester.WarmUpOrders(currentP, _orderWarmupLimitOverride ?? 5_000_000UL);
-	}
+                        MersenneTesters = new ThreadLocal<MersenneNumberTester>(() =>
+                        {
+                                // TODO: Swap the underlying pow2mod kernels to ProcessEightBitWindows once Pow2Minus1Mod migrates to the windowed helper highlighted in GpuPow2ModBenchmarks.
+                                var tester = new MersenneNumberTester(
+                                                useIncremental: !useLucas,
+                                                useOrderCache: false,
+                                                kernelType: kernelType,
+                                                useModuloWorkaround: useModuloWorkaround,
+                                                useOrder: useOrder,
+                                                useGpuLucas: mersenneOnGpu,
+                                                useGpuScan: mersenneOnGpu,
+                                                useGpuOrder: orderOnGpu,
+                                                useResidue: useResidue,
+                                                maxK: residueKMax);
+                                if (!useLucas)
+                                {
+                                        tester.WarmUpOrders(currentP, _orderWarmupLimitOverride ?? 5_000_000UL);
+                                }
 
-	return tester;
-}, trackAllValues: true);
+                                return tester;
+                        }, trackAllValues: true);
 		}
 		else if (useDivisor)
 		{
@@ -497,7 +499,7 @@ internal static class Program
 					? new MersenneNumberDivisorByDivisorGpuTester()
 					: new MersenneNumberDivisorByDivisorCpuTester();
 			_byDivisorTester.BatchSize = scanBatchSize;
-			_byDivisorTester.UseDivisorCycles = useDivisorCycles;
+                    _byDivisorTester.UseDivisorCycles = useDivisorCycles; // TODO: Collapse this assignment once the runtime enforces divisor-cycle acceleration for every by-divisor scan path.
 		}
 
 		// Load RLE blacklist (optional)
@@ -506,7 +508,7 @@ internal static class Program
 			RleBlacklist.Load(_rleBlacklistPath!);
 		}
 
-		ulong remainder = currentP % 6UL;
+                ulong remainder = currentP % 6UL; // TODO: Replace this generic modulo with the lookup-based Mod6 helper validated in the Mod6 benchmarks to avoid the slower `%` operator on hot CLI loops.
 		if (currentP == InitialP && string.IsNullOrEmpty(filterFile))
 		{
 			// bool passedAllTests = IsEvenPerfectCandidate(InitialP, out bool searchedMersenne, out bool detailedCheck);
@@ -1233,8 +1235,11 @@ internal static class Program
 		}
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit) => IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out _, out _);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit) =>
+                // TODO: Remove this pass-through once callers can provide the full out parameters
+                // directly; shaving this hop keeps the hot candidate filter on the shortest path.
+                IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out _, out _);
 
 	internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck)
 	{
@@ -1310,13 +1315,15 @@ internal static class Program
 		searchedMersenne = true;
                 if (_useByDivisorMode)
                 {
+                        // TODO: Route by-divisor scans through the ProcessEightBitWindows pow2mod kernel once the windowed Pow2Minus1Mod helper replaces the slower single-bit ladder.
                         return _byDivisorTester!.IsPrime(p, out detailedCheck);
                 }
 
-		if (_useDivisor)
-		{
-			return _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out detailedCheck);
-		}
+                if (_useDivisor)
+                {
+                        // TODO: Adopt the windowed Pow2Minus1Mod helper here so divisor checks benefit from the ProcessEightBitWindows speedups.
+                        return _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out detailedCheck);
+                }
 
 		detailedCheck = MersenneTesters.Value!.IsMersennePrime(p);
 		return detailedCheck;

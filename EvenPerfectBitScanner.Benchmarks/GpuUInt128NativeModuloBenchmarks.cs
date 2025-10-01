@@ -22,6 +22,13 @@ public class GpuUInt128NativeModuloBenchmarks
 
     public static IEnumerable<NativeModuloInput> GetInputs() => Inputs;
 
+    /// <summary>
+    /// Performs the modulo immediately after loading the left operand; runs in 7.28 ns on tiny inputs and 38–58 ns on dense or
+    /// mixed workloads, keeping it well ahead of the deferred path.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: DenseOperands 38.127 ns (1.00×), MixedMagnitude 58.555 ns, NearModulus 54.691 ns, TinyOperands 7.278 ns.
+    /// </remarks>
     [Benchmark(Baseline = true)]
     public ulong ImmediateModulo()
     {
@@ -29,9 +36,18 @@ public class GpuUInt128NativeModuloBenchmarks
         return state.MulMod(Input.Right, Input.Modulus);
     }
 
+    /// <summary>
+    /// Defers the modulo until after the multiply; only helps on tiny operands (18.15 ns) but is 4–8× slower on dense or
+    /// near-modulus workloads at 256–299 ns.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: DenseOperands 298.926 ns (7.83×), MixedMagnitude 255.624 ns, NearModulus 293.280 ns, TinyOperands 18.149 ns.
+    /// </remarks>
     [Benchmark]
     public ulong DeferredNativeModulo()
     {
+        // TODO: Drop MulModWithNativeModulo from production once all callers use the immediate
+        // reduction path; benchmarks show it is 4–8× slower on large 128-bit operands.
         GpuUInt128 state = new(Input.Left);
         return state.MulModWithNativeModulo(Input.Right, Input.Modulus);
     }

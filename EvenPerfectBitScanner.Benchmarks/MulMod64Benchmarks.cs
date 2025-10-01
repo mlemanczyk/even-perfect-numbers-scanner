@@ -30,13 +30,12 @@ public class MulMod64Benchmarks
     }
 
     /// <summary>
-    /// Calls the UInt128-based <see cref="ULongExtensions.MulMod64(ulong, ulong, ulong)"/> helper, which stayed between
-    /// 3.66 ns and 3.80 ns for CrossWordBlend, MixedBitPattern, PrimeSizedModulus, SparseOperands, and ZeroOperands inputs,
-    /// and 3.73 ns for NearFullRange, making it the fastest option across every distribution.
+    /// Calls the UInt128-based <see cref="ULongExtensions.MulMod64(ulong, ulong, ulong)"/> helper; every input landed in the
+    /// 3.56–3.61 ns window, keeping this baseline consistently ahead of the other CPU implementations.
     /// </summary>
     /// <remarks>
-    /// Observed means: CrossWordBlend 3.784 ns (1.00×), MixedBitPattern 3.790 ns, NearFullRange 3.727 ns, PrimeSizedModulus
-    /// 3.791 ns, SparseOperands 3.795 ns, ZeroOperands 3.659 ns.
+    /// Observed means: CrossWordBlend 3.606 ns (1.00×), MixedBitPattern 3.564 ns, NearFullRange 3.583 ns,
+    /// PrimeSizedModulus 3.593 ns, SparseOperands 3.555 ns, ZeroOperands 3.599 ns.
     /// </remarks>
     [Benchmark(Baseline = true)]
     public ulong ExtensionBaseline()
@@ -45,13 +44,12 @@ public class MulMod64Benchmarks
     }
 
     /// <summary>
-    /// Calls the UInt128-based <see cref="ULongExtensions.MulMod(ulong, ulong, ulong)"/> helper, which stayed between
-    /// ?.?? ns and ?.?? ns for CrossWordBlend, MixedBitPattern, PrimeSizedModulus, SparseOperands, and ZeroOperands inputs,
-    /// and ?.?? ns for NearFullRange, making it the fastest option across every distribution.
+    /// Calls the UInt128-based <see cref="ULongExtensions.MulMod(ulong, ulong, ulong)"/> helper; sparse operands (NearFullRange
+    /// 5.71 ns, SparseOperands 5.67 ns) and zeros (1.98 ns) benefit, but dense patterns cost 22.9–64.8 ns.
     /// </summary>
     /// <remarks>
-    /// Observed means: CrossWordBlend ?.??? ns (?.??×), MixedBitPattern ?.??? ns, NearFullRange ?.??? ns, PrimeSizedModulus
-    /// ?.??? ns, SparseOperands ?.??? ns, ZeroOperands ?.??? ns.
+    /// Observed means: CrossWordBlend 22.870 ns (6.34×), MixedBitPattern 64.800 ns, NearFullRange 5.708 ns,
+    /// PrimeSizedModulus 52.766 ns, SparseOperands 5.671 ns, ZeroOperands 1.976 ns.
     /// </remarks>
     [Benchmark]
     public ulong GpuCompatibleMulModExtension()
@@ -61,13 +59,12 @@ public class MulMod64Benchmarks
     }
 
     /// <summary>
-    /// Calls the UInt128-based <see cref="ULongExtensions.MulModSimplified(ulong, ulong, ulong)"/> helper, which stayed between
-    /// ?.?? ns and ?.?? ns for CrossWordBlend, MixedBitPattern, PrimeSizedModulus, SparseOperands, and ZeroOperands inputs,
-    /// and ?.?? ns for NearFullRange, making it the fastest option across every distribution.
+    /// Calls the UInt128-based <see cref="ULongExtensions.MulModSimplified(ulong, ulong, ulong)"/> helper; performance mirrors
+    /// the full helper with 5.24–5.95 ns on sparse inputs and 1.99 ns when zeros dominate, but 22.8–59.2 ns on dense blends.
     /// </summary>
     /// <remarks>
-    /// Observed means: CrossWordBlend ?.??? ns (?.??×), MixedBitPattern ?.??? ns, NearFullRange ?.??? ns, PrimeSizedModulus
-    /// ?.??? ns, SparseOperands ?.??? ns, ZeroOperands ?.??? ns.
+    /// Observed means: CrossWordBlend 22.780 ns (6.32×), MixedBitPattern 59.165 ns, NearFullRange 5.952 ns,
+    /// PrimeSizedModulus 50.490 ns, SparseOperands 5.239 ns, ZeroOperands 1.986 ns.
     /// </remarks>
     [Benchmark]
     public ulong GpuCompatibleMulModSimplifiedExtension()
@@ -77,12 +74,12 @@ public class MulMod64Benchmarks
     }
 
     /// <summary>
-    /// Uses manual UInt128 multiplication in the benchmark method; dense operands cost 23.6–33.6 ns (6.2–8.9× slower than
-    /// baseline), while SparseOperands and ZeroOperands remain inexpensive at 3.58–3.87 ns.
+    /// Uses manual UInt128 multiplication inside the benchmark; dense operands land between 22.2 ns and 31.4 ns, while sparse
+    /// or zero inputs stay near the 3.54–3.56 ns baseline.
     /// </summary>
     /// <remarks>
-    /// Observed means: CrossWordBlend 23.611 ns, MixedBitPattern 32.894 ns, NearFullRange 28.243 ns, PrimeSizedModulus
-    /// 33.576 ns, SparseOperands 3.870 ns, ZeroOperands 3.583 ns.
+    /// Observed means: CrossWordBlend 22.218 ns (6.16×), MixedBitPattern 30.539 ns, NearFullRange 27.159 ns,
+    /// PrimeSizedModulus 31.409 ns, SparseOperands 3.563 ns, ZeroOperands 3.542 ns.
     /// </remarks>
     [Benchmark]
     public ulong InlineUInt128Operands()
@@ -91,12 +88,12 @@ public class MulMod64Benchmarks
     }
 
     /// <summary>
-    /// Reduces both operands before multiplying with inline UInt128; reductions pay off for NearFullRange (4.52 ns) and
-    /// SparseOperands (4.39 ns) but dense patterns still cost 24.0–34.0 ns.
+    /// Reduces both operands before the inline UInt128 multiply; reductions shine on NearFullRange (4.36 ns) and sparse inputs
+    /// (4.62 ns) but dense mixes still take 22.6–32.2 ns.
     /// </summary>
     /// <remarks>
-    /// Observed means: CrossWordBlend 24.012 ns, MixedBitPattern 33.051 ns, NearFullRange 4.522 ns, PrimeSizedModulus
-    /// 33.993 ns, SparseOperands 4.394 ns, ZeroOperands 4.211 ns.
+    /// Observed means: CrossWordBlend 22.626 ns (6.27×), MixedBitPattern 31.237 ns, NearFullRange 4.357 ns,
+    /// PrimeSizedModulus 32.176 ns, SparseOperands 4.617 ns, ZeroOperands 4.286 ns.
     /// </remarks>
     [Benchmark]
     public ulong InlineUInt128OperandsWithReductionFirst()
@@ -104,6 +101,14 @@ public class MulMod64Benchmarks
         return MulMod64InlineWithReductionFirst(Input.Left, Input.Right, Input.Modulus);
     }
 
+    /// <summary>
+    /// Reduces each operand individually before multiplication; behaves like the reduction-first path with 4.28–4.32 ns on
+    /// sparse and NearFullRange inputs, yet still spends 22.5–31.8 ns on dense patterns.
+    /// </summary>
+    /// <remarks>
+    /// Observed means: CrossWordBlend 22.548 ns (6.25×), MixedBitPattern 30.210 ns, NearFullRange 4.319 ns,
+    /// PrimeSizedModulus 31.786 ns, SparseOperands 4.282 ns, ZeroOperands 4.256 ns.
+    /// </remarks>
     [Benchmark]
     public ulong InlineUInt128OperandsWithOperandReduction()
     {
@@ -111,12 +116,12 @@ public class MulMod64Benchmarks
     }
 
     /// <summary>
-    /// Splits the UInt128 product into locals; performance mirrors the operand-inlining variant at 23.8–32.8 ns for dense
-    /// inputs while SparseOperands and ZeroOperands stay near 3.60–3.91 ns.
+    /// Splits the UInt128 product across locals; dense workloads cost 22.2–31.4 ns, while SparseOperands and ZeroOperands stay
+    /// near 3.57–3.59 ns.
     /// </summary>
     /// <remarks>
-    /// Observed means: CrossWordBlend 23.789 ns, MixedBitPattern 32.817 ns, NearFullRange 28.666 ns, PrimeSizedModulus
-    /// 32.747 ns, SparseOperands 3.599 ns, ZeroOperands 3.906 ns.
+    /// Observed means: CrossWordBlend 22.226 ns (6.16×), MixedBitPattern 30.882 ns, NearFullRange 27.137 ns,
+    /// PrimeSizedModulus 31.351 ns, SparseOperands 3.566 ns, ZeroOperands 3.586 ns.
     /// </remarks>
     [Benchmark]
     public ulong InlineUInt128WithLocals()
@@ -125,12 +130,12 @@ public class MulMod64Benchmarks
     }
 
     /// <summary>
-    /// Combines locals with operand reduction; NearFullRange, SparseOperands, and ZeroOperands improve to 11.9–12.7 ns but
-    /// dense cases degrade further to 32.1–42.5 ns (8.5–11.3× slower than baseline).
+    /// Combines locals with operand reduction; reductions help sparsity (11.86–15.10 ns) but dense cases inflate to 29.7–40.5 ns
+    /// making it the slowest inline variant.
     /// </summary>
     /// <remarks>
-    /// Observed means: CrossWordBlend 32.109 ns, MixedBitPattern 41.136 ns, NearFullRange 12.691 ns, PrimeSizedModulus
-    /// 42.527 ns, SparseOperands 12.288 ns, ZeroOperands 11.917 ns.
+    /// Observed means: CrossWordBlend 29.746 ns (8.24×), MixedBitPattern 38.013 ns, NearFullRange 12.187 ns,
+    /// PrimeSizedModulus 40.459 ns, SparseOperands 15.100 ns, ZeroOperands 11.863 ns.
     /// </remarks>
     [Benchmark]
     public ulong InlineUInt128WithLocalsAndOperandReduction()
@@ -139,12 +144,12 @@ public class MulMod64Benchmarks
     }
 
     /// <summary>
-    /// Reconstructs the 128-bit product from MulHigh/MulLow pieces; dense patterns run in 24.5–34.8 ns, while
-    /// NearFullRange, SparseOperands, and ZeroOperands finish in 5.21–5.55 ns after the extra reduction.
+    /// Reconstructs the 128-bit product from MulHigh/MulLow pieces; dense blends remain costly at 23.7–32.0 ns but sparse and
+    /// NearFullRange inputs land around 5.20–5.55 ns.
     /// </summary>
     /// <remarks>
-    /// Observed means: CrossWordBlend 24.502 ns, MixedBitPattern 33.045 ns, NearFullRange 5.552 ns, PrimeSizedModulus
-    /// 34.793 ns, SparseOperands 5.214 ns, ZeroOperands 5.231 ns.
+    /// Observed means: CrossWordBlend 23.685 ns (6.57×), MixedBitPattern 30.114 ns, NearFullRange 5.221 ns,
+    /// PrimeSizedModulus 31.950 ns, SparseOperands 5.204 ns, ZeroOperands 5.171 ns.
     /// </remarks>
     [Benchmark]
     public ulong MultiplyHighDecomposition()
@@ -153,32 +158,35 @@ public class MulMod64Benchmarks
     }
 
     /// <summary>
-    /// Uses the GPU-friendly <see cref="ULongExtensions.MulMod64GpuCompatible(ulong, ulong, ulong)"/> helper; the shift-add
-    /// reduction drives dense patterns to 99.7–186.4 ns, while NearFullRange and SparseOperands finish around 40.1–40.7 ns
-    /// and ZeroOperands drop to 24.2 ns.
+    /// Uses the GPU-friendly <see cref="ULongExtensions.MulMod64GpuCompatible(ulong, ulong, ulong)"/> helper; dense inputs now
+    /// cost 24.4–61.9 ns, while NearFullRange and SparseOperands finish near 7.27 ns and ZeroOperands stay baseline-fast at
+    /// 3.59 ns.
     /// </summary>
     /// <remarks>
-    /// Observed means (single-method run): CrossWordBlend 99.677 ns, MixedBitPattern 186.449 ns, NearFullRange 40.682 ns,
-    /// PrimeSizedModulus 112.461 ns, SparseOperands 40.067 ns, ZeroOperands 24.223 ns.
+    /// Observed means: CrossWordBlend 24.422 ns (6.86×), MixedBitPattern 61.850 ns, NearFullRange 7.267 ns,
+    /// PrimeSizedModulus 55.114 ns, SparseOperands 7.261 ns, ZeroOperands 3.587 ns.
     /// </remarks>
     [Benchmark]
     public ulong GpuCompatibleBaseline()
     {
+        // TODO: Callers in production should migrate to ULongExtensions.MulMod64 where GPU parity
+        // is not required; that baseline stayed 6–17× faster for dense 64-bit operands.
         return Input.Left.MulMod64GpuCompatible(Input.Right, Input.Modulus);
     }
 
     /// <summary>
-    /// Uses the native-modulo GPU helper <see cref="ULongExtensions.MulMod64GpuCompatibleDeferred(ulong, ulong, ulong)"/>;
-    /// final reduction via `%` trims dense cases to 353–689 ns while NearFullRange, SparseOperands, and ZeroOperands drop to
-    /// 47.98 ns, 21.79 ns, and 5.24 ns respectively (single-method run).
+    /// Uses the deferred native-modulo helper <see cref="ULongExtensions.MulMod64GpuCompatibleDeferred(ulong, ulong, ulong)"/>;
+    /// excels when operands are tiny (2.01 ns on ZeroOperands) yet remains the slowest choice on dense data at 146–295 ns.
     /// </summary>
     /// <remarks>
-    /// Observed means (single-method run): CrossWordBlend 353.778 ns, MixedBitPattern 564.491 ns, NearFullRange 47.981 ns,
-    /// PrimeSizedModulus 689.126 ns, SparseOperands 21.786 ns, ZeroOperands 5.236 ns.
+    /// Observed means: CrossWordBlend 146.559 ns (40.63×), MixedBitPattern 255.555 ns, NearFullRange 21.390 ns,
+    /// PrimeSizedModulus 294.486 ns, SparseOperands 18.182 ns, ZeroOperands 2.009 ns.
     /// </remarks>
     [Benchmark]
     public ulong GpuCompatibleDeferred()
     {
+        // TODO: Retire the deferred GPU shim from runtime paths and keep it only for benchmarks;
+        // ULongExtensions.MulMod64 avoids the 6×–82× slowdown on real-world operand mixes.
         return Input.Left.MulMod64GpuCompatibleDeferred(Input.Right, Input.Modulus);
     }
 

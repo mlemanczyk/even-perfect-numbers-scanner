@@ -10,7 +10,10 @@ namespace PerfectNumbers.Core;
 
 public sealed class PrimeTester(bool useInternal = false)
 {
-    public bool IsPrime(ulong n, CancellationToken ct) => IsPrimeInternal(n, ct);
+    public bool IsPrime(ulong n, CancellationToken ct) =>
+        // TODO: Eliminate this wrapper once callers can reach IsPrimeInternal directly; the extra
+        // indirection shows up when we sieve millions of candidates per second.
+        IsPrimeInternal(n, ct);
 
     // Optional GPU-assisted primality: batched small-prime sieve on device.
     public bool IsPrimeGpu(ulong n, CancellationToken ct)
@@ -52,6 +55,8 @@ public sealed class PrimeTester(bool useInternal = false)
         }
         else if (n > 5UL && (n % 5UL) == 0UL)
         {
+            // TODO: Replace this modulo check with ULongExtensions.Mod5 so the CPU hot path
+            // reuses the benchmarked helper instead of `%` when sieving large prime ranges.
             result = false;
         }
         else
@@ -63,8 +68,8 @@ public sealed class PrimeTester(bool useInternal = false)
             else
             {
                 var smallPrimeDivisorsLength = PrimesGenerator.SmallPrimes.Length;
-				uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
-				ulong[] smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2;
+                uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
+                ulong[] smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2;
                 for (int i = 0; i < smallPrimeDivisorsLength; i++)
                 {
                     if (smallPrimeDivisorsMul[i] > n)
@@ -72,7 +77,10 @@ public sealed class PrimeTester(bool useInternal = false)
                         break;
                     }
 
-					if (n % smallPrimeDivisors[i] == 0)
+                    // TODO: Route this small-prime filtering through the shared divisor-cycle cache once
+                    // PrimeTester can consult it directly; the cached cycles avoid the repeated `%` work
+                    // that slows these hot loops when sieving hundreds of millions of candidates.
+                    if (n % smallPrimeDivisors[i] == 0)
                     {
                         result = false;
                         break;
@@ -259,6 +267,8 @@ public sealed class PrimeTester(bool useInternal = false)
 
         if ((n & 1UL) == 0UL || (n > 5UL && (n % 5UL) == 0UL))
         {
+            // TODO: Replace the `% 5` branch with the GPU Mod5 helper once the sieve kernel can
+            // reuse the benchmarked bitmask reduction instead of modulo on every candidate.
             results[index] = 0;
             return;
         }
@@ -278,16 +288,18 @@ public sealed class PrimeTester(bool useInternal = false)
         for (int i = 0; i < len; i++)
         {
             ulong p = smallPrimes[i];
-			if (p * p > n)
-			{
-				break;
-			}
-			
-			if ((n % p) == 0UL)
-			{
-				results[index] = 0;
-				return;
-			}
+            if (p * p > n)
+            {
+                break;
+            }
+
+            if ((n % p) == 0UL)
+            {
+                // TODO: Route this modulo through the shared divisor-cycle cache once exposed to GPU kernels
+                // so batched sieves avoid per-prime `%` operations that profiling showed expensive.
+                results[index] = 0;
+                return;
+            }
         }
 
         results[index] = 1;

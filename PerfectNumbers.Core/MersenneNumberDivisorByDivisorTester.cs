@@ -232,7 +232,7 @@ public static class MersenneNumberDivisorByDivisorTester
                                 Span<byte> hitsSpan = default;
                                 int hitIndex = 0;
                                 int index;
-                                bool useDivisorCycles = tester.UseDivisorCycles;
+                                bool useDivisorCycles = tester.UseDivisorCycles; // TODO: Remove the conditional path once all testers always enable divisor cycles to keep every divisor scan on the faster cached-length track.
                                 ulong divisorCycle = 0UL;
 
                                 try

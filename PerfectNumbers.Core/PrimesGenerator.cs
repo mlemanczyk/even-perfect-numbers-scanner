@@ -45,24 +45,27 @@ public static class PrimesGenerator
 		int lastOneCount = 0;
 		int lastSevenCount = 0;
 
-		while (allCount < targetInt || lastOneCount < targetInt || lastSevenCount < targetInt)
-		{
-			bool isPrime = true;
-			int primesCount = primes.Count;
-			for (int i = 0; i < primesCount; i++)
-			{
-				uint p = primes[i];
-				if (p * p > candidate)
-				{
-					break;
-				}
+                while (allCount < targetInt || lastOneCount < targetInt || lastSevenCount < targetInt)
+                {
+                        bool isPrime = true;
+                        int primesCount = primes.Count;
+                        for (int i = 0; i < primesCount; i++)
+                        {
+                                uint p = primes[i];
+                                if (p * p > candidate)
+                                {
+                                        break;
+                                }
 
-				if (candidate % p == 0U)
-				{
-					isPrime = false;
-					break;
-				}
-			}
+                                // TODO: Replace this trial-division `%` with the sieve-based generator that avoids
+                                // per-candidate modulo work so building the small-prime tables stops dominating
+                                // startup time for large scans.
+                                if (candidate % p == 0U)
+                                {
+                                        isPrime = false;
+                                        break;
+                                }
+                        }
 
 			if (isPrime)
 			{
@@ -99,6 +102,8 @@ public static class PrimesGenerator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsAllowedForLastOne(uint prime)
         {
+                // TODO: Swap the `% 10` usage for ULongExtensions.Mod10 so the hot classification path
+                // reuses the benchmarked residue helper instead of repeated divisions.
                 return (prime % 10U) switch
                 {
                         1U or 3U or 9U => true,
@@ -109,6 +114,8 @@ public static class PrimesGenerator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsAllowedForLastSeven(uint prime)
         {
+                // TODO: Route this `% 10` classification through ULongExtensions.Mod10 to match the faster
+                // residue helper used elsewhere in the scanner.
                 return (prime % 10U) switch
                 {
                         3U or 7U or 9U => true,

@@ -75,6 +75,8 @@ public sealed class MersenneNumberDivisorGpuTester
                         for (int k = 0; k < len; k++)
                         {
                                 (ulong dSmall, cycle) = candidates[k];
+                                // TODO: Replace this `%` check with the shared divisor-cycle divisibility helper so GPU scans
+                                // reuse the cached cycle remainders instead of recomputing modulo for every candidate.
                                 if (p % cycle != 0UL)
                                 {
                                         continue;
@@ -109,10 +111,12 @@ public sealed class MersenneNumberDivisorGpuTester
 			}
 
 			UInt128 cycle128 = MersenneDivisorCycles.GetCycle(d);
-			if ((UInt128)p % cycle128 != UInt128.Zero)
-			{
-				continue;
-			}
+                        // TODO: Feed this check through the ProcessEightBitWindows-based residue tracker so we avoid the slow
+                        // UInt128 modulo on the CPU fallback highlighted by the Pow2Montgomery benchmarks.
+                        if ((UInt128)p % cycle128 != UInt128.Zero)
+                        {
+                                continue;
+                        }
 
 			if (IsDivisible(p, d))
 			{
@@ -138,9 +142,11 @@ public sealed class MersenneNumberDivisorGpuTester
 				? 63 - XMath.LeadingZeroCount(divisor.Low)
 				: 127 - XMath.LeadingZeroCount(divisor.High);
 		mod = divisor;
-		if (x == 0)
-		{
-			baseVal = GpuUInt128.Pow2Mod(exponent, mod);
+                if (x == 0)
+                {
+                        // TODO: Swap Pow2Mod for the ProcessEightBitWindows helper once Pow2Minus1Mod adopts it;
+                        // GpuPow2ModBenchmarks showed the windowed kernel cutting large divisors from ~51 µs to ~21 µs.
+                        baseVal = GpuUInt128.Pow2Mod(exponent, mod);
 			result[0] = baseVal.High == 0UL && baseVal.Low == 1UL ? (byte)1 : (byte)0;
 			return;
 		}
@@ -155,9 +161,11 @@ public sealed class MersenneNumberDivisorGpuTester
 			baseVal = new GpuUInt128(0UL, 1UL << x);
 		}
 
-		GpuUInt128 pow = baseVal;
-		pow.ModPow(exponent / ux, mod);
-		var part2 = GpuUInt128.Pow2Mod(exponent % ux, mod);
+                GpuUInt128 pow = baseVal;
+                pow.ModPow(exponent / ux, mod);
+                // TODO: Replace this trailing Pow2Mod call with the ProcessEightBitWindows variant once the shared
+                // windowed helper lands so mixed-radix decompositions benefit from the same GPU speedup.
+                var part2 = GpuUInt128.Pow2Mod(exponent % ux, mod);
 		GpuUInt128 product = pow;
 		product.MulMod(part2, mod);
 		result[0] = product.High == 0UL && product.Low == 1UL ? (byte)1 : (byte)0;
