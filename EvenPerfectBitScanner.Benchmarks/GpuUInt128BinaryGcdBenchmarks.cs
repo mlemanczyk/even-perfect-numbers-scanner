@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
@@ -29,17 +29,17 @@ public class GpuUInt128BinaryGcdBenchmarks
     [Benchmark(Baseline = true)]
     public GpuUInt128 ReusedVariables()
     {
-        return GpuUInt128.BinaryGcd(Input.Left, Input.Right);
+        return BinaryGcdWithReusedVariables(Input.Left, Input.Right);
     }
 
     [Benchmark]
     public GpuUInt128 TemporaryStructPerIteration()
     {
-        return BinaryGcdWithTemporary(Input.Left, Input.Right);
+        return GpuUInt128.BinaryGcd(Input.Left, Input.Right);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static GpuUInt128 BinaryGcdWithTemporary(GpuUInt128 u, GpuUInt128 v)
+    private static GpuUInt128 BinaryGcdWithReusedVariables(GpuUInt128 u, GpuUInt128 v)
     {
         if (u.IsZero)
         {
@@ -51,7 +51,12 @@ public class GpuUInt128BinaryGcdBenchmarks
             return u;
         }
 
-        int shift = GpuUInt128.TrailingZeroCount(new GpuUInt128(u.High | v.High, u.Low | v.Low));
+        ulong combinedLow = u.Low | v.Low;
+        ulong combinedHigh = u.High | v.High;
+        int shift = combinedLow != 0UL
+            ? BitOperations.TrailingZeroCount(combinedLow)
+            : 64 + BitOperations.TrailingZeroCount(combinedHigh);
+
         int zu = GpuUInt128.TrailingZeroCount(u);
         u >>= zu;
 

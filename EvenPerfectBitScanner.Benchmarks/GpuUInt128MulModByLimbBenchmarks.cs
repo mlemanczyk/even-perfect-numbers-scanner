@@ -42,6 +42,7 @@ public class GpuUInt128MulModByLimbBenchmarks
     [Benchmark]
     public GpuUInt128 InPlaceReduction()
     {
+        // TODO: Switch the extension method back to legacy method, as it's faster. Keep the benchmarks.
         GpuUInt128 value = Input.Left;
         value.MulModByLimb(Input.Right, Input.Modulus);
         return value;

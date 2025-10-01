@@ -535,12 +535,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             return u;
         }
 
-        ulong combinedLow = u.Low | v.Low;
-        ulong combinedHigh = u.High | v.High;
-        int shift = combinedLow != 0UL
-            ? BitOperations.TrailingZeroCount(combinedLow)
-            : 64 + BitOperations.TrailingZeroCount(combinedHigh);
-
+        int shift = TrailingZeroCount(new GpuUInt128(u.High | v.High, u.Low | v.Low));
         int zu = TrailingZeroCount(u);
         u >>= zu;
 
@@ -762,7 +757,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ulong MulMod(GpuUInt128 other, ulong modulus)
+    public readonly ulong MulMod(GpuUInt128 other, ulong modulus)
     {
         ulong modulusLocal = modulus;
         ulong a = Low % modulusLocal;
@@ -779,24 +774,24 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ulong MulMod(ulong value, ulong modulus)
+    public readonly ulong MulMod(ulong value, ulong modulus)
     {
-        ulong modulusLocal = modulus;
-        ulong a = Low % modulusLocal;
-        ulong b = value % modulusLocal;
+        ulong a = Low % modulus;
+        ulong b = value % modulus;
 
         if (a == 0UL || b == 0UL)
         {
             return 0UL;
         }
 
-        return b <= ulong.MaxValue / a
-            ? (a * b) % modulusLocal
-            : MulMod64(a, b, modulusLocal);
+        ulong ulongRange = ulong.MaxValue / a;
+        return b <= ulongRange
+            ? (a * b) % modulus
+            : MulMod64(a, b, modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ulong MulModSimplified(ulong value, ulong modulus)
+    public readonly ulong MulModSimplified(ulong value, ulong modulus)
     {
         ulong modulusLocal = modulus;
         ulong a = Low % modulusLocal;
@@ -811,37 +806,33 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ulong MulModWithNativeModulo(ulong value, ulong modulus)
+    public readonly ulong MulModWithNativeModulo(ulong value, ulong modulus)
     {
-        ulong modulusLocal = modulus;
-        ulong multiplicand = Low % modulusLocal;
-        ulong multiplier = value % modulusLocal;
+        ulong multiplicand = Low % modulus;
+        var remainder = value % modulus;
 
-        if (multiplicand == 0UL || multiplier == 0UL)
+        if (multiplicand == 0UL || remainder == 0UL)
         {
             return 0UL;
         }
 
         ulong result = 0UL;
-        ulong current = multiplicand;
-        ulong remaining = multiplier;
-
         while (true)
         {
-            ulong chunk = remaining & NativeModuloChunkMask;
+            ulong chunk = remainder & NativeModuloChunkMask;
             if (chunk != 0UL)
             {
-                ulong chunkContribution = MultiplyChunkModulo(current, chunk, modulusLocal);
-                result = (result + chunkContribution) % modulusLocal;
+                chunk = MultiplyChunkModulo(multiplicand, chunk, modulus);
+                result = (result + chunk) % modulus;
             }
 
-            remaining >>= NativeModuloChunkBits;
-            if (remaining == 0UL)
+            remainder >>= NativeModuloChunkBits;
+            if (remainder == 0UL)
             {
                 break;
             }
 
-            current = ShiftLeftByNativeChunk(current, modulusLocal);
+            multiplicand = ShiftLeftByNativeChunk(multiplicand, modulus);
         }
 
         return result;
@@ -936,7 +927,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ulong MulModMontgomery64(GpuUInt128 other, ulong modulus, ulong nPrime, ulong r2)
+    public readonly ulong MulModMontgomery64(GpuUInt128 other, ulong modulus, ulong nPrime, ulong r2)
     {
         ulong modulusLocal = modulus;
         ulong a = Low % modulusLocal;
@@ -954,7 +945,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ulong MulModMontgomery64(ulong other, ulong modulus, ulong nPrime, ulong r2)
+    public readonly ulong MulModMontgomery64(ulong other, ulong modulus, ulong nPrime, ulong r2)
     {
         ulong modulusLocal = modulus;
         ulong a = Low % modulusLocal;

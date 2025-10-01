@@ -10,8 +10,8 @@ namespace EvenPerfectBitScanner.Benchmarks;
 [MemoryDiagnoser]
 public class GpuUInt128MulModBenchmarks
 {
-    private static readonly MulModInput[] Inputs = new MulModInput[]
-    {
+    private static readonly MulModInput[] Inputs =
+    [
         new(
             new GpuUInt128(0UL, 5UL),
             new GpuUInt128(0UL, 7UL),
@@ -32,7 +32,7 @@ public class GpuUInt128MulModBenchmarks
             new GpuUInt128(0x7FFF_FFFF_FFFF_FFFFUL, 0x8000_0000_0000_0000UL),
             new GpuUInt128(0x7FFF_FFFF_FFFF_FFFFUL, 0xFFFF_FFFF_FFFF_FFF1UL),
             "MixedMagnitude"),
-    };
+    ];
 
     [ParamsSource(nameof(GetInputs))]
     public MulModInput Input { get; set; }
@@ -42,6 +42,7 @@ public class GpuUInt128MulModBenchmarks
     [Benchmark(Baseline = true)]
     public GpuUInt128 InPlaceMulMod()
     {
+        // TODO: Switch the extension method to allocate per iteration, as it's faster. Keep the benchmarks.
         GpuUInt128 value = Input.Left;
         value.MulMod(Input.Right, Input.Modulus);
         return value;
@@ -56,6 +57,7 @@ public class GpuUInt128MulModBenchmarks
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static GpuUInt128 MulModInline(GpuUInt128 left, GpuUInt128 right, GpuUInt128 modulus)
     {
+        // Reuse the variables to new instances and lower registry pressure, if possible.
         GpuUInt128 a = left;
         GpuUInt128 b = right;
         GpuUInt128 result = new();

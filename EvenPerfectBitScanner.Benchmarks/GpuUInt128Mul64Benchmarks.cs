@@ -24,7 +24,7 @@ public class GpuUInt128Mul64Benchmarks
     public static IEnumerable<Mul64Input> GetInputs() => Inputs;
 
     [Benchmark(Baseline = true)]
-    public GpuUInt128 HighProductMaterialisedInLocal()
+    public GpuUInt128 HighProductMaterializedInLocal()
     {
         GpuUInt128 value = Input.Multiplicand;
         value.Mul64(Input.Multiplier);
