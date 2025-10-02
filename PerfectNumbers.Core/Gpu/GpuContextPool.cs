@@ -6,9 +6,11 @@ namespace PerfectNumbers.Core.Gpu;
 
 public static class GpuContextPool
 {
-	private static readonly bool PoolingEnabled = true;
-	// Default device preference for generic GPU kernels (prime scans, NTT, etc.)
-	public static bool ForceCpu { get; set; } = false;
+        private static readonly bool PoolingEnabled = true;
+        // TODO: Introduce accelerator-specific warmup so pooled contexts precompile the ProcessEightBitWindows kernels and load
+        // divisor-cycle data before the first scan begins.
+        // Default device preference for generic GPU kernels (prime scans, NTT, etc.)
+        public static bool ForceCpu { get; set; } = false;
 
         internal sealed class PooledContext
         {
@@ -156,3 +158,4 @@ public static class GpuContextPool
         }
     }
 }
+

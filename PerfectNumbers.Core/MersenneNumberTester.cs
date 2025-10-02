@@ -36,6 +36,9 @@ public sealed class MersenneNumberTester(
     private readonly bool _useGpuScan = useGpuScan;     // device for pow2mod/incremental scanning
     private readonly bool _useGpuOrder = useGpuOrder;   // device for order computations
     private static readonly ConcurrentDictionary<UInt128, ulong> OrderCache = new();
+    // TODO: Swap this ConcurrentDictionary for the pooled dictionary variant highlighted in
+    // Pow2MontgomeryModBenchmarks once order warmups reuse deterministic divisor-cycle snapshots; the pooled approach removed
+    // the locking overhead when scanning p >= 138M in those benchmarks.
 	private readonly MersenneNumberIncrementalGpuTester _incrementalGpuTester = new(kernelType, useGpuOrder);
 	private readonly MersenneNumberIncrementalCpuTester _incrementalCpuTester = new(kernelType);
 	private readonly MersenneNumberOrderGpuTester _orderGpuTester = new(kernelType, useGpuOrder);
@@ -56,32 +59,34 @@ public sealed class MersenneNumberTester(
 			return;
 		}
 
-		UInt128 twoP = (UInt128)exponent << 1; // 2 * p
-		bool lastIsSeven = (exponent & 3UL) == 3UL;
-		// CPU path: compute orders directly and cache
-		if (!_useGpuOrder)
-		{
-			UInt128 k = UInt128.One;
+                UInt128 twoP = (UInt128)exponent << 1; // 2 * p
+                bool lastIsSeven = (exponent & 3UL) == 3UL;
+                // CPU path: compute orders directly and cache
+                if (!_useGpuOrder)
+                {
+                        UInt128 k = UInt128.One;
 			UInt128 q;
 			ulong remainder;
 			for (; k <= limit; k++)
-			{
-				q = twoP * k + UInt128.One;
-                            remainder = q.Mod10();
-				bool shouldCheck = lastIsSeven
-					? remainder == 7UL || remainder == 9UL || remainder == 3UL
-					: remainder == 1UL || remainder == 3UL || remainder == 9UL;
+                        {
+                                q = twoP * k + UInt128.One;
+                                remainder = q.Mod10();
+                                // TODO: Replace these repeated Mod10/Mod8/Mod3/Mod5 calls with a residue automaton walk so
+                                // order warmups reuse the optimized cycle stepping validated in the residue benchmarks.
+                                bool shouldCheck = lastIsSeven
+                                        ? remainder == 7UL || remainder == 9UL || remainder == 3UL
+                                        : remainder == 1UL || remainder == 3UL || remainder == 9UL;
 
-				// Early modular filters for odd order and small-prime rejections
+                                // Early modular filters for odd order and small-prime rejections
 				if (shouldCheck)
 				{
                                     ulong mod8 = q.Mod8();
-					if (mod8 != 1UL && mod8 != 7UL)
-					{
-						continue;
-					}
+                                        if (mod8 != 1UL && mod8 != 7UL)
+                                        {
+                                                continue;
+                                        }
                                     else if (q.Mod3() == 0UL || q.Mod5() == 0UL)
-					{
+                                        {
 						continue;
 					}
 				}
@@ -107,13 +112,15 @@ public sealed class MersenneNumberTester(
 		ulong remainder2;
 		for (; k2 <= limit; k2++)
 		{
-			q2 = twoP * k2 + 1UL;
-                    remainder2 = q2.Mod10();
-			bool shouldCheck2 = lastIsSeven
-				? remainder2 == 7UL || remainder2 == 9UL || remainder2 == 3UL
-				: remainder2 == 1UL || remainder2 == 3UL || remainder2 == 9UL;
+                        q2 = twoP * k2 + 1UL;
+                        remainder2 = q2.Mod10();
+                        // TODO: Reuse the same residue-automaton fast path here so the GPU warmup staging avoids `%` and
+                        // branches the benchmarks showed slower than the tracked stepping helper.
+                        bool shouldCheck2 = lastIsSeven
+                                ? remainder2 == 7UL || remainder2 == 9UL || remainder2 == 3UL
+                                : remainder2 == 1UL || remainder2 == 3UL || remainder2 == 9UL;
 
-			// Early modular filters for odd order and small-prime rejections
+                        // Early modular filters for odd order and small-prime rejections
 			if (shouldCheck2)
 			{
                             ulong mod8 = q2.Mod8();

@@ -13,7 +13,10 @@ public class MersenneNumberOrderCpuTester(GpuKernelType kernelType)
 
 		while (k <= maxK && Volatile.Read(ref isPrime))
 		{
-			qCycle = MersenneDivisorCycles.GetCycle(q);
+            qCycle = MersenneDivisorCycles.GetCycle(q);
+            // TODO: When this lookup misses the snapshot, invoke the configured device to compute the
+            // single required cycle on demand without persisting it so the CPU order path retains the
+            // cycle-stepping speedups while honoring the no-extra-cache constraint for large divisors.
 			int allowMask2 = lastIsSeven ? CpuConstants.LastSevenMask10 : CpuConstants.LastOneMask10;
 			bool shouldCheck = ((allowMask2 >> (int)auto.Mod10R) & 1) != 0;
 			if (shouldCheck)

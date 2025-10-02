@@ -369,6 +369,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         DivisorCycleCache divisorCyclesCache = DivisorCycleCache.Shared;
         DivisorCycleCache.CycleBlock cycleLease = divisorCyclesCache.Acquire(currentDivisor);
+        // TODO: Replace the block lease with a direct single-cycle lookup so the GPU path
+        // follows the benchmarked single-block policy and computes the missing cycle inline on the
+        // configured device without mutating or swapping cache blocks after startup.
         cycleLeaseEnd = cycleLease.End;
 
         try
@@ -389,6 +392,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                     {
                         cycleLease.Dispose();
                         cycleLease = divisorCyclesCache.Acquire(currentDivisor);
+                        // TODO: Drop this block hand-off once the cache exposes a direct
+                        // GetCycle helper that materializes only the requested divisor length
+                        // without touching additional blocks or scheduling background work.
                         cycleLeaseEnd = cycleLease.End;
                     }
 
@@ -413,6 +419,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                         {
                             exponent = 0UL;
                         }
+                    }
+                    else
+                    {
+                        // TODO: Trigger an immediate GPU computation for the single missing cycle without storing
+                        // the result back or requesting extra cache blocks so very large divisors stay within the
+                        // single-block constraint while still reusing the snapshot for other divisors.
                     }
 
                     if (includeDivisor)
@@ -617,6 +629,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
             if (divisorCycle == 0UL)
             {
+                // TODO: Replace this guard with an on-demand cycle computation that runs on the device selected
+                // for the session, keeps the result transient instead of caching it, and continues operating with the
+                // single shared block loaded from disk.
                 throw new InvalidOperationException($"Missing divisor cycle for divisor {divisor}.");
             }
 

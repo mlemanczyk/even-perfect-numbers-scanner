@@ -9,14 +9,14 @@ namespace PerfectNumbers.Core;
 /// </summary>
 public sealed class MersenneResidueAutomaton
 {
-    private readonly UInt128 _step;               // 2*p
-    private UInt128 _currentQ;                     // current q value
+    private readonly UInt128 _step; // 2*p
+    private UInt128 _currentQ; // current q value
 
-	// Cached residues for current q
-	public ulong Mod10R;
-	public ulong Mod8R;
-	public ulong Mod3R;
-	public ulong Mod5R; 
+    // Cached residues for current q
+    public ulong Mod10R;
+    public ulong Mod8R;
+    public ulong Mod3R;
+    public ulong Mod5R;
 
     // Cached residues for step (2*p mod m)
     private readonly ulong _step10;
@@ -27,21 +27,23 @@ public sealed class MersenneResidueAutomaton
     public MersenneResidueAutomaton(ulong exponent)
     {
         _step = (UInt128)exponent << 1; // 2 * p
-        _currentQ = _step + UInt128.One;        // start at k = 1
+        _currentQ = _step + UInt128.One; // start at k = 1
 
-		// init residues
+        // init residues
         Mod10R = _currentQ.Mod10();
-        Mod8R  = _currentQ.Mod8();
-        Mod3R  = _currentQ.Mod3();
-        Mod5R  = _currentQ.Mod5();
+        Mod8R = _currentQ.Mod8();
+        Mod3R = _currentQ.Mod3();
+        Mod5R = _currentQ.Mod5();
 
         _step10 = _step.Mod10().Mod10();
-		_step8 = _step.Mod8();
-        _step3  = _step.Mod3();
-        _step5  = _step.Mod5();
+        _step8 = _step.Mod8();
+        _step3 = _step.Mod3();
+        _step5 = _step.Mod5();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    // TODO: Remove this wrapper and expose the field directly once callers switch to struct-based residue
+    // tracking so we can trim another layer from the tight scanning loop.
     public UInt128 CurrentQ() => _currentQ;
 
     /// <summary>
@@ -65,11 +67,16 @@ public sealed class MersenneResidueAutomaton
         Mod3R = r3;
 
         ulong r5 = Mod5R + _step5;
+
         if (r5 >= 5UL)
         {
             r5 -= 5UL;
         }
+
         Mod5R = r5;
+
+        // TODO: Once divisor cycle lookups feed residue scanning, reuse the cached cycle length here to skip directly to the
+        // next admissible q instead of iterating through every residue update.
     }
 }
 
@@ -82,8 +89,8 @@ public sealed class Ending7Automaton
     private ulong _n; // current candidate n, ends with 7
 
     private readonly ulong[] _moduli;
-    private readonly ulong[] _steps;   // 10 % m
-    private readonly ulong[] _res;     // n % m
+    private readonly ulong[] _steps; // 10 % m
+    private readonly ulong[] _res; // n % m
     private readonly bool[] _reachable;
 
     public Ending7Automaton(ulong start, params ulong[] moduli)
@@ -95,6 +102,7 @@ public sealed class Ending7Automaton
             _res = Array.Empty<ulong>();
             _reachable = Array.Empty<bool>();
             _n = AlignTo7(start);
+
             return;
         }
 
@@ -104,20 +112,33 @@ public sealed class Ending7Automaton
         _steps = new ulong[len];
         _res = new ulong[len];
         _reachable = new bool[len];
+
         for (int i = 0; i < len; i++)
         {
             ulong m = moduli[i];
             _moduli[i] = m;
+
+            // TODO: Replace the `% 10` computation with the Mod10 helper once Ending7Automaton plugs into the
+            // shared residue tables so we avoid generic divisions while initializing the step cache.
             ulong step = 10UL % m;
             _steps[i] = step;
+
+            // TODO: Precompute the initial residues via the divisor-cycle cache so this setup phase reuses the
+            // GPU-generated cycle data instead of issuing on-the-fly modulo operations.
             _res[i] = _n % m; // one-time division at construction
+
             // Zero is reachable iff gcd(step, m) | res
             ulong g = Gcd(step, m);
+
+            // TODO: Swap this `%` check for the binary-gcd aware reducer once the automaton wiring shares the
+            // branchless Mod helpers benchmarked faster than repeated modulo instructions.
             _reachable[i] = (g == 0UL) ? false : (_res[i] % g == 0UL);
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    // TODO: Inline this getter into the automaton consumers so residue scans can read the backing field
+    // without paying the delegate call overhead highlighted in the profiler snapshots.
     public ulong Current() => _n;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -140,6 +161,7 @@ public sealed class Ending7Automaton
     public void Next()
     {
         _n += 10UL;
+
         for (int i = 0; i < _moduli.Length; i++)
         {
             if (!_reachable[i])
@@ -149,19 +171,25 @@ public sealed class Ending7Automaton
 
             ulong m = _moduli[i];
             ulong r = _res[i] + _steps[i];
+
             if (r >= m)
             {
                 r -= m;
             }
+
             _res[i] = r;
         }
+
+        // TODO: Once divisor cycles are mandatory, reuse the cached cycle offset per modulus to skip directly to valid
+        // candidates so these per-step additions disappear from the hot path.
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong AlignTo7(ulong start)
     {
         ulong r = start.Mod10();
-		ulong add = (7UL + 10UL - r).Mod10();
+        ulong add = (7UL + 10UL - r).Mod10();
+
         return start + add;
     }
 
@@ -176,6 +204,7 @@ public sealed class Ending7Automaton
             a = b;
             b = t;
         }
+
         return a;
     }
 }

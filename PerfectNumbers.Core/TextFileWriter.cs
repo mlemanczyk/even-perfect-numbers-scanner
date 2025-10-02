@@ -23,7 +23,16 @@ public sealed class TextFileWriter : IDisposable
 
     public long Position
     {
-        get { lock (_lock) { return _stream.Position; } }
+        get
+        {
+            // TODO: Surface a lock-free position snapshot (for example via Interlocked.Read on a cached long)
+            // so the high-frequency status probes measured in the writer throughput profiling stop contending on
+            // the flush lock while runs follow the buffered pipeline planned for the scanner fast path.
+            lock (_lock)
+            {
+                return _stream.Position;
+            }
+        }
     }
 
     private StreamWriter TextWriter => _textWriter ??= new StreamWriter(_stream, leaveOpen: true);
@@ -36,6 +45,9 @@ public sealed class TextFileWriter : IDisposable
     {
         lock (_lock)
         {
+            // TODO: Use the pooled writer buffers planned for the TextFileWriter fast path so truncation flushes
+            // reuse the span caches identified alongside the Mod10_8_5_3Benchmarks instead of forcing synchronous
+            // SetLength/Flush work on every restart.
             _stream.SetLength(0);
             _stream.Position = 0;
             _textWriter?.Flush();
@@ -65,6 +77,8 @@ public sealed class TextFileWriter : IDisposable
     {
         lock (_lock)
         {
+            // TODO: Buffer binary writes with the same ArrayPool-backed accumulator planned for text so GPU result
+            // dumps can batch disk flushes instead of flushing on every invocation.
             action(BinaryWriter);
             BinaryWriter.Flush();
         }
@@ -72,6 +86,8 @@ public sealed class TextFileWriter : IDisposable
 
     public void Dispose()
     {
+        // TODO: Return the writers to a pooled wrapper once the buffered pipeline lands so disposing the
+        // TextFileWriter mirrors the zero-allocation strategy validated by the Mod10_8_5_3Benchmarks helpers.
         _binaryWriter?.Dispose();
         _textWriter?.Dispose();
         _stream.Dispose();

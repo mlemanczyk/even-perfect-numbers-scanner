@@ -8,6 +8,8 @@ public sealed class AlphaCache
 
     public AlphaValues Get(EInteger p, int k)
     {
+        // TODO: Replace this dictionary lookup with a lock-free cache that reuses pooled AlphaValues so alpha requests avoid
+        // redoing the expensive PowerCache.Get computations across threads.
         if (!_cache.TryGetValue((p, k), out var values))
         {
             ERational alphaPValue = AlphaCalculations.ComputeAlphaP(p, k);
@@ -21,6 +23,8 @@ public sealed class AlphaCache
 
     public void Clear()
     {
+        // TODO: Return pooled AlphaValues instances to a shared cache before clearing so repeated warm-ups do not thrash the
+        // allocator when alpha tables refresh during large divisor scans.
         _cache.Clear();
     }
 

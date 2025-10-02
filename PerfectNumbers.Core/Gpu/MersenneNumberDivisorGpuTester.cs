@@ -110,7 +110,10 @@ public sealed class MersenneNumberDivisorGpuTester
 				continue;
 			}
 
-			UInt128 cycle128 = MersenneDivisorCycles.GetCycle(d);
+                        UInt128 cycle128 = MersenneDivisorCycles.GetCycle(d);
+                        // TODO: When this lookup falls outside the preloaded snapshot, invoke the single-cycle GPU helper
+                        // instead of allowing GetCycle to allocate an entire block; the divisor-cycle benchmarks showed the
+                        // one-off computation keeping memory flat while still delivering the optimized stepping data.
                         // TODO: Feed this check through the ProcessEightBitWindows-based residue tracker so we avoid the slow
                         // UInt128 modulo on the CPU fallback highlighted by the Pow2Montgomery benchmarks.
                         if ((UInt128)p % cycle128 != UInt128.Zero)

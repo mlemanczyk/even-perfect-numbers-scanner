@@ -19,7 +19,10 @@ internal static class MontgomeryDivisorDataCache
 {
     private const ulong BaseBlockEnd = PerfectNumberConstants.MaxQForDivisorCycles;
 
-    private static readonly ConcurrentDictionary<ulong, CacheEntry> Cache = new();
+    private static readonly ConcurrentDictionary<ulong, CacheEntry> Cache = new(); // TODO: Replace this with a plain Dictionary that never mutates after startup once the divisor-cycle snapshot becomes read-only so Montgomery lookups avoid any concurrent collections.
+    // TODO: Delete the block-membership tracking entirely when the divisor-cycle cache stops producing
+    // dynamic blocks. The single-cycle plan keeps the snapshot immutable, so we should not retain block
+    // indices or concurrent maps at all.
     private static readonly ConcurrentDictionary<int, ConcurrentDictionary<ulong, byte>> BlockMembership = new();
 
     public static MontgomeryDivisorData Get(ulong modulus)
@@ -30,11 +33,16 @@ internal static class MontgomeryDivisorDataCache
         }
 
         int blockIndex = ComputeBlockIndex(modulus);
+        // TODO: Short-circuit block indices greater than zero once the cache stops prefetching future
+        // blocks; when only the startup snapshot remains we should bypass block arithmetic entirely and
+        // compute single cycles inline on cache misses without updating shared state.
         return GetManaged(modulus, blockIndex);
     }
 
     internal static void ReleaseBlock(DivisorCycleCache.CycleBlock block)
     {
+        // TODO: Remove this entire release hook once the cycle cache no longer hands out dynamic blocks;
+        // the single-cycle pipeline will never transfer ownership back to Montgomery metadata.
         if (block.Index <= 0)
         {
             return;
@@ -86,10 +94,15 @@ internal static class MontgomeryDivisorDataCache
                 return created;
             }
         }
+        // TODO: Collapse this retry loop once the cache becomes a simple snapshot dictionary. With the
+        // single-cycle policy we can compute the requested cycle, populate the dictionary exactly once,
+        // and return without spinning through concurrent retries.
     }
 
     private static void RegisterBlockMembership(ulong modulus, int blockIndex)
     {
+        // TODO: Delete this method once block membership goes away; the single snapshot model must avoid
+        // tracking additional indices or allocating concurrent dictionaries for Montgomery lookups.
         if (blockIndex <= 0)
         {
             return;
@@ -106,6 +119,9 @@ internal static class MontgomeryDivisorDataCache
             return 0;
         }
 
+        // TODO: Return 0 here once the divisor-cycle cache no longer tracks additional blocks so
+        // MontgomeryDivisorData lookups never attempt to follow prefetched ranges or trigger new cycle
+        // computations for entire blocks.
         return (int)((modulus - (BaseBlockEnd + 1UL)) / (ulong)PerfectNumberConstants.MaxQForDivisorCycles) + 1;
     }
 

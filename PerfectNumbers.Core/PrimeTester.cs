@@ -25,6 +25,8 @@ public sealed class PrimeTester(bool useInternal = false)
 
         Span<ulong> one = stackalloc ulong[1];
         Span<byte> outFlags = stackalloc byte[1];
+        // TODO: Inline the single-value GPU sieve fast path from GpuModularArithmeticBenchmarks so this wrapper
+        // can skip stackalloc buffers and reuse the pinned upload span the benchmark identified as fastest.
         one[0] = n;
         IsPrimeBatchGpu(one, outFlags);
 
@@ -116,6 +118,9 @@ public sealed class PrimeTester(bool useInternal = false)
                 var input = scratch.Input;
                 var output = scratch.Output;
                 ulong[] temp = ArrayPool<ulong>.Shared.Rent(batchSize);
+                // TODO: Replace this ad-hoc ArrayPool buffer with the pinned span cache from
+                // PrimeSieveGpuBenchmarks so batch uploads reuse preallocated GPU-friendly
+                // memory and avoid the extra copy before every kernel launch.
 
                 try
                 {
@@ -156,6 +161,9 @@ public sealed class PrimeTester(bool useInternal = false)
         public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimes { get; }
         private readonly Accelerator _accel;
         private readonly System.Collections.Concurrent.ConcurrentBag<ScratchBuffers> _scratchPool = [];
+        // TODO: Replace this ConcurrentBag with the lock-free ring buffer variant validated in
+        // GpuModularArithmeticBenchmarks so renting scratch buffers stops contending on the bag's internal locks when
+        // thousands of GPU batches execute per second.
 
         public KernelState(Accelerator accelerator)
         {
@@ -226,6 +234,9 @@ public sealed class PrimeTester(bool useInternal = false)
     {
         // Map accelerator to cached state; use Lazy to serialize kernel creation
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<Accelerator, Lazy<KernelState>> States = new();
+        // TODO: Prewarm this per-accelerator cache during startup (and reuse a simple array keyed by accelerator index)
+        // once the kernel pool exposes deterministic ordering; the Lazy wrappers showed measurable overhead in the
+        // GpuModularArithmeticBenchmarks hot path.
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static KernelState GetOrCreate(Accelerator accelerator)
@@ -308,12 +319,18 @@ public sealed class PrimeTester(bool useInternal = false)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool SharesFactorWithMaxExponent(ulong n)
     {
+        // TODO: Replace this on-the-fly GCD probe with the cached factor table derived from
+        // ResidueComputationBenchmarks so divisor-cycle metadata can short-circuit the test
+        // instead of recomputing binary GCD for every candidate.
         ulong m = (ulong)BitOperations.Log2(n);
         return BinaryGcd(n, m) != 1UL;
     }
 
     internal static void SharesFactorWithMaxExponentBatch(ReadOnlySpan<ulong> values, Span<byte> results)
     {
+        // TODO: Route this batch helper through the shared GPU kernel pool from
+        // GpuUInt128BinaryGcdBenchmarks so we reuse cached kernels, pinned host buffers,
+        // and divisor-cycle staging instead of allocating new device buffers per call.
         var gpu = GpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
         var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(SharesFactorKernel);
@@ -337,6 +354,9 @@ public sealed class PrimeTester(bool useInternal = false)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong BinaryGcd(ulong u, ulong v)
     {
+        // TODO: Swap this handwritten binary GCD for the optimized helper measured in
+        // GpuUInt128BinaryGcdBenchmarks so CPU callers share the faster subtract-less
+        // ladder once the common implementation is promoted into PerfectNumbers.Core.
         if (u == 0UL)
         {
             return v;
@@ -375,6 +395,9 @@ public sealed class PrimeTester(bool useInternal = false)
 
     private static ulong BinaryGcdGpu(ulong u, ulong v)
     {
+        // TODO: Replace this inline GPU binary GCD with the kernel extracted from
+        // GpuUInt128BinaryGcdBenchmarks via GpuKernelPool so device callers reuse the
+        // fully unrolled ladder instead of this branchy fallback.
         if (u == 0UL)
         {
             return v;

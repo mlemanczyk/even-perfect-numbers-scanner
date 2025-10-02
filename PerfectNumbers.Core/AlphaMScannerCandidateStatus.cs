@@ -2,6 +2,7 @@ namespace PerfectNumbers.Core;
 
 public enum AlphaMScannerCandidateStatus
 {
+    // TODO: Store these statuses as byte-coded constants so hot-path evaluations can stay branchless when scanning candidates.
     UNKNOWN,
     PRODUCT_ABOVE_TARGET,
     PRODUCT_BELOW_TARGET,

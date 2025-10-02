@@ -156,14 +156,14 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool operator >=(GpuUInt128 left, GpuUInt128 right) => left.CompareTo(right) >= 0;
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static GpuUInt128 operator ++(GpuUInt128 value)
-        {
-            value.Add(1UL);
-            return value;
-        }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static GpuUInt128 operator ++(GpuUInt128 value)
+    {
+        value.Add(1UL);
+        return value;
+    }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int CompareTo(GpuUInt128 other)
     {
         if (High < other.High)
@@ -536,6 +536,9 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GpuUInt128 BinaryGcd(GpuUInt128 u, GpuUInt128 v)
     {
+        // TODO: Replace this scalar binary GCD with the branchless reduction from
+        // GpuUInt128BinaryGcdBenchmarks so CPU fallbacks stay aligned with the GPU kernel
+        // performance when resolving large divisor residues.
         if (u.IsZero)
         {
             return v;
@@ -1044,11 +1047,15 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
     public void ModPow(GpuUInt128 exponent, GpuUInt128 modulus)
     {
-        // TODO: This should operate on the instance itself, not on a copy. Avoid creating new instances anywhere.
+        // TODO: Swap this copy-heavy path for the pooled base/exponent ladder used in
+        // GpuUInt128MulModBenchmarks so the GPU shim keeps reusing buffers instead of
+        // allocating temporary structs during residue scans.
         GpuUInt128 result = new(1UL);
         GpuUInt128 baseValue = this;
 
-        // TODO: Can we modify this loop to process multiple bits at a time? E.g. 64-bit chunks.
+        // TODO: Replace the single-bit square-and-multiply loop with the 64-bit windowed
+        // ladder measured fastest in GpuUInt128MulModBenchmarks to align with the GPU kernel
+        // implementation once the shared helper lands.
         while (!exponent.IsZero)
         {
             if ((exponent.Low & 1UL) != 0UL)
@@ -1066,11 +1073,13 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
     public void ModPow(ulong exponent, GpuUInt128 modulus)
     {
-        // TODO: This should operate on the instance itself, not on a copy. Avoid creating new instances anywhere.
+        // TODO: Share the pooled ladder state from GpuUInt128MulModBenchmarks here as well so
+        // Lucas–Lehmer batches avoid constructing throwaway temporaries on every exponent.
         GpuUInt128 result = new(1UL);
         GpuUInt128 baseValue = this;
 
-        // TODO: Can we modify this loop to process multiple bits at a time? E.g. 64-bit chunks.
+        // TODO: Upgrade this loop to the same 64-bit windowed ladder proven fastest in
+        // GpuUInt128MulModBenchmarks so the scalar helper matches the GPU-optimized path.
         while (exponent != 0UL)
         {
             if ((exponent & 1UL) != 0UL)
@@ -1086,14 +1095,16 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         Low = result.Low;
     }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void ModInv(ulong modulus)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ModInv(ulong modulus)
     {
-        // TODO: We shouldn't need a new instance here to represent modulus.
+        // TODO: Replace this Fermat inversion with the Montgomery ladder highlighted in
+        // GpuUInt128Montgomery64Benchmarks so we avoid instantiating a temporary modulus and
+        // reuse the pooled reduction constants.
         ModPow(modulus - 2UL, new GpuUInt128(modulus));
     }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ModInv(GpuUInt128 modulus)
     {
         if (modulus.High == 0UL)
@@ -1114,7 +1125,9 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void MultiplyFull(GpuUInt128 left, GpuUInt128 right, out ulong p3, out ulong p2, out ulong p1, out ulong p0)
     {
-        // TODO: Reuse variables to reduce register pressure.
+        // TODO: Reuse variables to reduce register pressure following the fused-limb layout
+        // from GpuUInt128MulModByLimbBenchmarks so the multiply helper matches the fastest
+        // GPU-compatible scalar routine.
         var (h0, l0) = Mul64(left.Low, right.Low);
         var (h1, l1) = Mul64(left.Low, right.High);
         var (h2, l2) = Mul64(left.High, right.Low);

@@ -25,6 +25,9 @@ internal struct CycleRemainderStepper
 
     public void Reset()
     {
+        // TODO: Inline this reset at the call sites so the hot loops reuse struct reinitialization
+        // measured fastest in MersenneDivisorCycleLengthGpuBenchmarks, avoiding the extra
+        // method call when scanners need to restart stepping.
         _previousPrime = 0UL;
         _currentRemainder = 0UL;
         _hasState = false;
@@ -37,7 +40,8 @@ internal struct CycleRemainderStepper
         if (remainder >= cycleLength)
         {
             // TODO: Swap this `%` for the shared divisor-cycle remainder helper so initialization reuses the cached
-            // cycle deltas benchmarked faster than on-the-fly modulo work.
+            // cycle deltas benchmarked faster than on-the-fly modulo work, matching the
+            // MersenneDivisorCycleLengthGpuBenchmarks winner for both CPU and GPU call sites.
             remainder %= cycleLength;
         }
         _previousPrime = prime;
@@ -79,7 +83,8 @@ internal struct CycleRemainderStepper
             if (_currentRemainder >= cycleLength)
             {
                 // TODO: Route this `%` through the shared divisor-cycle helper so repeated wrap-arounds avoid
-                // modulo operations and match the benchmarked fast path.
+                // modulo operations and match the benchmarked fast path highlighted in
+                // MersenneDivisorCycleLengthGpuBenchmarks.
                 _currentRemainder %= cycleLength;
             }
         }
@@ -88,6 +93,8 @@ internal struct CycleRemainderStepper
 
     public void CaptureState(out ulong previousPrime, out ulong previousRemainder, out bool hasState)
     {
+        // TODO: Expose these fields directly once the residue scanners adopt the single-cycle helper
+        // so the hot path can read them without paying for an additional wrapper call per iteration.
         previousPrime = _previousPrime;
         previousRemainder = _currentRemainder;
         hasState = _hasState;

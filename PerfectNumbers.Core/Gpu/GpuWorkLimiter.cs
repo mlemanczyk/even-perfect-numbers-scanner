@@ -8,6 +8,9 @@ public static class GpuWorkLimiter
 
     public static IDisposable Acquire()
     {
+        // TODO: Replace the per-call Releaser allocation with the pooled struct-based guard from the
+        // GpuLimiterThroughputBenchmarks so limiter acquisition does not allocate when we enter the
+        // GPU scanning hot path.
         var sem = _semaphore;
         sem.Wait();
         return new Releaser(sem);
@@ -30,6 +33,8 @@ public static class GpuWorkLimiter
             // Swap to a new semaphore for the new limit. We intentionally
             // do not dispose the old semaphore to avoid releasing handles
             // that may still be in use by existing Releaser instances.
+            // TODO: Consolidate with GpuPrimeWorkLimiter so both limiters share a pooled SemaphoreSlim and avoid rebuilding the
+            // limiter state whenever limits are adjusted from the CLI.
             _semaphore = new SemaphoreSlim(value, value);
             _currentLimit = value;
         }

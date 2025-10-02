@@ -149,22 +149,25 @@ internal static class Program
 		return true;
 	}
 
-	private static ulong ParseRangeValue(in string option, in string value)
-	{
-		if (!ulong.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong parsed))
-		{
-			throw new FormatException($"Value '{value}' for option '{option}' is not a valid non-negative integer.");
-		}
+        private static ulong ParseRangeValue(in string option, in string value)
+        {
+                // TODO: Replace TryParse with the Utf8Parser-based span helper once the results parser accepts ReadOnlySpan<char>
+                // inputs so numeric option parsing matches the fastest CLI path identified in benchmarks.
+                if (!ulong.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong parsed))
+                {
+                        throw new FormatException($"Value '{value}' for option '{option}' is not a valid non-negative integer.");
+                }
 
-		return parsed;
-	}
+                return parsed;
+        }
 
-	private static int ParsePositiveInt(in string option, in string value)
-	{
-		if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed) || parsed < 1)
-		{
-			throw new FormatException($"Value '{value}' for option '{option}' is not a valid positive integer.");
-		}
+        private static int ParsePositiveInt(in string option, in string value)
+        {
+                // TODO: Switch to the Utf8Parser-based fast path so integer arguments avoid transient strings while parsing.
+                if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed) || parsed < 1)
+                {
+                        throw new FormatException($"Value '{value}' for option '{option}' is not a valid positive integer.");
+                }
 
 		return parsed;
 	}
@@ -175,22 +178,24 @@ internal static class Program
 					out string option,
 					out string value)
 	{
-		option = string.Empty;
-		value = string.Empty;
-		string current = arguments[index];
-		int equalsIndex = current.IndexOf('=');
-		if (equalsIndex <= 0 || equalsIndex == current.Length - 1)
-		{
-			Console.Error.WriteLine($"Option '{current}' must use the --name=value syntax.");
-			PrintHelp();
-			return false;
-		}
+                option = string.Empty;
+                value = string.Empty;
+                string current = arguments[index];
+                int equalsIndex = current.IndexOf('=');
+                if (equalsIndex <= 0 || equalsIndex == current.Length - 1)
+                {
+                        Console.Error.WriteLine($"Option '{current}' must use the --name=value syntax.");
+                        PrintHelp();
+                        return false;
+                }
 
-		option = current[..equalsIndex];
-		value = current[(equalsIndex + 1)..];
-		index++;
-		return true;
-	}
+                // TODO: Swap this string slicing for ReadOnlySpan<char>-based parsing once the CLI helpers expose
+                // Utf8Parser-compatible overloads so option handling avoids allocating substrings for every argument.
+                option = current[..equalsIndex];
+                value = current[(equalsIndex + 1)..];
+                index++;
+                return true;
+        }
 
 	private static void PrintHelp()
 	{
@@ -225,7 +230,10 @@ internal static class Program
 
 	private static void ProcessFile(in string inputPath, ulong pMin, ulong pMax, int threadCount, int bufferSize)
 	{
-		using StreamReader reader = new(inputPath);
+                using StreamReader reader = new(inputPath);
+                // TODO: Replace this vanilla StreamReader with a pooled FileStreamOptions + ArrayPool-backed reader so large
+                // reloads reuse the benchmarked zero-allocation buffered pipeline instead of allocating new decoder buffers per
+                // run.
 		string? headerLine = reader.ReadLine();
 		if (headerLine is null)
 		{
@@ -239,7 +247,10 @@ internal static class Program
 
 		string header = string.IsNullOrWhiteSpace(headerLine) ? DefaultHeader : headerLine.Trim();
 
-		List<CandidateResult> candidates = LoadCandidates(reader, pMin, pMax, threadCount, bufferSize);
+        // TODO: Stream candidates through a pooled buffer pipeline so we can filter and dispatch without allocating
+        // the entire list upfront; the benchmarks showed that retaining every row simultaneously increases GC pressure
+        // during large result replays.
+        List<CandidateResult> candidates = LoadCandidates(reader, pMin, pMax, threadCount, bufferSize);
 		Console.WriteLine("Building sorted prime results...");
 		List<CandidateResult> sortedPrimeResults = ExtractSortedPrimeCandidates(candidates);
 		Console.WriteLine("Building RAW prime results...");
@@ -303,23 +314,29 @@ internal static class Program
 			throw new FormatException("Input line does not contain expected comma separators.");
 		}
 
-		ulong p = ulong.Parse(span[..firstCommaIndex], NumberStyles.Integer, CultureInfo.InvariantCulture);
+                // TODO: Replace ulong.Parse with the Utf8Parser-based span helper so CSV reload stays on the zero-allocation
+                // path identified as fastest in the shared CLI benchmarks.
+                ulong p = ulong.Parse(span[..firstCommaIndex], NumberStyles.Integer, CultureInfo.InvariantCulture);
 		if (p < pMin || p > pMax)
 		{
 			return CandidateResult.Empty;
 		}
 
-		bool passedAllTests = bool.Parse(span[(lastCommaIndex + 1)..]);
+                // TODO: Swap bool.Parse for the Utf8Parser-powered boolean reader once exposed so reload avoids allocating
+                // temporary strings per record.
+                bool passedAllTests = bool.Parse(span[(lastCommaIndex + 1)..]);
 		return new CandidateResult(p, passedAllTests, line);
 	}
 
-	private static string BuildOutputPath(in string inputPath, in string prefix)
-	{
-		string fileName = Path.GetFileName(inputPath);
-		string prefixedName = prefix + fileName;
-		string? directory = Path.GetDirectoryName(inputPath);
-		if (string.IsNullOrEmpty(directory))
-		{
+        private static string BuildOutputPath(in string inputPath, in string prefix)
+        {
+                // TODO: Switch this path composition to Span<char>-based stack buffers once we expose the pooled
+                // formatter helpers so output names avoid intermediate strings for directory/file splits.
+                string fileName = Path.GetFileName(inputPath);
+                string prefixedName = prefix + fileName;
+                string? directory = Path.GetDirectoryName(inputPath);
+                if (string.IsNullOrEmpty(directory))
+                {
 			return prefixedName;
 		}
 
@@ -328,39 +345,49 @@ internal static class Program
 
 	private static void WriteCsv(in string path, in string header, bool append, IEnumerable<CandidateResult> entries)
 	{
-		using StreamWriter writer = new(path, append, Encoding.UTF8);
-		if (!append)
-		{
-			writer.WriteLine(header);
-		}
+        using StreamWriter writer = new(path, append, Encoding.UTF8);
+        // TODO: Switch WriteCsv to a span-based Utf8Formatter pipeline backed by ArrayPool-rented buffers so
+        // appends reuse the zero-allocation formatting path highlighted in the results writer benchmarks.
+        if (!append)
+        {
+                writer.WriteLine(header);
+        }
 
-		foreach (CandidateResult entry in entries)
-		{
-			writer.WriteLine(entry.Csv);
-		}
-	}
+        foreach (CandidateResult entry in entries)
+        {
+                // TODO: Replace this per-entry WriteLine with a batched chunk writer that reuses pooled
+                // StringBuilder instances so large files avoid the per-line flush overhead observed in the
+                // chunked writer benchmarks.
+                writer.WriteLine(entry.Csv);
+        }
 
-	private static List<CandidateResult> LoadCandidates(
+        }
+
+        private static List<CandidateResult> LoadCandidates(
 					StreamReader reader,
 					ulong pMin,
 					ulong pMax,
 					int threadCount,
 					int bufferSize)
 	{
-		List<CandidateResult> candidates = [];
-		if (bufferSize < 1)
-		{
-			return candidates;
-		}
+                List<CandidateResult> candidates = [];
+                if (bufferSize < 1)
+                {
+                        return candidates;
+                }
 
 		int workerLimit = Math.Max(1, threadCount);
-		List<Task<ChunkResult>> activeChunks = new(workerLimit);
+                // TODO: Replace the Task-based scheduling with the pooled work queue used in the scanner so candidate
+                // parsing leverages the same low-overhead thread handoff profiled as fastest in the CLI benchmarks.
+                List<Task<ChunkResult>> activeChunks = new(workerLimit);
 		Dictionary<int, ChunkResult> completedChunks = new();
 		int nextChunkToFlush = 0;
 		int consoleProgress = 0;
 		ulong lastReportedCandidate = 0UL;
 
-		string[] buffer = new string[bufferSize];
+                // TODO: Rent this line buffer from ArrayPool<string> to eliminate repeated allocations when scanning
+                // large result files.
+                string[] buffer = new string[bufferSize];
 		int buffered = 0;
 		int chunkIndex = 0;
 
@@ -419,14 +446,18 @@ internal static class Program
 		void DispatchBuffer(int length)
 		{
 			string[] chunkLines;
-			if (length == buffer.Length)
-			{
-				chunkLines = buffer;
-				buffer = new string[bufferSize];
-			}
+                        if (length == buffer.Length)
+                        {
+                                chunkLines = buffer;
+                                // TODO: Rent this full-capacity buffer from ArrayPool<string> and reuse it between reads instead
+                                // of allocating a fresh array each time steady-state batches are dispatched.
+                                buffer = new string[bufferSize];
+                        }
 			else
 			{
-				chunkLines = new string[length];
+                                // TODO: Rent the partial chunk buffer from ArrayPool<string> instead of allocating a fresh
+                                // array for every remainder dispatch.
+                                chunkLines = new string[length];
 				Array.Copy(buffer, chunkLines, length);
 			}
 
@@ -465,7 +496,9 @@ internal static class Program
 
 	private static ChunkResult ProcessChunk(string[] lines, int index, ulong pMin, ulong pMax)
 	{
-		CandidateResult[] items = new CandidateResult[lines.Length];
+                // TODO: Rent the candidate array from ArrayPool<CandidateResult> so chunk processing remains allocation-free
+                // for hot reload paths.
+                CandidateResult[] items = new CandidateResult[lines.Length];
 		int count = 0;
 		ulong pEmpty = CandidateResult.Empty.P;
 		for (int i = 0; i < lines.Length; i++)
@@ -495,11 +528,15 @@ internal static class Program
 			return [];
 		}
 
-		List<CandidateResult> sortedCandidates = [.. candidates];
+                // TODO: Replace this copy with an in-place filtering pipeline that reuses pooled buffers; duplicating the list
+                // doubled working-set usage in the reload benchmarks when processing multi-million-entry snapshots.
+                List<CandidateResult> sortedCandidates = [.. candidates];
 		sortedCandidates.Sort(CandidateResultComparer.Instance);
 
-		List<CandidateResult> primeCandidates = [];
-		using IEnumerator<ulong> primeEnumerator = Prime.Numbers.GetEnumerator();
+                List<CandidateResult> primeCandidates = [];
+                // TODO: Keep using the Open.Numeric prime enumerator for the merge walk but hoist a shared instance so reloads
+                // reuse it instead of allocating a brand new enumerator for every pass.
+                using IEnumerator<ulong> primeEnumerator = Prime.Numbers.GetEnumerator();
 		if (!primeEnumerator.MoveNext())
 		{
 			throw new InvalidOperationException("Prime generator did not provide any values.");
@@ -538,7 +575,9 @@ internal static class Program
 			return [];
 		}
 
-		Dictionary<ulong, int> remainingCounts = new(primeCount);
+                // TODO: Replace this Dictionary allocation with the pooled span-based frequency map once the ValueListBuilder
+                // helper lands so raw prime reconstruction stops allocating temporary hash tables for every reload.
+                Dictionary<ulong, int> remainingCounts = new(primeCount);
 		for (int i = 0; i < primeCount; i++)
 		{
 			CandidateResult candidate = sortedPrimeResults[i];
@@ -551,7 +590,9 @@ internal static class Program
 			remainingCounts.Add(candidate.P, 1);
 		}
 
-		List<CandidateResult> rawPrimes = new(primeCount);
+                // TODO: Rent the raw prime accumulator from ArrayPool<List<CandidateResult>> or migrate to a pooled struct
+                // builder so large reloads avoid repeated List allocations along this path.
+                List<CandidateResult> rawPrimes = new(primeCount);
 		for (int i = 0; i < candidates.Count; i++)
 		{
 			CandidateResult candidate = candidates[i];
@@ -597,10 +638,10 @@ internal static class Program
 			return;
 		}
 
-		if (threadCount <= 1 || count < threadCount * 4)
-		{
-			passedResults = new List<CandidateResult>(count);
-			rejectedResults = new List<CandidateResult>(count);
+                if (threadCount <= 1 || count < threadCount * 4)
+                {
+                        passedResults = new List<CandidateResult>(count);
+                        rejectedResults = new List<CandidateResult>(count);
 			for (int i = 0; i < count; i++)
 			{
 				CandidateResult candidate = sortedResults[i];
@@ -617,13 +658,20 @@ internal static class Program
 		}
 
 		int workerCount = Math.Min(threadCount, count);
-		List<CandidateResult>[] passedSegments = new List<CandidateResult>[workerCount];
-		List<CandidateResult>[] rejectedSegments = new List<CandidateResult>[workerCount];
-		Task[] tasks = new Task[workerCount];
+                // TODO: Rent these segment arrays from ArrayPool<List<CandidateResult>> so parallel splitting avoids allocating
+                // new jagged arrays on every reload; the pooled work queue already used by the scanner benchmarks faster.
+                List<CandidateResult>[] passedSegments = new List<CandidateResult>[workerCount];
+                List<CandidateResult>[] rejectedSegments = new List<CandidateResult>[workerCount];
+                Task[] tasks = new Task[workerCount];
+                // TODO: Rent the tasks array from ArrayPool<Task> so repeated reloads avoid allocating new
+                // scheduling buffers; the pooled queue used by the scanner benchmarks noticeably faster.
 
-		int start = 0;
-		int baseChunk = count / workerCount;
-		int remainder = count % workerCount;
+                int start = 0;
+                // TODO: Replace the separate division/modulo here with Math.DivRem (or the branchless chunk
+                // planner from the parallel partition benchmarks) so we avoid paying for two divisions when
+                // distributing work across threads.
+                int baseChunk = count / workerCount;
+                int remainder = count % workerCount;
                 for (int worker = 0; worker < workerCount; worker++)
                 {
                         int length = baseChunk + (worker < remainder ? 1 : 0);
@@ -639,10 +687,15 @@ internal static class Program
 			}
 
                         int workerIndex = worker;
+                        // TODO: Replace Task.Run with the pooled work queue from the scanner so scheduling
+                        // overhead matches the benchmarked fast path instead of spawning transient threads.
                         tasks[workerIndex] = Task.Run(() =>
                         {
                                 List<CandidateResult> localPassed = new(length);
                                 List<CandidateResult> localRejected = new(length);
+                                // TODO: Rent these per-worker lists from a dedicated pool so parallel splits reuse
+                                // pre-sized buffers; allocating new List instances showed up heavily in the multi-
+                                // threaded reload benchmarks once files crossed tens of millions of entries.
                                 int end = chunkStart + length;
                                 for (int i = chunkStart; i < end; i++)
                                 {
@@ -663,10 +716,13 @@ internal static class Program
 
 		Task.WaitAll(tasks);
 
-		passedResults = new List<CandidateResult>(count);
-		rejectedResults = new List<CandidateResult>(count);
-		for (int worker = 0; worker < workerCount; worker++)
-		{
+                passedResults = new List<CandidateResult>(count);
+                rejectedResults = new List<CandidateResult>(count);
+                // TODO: Promote these final result lists to pooled builders so we can reuse the buffers
+                // across reloads; the pooled aggregators from the scanner benchmarks avoid repeated large
+                // allocations during long parsing sessions.
+                for (int worker = 0; worker < workerCount; worker++)
+                {
 			if (passedSegments[worker].Count > 0)
 			{
 				passedResults.AddRange(passedSegments[worker]);

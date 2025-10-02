@@ -10,7 +10,11 @@ public static class KRangeFinder
         int? max = null;
         for (int k = kStart; k <= kEnd; k++)
         {
+            // TODO: Pull alphaP from AlphaCache (or a pooled rational builder) so this loop reuses the
+            // benchmarked cached values instead of recomputing AlphaCalculations.ComputeAlphaP for every k.
             ERational aP = AlphaCalculations.ComputeAlphaP(p, k);
+            // TODO: Switch this multiply to the pooled ERational span helpers identified in the scanner's
+            // alpha rational benchmarks so we avoid allocating new big-number intermediates per iteration.
             ERational prod = aP.Multiply(alphaM);
             int cmp = prod.CompareTo(RationalNumbers.Two);
             if (cmp == 0)
@@ -46,6 +50,8 @@ public static class KRangeFinder
         int? max = null;
         EInteger[] eulerPrimes = primes.GetEulerPrimes(pMin, pMax);
         object sync = new();
+        // TODO: Replace Parallel.For with the shared low-overhead scheduler highlighted in the divisor-cycle
+        // coordination benchmarks so alpha sweeps avoid the thread-pool setup costs observed here.
         Parallel.For(
             0,
             eulerPrimes.Length,

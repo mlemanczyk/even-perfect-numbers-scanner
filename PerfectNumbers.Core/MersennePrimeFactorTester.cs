@@ -36,6 +36,8 @@ public static class MersennePrimeFactorTester
         }
 
         ulong value = checked(p << 1);
+        // TODO: Replace this `%` with the benchmarked Math.DivRem fast path so the hot filter avoids
+        // 128-bit division when evaluating candidates.
         if ((q - 1UL) % value != 0UL)
         {
             return false;
@@ -45,6 +47,8 @@ public static class MersennePrimeFactorTester
         return !ct.IsCancellationRequested && order == p;
     }
 
+    // TODO: Replace this dictionary with the divisor-cycle order cache once the benchmarks confirm the
+    // shared cache can stream snapshot results without extra locking.
     private static readonly Dictionary<UInt128, UInt128> _orderCache = [];
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -64,6 +68,9 @@ public static class MersennePrimeFactorTester
     {
         lock (_orderCache)
         {
+            // TODO: Replace this lock with the lock-free order cache once the divisor-cycle snapshot exposes
+            // deterministic ordering for single-cycle computations; we measured heavy contention in the
+            // factor benchmarks when many threads warm the cache concurrently.
             if (_orderCache.TryGetValue(q, out var cached))
             {
                 return cached;
@@ -74,6 +81,8 @@ public static class MersennePrimeFactorTester
         UInt128[] factors = phi <= ulong.MaxValue
             ? Array.ConvertAll(Factor64((ulong)phi, ct), x => (UInt128)x)
             : Factor128(phi, ct);
+        // TODO: Pull these factor arrays from ArrayPool once the factoring helpers adopt the pooled
+        // buffers measured faster in FactorizationBenchmarks.
         UInt128 order = phi;
 
         UInt128 candidate, prime;
@@ -86,6 +95,8 @@ public static class MersennePrimeFactorTester
                 return 0;
             }
 
+            // TODO: Swap this `%`/`/` loop for the Math.DivRem-based reducer highlighted in the
+            // order benchmarks so we avoid repeated 128-bit division while trimming the order.
             while (order % prime == 0)
             {
                 if (ct.IsCancellationRequested)
@@ -105,6 +116,9 @@ public static class MersennePrimeFactorTester
             }
         }
 
+        // TODO: Integrate divisor-cycle data here so repeated order refinement uses cached cycle
+        // lengths when available and computes missing orders on the configured device without
+        // persisting them in the shared cache.
         if (!ct.IsCancellationRequested)
         {
             lock (_orderCache)
@@ -209,7 +223,7 @@ public static class MersennePrimeFactorTester
     private static void ReturnDictionary(Dictionary<ulong, byte> dict)
     {
         dict.Clear();
-       DictPool.Add(dict);
+        DictPool.Add(dict);
     }
 
     private static readonly ConcurrentBag<Dictionary<UInt128, byte>> DictPool128 = new();
@@ -239,7 +253,9 @@ public static class MersennePrimeFactorTester
         }
 
         var dict = RentDictionary();
-        var queue = new Queue<ulong>();
+        var queue = new Queue<ulong>(); // TODO: Replace this Queue with the pooled stack from the
+                                        // FactorizationBenchmarks fast path so factoring large
+                                        // composites avoids per-node allocations.
         queue.Enqueue(n);
 
         while (queue.Count != 0)
@@ -277,6 +293,8 @@ public static class MersennePrimeFactorTester
         }
 
         ulong[] result = [.. dict.Keys];
+        // TODO: Rent the result array from ArrayPool once the factoring pipeline consumes spans so we
+        // can recycle buffers across large factorizations.
         // lock (FactorCacheLock)
         // {
         //     FactorCache[n] = result;
@@ -294,7 +312,9 @@ public static class MersennePrimeFactorTester
         }
 
         var dict = RentDictionary128();
-        var queue = new Queue<UInt128>();
+        var queue = new Queue<UInt128>(); // TODO: Replace this with the pooled UInt128 stack once the
+                                          // wide-factorization benchmarks finalize the faster span
+                                          // based traversal.
         queue.Enqueue(n);
 
         while (queue.Count != 0)
@@ -331,7 +351,9 @@ public static class MersennePrimeFactorTester
             queue.Enqueue(m / d);
         }
 
-        var result = new UInt128[dict.Count];
+        var result = new UInt128[dict.Count]; // TODO: Rent this array from ArrayPool<UInt128> so
+                                              // wide-factorization batches stop allocating fresh
+                                              // buffers per candidate.
         int index = 0;
         foreach (var key in dict.Keys)
         {
@@ -349,7 +371,9 @@ public static class MersennePrimeFactorTester
             return 2UL;
         }
 
-        var rng = new Random(1234567);
+        var rng = new Random(1234567); // TODO: Replace this RNG with the deterministic span-based
+                                       // sequence measured faster in PollardRhoBenchmarks so we avoid
+                                       // per-call Random allocations.
 
         ulong c, d, x, y, diff;
         while (true)
@@ -371,19 +395,24 @@ public static class MersennePrimeFactorTester
                     return 0UL;
                 }
 
-                x = (MulMod64(x, x, n) + c) % n;
+                x = (MulMod64(x, x, n) + c) % n; // TODO: Swap the `% n` with the Montgomery folding
+                                                 // helper from the PollardRho benchmarks once the
+                                                 // specialized reducer lands.
                 if (ct.IsCancellationRequested)
                 {
                     return 0UL;
                 }
 
-                y = (MulMod64(y, y, n) + c) % n;
+                y = (MulMod64(y, y, n) + c) % n; // TODO: Use the same Montgomery folding helper here
+                                                 // to keep the tortoise sequence on the optimized
+                                                 // path.
                 if (ct.IsCancellationRequested)
                 {
                     return 0UL;
                 }
 
-                y = (MulMod64(y, y, n) + c) % n;
+                y = (MulMod64(y, y, n) + c) % n; // TODO: Replace this modulo with the optimized helper
+                                                 // so both steps share the fast reduction.
                 diff = x > y ? x - y : y - x;
                 if (ct.IsCancellationRequested)
                 {
@@ -411,7 +440,8 @@ public static class MersennePrimeFactorTester
                 return 1UL; // We're returning 1 to avoid division by 0 in any place
             }
 
-            t = a % b;
+            t = a % b; // TODO: Replace this with the binary GCD helper used in the gcd benchmarks so we
+                        // avoid slow modulo operations while factoring large composites.
             a = b;
             b = t;
         }
@@ -493,7 +523,8 @@ public static class MersennePrimeFactorTester
             return 2;
         }
 
-        var rng = new Random(1234567);
+        var rng = new Random(1234567); // TODO: Replace with the deterministic UInt128 sequence from
+                                       // PollardRho128Benchmarks so we eliminate Random allocations.
 
         UInt128 c, d, x, y, diff;
         while (true)
@@ -515,26 +546,30 @@ public static class MersennePrimeFactorTester
                     return 0;
                 }
 
-                x = (MulMod128(x, x, n) + c) % n;
+                x = (MulMod128(x, x, n) + c) % n; // TODO: Swap this modulo for the UInt128 Montgomery
+                                                 // reducer once the optimized helper lands.
                 if (ct.IsCancellationRequested)
                 {
                     return 0;
                 }
 
-                y = (MulMod128(y, y, n) + c) % n;
+                y = (MulMod128(y, y, n) + c) % n; // TODO: Use the same optimized reducer for the
+                                                 // tortoise step.
                 if (ct.IsCancellationRequested)
                 {
                     return 0;
                 }
 
-                y = (MulMod128(y, y, n) + c) % n;
+                y = (MulMod128(y, y, n) + c) % n; // TODO: Replace with the optimized reducer so both
+                                                 // steps avoid BigInteger-based modulo.
                 diff = x > y ? x - y : y - x;
                 if (ct.IsCancellationRequested)
                 {
                     return 0;
                 }
 
-                d = Gcd128(diff, n, ct);
+                d = Gcd128(diff, n, ct); // TODO: Move this to the binary GCD implementation once the
+                                          // UInt128 benchmarks validate the optimized routine.
             }
 
             if (d != n)
@@ -555,7 +590,8 @@ public static class MersennePrimeFactorTester
                 return 1;
             }
 
-            t = a % b;
+            t = a % b; // TODO: Replace with the binary GCD helper once the UInt128 benchmarks land so
+                        // we remove the slow `%` from the wide gcd loop.
             a = b;
             b = t;
         }

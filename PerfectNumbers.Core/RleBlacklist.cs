@@ -28,6 +28,8 @@ public static class RleBlacklist
             }
 
             var set = new HashSet<string>(StringComparer.Ordinal);
+            // TODO: Replace this HashSet with the pooled ValueHashSet from the blacklist benchmarks so repeated
+            // reloads stop allocating new buckets when refreshing the filtered pattern list.
             foreach (var line in File.ReadLines(path))
             {
                 if (string.IsNullOrWhiteSpace(line))
@@ -242,6 +244,8 @@ public static class RleBlacklist
 
             if (j > i)
             {
+                // TODO: Replace int.TryParse with the Utf8Parser-based span helper so blacklist normalization avoids
+                // repeated culture-aware integer parsing in hot loading paths.
                 if (int.TryParse(span.Slice(i, j - i), out int v) && v > 0)
                 {
                     tmp[count++] = v;
@@ -323,6 +327,8 @@ public static class RleBlacklist
 
             if (j > i)
             {
+                // TODO: Swap this int.TryParse for the upcoming Utf8Parser fast path so nested patterns reuse the
+                // zero-allocation integer parser during blacklist ingestion.
                 if (int.TryParse(inner.Slice(i, j - i), out int v) && v > 0)
                 {
                     tmp[count++] = v;

@@ -40,6 +40,8 @@ public static class MersenneNumberDivisorByDivisorTester
                 ulong maxPrime = 0UL;
 
                 using IEnumerator<ulong> primeEnumerator = Prime.Numbers.GetEnumerator();
+                // TODO: Swap this per-run enumerator creation for the shared PrimeIterator so by-divisor scans reuse the
+                // benchmarked zero-allocation prime sequence instead of instantiating a new iterator for every invocation.
                 bool hasPrime = primeEnumerator.MoveNext();
                 ulong currentPrime = hasPrime ? primeEnumerator.Current : 0UL;
 
@@ -214,6 +216,9 @@ public static class MersenneNumberDivisorByDivisorTester
                 for (int workerIndex = 0; workerIndex < workers.Length; workerIndex++)
                 {
                         int capturedStateCount = stateCount;
+                        // TODO: Swap Task.Factory.StartNew for the shared low-overhead work queue once the scanner's
+                        // scheduler is exposed so divisor scans avoid the extra allocations and context switches that
+                        // benchmarks showed with Task-based fan-out.
                         workers[workerIndex] = Task.Factory.StartNew(() =>
                         {
                                 using var session = tester.CreateDivisorSession();
@@ -254,7 +259,14 @@ public static class MersenneNumberDivisorByDivisorTester
                                                         if (useDivisorCycles)
                                                         {
                                                                 cycleBlock = DivisorCycleCache.Shared.Acquire(divisor);
+                                                                // TODO: Remove this block leasing once the cache exposes a direct
+                                                                // single-cycle retrieval API so coordinator threads never mutate the
+                                                                // cache state beyond the snapshot loaded at startup.
                                                                 divisorCycle = cycleBlock.GetCycle(divisor);
+                                                                // TODO: When divisorCycle returns zero, compute only that single cycle on the
+                                                                // device selected by the current configuration, keep the result transient, and
+                                                                // continue operating with the single cached block instead of scheduling additional
+                                                                // batches.
                                                         }
                                                         else
                                                         {
@@ -406,6 +418,8 @@ public static class MersenneNumberDivisorByDivisorTester
                 ref long nextDivisorBits = ref Unsafe.As<ulong, long>(ref nextDivisor);
                 ulong blockStride = unchecked(DivisorAllocationBlockSize * 2UL);
 
+                // TODO: Replace this odd-only linear allocator with the divisor-cycle aware stride planner once the cache exposes
+                // skip tables so we can jump directly to viable divisors instead of allocating every odd candidate.
                 if (TryAcquireLocalDivisor(ref localDivisorCursor, ref localDivisorsRemaining, out ulong localDivisor))
                 {
                         exhausted = false;
@@ -481,6 +495,8 @@ public static class MersenneNumberDivisorByDivisorTester
                         cursor += 2UL;
                         remaining--;
 
+                        // TODO: Integrate divisor-cycle skip tables here so the local allocator leaps across cached composite
+                        // spans instead of probing every odd candidate sequentially.
                         if (IsAllowedDivisorCandidate(candidate))
                         {
                                 divisor = candidate;
@@ -502,6 +518,8 @@ public static class MersenneNumberDivisorByDivisorTester
 
                 if ((divisor % 3UL) == 0UL || (divisor % 5UL) == 0UL || (divisor % 7UL) == 0UL || (divisor % 11UL) == 0UL)
                 {
+                        // TODO: Replace these `%` filters with Mod3/Mod5/Mod7/Mod11 helpers so candidate sieving reuses the
+                        // benchmarked lookup-based residues instead of executing slow modulo instructions for every divisor.
                         return false;
                 }
 

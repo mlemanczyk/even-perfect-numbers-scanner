@@ -115,6 +115,9 @@ public class MersenneDivisorCycles
                 // TODO: Replace this naive doubling fallback with the unrolled-hex generator from
                 // MersenneDivisorCycleLengthGpuBenchmarks so large divisors avoid the millions of
                 // iterations measured in the scalar loop.
+                // TODO: Route this miss to an ephemeral single-cycle computation on the device selected by the current
+                // configuration (and skip persisting the result) when the divisor falls outside the in-memory snapshot
+                // so we respect the large-p memory limits and avoid extra cache locks.
                 return CalculateCycleLength(divisor);
 	}
 
@@ -444,19 +447,22 @@ public class MersenneDivisorCycles
                 return pow == 1UL;
         }
 
-	public static ulong CalculateCycleLength(ulong divisor)
-	{
-		// For divisor = 2^k, cycle is 1
-		if ((divisor & (divisor - 1UL)) == 0UL)
-		{
-			return 1UL;
-		}
+        public static ulong CalculateCycleLength(ulong divisor)
+        {
+                // For divisor = 2^k, cycle is 1
+                if ((divisor & (divisor - 1UL)) == 0UL)
+                {
+                        return 1UL;
+                }
 
-		// Otherwise, find order of 2 mod divisor
+                // Otherwise, find order of 2 mod divisor
                 // TODO: Switch this scalar fallback to the unrolled-hex stepping sequence once
                 // the generator is shared with CPU callers; the benchmark shows the unrolled
                 // variant winning decisively for divisors >= 131,071.
-		ulong order = 1UL, pow = 2UL;
+                // TODO: Expose a GPU-first branch here so high divisors leverage the ProcessEightBitWindows
+                // kernel measured fastest in CycleLengthGpuVsCpuBenchmarks, returning the result without
+                // storing it in the shared cache.
+                ulong order = 1UL, pow = 2UL;
 		while (pow != 1)
 		{
 			pow <<= 1;
