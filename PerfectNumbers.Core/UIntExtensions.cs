@@ -6,7 +6,7 @@ public static class UIntExtensions
 {
     private const ulong Mod3Mask = 0xAAAAAAABUL;
     public const ulong Mod5Mask = 0xCCCCCCCDUL;
-    // TODO: Extend this helper set with the Mod7/Mod11 lookup constants so CPU residue automation can drop `%` entirely in
+    // TODO: Only add Mod7/Mod11 lookup helpers once we have a variant that beats the `%` baseline (current prototypes lose per Mod7/Mod11 benchmarks).
     // the small-prime sieves.
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

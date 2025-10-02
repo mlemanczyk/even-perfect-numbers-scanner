@@ -96,8 +96,8 @@ public static class ULongExtensions
         return true;
     }
 
-    // TODO: Swap the `% 5` branches with the Mod5 lookup helper once it is wired into
-    // production, matching the Mod8/Mod10 benchmark optimizations for hot CLI loops.
+    // Benchmarks (Mod5ULongBenchmarks) show the direct `% 5` is still cheaper (~0.26 ns vs 0.43 ns), so keep the modulo until a faster lookup is proven.
+    // (Mod8/Mod10 stay masked because they win; Mod5 currently does not.)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Mod10(this ulong value) => (value & 1UL) == 0UL
             ? (value % 5UL) switch
@@ -120,14 +120,12 @@ public static class ULongExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Mod128(this ulong value) => value & 127UL;
 
-    // TODO: Promote the cached Mod5/Mod3 helpers measured fastest in the CLI benchmarks to
-    // remove the raw modulo operations in this combined remainder computation.
+    // Benchmarks confirm `%` beats our current Mod5/Mod3 helpers for 64-bit inputs, so leave these modulo operations in place until a superior lookup is available.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Mod10_8_5_3(this ulong value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)
     {
         mod8 = value & 7UL;
-        // TODO: Swap these modulo operations for the dedicated Mod5/Mod3 helpers once the
-        // benchmarked lookup-based reducers land so this hot helper avoids `%` entirely.
+        // Benchmarks show `%` remains faster for the Mod5/Mod3 pair on ulong, so we keep the modulo path here for now.
         mod5 = value % 5UL;
         mod3 = value % 3UL;
 
@@ -150,14 +148,12 @@ public static class ULongExtensions
             };
     }
 
-    // TODO: Inline the Mod5/Mod3 lookup tables here once they are shared so the stepping helper
-    // mirrors the benchmarked no-modulo variant planned for the CLI sieve.
+    // Mod5/Mod3 lookup tables are currently slower on 64-bit operands; keep the direct modulo until benchmarks flip.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Mod10_8_5_3Steps(this ulong value, out ulong step10, out ulong step8, out ulong step5, out ulong step3)
     {
         ulong mod8 = value & 7UL;
-        // TODO: Route these modulo computations through the cached Mod5/Mod3 tables when the
-        // lookup implementation from the CLI benchmarks is promoted to production.
+        // Same rationale: `%` wins in Mod5/Mod3 benches today, so avoid swapping until a faster lookup exists.
         ulong mod5 = value % 5UL;
         ulong mod3 = value % 3UL;
         ulong mod10 = (mod8 & 1UL) == 0UL

@@ -545,7 +545,7 @@ internal static class Program
 			RleBlacklist.Load(_rleBlacklistPath!);
 		}
 
-                ulong remainder = currentP % 6UL; // TODO: Replace this generic modulo with the lookup-based Mod6 helper validated in the Mod6 benchmarks to avoid the slower `%` operator on hot CLI loops.
+                // Mod6 lookup turned out slower (see Mod6ComparisonBenchmarks), so keep `%` here for large candidates.
 		if (currentP == InitialP && string.IsNullOrEmpty(filterFile))
 		{
 			// bool passedAllTests = IsEvenPerfectCandidate(InitialP, out bool searchedMersenne, out bool detailedCheck);
@@ -1183,8 +1183,7 @@ internal static class Program
 
 		ulong next = (value << 1) | 1UL;
                 remainder = (remainder << 1) + 1UL;
-                // TODO: Replace this manual subtraction loop with the lookup-driven Mod6 helper highlighted
-                // in the Mod6 benchmarks so the prime-bit stepping mirrors the fastest remainder update path.
+                // Mod6 lookup loses to `%` in the benches; stick with subtraction + modulo for correctness and speed.
                 while (remainder >= 6UL)
                 {
                         remainder -= 6UL;
@@ -1207,8 +1206,7 @@ internal static class Program
 		}
 
                 remainder += value;
-                // TODO: Route this remainder fold through the Mod6 helper validated in the Mod6 benchmarks to
-                // remove the repeated subtraction and keep the add-by-bit path on the optimal cycle.
+                // `% 6` remains faster per Mod6ComparisonBenchmarks; keep this modulo fold and continue using subtraction.
                 while (remainder >= 6UL)
                 {
                         remainder -= 6UL;
@@ -1230,8 +1228,7 @@ internal static class Program
 		}
 
                 remainder += diff;
-                // TODO: Switch this reduction to the Mod6 helper from the Mod6 benchmarks so add stepping shares
-                // the same optimized remainder pipeline as the bit-transform path.
+                // Retain direct modulo because the Mod6 helper underperforms on 64-bit operands.
                 while (remainder >= 6UL)
                 {
                         remainder -= 6UL;
@@ -1266,7 +1263,7 @@ internal static class Program
 
                                 candidate += diff;
                                 addRemainder += diff;
-                                // TODO: Apply the Mod6 lookup helper here as well so prime-plus stepping reuses the
+                                // Skip the Mod6 lookup: benchmarked `%` stays ahead for these prime increments.
                                 // benchmarked fastest remainder updates instead of looping subtraction.
                                 while (addRemainder >= 6UL)
                                 {

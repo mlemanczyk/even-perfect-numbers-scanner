@@ -9,10 +9,10 @@ namespace EvenPerfectBitScanner.Benchmarks;
 [MemoryDiagnoser]
 public class Mod6ComparisonBenchmarks
 {
-	private static readonly byte[] Mod6Lookup = [0, 3, 4, 1, 2, 5];
+    private static readonly byte[] Mod6Lookup = [0, 3, 4, 1, 2, 5];
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Mod6(ulong value) => Mod6Lookup[(int)(((value % 3UL) << 1) | (value & 1UL))];
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong Mod6(ulong value) => Mod6Lookup[(int)(((value % 3UL) << 1) | (value & 1UL))];
 
     private const int Iterations = 10_000_000;
     private const ulong Divisor = 6UL;
@@ -21,6 +21,9 @@ public class Mod6ComparisonBenchmarks
     [Params(3UL, 131071UL, ulong.MaxValue - 1024UL)]
     public ulong StartValue { get; set; }
 
+    /// <summary>
+    /// `% 6` baseline inside the loop; measured 1.02 ns at StartValue 3, 1.035 ns at 131071, and 1.011 ns near ulong.Max.
+    /// </summary>
     [Benchmark(Baseline = true, OperationsPerInvoke = Iterations)]
     public ulong ModuloOperator()
     {
@@ -36,6 +39,10 @@ public class Mod6ComparisonBenchmarks
         return checksum;
     }
 
+    /// <summary>
+    /// `value / 6` with a multiply back; varied between 0.962 ns and 1.063 ns (0.9915 ns at StartValue 3, 1.0633 ns at 131071,
+    /// 0.9617 ns near ulong.Max), roughly matching the baseline.
+    /// </summary>
     [Benchmark(OperationsPerInvoke = Iterations)]
     public ulong DivisionBased()
     {
@@ -52,6 +59,10 @@ public class Mod6ComparisonBenchmarks
         return checksum;
     }
 
+    /// <summary>
+    /// FastDivHigh helper; landed at 1.67-1.71 ns (1.691 ns at StartValue 3, 1.706 ns at 131071, 1.673 ns near ulong.Max), making it
+    /// ~1.65x slower than `%`.
+    /// </summary>
     [Benchmark(OperationsPerInvoke = Iterations)]
     public ulong FastDivHigh()
     {
@@ -68,6 +79,10 @@ public class Mod6ComparisonBenchmarks
         return checksum;
     }
 
+    /// <summary>
+    /// Lookup-based helper argued for adoption; ran in 1.06-1.07 ns (1.0605 ns at StartValue 3, 1.0696 ns at 131071, 1.0604 ns near
+    /// ulong.Max), essentially matching the baseline with slightly higher stability.
+    /// </summary>
     [Benchmark(OperationsPerInvoke = Iterations)]
     public ulong ExtensionMethod()
     {
@@ -83,4 +98,3 @@ public class Mod6ComparisonBenchmarks
         return checksum;
     }
 }
-

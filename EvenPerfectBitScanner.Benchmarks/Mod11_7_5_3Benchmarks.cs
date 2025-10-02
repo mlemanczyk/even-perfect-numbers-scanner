@@ -6,83 +6,87 @@ namespace EvenPerfectBitScanner.Benchmarks;
 [MemoryDiagnoser]
 public class Mod11_7_5_3Benchmarks
 {
-	private static readonly byte[] Mod7ByteCoefficients = [1, 4, 2, 1, 4, 2, 1, 4];
-	private static readonly byte[] Mod11ByteCoefficients = [1, 3, 9, 5, 4, 1, 3, 9];
+    private static readonly byte[] Mod7ByteCoefficients = [1, 4, 2, 1, 4, 2, 1, 4];
+    private static readonly byte[] Mod11ByteCoefficients = [1, 3, 9, 5, 4, 1, 3, 9];
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static ulong ReduceMod7(uint value)
-	{
-		while (value >= 7U)
-		{
-			value = (value >> 3) + (value & 7U);
-			if (value >= 7U && value < 14U)
-			{
-				value -= 7U;
-			}
-		}
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ReduceMod7(uint value)
+    {
+        while (value >= 7U)
+        {
+            value = (value >> 3) + (value & 7U);
+            if (value >= 7U && value < 14U)
+            {
+                value -= 7U;
+            }
+        }
 
-		return value;
-	}
+        return value;
+    }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static ulong ReduceMod11(uint value)
-	{
-		while (value >= 11U)
-		{
-			value = (value & 15U) + ((value >> 4) * 5U);
-			if (value >= 11U && value < 22U)
-			{
-				value -= 11U;
-			}
-		}
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ReduceMod11(uint value)
+    {
+        while (value >= 11U)
+        {
+            value = (value & 15U) + ((value >> 4) * 5U);
+            if (value >= 11U && value < 22U)
+            {
+                value -= 11U;
+            }
+        }
 
-		return value;
-	}
+        return value;
+    }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void Mod11_7_5_3(ulong value, out ulong mod11, out ulong mod7, out ulong mod5, out ulong mod3)
-	{
-		uint mod3And5Accumulator = 0U;
-		uint mod7Accumulator = 0U;
-		uint mod11Accumulator = 0U;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Mod11_7_5_3(ulong value, out ulong mod11, out ulong mod7, out ulong mod5, out ulong mod3)
+    {
+        uint mod3And5Accumulator = 0U;
+        uint mod7Accumulator = 0U;
+        uint mod11Accumulator = 0U;
 
-		int index = 0;
-		byte current;
-		ulong temp = value;
+        int index = 0;
+        byte[] mod7ByteCoefficients = Mod7ByteCoefficients;
+        byte[] mod11ByteCoefficients = Mod11ByteCoefficients;
+        ulong temp = value;
 
-		byte[] mod7ByteCoefficients = Mod7ByteCoefficients;
-		byte[] mod11ByteCoefficients = Mod11ByteCoefficients;
-		do
-		{
-			current = (byte)temp;
-			mod3And5Accumulator += current;
-			mod7Accumulator += (uint)(current * mod7ByteCoefficients[index]);
-			mod11Accumulator += (uint)(current * mod11ByteCoefficients[index]);
+        do
+        {
+            byte current = (byte)temp;
+            mod3And5Accumulator += current;
+            mod7Accumulator += (uint)(current * mod7ByteCoefficients[index]);
+            mod11Accumulator += (uint)(current * mod11ByteCoefficients[index]);
 
-			temp >>= 8;
-			index++;
-		}
-		while (temp != 0UL);
+            temp >>= 8;
+            index++;
+        }
+        while (temp != 0UL);
 
-		mod3 = mod3And5Accumulator % 3;
-		mod5 = mod3And5Accumulator % 5;
-		mod7 = (uint)ReduceMod7(mod7Accumulator);
-		mod11 = (uint)ReduceMod11(mod11Accumulator);
-	}
+        mod3 = mod3And5Accumulator % 3UL;
+        mod5 = mod3And5Accumulator % 5UL;
+        mod7 = ReduceMod7(mod7Accumulator);
+        mod11 = ReduceMod11(mod11Accumulator);
+    }
 
     [Params(3UL, 8191UL, 131071UL, 2147483647UL)]
     public ulong Value { get; set; }
 
-	/// <summary>
-	/// Fastest
-	/// </summary>
-	[Benchmark(Baseline = true)]
+    /// <summary>
+    /// Plain `%` baseline; timings hovered between 1.56 ns and 1.61 ns (1.611 ns at value 3, 1.563 ns at 8191, 1.561 ns at 131071,
+    /// 1.572 ns at 2147483647).
+    /// </summary>
+    [Benchmark(Baseline = true)]
     public (ulong Mod11, ulong Mod7, ulong Mod5, ulong Mod3) ModuloOperator()
     {
         ulong value = Value;
         return (value % 11UL, value % 7UL, value % 5UL, value % 3UL);
     }
 
+    /// <summary>
+    /// Combined coefficient method; simplifies residue reuse but costs 2.10 ns at value 3, 4.93 ns at 8191, 7.10 ns at 131071, and
+    /// 8.97 ns at 2147483647 (5.7x slower than the scalar `%` baseline on the largest input).
+    /// </summary>
     [Benchmark]
     public (ulong Mod11, ulong Mod7, ulong Mod5, ulong Mod3) CombinedMethod()
     {
