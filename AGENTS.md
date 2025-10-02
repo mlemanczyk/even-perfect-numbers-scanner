@@ -16,12 +16,14 @@ dotnet build EvenPerfectScanner.sln
 
 Run only the tests related to the solution you modify. Always run tests without --no-build parameter to avoid run failures due to missing assembly files. Tests should be always written using XUnit with FluentAssertions. Before executing any tests, make sure their running time is reasonable; skip test suites that are expected to take excessively long. When running tests, always provide both an explicit timeout guard and the Category=Fast filter so that only the fast suite executes.
 
-## Making Changes
-To make any changes to the files in the repository, you should always utilize a script created for it to overcome environment / scripting issues with making changes. The script is called apply_patch.cs and has the following syntax:
+## Making Changes in the Repository
+To make any changes to the files in the repository, you should always utilize a script created for it to overcome environment / scripting issues. The script is called `apply_patch.cs` and has the following syntax:
 
-`dotnet script apply_patch.cs -- <patch-file> [target-directory]`
+```bash
+dotnet script apply_patch.cs -- <patch-file> [target-directory]
+```
 
-It supports the standard `.diff` patch files as input. You should be able to run it both in the local and remote `Codex` environments.
+It supports the standard `.diff` patch files as input. You should be able to run it both in the local and remote `Codex` environments. You should expect it to work both in `Windows` and `Linux` environments.
 
 If you want to make any changes, create a patch file and run the script to apply it. Always run it from the root directory and reference any modified files with relative paths respectively in the patch.
 
@@ -33,6 +35,7 @@ Do **not** attempt to apply the changes manually, or with `Python`, or with `Pow
 - Do not hardcode timeouts inside test code. Enforce time limits from the runner/shell layer so developers can run tests locally without artificial constraints.
 - Prefer targeted filters over full suites to keep runs short: `--filter FullyQualifiedName~<ClassOrMethod>` or `--filter "FullyQualifiedName=Namespace.Class.Method"`.
 - Keep GPU-heavy tests minimal and scoped. If a kernel compile or warmup is expected to take >2 minutes, skip running it during regular iterations.
+- When working on a task in a local Codex environment, do not run any existing unit tests, except for fast, new, added tests, unless you're instructed otherwise. In the task summary list the names of the recommended unit tests to validate the changes, instead.
 
 #### How to run tests within the 2-minute limit
 
