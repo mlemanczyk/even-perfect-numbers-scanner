@@ -237,7 +237,6 @@ public static class MersenneNumberDivisorByDivisorTester
                                 Span<byte> hitsSpan = default;
                                 int hitIndex = 0;
                                 int index;
-                                bool useDivisorCycles = tester.UseDivisorCycles; // TODO: Remove the conditional path once all testers always enable divisor cycles to keep every divisor scan on the faster cached-length track.
                                 ulong divisorCycle = 0UL;
 
                                 try
@@ -255,23 +254,7 @@ public static class MersenneNumberDivisorByDivisorTester
                                                 divisor = AcquireNextDivisor(ref nextDivisor, divisorLimit, ref divisorsExhaustedFlag, ref finalDivisorBits, out exhausted, ref localDivisorCursor, ref localDivisorsRemaining);
                                                 if (divisor != 0UL)
                                                 {
-                                                        DivisorCycleCache.CycleBlock? cycleBlock = null;
-                                                        if (useDivisorCycles)
-                                                        {
-                                                                cycleBlock = DivisorCycleCache.Shared.Acquire(divisor);
-                                                                // TODO: Remove this block leasing once the cache exposes a direct
-                                                                // single-cycle retrieval API so coordinator threads never mutate the
-                                                                // cache state beyond the snapshot loaded at startup.
-                                                                divisorCycle = cycleBlock.GetCycle(divisor);
-                                                                // TODO: When divisorCycle returns zero, compute only that single cycle on the
-                                                                // device selected by the current configuration, keep the result transient, and
-                                                                // continue operating with the single cached block instead of scheduling additional
-                                                                // batches.
-                                                        }
-                                                        else
-                                                        {
-                                                                divisorCycle = 0UL;
-                                                        }
+                                                        divisorCycle = DivisorCycleCache.Shared.GetCycleLength(divisor);
 
                                                         activeCount = BuildPrimeBuffer(
                                                                 divisor,
@@ -296,7 +279,6 @@ public static class MersenneNumberDivisorByDivisorTester
 
                                                         if (activeCount == 0)
                                                         {
-                                                                cycleBlock?.Dispose();
                                                                 continue;
                                                         }
 
@@ -330,11 +312,8 @@ public static class MersenneNumberDivisorByDivisorTester
                                                                 FlushPendingResults(compositesBuffer, ref compositesCount, markComposite, clearComposite, printResult);
                                                         }
 
-                                                        cycleBlock?.Dispose();
-
                                                         continue;
                                                 }
-
                                                 if (!exhausted)
                                                 {
                                                         if (Volatile.Read(ref remainingStates) == 0)
@@ -738,3 +717,6 @@ public static class MersenneNumberDivisorByDivisorTester
                 internal bool PassedAllTests { get; }
         }
 }
+
+
+

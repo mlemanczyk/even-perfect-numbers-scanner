@@ -110,7 +110,6 @@ public class MersenneNumberDivisorGpuTesterTests
     {
         var tester = new MersenneNumberDivisorByDivisorGpuTester
         {
-            UseDivisorCycles = true,
             GpuBatchSize = 8,
         };
 
@@ -147,7 +146,6 @@ public class MersenneNumberDivisorGpuTesterTests
     {
         var tester = new MersenneNumberDivisorByDivisorGpuTester
         {
-            UseDivisorCycles = true,
             GpuBatchSize = 2,
         };
 
@@ -169,7 +167,6 @@ public class MersenneNumberDivisorGpuTesterTests
     {
         var tester = new MersenneNumberDivisorByDivisorCpuTester
         {
-            UseDivisorCycles = true,
             BatchSize = 2,
         };
 
