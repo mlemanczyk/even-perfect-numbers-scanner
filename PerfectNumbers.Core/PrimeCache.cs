@@ -25,6 +25,8 @@ public sealed class PrimeCache
             last = current;
             // TODO: Swap the Open.Numeric enumerator for the staged sieve batches we benchmarked; the
             // iterator allocations here throttle the cache fill when we extend the search past 138M.
+            // TODO: Fold in the Mod6 stride planner that topped Mod6ComparisonBenchmarks so the CPU cache
+            // can skip even/composite candidates instead of walking each enumerator element.
             _primes.Add(last);
             _primeMod4.Add((byte)(current & 3));
         }
@@ -91,6 +93,8 @@ public sealed class PrimeCache
             // TODO: Move this incremental append to the shared sieve batches so we amortize the
             // conversions; walking the enumerator element-by-element is noticeably slower in the
             // updated prime cache benchmarks.
+            // TODO: Apply the Mod6 stride scheduler here as well so on-demand extensions mirror the
+            // Mod6ComparisonBenchmarks winner when pulling primes for divisor-cycle generation.
             if (current >= s)
             {
                 yield return val;

@@ -694,7 +694,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
 
 public class GpuKernelPool
 {
-    private static readonly ConcurrentDictionary<Accelerator, KernelContainer> KernelCache = new();
+    private static readonly ConcurrentDictionary<Accelerator, KernelContainer> KernelCache = new(); // TODO: Replace this concurrent map with a simple accelerator-indexed lookup once kernel launchers are prewarmed during startup so we can drop the thread-safe wrapper entirely.
 
     private static KernelContainer GetKernels(Accelerator accelerator)
     {
@@ -712,14 +712,14 @@ public class GpuKernelPool
         }
 
         // Ensure single upload per accelerator even if multiple threads race here.
-        lock (kernels)
+        lock (kernels) // TODO: Remove this lock by pre-uploading the immutable small-cycle snapshot during initialization; once no mutation happens at runtime, the pool must expose a simple reference without synchronization.
         {
             if (kernels.SmallCycles is { } existing)
             {
                 return existing.View;
             }
 
-            var host = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
+            var host = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot(); // TODO: Preload this device buffer during startup and keep it immutable so we can delete the lock above in favor of the preloaded snapshot.
             var device = accelerator.Allocate1D<ulong>(host.Length);
             device.View.CopyFromCPU(host);
             kernels.SmallCycles = device;
@@ -738,7 +738,7 @@ public class GpuKernelPool
             return new ResiduePrimeViews(lastOne.View, lastSeven.View, lastOnePow2.View, lastSevenPow2.View);
         }
 
-        lock (kernels)
+        lock (kernels) // TODO: Inline these small-prime uploads into startup initialization alongside the small-cycle snapshot so we can drop runtime locking and keep the GPU pool free of synchronization.
         {
             if (kernels.SmallPrimesLastOne is { } existingLastOne &&
                 kernels.SmallPrimesLastSeven is { } existingLastSeven &&

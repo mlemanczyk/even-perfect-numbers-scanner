@@ -200,14 +200,20 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             if (useCycles)
             {
                 cycleBlock = DivisorCycleCache.Shared.Acquire(divisor);
+                // TODO: Swap this block lease for the direct single-cycle lookup once the cache exposes it
+                // so the CPU scanner mirrors the benchmarked single-block policy without retaining mutable
+                // blocks beyond the startup snapshot.
                 divisorCycle = cycleBlock.GetCycle(divisor);
+                // TODO: When divisorCycle is zero (cache miss), compute only that single cycle on the device
+                // selected by the current settings, skip inserting the result into the shared cache, and keep
+                // operating with the single on-disk block without requesting additional blocks.
                 hit = CheckDivisor(prime, divisorCycle != 0UL, divisorCycle, divisorData);
             }
             else
             {
-                // TODO: Force this path to hydrate divisor cycles from disk once the cache guarantees
-                // coverage so we can retire the slower Montgomery-only fallback highlighted by the CPU
-                // divisor benchmarks.
+                // TODO: Remove this no-cycle branch and require on-demand cycle computation (without
+                // mutating the cache) so CPU scans never fall back to the slower Montgomery-only path
+                // identified in the benchmarks.
                 hit = CheckDivisor(prime, false, 0UL, divisorData);
             }
 
@@ -347,6 +353,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             bool useDivisorCycles = _owner._useDivisorCycles;
             if (useDivisorCycles && divisorCycle == 0UL)
             {
+                // TODO: Replace this guard with an on-demand CPU/GPU cycle computation path that skips
+                // cache insertion and continues operating with the single cached block instead of
+                // requesting additional cycle batches when a lookup misses.
                 throw new InvalidOperationException($"Missing divisor cycle for divisor {divisor}.");
             }
 

@@ -29,23 +29,23 @@ public static class NttGpuMath
     public static NttBackend GpuTransformBackend { get; set; } = NttBackend.Reference;
     // Controls modular reduction strategy inside staged NTT paths.
     public static ModReductionMode ReductionMode { get; set; } = ModReductionMode.Auto;
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, GpuUInt128>> MulKernelCache = new();
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128>> StageKernelCache = new();
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>> ScaleKernelCache = new();
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong>> StageMontKernelCache = new();
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>> StageBarrett128KernelCache = new();
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, GpuUInt128, ulong, ulong, ulong, ulong>> ScaleBarrett128KernelCache = new();
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>> SquareBarrett128KernelCache = new();
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>> ToMont64KernelCache = new();
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong>> FromMont64KernelCache = new();
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong>> SquareMont64KernelCache = new();
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>> ScaleMont64KernelCache = new();
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, GpuUInt128>> MulKernelCache = new(); // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128>> StageKernelCache = new(); // TODO: Same as above – materialize staged kernels during startup so we can drop ConcurrentDictionary usage entirely per the benchmark guidance.
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>> ScaleKernelCache = new(); // TODO: Promote to the static kernel table initialized alongside the GpuModularArithmeticBenchmarks fast path.
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong>> StageMontKernelCache = new(); // TODO: Inline the Montgomery kernels into the startup table instead of using a concurrent cache now that we no longer mutate state at runtime.
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>> StageBarrett128KernelCache = new(); // TODO: Same plan – reuse the precomputed kernels measured fastest in MontgomeryMultiplyBenchmarks rather than looking them up dynamically.
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, GpuUInt128, ulong, ulong, ulong, ulong>> ScaleBarrett128KernelCache = new(); // TODO: Collapse into the startup kernel array once Barrett128 constants are preloaded.
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>> SquareBarrett128KernelCache = new(); // TODO: Fold these kernels into the same startup table to avoid concurrent access overhead highlighted in GpuModularArithmeticBenchmarks.
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>> ToMont64KernelCache = new(); // TODO: Prebind and reuse the Montgomery conversions from MontgomeryMultiplyBenchmarks instead of storing them in a concurrent cache.
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong>> FromMont64KernelCache = new(); // TODO: As above – drop ConcurrentDictionary once startup prewarms every kernel.
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong>> SquareMont64KernelCache = new(); // TODO: Inline into the static kernel table established during initialization.
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>> ScaleMont64KernelCache = new(); // TODO: Move to the startup kernel table so Montgomery-scaled launches skip concurrent lookups.
 
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128>> ForwardKernelCache = new();
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128>> ForwardKernelCache = new(); // TODO: Warm these forward kernels during initialization and store them in a plain array so the LucasLehmerGpuBenchmarks launch costs disappear.
 
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128, GpuUInt128>> InverseKernelCache = new();
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128, GpuUInt128>> InverseKernelCache = new(); // TODO: Same as above – replace with startup-prepared tables per LucasLehmerGpuBenchmarks guidance.
 
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int>> BitReverseKernelCache = new();
+    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int>> BitReverseKernelCache = new(); // TODO: Precompute bit-reversal kernels during boot so we can remove the concurrent lookup overhead flagged in the benchmarks.
 
     private sealed class SquareCacheEntry : IDisposable
     {
@@ -111,6 +111,9 @@ public static class NttGpuMath
                 int half = len >> 1;
                 StageOffsets[stage - 1] = offset;
                 UInt128 exp = (modValue - 1UL) / (ulong)len;
+                // TODO: Pull these stage roots from the precomputed tables measured fastest in
+                // Pow2MontgomeryModCycleComputationBenchmarks instead of recomputing ModPow for
+                // every stage.
                 var wLen = new GpuUInt128(Root);
                 wLen.ModPow((ulong)exp, modulus);
                 var w = new GpuUInt128(0UL, 1UL);
@@ -119,6 +122,8 @@ public static class NttGpuMath
                     forward[offset + j] = w;
                     w.MulMod(wLen, modulus);
                 }
+                // TODO: Reuse the same precomputed tables for inverse roots so we do not repeat the
+                // expensive ModPow calls highlighted as bottlenecks in Pow2MontgomeryModCycleComputationBenchmarks.
                 var wLenInv = new GpuUInt128(RootInv);
                 wLenInv.ModPow((ulong)exp, modulus);
                 var wi = new GpuUInt128(0UL, 1UL);
@@ -140,6 +145,8 @@ public static class NttGpuMath
             {
                 UseMontgomery64 = true;
                 ModulusLow = modulus.Low;
+                // TODO: Preload MontNPrime64/MontR values using the MontgomeryMultiplyBenchmarks helper so
+                // startup reuses the fastest constant generation routine instead of recomputing here.
                 MontNPrime64 = ComputeMontgomeryNPrime64(ModulusLow);
                 var mBI = new BigInteger(ModulusLow);
                 MontRMod64 = (ulong)((BigInteger.One << 64) % mBI);

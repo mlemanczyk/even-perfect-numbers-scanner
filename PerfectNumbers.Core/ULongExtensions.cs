@@ -20,6 +20,10 @@ public static class ULongExtensions
         int i = 0, primesLength = smallPrimes.Length;
         UInt128 q128 = q,
                 cycle = MersenneDivisorCycles.GetCycle(q128);
+        // TODO: When the shared cycle snapshot cannot serve this divisor, trigger an on-demand
+        // GPU computation (respecting the configured device) without promoting the result into
+        // the cache so the order calculator still benefits from cycle stepping while keeping the
+        // single-block memory plan intact.
 
         for (; i < primesLength; i++)
         {
@@ -235,6 +239,8 @@ public static class ULongExtensions
     public static ulong ModPow64(this ulong value, ulong exponent, ulong modulus)
     {
         ulong result = 1UL;
+        // TODO: Replace this `%` with the Montgomery folding helper highlighted in MulMod64Benchmarks so the
+        // modular exponentiation avoids the slow integer division before the ladder even starts.
         value %= modulus;
 
         while (exponent != 0UL)
@@ -367,6 +373,8 @@ public static class ULongExtensions
             return exponent.Pow2MontgomeryMod(divisor);
         }
 
+        // TODO: Swap this modulo with the divisor-cycle remainder helper from Pow2MontgomeryModCycleComputationBenchmarks so we
+        // advance the exponent using cached cycle deltas instead of paying for a fresh `%` on every query.
         ulong rotationCount = exponent % cycleLength;
         return rotationCount.Pow2MontgomeryModFromCycleRemainder(divisor);
     }
@@ -474,6 +482,8 @@ public static class ULongExtensions
         exponentLoopIndex = 0UL;
         // Reusing result after resetting it for the rotation-accumulation pass.
         result = UInt128.One;
+        // TODO: Replace this modulo with the cached cycle remainder produced by the divisor-cycle cache so PowModWithCycle avoids
+        // repeated `%` work, matching the ProcessEightBitWindows wins captured in Pow2MontgomeryModCycleComputationBenchmarks.
         ulong rotationCount = exponent % cycleLength;
         for (; exponentLoopIndex < rotationCount; exponentLoopIndex++)
         {
@@ -525,6 +535,8 @@ public static class ULongExtensions
 
         // Reusing result after resetting it for the rotation-driven accumulation phase.
         result = UInt128.One;
+        // TODO: Swap this modulo with the upcoming UInt128 cycle remainder helper so large-exponent scans reuse cached
+        // reductions instead of recomputing `%` for every lookup, as demonstrated in Pow2MontgomeryModCycleComputationBenchmarks.
         UInt128 rotationCount = exponent % cycleLength;
         UInt128 rotationIndex = UInt128.Zero;
         while (rotationIndex < rotationCount)
@@ -581,6 +593,8 @@ public static class ULongExtensions
 
         // Reusing result after resetting it for the rotation-driven accumulation phase.
         result = one;
+        // TODO: Swap this modulo with the shared UInt128 cycle remainder helper once available so CRT powmods reuse cached
+        // reductions in the windowed ladder, avoiding the `%` cost highlighted in Pow2MontgomeryModCycleComputationBenchmarks.
         UInt128 rotationCount = exponent % cycleLength;
 
         // We're reusing "zero" as rotation index for just a little better performance
@@ -626,6 +640,8 @@ public static class ULongExtensions
             // Since currentModulus and m are coprime, use CRT:
             // x = result + currentModulus * t, where t ≡ (remM - result) * inv(currentModulus, m) mod m
 
+            // TODO: Replace this `% modulusCandidate` with the cached residue helper derived from Mod10_8_5_3Benchmarks so CRT
+            // composition avoids repeated modulo divisions when combining residues for large divisor sets.
             result += currentModulus * ((remainderForCandidate + modulusCandidate - (result % modulusCandidate)) * ModInverse(currentModulus, modulusCandidate) % modulusCandidate);
             currentModulus *= modulusCandidate;
 
@@ -633,6 +649,8 @@ public static class ULongExtensions
                 break;
         }
 
+        // TODO: Swap this final `% modulus` with the pooled remainder cache so the CRT result write-back avoids one more division,
+        // aligning with the optimizations captured in Mod10_8_5_3Benchmarks.
         return result % modulus;
     }
 

@@ -179,22 +179,25 @@ public sealed class ModResidueTracker
 		UInt128 d, value;
 		List<UInt128> residues = _residues;
 
-		if (_model == ResidueModel.Identity)
-		{
-			// Avoid 128-bit division: delta is small in scanner (<= 6) so use add/sub.
-			for (; i < divisorsCount; i++)
-			{
-				d = divisors[i];
-				value = residues[i] + delta;
-				// For tiny moduli (2..6) we may need a few subtractions; keep the loop tight.
-				while (value >= d)
-				{
-					value -= d;
-				}
+                if (_model == ResidueModel.Identity)
+                {
+                        // Avoid 128-bit division: delta is small in scanner (<= 6) so use add/sub.
+                        for (; i < divisorsCount; i++)
+                        {
+                                d = divisors[i];
+                                value = residues[i] + delta;
+                                // TODO: Replace this subtraction loop with the divisor-cycle stepping helper so identity
+                                // residues reuse cached cycle deltas, computing the missing cycle on the configured
+                                // device without caching the result or scheduling extra blocks when the snapshot lacks
+                                // the divisor.
+                                while (value >= d)
+                                {
+                                        value -= d;
+                                }
 
-				residues[i] = value;
-			}
-		}
+                                residues[i] = value;
+                        }
+                }
 		else
 		{
                         for (; i < divisors.Count; i++)
@@ -259,7 +262,8 @@ public sealed class ModResidueTracker
                 // residue of Mersenne number M_number = 2^number - 1 modulo divisor
                 // TODO: Consult MersenneDivisorCycles.Shared (or similar caches) here so we reuse precomputed cycle lengths
                 // instead of recomputing powmods for every divisor; the divisor-cycle benchmarks showed large wins once the
-                // cached orders were used across scans.
+                // cached orders were used across scans, and a miss should trigger the configured device to compute the cycle
+                // immediately without storing it back or requesting additional cache blocks.
                 UInt128 pow = PowMod128(UInt128Numbers.Two, number, divisor);
 
                 // q divides M_p ⇔ 2^p ≡ 1 (mod q)  AND  ord_q(2) | p

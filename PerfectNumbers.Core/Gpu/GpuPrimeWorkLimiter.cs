@@ -8,6 +8,8 @@ public static class GpuPrimeWorkLimiter
 
     public static IDisposable Acquire()
     {
+        // TODO: Inline the pooled limiter guard from the GpuLimiterThroughputBenchmarks so prime-sieve
+        // GPU jobs stop allocating Releaser instances on every acquisition.
         var sem = _semaphore;
         sem.Wait();
         return new Releaser(sem);
@@ -27,6 +29,8 @@ public static class GpuPrimeWorkLimiter
                 return;
             }
 
+            // TODO: Switch to a shared limiter implementation with GpuWorkLimiter so we can coordinate CPU/GPU prime work using
+            // the same semaphore pool without reallocating per adjustment.
             _semaphore = new SemaphoreSlim(value, value);
             _currentLimit = value;
         }

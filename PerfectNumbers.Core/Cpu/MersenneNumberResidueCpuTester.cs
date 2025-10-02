@@ -10,9 +10,14 @@ public class MersenneNumberResidueCpuTester
 		// Initialize/update Mersenne residue tracker and start a merge walk for ascending q divisors
 
 		_mersenneResidueTracker ??= new(ResidueModel.Mersenne);
-		// For small divisors q <= 4,000,000 use cached cycle length to fast-path checks
-		// and avoid per-q powmods when possible when scanning lanes.
-		_mersenneResidueTracker.BeginMerge(exponent);
+                // For small divisors q <= 4,000,000 use cached cycle length to fast-path checks
+                // and avoid per-q powmods when possible when scanning lanes.
+                // TODO: Wire this residue scan into DivisorCycleCache so the mandatory cycle acceleration from the
+                // by-divisor benchmarks applies here instead of relying solely on ModResidueTracker powmods.
+                // TODO: When a required cycle is missing from the snapshot, compute only that single cycle on the device
+                // selected by the current settings, skip persisting the result, and avoid scheduling additional cache blocks so
+                // we keep operating with the single shared block.
+                _mersenneResidueTracker.BeginMerge(exponent);
 
 		// Start at k = 1: q0 = 2*p*1 + 1
 		UInt128 k = UInt128.One;
@@ -80,12 +85,15 @@ public class MersenneNumberResidueCpuTester
 			r5_3 = r5_2 + step5; if (r5_3 >= 10UL) r5_3 -= 10UL; if (r5_3 >= 5UL) r5_3 -= 5UL;
 
 			// lane 0
-			if (lanes >= 1 &&
-				(((allowMask >> (int)r10_0) & 1) != 0 && (r8_0 == 1UL || r8_0 == 7UL) && r3_0 != 0UL && r5_0 != 0UL))
-			{
-				// cycle-based quick check for small q
-				if (localIsPrime && tracker.MergeOrAppend(exponent, q, out isDivider) && isDivider &&
-					(q <= ulong.MaxValue ? ((ulong)q).IsPrimeCandidate() : q.IsPrimeCandidate()))
+                        if (lanes >= 1 &&
+                                (((allowMask >> (int)r10_0) & 1) != 0 && (r8_0 == 1UL || r8_0 == 7UL) && r3_0 != 0UL && r5_0 != 0UL))
+                        {
+                                // TODO: Once cycle data is exposed for residue scans, consult the cached divisor cycle here
+                                // (and below) so every qualifying q reuses precomputed lengths instead of recomputing via
+                                // tracker.MergeOrAppend.
+                                // cycle-based quick check for small q
+                                if (localIsPrime && tracker.MergeOrAppend(exponent, q, out isDivider) && isDivider &&
+                                        (q <= ulong.MaxValue ? ((ulong)q).IsPrimeCandidate() : q.IsPrimeCandidate()))
 				{
 					localIsPrime = false;
 				}

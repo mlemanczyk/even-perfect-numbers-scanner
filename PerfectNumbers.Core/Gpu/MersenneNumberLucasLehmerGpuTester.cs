@@ -43,6 +43,9 @@ public class MersenneNumberLucasLehmerGpuTester
     {
         // Default to global kernel preference for backward compatibility.
         bool runOnGpu = !GpuContextPool.ForceCpu;
+        // TODO: Inline this wrapper once callers request IsPrime directly so the Lucas–Lehmer fast path
+        // avoids an extra method frame; the LucasLehmerGpuBenchmarks showed the delegate hop shaving
+        // measurable time off tight reload loops when removed.
         return IsPrime(exponent, runOnGpu);
     }
 
@@ -120,6 +123,8 @@ public class MersenneNumberLucasLehmerGpuTester
         GpuUInt128[] modulusArray = ArrayPool<GpuUInt128>.Shared.Rent(count);
         for (int i = 0; i < count; i++)
         {
+            // TODO: Replace this per-exponent shift with a small shared table (one entry per supported exponent < 128)
+            // so Lucas–Lehmer batch runs reuse cached GpuUInt128 moduli instead of rebuilding them for every request.
             modulusArray[i] = new GpuUInt128(((UInt128)1 << (int)exponents[i]) - 1UL);
         }
 
@@ -292,11 +297,15 @@ public class MersenneNumberLucasLehmerGpuTester
                 continue;
             }
 
+            // TODO: Replace int.TryParse with the span-based Utf8Parser helper when loading cached parameters so we avoid
+            // culture-aware parsing in this hot startup loop.
             if (!int.TryParse(parts[0], out var storedLength) || storedLength != length)
             {
                 continue;
             }
 
+            // TODO: Switch these ulong.Parse calls to the Utf8Parser-based fast-path once we expose a zero-allocation reader for
+            // persisted kernel parameters.
             ulong modHigh = ulong.Parse(parts[1]);
             ulong modLow = ulong.Parse(parts[2]);
             ulong rootHigh = ulong.Parse(parts[3]);
@@ -315,6 +324,9 @@ public class MersenneNumberLucasLehmerGpuTester
     {
         lock (ParameterFileLock)
         {
+            // TODO: Replace StreamWriter with the pooled TextFileWriter pipeline so persisting NTT
+            // parameters reuses the zero-allocation buffered writes highlighted in the scanner I/O
+            // benchmarks instead of allocating a new encoder per append.
             using var writer = new StreamWriter(ParameterFilePath, append: true);
             writer.WriteLine($"{length} {modulus.High} {modulus.Low} {primitiveRoot.High} {primitiveRoot.Low}");
         }
@@ -329,6 +341,9 @@ public class MersenneNumberLucasLehmerGpuTester
         using var cts = new System.Threading.CancellationTokenSource();
         object sync = new();
 
+        // TODO: Move this Parallel.For to the shared low-overhead work scheduler once the NTT parameter
+        // generator integrates with the GPU-first pipeline so parameter scans reuse the same batching
+        // strategy measured fastest in the divisor-cycle benchmarks.
         System.Threading.Tasks.Parallel.For(0, processorCount, (worker, state) =>
         {
             ulong k = (ulong)worker + 1UL;
@@ -377,6 +392,8 @@ public class MersenneNumberLucasLehmerGpuTester
     private static ulong FindPrimitiveRoot(ulong modulus, ulong order)
     {
         ulong phi = modulus - 1UL;
+        // TODO: Reuse the divisor-cycle cache to factor phi via the precomputed small-prime windows once
+        // the lookup tables land so primitive root searches stop iterating over slow trial divisions.
         var factors = Factorize(phi);
         for (ulong g = 2UL; g < modulus; g++)
         {

@@ -54,6 +54,9 @@ internal struct ExponentRemainderStepper
         }
 
         ulong delta = exponent - _previousExponent;
+        // TODO: Once divisor cycle lengths are mandatory, pull the delta multiplier from the
+        // single-block divisor-cycle snapshot so we can skip the powmod entirely and reuse the
+        // cached Montgomery residue ladder highlighted in MersenneDivisorCycleLengthGpuBenchmarks.
         // TODO: Replace this per-delta powmod with the upcoming windowed ladder so incremental
         // updates stop paying the single-bit cost highlighted in GpuPow2ModBenchmarks.
         ulong multiplier = delta.Pow2MontgomeryModMontgomery(_divisor);
@@ -81,6 +84,8 @@ internal struct ExponentRemainderStepper
         }
 
         ulong delta = exponent - _previousExponent;
+        // TODO: Reuse the divisor-cycle derived Montgomery delta once the cache exposes single-cycle
+        // lookups so this branch also avoids recomputing powmods when the snapshot lacks the divisor.
         // TODO: Use the windowed delta pow2 helper here as well to avoid the single-bit ladder that
         // currently lags behind the benchmarked implementation for huge divisor cycles.
         ulong multiplier = delta.Pow2MontgomeryModMontgomery(_divisor);
@@ -125,6 +130,9 @@ internal struct ExponentRemainderStepper
             return true;
         }
 
+        // TODO: Once the divisor-cycle cache exposes a direct Montgomery delta, multiply it here instead
+        // of relying on the caller-provided delta so incremental scans remain in sync with the snapshot
+        // without computing additional cycles or mutating cache state.
         _currentMontgomery = _currentMontgomery.MontgomeryMultiply(montgomeryDelta, _modulus, _nPrime);
         _previousExponent = exponent;
         isUnity = _currentMontgomery == _montgomeryOne;

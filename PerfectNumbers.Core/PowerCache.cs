@@ -13,6 +13,9 @@ public static class PowerCache
     {
         if (!BigCache.TryGetValue(baseVal, out var powers))
         {
+            // TODO: Rent this buffer from ArrayPool<BigInteger> (or a dedicated pooled cache) so expanding
+            // exponent ranges stop allocating fresh arrays as we sweep across large divisor sets in the
+            // Pow2MontgomeryModBenchmarks scenarios.
             powers = new BigInteger[exponent + 1];
             powers[0] = BigInteger.One;
             BigCache[baseVal] = powers;
@@ -21,6 +24,8 @@ public static class PowerCache
         if (powers.Length <= exponent)
         {
             int oldLength = powers.Length;
+            // TODO: Replace Array.Resize with a pooled copy so we reuse previously rented buffers instead
+            // of forcing GC work whenever the cache grows; benchmarks showed resize thrash when p >= 138M.
             Array.Resize(ref powers, exponent + 1);
             for (int i = oldLength; i <= exponent; i++)
                 powers[i] = BigInteger.Zero;
@@ -35,7 +40,7 @@ public static class PowerCache
                 if (powers[i].IsZero)
                 {
                     // TODO: Swap this BigInteger chain with the UInt128-based Montgomery ladder from
-                    // Pow2MontgomeryMod once callers guarantee 64-bit inputs; the benchmarks show the
+                    // Pow2MontgomeryModBenchmarks once callers guarantee 64-bit inputs; the benchmarks show the
                     // arbitrary-precision multiply is orders of magnitude slower for the exponents we
                     // scan when p >= 138M.
                     powers[i] = powers[i - 1] * baseVal;

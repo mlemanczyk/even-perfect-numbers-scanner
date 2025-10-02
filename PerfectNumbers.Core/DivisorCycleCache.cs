@@ -60,16 +60,18 @@ public sealed class DivisorCycleCache
         }
     }
 
-    private const int CycleGenerationBatchSize = 262_144;
+    private const int CycleGenerationBatchSize = 262_144; // TODO: Remove the block-sized batch once the single-cycle generator
+                                                          // replaces block hydration so we stop materializing large buffers
+                                                          // just to satisfy one missing divisor lookup.
     private const byte ByteZero = 0;
     private const byte ByteOne = 1;
 
-    private readonly object _sync = new();
-    private readonly ConcurrentDictionary<int, Task<CycleBlock>> _pending = new();
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>> _gpuKernelCache = new(AcceleratorReferenceComparer.Instance);
+    private readonly object _sync = new(); // TODO: Delete the synchronization object once the cache exposes only snapshot reads and single-cycle computation so callers no longer contend on locks.
+    private readonly ConcurrentDictionary<int, Task<CycleBlock>> _pending = new(); // TODO: Drop the concurrent dictionary entirely when the block pipeline is replaced with single-cycle generation; the new plan never queues background work.
+    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>> _gpuKernelCache = new(AcceleratorReferenceComparer.Instance); // TODO: Swap this ConcurrentDictionary for a simple accelerator-indexed array once the single-cycle helper precompiles kernels during startup, eliminating the need for thread-safe lookups.
     private CycleBlock _baseBlock = null!;
-    private CycleBlock? _activeBlock;
-    private CycleBlock? _prefetchedBlock;
+    private CycleBlock? _activeBlock; // TODO: Remove dynamic blocks altogether once lookups route to the snapshot or compute an individual cycle without mutating shared state.
+    private CycleBlock? _prefetchedBlock; // TODO: Delete prefetch support so the cache never materializes extra blocks and callers always compute the missing cycle inline.
     private bool _useGpuGeneration = true;
 	private readonly int _divisorCyclesBatchSize;
 	private static int _sharedDivisorCyclesBatchSize = GpuConstants.GpuCycleStepsPerInvocation;
@@ -84,6 +86,8 @@ public sealed class DivisorCycleCache
         Initialize(snapshot);
 	}
 
+    // TODO: Remove the ability to reload at runtime once the cache becomes a read-only snapshot plus
+    // transient single-cycle generator; future callers should load the snapshot during startup only.
     public void ReloadFromCurrentSnapshot()
     {
         ulong[] snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
@@ -96,6 +100,8 @@ public sealed class DivisorCycleCache
         {
             _useGpuGeneration = useGpu;
         }
+        // TODO: Remove the lock once single-cycle generation eliminates shared mutable state; a simple
+        // volatile write will be enough when the cache becomes read-only.
     }
 
     private void Initialize(ulong[] snapshot)
@@ -116,6 +122,7 @@ public sealed class DivisorCycleCache
             }
 
             _pending.Clear();
+            // TODO: Remove the dictionary once prefetching and background block tracking disappear; with single-cycle generation we will keep only the snapshot and skip additional bookkeeping entirely.
             _baseBlock = new CycleBlock(this, index: 0, start: 0UL, snapshot);
             _activeBlock = null;
             _prefetchedBlock = null;
@@ -129,6 +136,7 @@ public sealed class DivisorCycleCache
     public CycleBlock Acquire(ulong divisor)
     {
         CycleBlock block = divisor <= _baseBlock.End ? _baseBlock : AcquireDynamicBlock(divisor);
+        // TODO: Replace this block-based acquisition with a direct GetCycle API that computes the missing cycle synchronously on the configured device so the cache never hands out mutable blocks or requires disposal.
         block.Retain();
         return block;
     }
@@ -149,6 +157,9 @@ public sealed class DivisorCycleCache
 
                 if (!_pending.TryGetValue(blockIndex, out pendingTask))
                 {
+                    // TODO: Replace Task.Run with an inline single-cycle computation that runs on the configured
+                    // device so we materialize exactly one missing cycle and stop scheduling thread-pool work for
+                    // entire blocks.
                     pendingTask = Task.Run(() => GenerateBlock(blockIndex));
                     _pending[blockIndex] = pendingTask;
                 }
@@ -165,6 +176,9 @@ public sealed class DivisorCycleCache
                 }
 
                 SetActiveBlockLocked(block);
+                // TODO: Stop promoting freshly generated blocks into the shared cache and, instead of
+                // returning a block, surface the computed cycle directly to the caller so no extra cache
+                // state survives beyond the single snapshot block.
                 return block;
             }
         }
@@ -210,7 +224,8 @@ public sealed class DivisorCycleCache
             previousActive.Dispose();
         }
 
-        StartPrefetchLocked(prefetched.Index + 1);
+        StartPrefetchLocked(prefetched.Index + 1); // TODO: Remove this call once prefetching is dropped
+                                                   // so we strictly keep a single active block in memory.
     }
 
     private void SetActiveBlockLocked(CycleBlock block)
@@ -235,11 +250,14 @@ public sealed class DivisorCycleCache
             previousActive.Dispose();
         }
 
-        StartPrefetchLocked(block.Index + 1);
+        StartPrefetchLocked(block.Index + 1); // TODO: Remove once prefetching is removed and the cache
+                                              // no longer speculatively requests the next block after a miss.
     }
 
     private void StartPrefetchLocked(int blockIndex)
     {
+        // TODO: Remove prefetching entirely so the cache maintains a single snapshot block and computes
+        // individual cycles on demand instead of triggering background generation for future indices.
         if (blockIndex <= 0)
         {
             return;
@@ -262,6 +280,8 @@ public sealed class DivisorCycleCache
             return;
         }
 
+        // TODO: Delete this once prefetching is removed; single-cycle generation will happen inline and
+        // no asynchronous work should be scheduled.
         Task<CycleBlock> task = Task.Run(() => GenerateBlock(blockIndex));
         _pending[blockIndex] = task;
         task.ContinueWith(t => OnPrefetchCompleted(blockIndex, t), TaskScheduler.Default);
@@ -269,6 +289,8 @@ public sealed class DivisorCycleCache
 
     private void OnPrefetchCompleted(int blockIndex, Task<CycleBlock> task)
     {
+        // TODO: Delete this callback when we remove prefetching. Single-cycle generation will run inline,
+        // eliminating the need for asynchronous continuation handlers and concurrent dictionaries.
         if (!task.IsCompletedSuccessfully)
         {
             _pending.TryRemove(blockIndex, out _);
@@ -284,6 +306,9 @@ public sealed class DivisorCycleCache
 
     private void AssignPrefetchedBlockLocked(int blockIndex, CycleBlock block)
     {
+        // TODO: Remove this entire method when prefetching goes away. The single-cycle flow should never
+        // allocate or retain extra blocks beyond the startup snapshot, so prefetched block bookkeeping
+        // becomes unnecessary.
         CycleBlock? active = _activeBlock;
         if (active is not null && blockIndex != active.Index + 1)
         {
@@ -363,6 +388,9 @@ public sealed class DivisorCycleCache
             ComputeCyclesCpu(start, cycles);
         }
 
+        // TODO: Replace this block generator with a single-cycle helper that reuses shared buffers,
+        // returns just the requested divisor's cycle, and avoids mutating cache state beyond the
+        // preloaded snapshot.
         return new CycleBlock(this, blockIndex, start, cycles);
     }
 
@@ -393,6 +421,8 @@ public sealed class DivisorCycleCache
         ulong divisor = start;
         for (int i = 0; i < destination.Length; i++)
         {
+            // TODO: Port this CPU fallback to the unrolled-hex cycle generator once it is shared so misses outside the snapshot
+            // stop looping through CalculateCycleLength, which benchmarks showed is far slower than the GPU-assisted pipeline.
             destination[i] = MersenneDivisorCycles.CalculateCycleLength(divisor);
             divisor++;
         }
@@ -407,6 +437,9 @@ public sealed class DivisorCycleCache
         {
             Accelerator accelerator = gpuLease.Accelerator;
             Action<Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> kernel = _gpuKernelCache.GetOrAdd(accelerator, LoadKernel);
+            // TODO: Once single-cycle generation is in place, bypass this block-sized kernel entirely and
+            // call the ProcessEightBitWindows-based GPU helper that materializes only the requested
+            // divisor, reusing a pinned upload buffer instead of allocating per block.
 
             int length = destination.Length;
             int chunkCapacity = Math.Min(length, CycleGenerationBatchSize);
@@ -568,3 +601,4 @@ public sealed class DivisorCycleCache
         public int GetHashCode(Accelerator obj) => RuntimeHelpers.GetHashCode(obj);
     }
 }
+
