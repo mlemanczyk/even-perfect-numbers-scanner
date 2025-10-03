@@ -32,7 +32,7 @@ It supports the standard `git diff` patch files as input. You should be able to 
 * `--ignore-line-endings`
 * `--target` - allows specifying target root directory for the patch
 
-* Build patches in standard `git diff` format.
+* Build patches in standard `git diff` format. It doesn't support `***` format.
 * Build patches in small, line-precise hunks; confirm target lines with Get-Content before writing the diff to avoid context mismatches.
 * Regenerate the diff whenever the file shifts—never reuse an old hunk after other edits.
 * Keep patch filenames unique and delete applied files to prevent accidental re-use.
