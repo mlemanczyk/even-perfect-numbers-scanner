@@ -68,21 +68,27 @@ internal static class PrimeOrderCalculator
 
         ulong phi = prime - 1UL;
         MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(prime);
+
+        Console.WriteLine("Partial factoring φ(p)");
         PartialFactorResult phiFactors = PartialFactor(phi, config);
 
         if (phiFactors.Factors is null)
         {
+            Console.WriteLine("No factors found");
             return FinishStrictly(prime, config.Mode);
         }
 
+        Console.WriteLine("Trying special max check");
         if (phiFactors.FullyFactored && TrySpecialMax(phi, prime, phiFactors, divisorData))
         {
             return new PrimeOrderResult(PrimeOrderStatus.Found, phi);
         }
 
+        Console.WriteLine("Initializing starting order");
         ulong candidateOrder = InitializeStartingOrder(prime, phi, divisorData);
         candidateOrder = ExponentLowering(candidateOrder, prime, phiFactors, divisorData);
 
+        Console.WriteLine("Trying to confirm order");
         if (TryConfirmOrder(prime, candidateOrder, divisorData, config))
         {
             return new PrimeOrderResult(PrimeOrderStatus.Found, candidateOrder);
@@ -198,11 +204,15 @@ internal static class PrimeOrderCalculator
             return false;
         }
 
+        // Calculating `a^order ≡ 1 (mod p)` is a prerequisite for `order` being the actual order of 2 modulo `p`.
+        Console.WriteLine("Verifying a^order ≡ 1 (mod p)");
         if (order.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) != 1UL)
         {
             return false;
         }
 
+        Console.WriteLine("Partial factoring order");
+        // TODO: Do we do partial factoring of order multiple times?
         PartialFactorResult factorization = PartialFactor(order, config);
         if (factorization.Factors is null)
         {
@@ -213,18 +223,23 @@ internal static class PrimeOrderCalculator
         {
             if (factorization.Cofactor <= 1UL)
             {
+                Console.WriteLine("Cofactor <= 1. No factors found");
                 return false;
             }
 
+            // TODO: Use Open.Numerics.Primality for this final check once it's available.
+            Console.WriteLine("Cofactor > 1. Testing primality of cofactor");
             if (!PrimeTester.IsPrimeInternal(factorization.Cofactor, CancellationToken.None))
             {
                 return false;
             }
 
+            Console.WriteLine("Adding cofactor as prime factor");
             factorization = factorization.WithAdditionalPrime(factorization.Cofactor);
         }
 
         ReadOnlySpan<FactorEntry> span = factorization.Factors;
+        Console.WriteLine("Verifying prime-power reductions");
         int length = factorization.Count;
         for (int i = 0; i < length; i++)
         {
@@ -263,6 +278,8 @@ internal static class PrimeOrderCalculator
             return false;
         }
 
+        // TODO: Do we do partial factoring of order multiple times?
+        Console.WriteLine("Trying heuristic. Partial factoring order");
         PartialFactorResult orderFactors = PartialFactor(order, config);
         if (orderFactors.Factors is null)
         {
