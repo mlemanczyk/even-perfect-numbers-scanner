@@ -25,6 +25,7 @@ dotnet script apply_patch.cs -- <patch-file> [target-directory]
 
 It supports the standard `git diff` patch files as input. You should be able to run it both in the local and remote `Codex` environments. You should expect it to work both in `Windows` and `Linux` environments. Make sure that you include `diff --git` lines, headers and file prefixes in the patch files to avoid applying issues.
 
+* Build patches in standard `git diff` format.
 * Build patches in small, line-precise hunks; confirm target lines with Get-Content before writing the diff to avoid context mismatches.
 * Regenerate the diff whenever the file shifts—never reuse an old hunk after other edits.
 * Keep patch filenames unique and delete applied files to prevent accidental re-use.
