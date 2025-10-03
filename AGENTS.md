@@ -37,13 +37,14 @@ It supports the standard `git diff` patch files as input. You should be able to 
     * It doesn't support `***` or `*** Begin/End Patch` wrappers.
     * It requires `diff --git` at the beginning.
     * Patch header needs the actual line numbers.
-* Check if the patch will work by using `--check` parameter, without making changes to the files, which would force patch changes.
+* Always check if the patch will work by using `--check` parameter, without making changes to the files, which would force patch changes. Try applying the patch only when `--check` passed.
 * Build patches in small, line-precise hunks; confirm target lines with `Get-Content` or `nl -ba` before writing the diff to avoid context mismatches.
 * Regenerate the diff whenever the file shifts—never reuse an old hunk after other edits.
 * Keep patch filenames unique and delete applied files to prevent accidental re-use.
 * When a hunk fails, inspect the around-lines immediately and adjust rather than retrying the same diff.
 * Prefer single-purpose patches (one logical change per file) so rollbacks or fixes stay focused.
 * Use `nl -ba` to show line numbers, when needed.
+* Always use 4 spaces for indentation of code blocks.
 
 If you want to make any changes, create a patch file and run the script to apply it. Always run it from the root directory and reference any modified files with relative paths respectively in the patch.
 
