@@ -23,11 +23,31 @@ To make any changes to the files in the repository, you should always utilize a 
 dotnet script apply_patch.cs -- <patch-file> [target-directory]
 ```
 
-It supports the standard `.diff` patch files as input. You should be able to run it both in the local and remote `Codex` environments. You should expect it to work both in `Windows` and `Linux` environments.
+It supports the standard `git diff` patch files as input. You should be able to run it both in the local and remote `Codex` environments. You should expect it to work both in `Windows` and `Linux` environments. Make sure that you include `diff --git` lines, headers and file prefixes in the patch files to avoid applying issues.
+
+`apply_patch.cs` supports several parameters, depending on your needs:
+* `--check` - allows checking if the patch will work without making changes to the files
+* `--ignore-whitespace`
+* `--ignore-eol`
+* `--ignore-line-endings`
+* `--target` - allows specifying target root directory for the patch
+
+* Build patches in standard `git diff` format.
+    * It supports `---`, `+++`, and `@@`.
+    * It doesn't support `***` or `*** Begin/End Patch` wrappers.
+    * It requires `diff --git` at the beginning.
+    * Patch header needs the actual line numbers.
+* Check if the patch will work by using `--check` parameter, without making changes to the files, which would force patch changes.
+* Build patches in small, line-precise hunks; confirm target lines with `Get-Content` or `nl -ba` before writing the diff to avoid context mismatches.
+* Regenerate the diff whenever the file shifts—never reuse an old hunk after other edits.
+* Keep patch filenames unique and delete applied files to prevent accidental re-use.
+* When a hunk fails, inspect the around-lines immediately and adjust rather than retrying the same diff.
+* Prefer single-purpose patches (one logical change per file) so rollbacks or fixes stay focused.
+* Use `nl -ba` to show line numbers, when needed.
 
 If you want to make any changes, create a patch file and run the script to apply it. Always run it from the root directory and reference any modified files with relative paths respectively in the patch.
 
-Do **not** attempt to apply the changes manually, or with `Python`, or with `PowerShell` scripts, or `cat` or any other way. If you identify any issues with `apply_patch.cs` script, you should propose fixes to resolve them and continue using the script after updates. If you spot any missing, but required features, propose enhancements and continue using the script after updates, too.
+Do **not** attempt to apply the changes manually, or with `Python`, or with `PowerShell` scripts, or `cat` or any other way, unless you apply changes to `apply_patch.cs` script itself. If you identify any issues with `apply_patch.cs` script, you should propose fixes to resolve them and continue using the script after updates. If you spot any missing, but required features, propose enhancements and continue using the script after updates, too.
 
 ### Test execution time policy
 
