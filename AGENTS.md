@@ -36,6 +36,8 @@ It supports the standard `git diff` patch files as input. You should be able to 
     * It supports `---`, `+++`, and `@@`.
     * It doesn't support `***` or `*** Begin/End Patch` wrappers.
     * It requires `diff --git` at the beginning.
+    * Patch header needs the actual line numbers.
+* Check if the patch will work by using `--check` parameter, without making changes to the files, which would force patch changes.
 * Build patches in small, line-precise hunks; confirm target lines with `Get-Content` or `nl -ba` before writing the diff to avoid context mismatches.
 * Regenerate the diff whenever the file shifts—never reuse an old hunk after other edits.
 * Keep patch filenames unique and delete applied files to prevent accidental re-use.
