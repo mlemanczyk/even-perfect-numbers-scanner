@@ -27,13 +27,13 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
     private const long OneShiftedLeft60 = 1L << 60;
     private readonly MontgomeryDivisorData[] _smallDivisors = new MontgomeryDivisorData[SampleCount];
     private readonly MontgomeryDivisorData[] _largeDivisors = new MontgomeryDivisorData[SampleCount];
-    // private readonly MontgomeryDivisorData[] _veryLargeDivisors = new MontgomeryDivisorData[SampleCount];
+    private readonly MontgomeryDivisorData[] _veryLargeDivisors = new MontgomeryDivisorData[SampleCount];
     private readonly ulong[] _smallExponents = new ulong[SampleCount];
     private readonly ulong[] _largeExponents = new ulong[SampleCount];
-    // private readonly ulong[] _veryLargeExponents = new ulong[SampleCount];
+    private readonly ulong[] _veryLargeExponents = new ulong[SampleCount];
     private readonly ulong[] _smallCycles = new ulong[SampleCount];
     private readonly ulong[] _largeCycles = new ulong[SampleCount];
-    // private readonly ulong[] _veryLargeCycles = new ulong[SampleCount];
+    private readonly ulong[] _veryLargeCycles = new ulong[SampleCount];
 
     private readonly Random _random = new(113);
     private ulong? _previousPrimeOrder;
@@ -42,7 +42,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
     {
         Small,
         Large,
-        // VeryLarge
+        VeryLarge
     }
 
     [ParamsAllValues]
@@ -53,7 +53,9 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
     {
         for (int i = 0; i < SampleCount; i++)
         {
+#if DEBUG
             Console.WriteLine($"Generating sample {i}");
+#endif
             ulong smallModulus = NextSmallOddModulus();
             _smallDivisors[i] = CreateMontgomeryDivisorData(smallModulus);
             _smallExponents[i] = NextSmallExponent();
@@ -64,11 +66,13 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
             _largeExponents[i] = NextLargeExponent();
             _largeCycles[i] = CalculateCycleLengthWithHeuristics(largeModulus, largeCycle);
 
-            // ulong veryLargeModulus = NextVeryLargeOddModulus();
-            // _veryLargeDivisors[i] = CreateMontgomeryDivisorData(veryLargeModulus);
-            // _veryLargeExponents[i] = NextVeryLargeExponent();
-            // Console.WriteLine($"Calculating cycle length {veryLargeModulus}");
-            // _veryLargeCycles[i] = MersenneDivisorCycles.CalculateCycleLengthGpu(veryLargeModulus);
+            ulong veryLargeModulus = NextVeryLargeOddModulus();
+            _veryLargeDivisors[i] = CreateMontgomeryDivisorData(veryLargeModulus);
+            _veryLargeExponents[i] = NextVeryLargeExponent();
+#if DEBUG
+            Console.WriteLine($"Calculating cycle length {veryLargeModulus}");
+#endif
+            _veryLargeCycles[i] = CalculateCycleLengthWithHeuristics(veryLargeModulus);
         }
     }
 
@@ -76,7 +80,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
     /// Baseline Montgomery reduction without precomputed cycle data; measured 35.41 μs on the small sample and 117.33 μs on the
     /// large set.
     /// </summary>
-    [Benchmark(Baseline = true)]
+    // [Benchmark(Baseline = true)]
     public ulong MontgomeryWithoutCycle()
     {
         GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out _);
@@ -112,7 +116,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
     /// Montgomery reduction with the cycle computed on the fly using the GPU helper; costs 54.09 ms on the small benchmark due to
     /// cycle discovery, but drops to 12.91 μs on the large set (0.11× baseline).
     /// </summary>
-    [Benchmark]
+    // [Benchmark]
     public ulong MontgomeryWithGpuCycleComputation()
     {
         GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out _);
@@ -157,11 +161,11 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
                 divisors = _largeDivisors;
                 cycles = _largeCycles;
                 break;
-            // case InputScale.VeryLarge:
-            //     exponents = _veryLargeExponents;
-            //     divisors = _veryLargeDivisors;
-            //     cycles = _veryLargeCycles;
-            //     break;
+            case InputScale.VeryLarge:
+                exponents = _veryLargeExponents;
+                divisors = _veryLargeDivisors;
+                cycles = _veryLargeCycles;
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(Scale), Scale, null);
         }
@@ -228,11 +232,18 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
             return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLength(modulus);
         }
 
-        if (!PrimeTester.IsPrimeInternal(modulus, CancellationToken.None))
-        {
-            return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLength(modulus);
-        }
+        // When the below is uncommented, the benchmark never completes due to the primality test cost on very large random set.
 
+        // bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(modulus);
+        // // bool isPrime = PrimeTester.IsPrimeInternal(modulus, CancellationToken.None);
+        // if (!isPrime)
+        // {
+        //     return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLength(modulus);
+        // }
+
+#if DEBUG
+        Console.WriteLine("Trying heuristic. Prime order calculation");
+#endif
         PrimeOrderCalculator.PrimeOrderResult orderResult = PrimeOrderCalculator.Calculate(
             modulus,
             _previousPrimeOrder,
@@ -245,6 +256,8 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
         }
 
         _previousPrimeOrder = null;
+
+        Console.WriteLine("Heuristic failed, falling back to full cycle calculation");
         return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLength(modulus);
     }
 

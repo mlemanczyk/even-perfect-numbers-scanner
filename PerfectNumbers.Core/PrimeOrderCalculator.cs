@@ -54,7 +54,7 @@ internal static class PrimeOrderCalculator
 
         public PrimeOrderMode Mode { get; }
 
-        public static PrimeOrderSearchConfig HeuristicDefault => new(100_000, 1, 24, PrimeOrderMode.Heuristic);
+        public static PrimeOrderSearchConfig HeuristicDefault => new(100_000, 128, 24, PrimeOrderMode.Heuristic);
 
         public static PrimeOrderSearchConfig StrictDefault => new(1_000_000, 0, 0, PrimeOrderMode.Strict);
     }
@@ -69,26 +69,36 @@ internal static class PrimeOrderCalculator
         ulong phi = prime - 1UL;
         MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(prime);
 
+#if DEBUG
         Console.WriteLine("Partial factoring φ(p)");
+#endif
         PartialFactorResult phiFactors = PartialFactor(phi, config);
 
         if (phiFactors.Factors is null)
         {
+#if DEBUG
             Console.WriteLine("No factors found");
+#endif
             return FinishStrictly(prime, config.Mode);
         }
 
+#if DEBUG
         Console.WriteLine("Trying special max check");
+#endif
         if (phiFactors.FullyFactored && TrySpecialMax(phi, prime, phiFactors, divisorData))
         {
             return new PrimeOrderResult(PrimeOrderStatus.Found, phi);
         }
 
+#if DEBUG
         Console.WriteLine("Initializing starting order");
+#endif
         ulong candidateOrder = InitializeStartingOrder(prime, phi, divisorData);
         candidateOrder = ExponentLowering(candidateOrder, prime, phiFactors, divisorData);
 
+#if DEBUG
         Console.WriteLine("Trying to confirm order");
+#endif
         if (TryConfirmOrder(prime, candidateOrder, divisorData, config))
         {
             return new PrimeOrderResult(PrimeOrderStatus.Found, candidateOrder);
@@ -104,6 +114,9 @@ internal static class PrimeOrderCalculator
             return new PrimeOrderResult(PrimeOrderStatus.Found, order);
         }
 
+#if DEBUG
+        Console.WriteLine("Heuristic unresolved, finishing strictly");
+#endif
         return FinishStrictly(prime, config.Mode);
     }
 
@@ -156,7 +169,9 @@ internal static class PrimeOrderCalculator
             Span<FactorEntry> buffer = tempArray;
             factorSpan.CopyTo(buffer);
 
-            if (!factors.FullyFactored && factors.Cofactor > 1UL && PrimeTester.IsPrimeInternal(factors.Cofactor, CancellationToken.None))
+            bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factors.Cofactor);
+            // bool isPrime = PrimeTester.IsPrimeInternal(factors.Cofactor, CancellationToken.None);
+            if (!factors.FullyFactored && factors.Cofactor > 1UL && isPrime)
             {
                 buffer[length] = new FactorEntry(factors.Cofactor, 1);
                 length++;
@@ -205,13 +220,18 @@ internal static class PrimeOrderCalculator
         }
 
         // Calculating `a^order ≡ 1 (mod p)` is a prerequisite for `order` being the actual order of 2 modulo `p`.
+#if DEBUG
         Console.WriteLine("Verifying a^order ≡ 1 (mod p)");
+#endif
         if (order.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) != 1UL)
         {
             return false;
         }
 
+#if DEBUG
         Console.WriteLine("Partial factoring order");
+#endif
+
         // TODO: Do we do partial factoring of order multiple times?
         PartialFactorResult factorization = PartialFactor(order, config);
         if (factorization.Factors is null)
@@ -223,23 +243,33 @@ internal static class PrimeOrderCalculator
         {
             if (factorization.Cofactor <= 1UL)
             {
+#if DEBUG
                 Console.WriteLine("Cofactor <= 1. No factors found");
+#endif
                 return false;
             }
 
             // TODO: Use Open.Numerics.Primality for this final check once it's available.
+#if DEBUG
             Console.WriteLine("Cofactor > 1. Testing primality of cofactor");
-            if (!PrimeTester.IsPrimeInternal(factorization.Cofactor, CancellationToken.None))
+#endif
+            bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factorization.Cofactor);
+            // bool isPrime = PrimeTester.IsPrimeInternal(factorization.Cofactor, CancellationToken.None);
+            if (!isPrime)
             {
                 return false;
             }
 
+#if DEBUG
             Console.WriteLine("Adding cofactor as prime factor");
+#endif
             factorization = factorization.WithAdditionalPrime(factorization.Cofactor);
         }
 
         ReadOnlySpan<FactorEntry> span = factorization.Factors;
+#if DEBUG
         Console.WriteLine("Verifying prime-power reductions");
+#endif
         int length = factorization.Count;
         for (int i = 0; i < length; i++)
         {
@@ -279,7 +309,9 @@ internal static class PrimeOrderCalculator
         }
 
         // TODO: Do we do partial factoring of order multiple times?
+#if DEBUG
         Console.WriteLine("Trying heuristic. Partial factoring order");
+#endif
         PartialFactorResult orderFactors = PartialFactor(order, config);
         if (orderFactors.Factors is null)
         {
@@ -293,7 +325,9 @@ internal static class PrimeOrderCalculator
                 return false;
             }
 
-            if (!PrimeTester.IsPrimeInternal(orderFactors.Cofactor, CancellationToken.None))
+            var isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(orderFactors.Cofactor);
+            // if (!PrimeTester.IsPrimeInternal(orderFactors.Cofactor, CancellationToken.None))
+            if (!isPrime)
             {
                 return false;
             }
@@ -304,17 +338,27 @@ internal static class PrimeOrderCalculator
         int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks * 4;
         List<ulong> candidates = new(capacity);
         FactorEntry[] factorArray = orderFactors.Factors!;
+#if DEBUG
+        Console.WriteLine("Building candidates list");
+#endif
         BuildCandidates(order, factorArray, orderFactors.Count, candidates, capacity);
         if (candidates.Count == 0)
         {
             return false;
         }
 
+#if DEBUG
+        Console.WriteLine("Sorting candidates");
+#endif
         SortCandidates(prime, previousOrder, candidates);
 
         int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
         int powUsed = 0;
         int candidateCount = candidates.Count;
+
+#if DEBUG
+        Console.WriteLine($"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
+#endif
         for (int i = 0; i < candidateCount; i++)
         {
             if (powUsed >= powBudget)
@@ -339,6 +383,9 @@ internal static class PrimeOrderCalculator
             return true;
         }
 
+#if DEBUG
+        Console.WriteLine("No candidate confirmed");
+#endif
         return false;
     }
 
@@ -524,7 +571,9 @@ internal static class PrimeOrderCalculator
                 return false;
             }
 
-            if (!PrimeTester.IsPrimeInternal(factorization.Cofactor, CancellationToken.None))
+            bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factorization.Cofactor);
+            // bool isPrime = PrimeTester.IsPrimeInternal(factorization.Cofactor, CancellationToken.None);
+            if (!isPrime)
             {
                 return false;
             }
@@ -579,6 +628,10 @@ internal static class PrimeOrderCalculator
         for (int i = 0; i < primeCount; i++)
         {
             uint primeCandidate = primes[i];
+
+#if DEBUG
+            Console.WriteLine($"Trying small prime {primeCandidate}");
+#endif
             if (primeCandidate > limit)
             {
                 break;
@@ -614,6 +667,9 @@ internal static class PrimeOrderCalculator
 
         if (config.PollardRhoMilliseconds > 0 && pending.Count > 0)
         {
+#if DEBUG
+            Console.WriteLine("Processing pending composites with Pollard's Rho");
+#endif
             Stopwatch stopwatch = Stopwatch.StartNew();
             long budgetTicks = TimeSpan.FromMilliseconds(config.PollardRhoMilliseconds).Ticks;
             Stack<ulong> stack = new();
@@ -628,7 +684,9 @@ internal static class PrimeOrderCalculator
                     continue;
                 }
 
-                if (PrimeTester.IsPrimeInternal(composite, CancellationToken.None))
+                bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
+                // if (PrimeTester.IsPrimeInternal(composite, CancellationToken.None))
+                if (isPrime)
                 {
                     AddFactor(counts, composite, 1);
                     continue;
@@ -654,10 +712,15 @@ internal static class PrimeOrderCalculator
 
         ulong cofactor = 1UL;
         int pendingCount = pending.Count;
+#if DEBUG
+        Console.WriteLine($"Processing {pendingCount} pending composites with Open.Numeric.Primes");
+#endif
         for (int i = 0; i < pendingCount; i++)
         {
             ulong composite = pending[i];
-            if (PrimeTester.IsPrimeInternal(composite, CancellationToken.None))
+            bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
+            // if (PrimeTester.IsPrimeInternal(composite, CancellationToken.None))
+            if (isPrime)
             {
                 AddFactor(counts, composite, 1);
             }
@@ -669,11 +732,17 @@ internal static class PrimeOrderCalculator
 
         if (counts.Count == 0 && cofactor == value)
         {
+#if DEBUG
+            Console.WriteLine("cofactor is the same as value, no factors found");
+#endif
             return new PartialFactorResult(null, value, false, 0);
         }
 
         FactorEntry[] factors = ArrayPool<FactorEntry>.Shared.Rent(counts.Count);
         int index = 0;
+#if DEBUG
+        Console.WriteLine($"Collecting {counts.Count} prime factors");
+#endif
         foreach (KeyValuePair<ulong, int> entry in counts)
         {
             factors[index] = new FactorEntry(entry.Key, entry.Value);
