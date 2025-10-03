@@ -98,7 +98,7 @@ internal static class PrimeOrderCalculator
             return new PrimeOrderResult(PrimeOrderStatus.Found, order);
         }
 
-        return new PrimeOrderResult(PrimeOrderStatus.HeuristicUnresolved, 0UL);
+        return FinishStrictly(prime, config.Mode);
     }
 
     private static PrimeOrderResult FinishStrictly(ulong prime, PrimeOrderMode mode)

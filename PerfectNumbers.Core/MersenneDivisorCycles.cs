@@ -807,7 +807,7 @@ public class MersenneDivisorCycles
                                 divisor,
                                 previousOrder: null,
                                 PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
-                        if (orderResult.Status == PrimeOrderCalculator.PrimeOrderStatus.Found && orderResult.Order != 0UL)
+                        if (orderResult.Order != 0UL)
                         {
                                 return orderResult.Order;
                         }
