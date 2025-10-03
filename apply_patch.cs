@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -40,6 +41,7 @@ internal sealed class FileSnapshot
     public bool HadTrailingNewLine { get; set; }
 }
 
+var args = Args?.ToArray() ?? Array.Empty<string>();
 if (args.Length == 0)
 {
     Console.Error.WriteLine("Usage: dotnet script apply_patch.cs -- <patch-file> [target-directory]");
