@@ -796,6 +796,28 @@ public class MersenneDivisorCycles
                         return 1UL;
                 }
 
+                if (divisor <= 3UL)
+                {
+                        return CalculateCycleLengthFallback(divisor);
+                }
+
+                if (PrimeTester.IsPrimeInternal(divisor, CancellationToken.None))
+                {
+                        PrimeOrderCalculator.PrimeOrderResult orderResult = PrimeOrderCalculator.Calculate(
+                                divisor,
+                                previousOrder: null,
+                                PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+                        if (orderResult.Status == PrimeOrderCalculator.PrimeOrderStatus.Found && orderResult.Order != 0UL)
+                        {
+                                return orderResult.Order;
+                        }
+                }
+
+                return CalculateCycleLengthFallback(divisor);
+        }
+
+        private static ulong CalculateCycleLengthFallback(ulong divisor)
+        {
                 // Otherwise, find order of 2 mod divisor
                 // TODO: Switch this scalar fallback to the unrolled-hex stepping sequence once
                 // the generator is shared with CPU callers; the benchmark shows the unrolled
@@ -803,15 +825,16 @@ public class MersenneDivisorCycles
                 // TODO: Expose a GPU-first branch here so high divisors leverage the ProcessEightBitWindows
                 // kernel measured fastest in CycleLengthGpuVsCpuBenchmarks, returning the result without
                 // storing it in the shared cache.
-                ulong order = 1UL, pow = 2UL;
-		while (pow != 1)
+                ulong order = 1UL;
+                ulong pow = 2UL;
+		while (pow != 1UL)
 		{
 			pow <<= 1;
 			if (pow >= divisor)
 				pow -= divisor;
 
 			order++;
-		}
+                }
 
 		return order;
 	}
