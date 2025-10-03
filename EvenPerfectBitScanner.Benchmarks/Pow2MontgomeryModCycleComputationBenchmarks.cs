@@ -257,7 +257,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 
         _previousPrimeOrder = null;
 
-        Console.WriteLine("Heuristic failed, falling back to full cycle calculation");
+        Console.WriteLine($"Heuristic failed for {modulus}, falling back to full cycle calculation");
         return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLength(modulus);
     }
 
