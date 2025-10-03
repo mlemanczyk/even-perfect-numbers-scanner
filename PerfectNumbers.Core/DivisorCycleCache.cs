@@ -109,6 +109,7 @@ public sealed class DivisorCycleCache
             ArrayPool<int>.Shared.Return(rentedMissing, clearArray: false);
         }
     }
+    
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ComputeCyclesCpu(ReadOnlySpan<ulong> divisors, Span<ulong> cycles, ReadOnlySpan<int> indices)
     {
