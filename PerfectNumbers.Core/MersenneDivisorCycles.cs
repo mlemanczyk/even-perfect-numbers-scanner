@@ -126,30 +126,48 @@ public class MersenneDivisorCycles
                 return CalculateCycleLength(divisor);
 	}
 
-	public static UInt128 GetCycle(UInt128 divisor)
-	{
-		// For divisor = 2^k, cycle is 1
-		if ((divisor & (divisor - UInt128.One)) == UInt128.Zero)
-		{
-			return UInt128.One;
-		}
+    public static UInt128 GetCycle(UInt128 divisor)
+    {
+        // For divisor = 2^k, cycle is 1
+        if ((divisor & (divisor - UInt128.One)) == UInt128.Zero)
+        {
+            return UInt128.One;
+        }
 
-		// Otherwise, find order of 2 mod divisor
-                // TODO: Port this UInt128 path to the unrolled-hex cycle calculator so wide
-                // divisors stop relying on the slow shift-and-subtract loop measured in the
-                // GPU benchmarks.
-		UInt128 order = UInt128.One, pow = UInt128Numbers.Two;
-		while (pow != UInt128.One)
-		{
-			pow <<= 1;
-			if (pow >= divisor)
-				pow -= divisor;
+        if (divisor <= ulong.MaxValue)
+        {
+            ulong cycle = CalculateCycleLength((ulong)divisor);
+            return (UInt128)cycle;
+        }
 
-			order++;
-		}
+        PrimeOrderCalculator.PrimeOrderResultWide wideResult = PrimeOrderCalculator.Calculate(
+            divisor,
+            previousOrder: null,
+            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+        if (wideResult.Order != UInt128.Zero)
+        {
+            return wideResult.Order;
+        }
 
-		return order;
-	}
+        // Otherwise, find order of 2 mod divisor
+        // TODO: Port this UInt128 path to the unrolled-hex cycle calculator so wide
+        // divisors stop relying on the slow shift-and-subtract loop measured in the
+        // GPU benchmarks.
+        UInt128 order = UInt128.One;
+        UInt128 pow = UInt128Numbers.Two;
+        while (pow != UInt128.One)
+        {
+            pow <<= 1;
+            if (pow >= divisor)
+            {
+                pow -= divisor;
+            }
+
+            order++;
+        }
+
+        return order;
+    }
 
     public static bool TryCalculateCycleLengthForExponent(
         ulong divisor,
