@@ -41,21 +41,99 @@ internal sealed class FileSnapshot
     public bool HadTrailingNewLine { get; set; }
 }
 
+
+internal readonly record struct PatchApplicationOptions(bool CheckOnly, bool IgnoreWhitespace, bool IgnoreLineEndings);
+
+internal sealed record PatchRunResult(string PatchFilePath, bool Success, string? ErrorMessage);
+
 var args = Args?.ToArray() ?? Array.Empty<string>();
 if (args.Length == 0)
 {
-    Console.Error.WriteLine("Usage: dotnet script apply_patch.cs -- <patch-file> [target-directory]");
+    PrintUsage();
     Environment.Exit(1);
 }
 
-var patchFilePath = args[0];
-var targetRoot = args.Length > 1 ? Path.GetFullPath(args[1]) : Directory.GetCurrentDirectory();
+bool checkOnly = false;
+bool ignoreWhitespace = false;
+bool ignoreLineEndings = false;
+string? explicitTargetRoot = null;
+var patchFileArguments = new List<string>();
 
-if (!File.Exists(patchFilePath))
+for (int i = 0; i < args.Length; i++)
 {
-    Console.Error.WriteLine($"Patch file '{patchFilePath}' does not exist.");
+    var argument = args[i];
+
+    if (string.Equals(argument, "--check", StringComparison.Ordinal))
+    {
+        checkOnly = true;
+        continue;
+    }
+
+    if (string.Equals(argument, "--ignore-whitespace", StringComparison.Ordinal))
+    {
+        ignoreWhitespace = true;
+        continue;
+    }
+
+    if (string.Equals(argument, "--ignore-eol", StringComparison.Ordinal) || string.Equals(argument, "--ignore-line-endings", StringComparison.Ordinal))
+    {
+        ignoreLineEndings = true;
+        continue;
+    }
+
+    if (string.Equals(argument, "--target", StringComparison.Ordinal))
+    {
+        if (i + 1 >= args.Length)
+        {
+            Console.Error.WriteLine("Missing value for --target option.");
+            Environment.Exit(1);
+        }
+
+        explicitTargetRoot = Path.GetFullPath(args[++i]);
+        continue;
+    }
+
+    patchFileArguments.Add(argument);
+}
+
+if (patchFileArguments.Count == 0)
+{
+    PrintUsage();
     Environment.Exit(1);
 }
+
+string targetRoot;
+
+if (explicitTargetRoot is not null)
+{
+    targetRoot = explicitTargetRoot;
+}
+else if (patchFileArguments.Count > 1)
+{
+    var potentialTarget = patchFileArguments[^1];
+
+    if (Directory.Exists(potentialTarget))
+    {
+        targetRoot = Path.GetFullPath(potentialTarget);
+        patchFileArguments.RemoveAt(patchFileArguments.Count - 1);
+    }
+    else
+    {
+        targetRoot = Directory.GetCurrentDirectory();
+    }
+}
+else
+{
+    targetRoot = Directory.GetCurrentDirectory();
+}
+
+if (patchFileArguments.Count == 0)
+{
+    Console.Error.WriteLine("No patch files specified.");
+    Environment.Exit(1);
+}
+
+targetRoot = Path.GetFullPath(targetRoot);
 
 if (!Directory.Exists(targetRoot))
 {
@@ -63,12 +141,57 @@ if (!Directory.Exists(targetRoot))
     Environment.Exit(1);
 }
 
-var patchText = File.ReadAllLines(patchFilePath);
-var parsedFiles = ParsePatch(patchText);
+var patchFilePaths = patchFileArguments.Select(Path.GetFullPath).ToList();
+var applicationOptions = new PatchApplicationOptions(checkOnly, ignoreWhitespace, ignoreLineEndings);
+var patchResults = new List<PatchRunResult>();
 
-foreach (var patchFile in parsedFiles)
+foreach (var patchFilePath in patchFilePaths)
 {
-    ApplyPatch(targetRoot, patchFile);
+    try
+    {
+        if (!File.Exists(patchFilePath))
+        {
+            throw new FileNotFoundException($"Patch file '{patchFilePath}' does not exist.", patchFilePath);
+        }
+
+        var patchText = File.ReadAllLines(patchFilePath);
+        var parsedFiles = ParsePatch(patchText);
+
+        foreach (var patchFile in parsedFiles)
+        {
+            ApplyPatch(targetRoot, patchFile, applicationOptions);
+        }
+
+        patchResults.Add(new PatchRunResult(patchFilePath, true, null));
+
+        if (!applicationOptions.CheckOnly)
+        {
+            TryDeletePatchFile(patchFilePath);
+        }
+    }
+    catch (Exception ex)
+    {
+        patchResults.Add(new PatchRunResult(patchFilePath, false, ex.Message));
+    }
+}
+
+foreach (var result in patchResults)
+{
+    var displayPath = GetDisplayPath(result.PatchFilePath);
+
+    if (result.Success)
+    {
+        Console.WriteLine($"Patch '{displayPath}' applied successfully.");
+    }
+    else
+    {
+        Console.Error.WriteLine($"Patch '{displayPath}' failed: {result.ErrorMessage}");
+    }
+}
+
+if (patchResults.Any(static r => !r.Success))
+{
+    Environment.Exit(1);
 }
 
 static List<PatchFile> ParsePatch(IReadOnlyList<string> lines)
@@ -270,20 +393,20 @@ static (int start, int length) ParseRange(string range)
     return (int.Parse(startText, CultureInfo.InvariantCulture), int.Parse(lengthText, CultureInfo.InvariantCulture));
 }
 
-static void ApplyPatch(string root, PatchFile patchFile)
+static void ApplyPatch(string root, PatchFile patchFile, PatchApplicationOptions options)
 {
     string targetPath = DetermineTargetPath(root, patchFile);
 
     switch (patchFile.Type)
     {
         case PatchFileType.Add:
-            ApplyAdd(targetPath, patchFile);
+            ApplyAdd(targetPath, patchFile, options);
             break;
         case PatchFileType.Delete:
-            ApplyDelete(targetPath, patchFile);
+            ApplyDelete(targetPath, patchFile, options);
             break;
         default:
-            ApplyModify(targetPath, patchFile);
+            ApplyModify(targetPath, patchFile, options);
             break;
     }
 }
@@ -322,7 +445,7 @@ static bool IsDevNull(string? path)
     return path is null || path.Equals("/dev/null", StringComparison.Ordinal);
 }
 
-static void ApplyAdd(string targetPath, PatchFile patchFile)
+static void ApplyAdd(string targetPath, PatchFile patchFile, PatchApplicationOptions options)
 {
     if (File.Exists(targetPath))
     {
@@ -331,15 +454,21 @@ static void ApplyAdd(string targetPath, PatchFile patchFile)
 
     var directory = Path.GetDirectoryName(targetPath);
 
-    if (!string.IsNullOrEmpty(directory))
+    if (!string.IsNullOrEmpty(directory) && !options.CheckOnly)
     {
         Directory.CreateDirectory(directory);
     }
+
+    if (options.CheckOnly)
+    {
+        return;
+    }
+
     var content = BuildContentFromHunks(patchFile.Hunks);
     File.WriteAllText(targetPath, content);
 }
 
-static void ApplyDelete(string targetPath, PatchFile patchFile)
+static void ApplyDelete(string targetPath, PatchFile patchFile, PatchApplicationOptions options)
 {
     if (!File.Exists(targetPath))
     {
@@ -347,11 +476,15 @@ static void ApplyDelete(string targetPath, PatchFile patchFile)
     }
 
     var snapshot = ReadAllLinesPreservingNewlines(targetPath);
-    ApplyHunks(snapshot, patchFile.Hunks);
-    File.Delete(targetPath);
+    ApplyHunks(snapshot, patchFile.Hunks, options);
+
+    if (!options.CheckOnly)
+    {
+        File.Delete(targetPath);
+    }
 }
 
-static void ApplyModify(string targetPath, PatchFile patchFile)
+static void ApplyModify(string targetPath, PatchFile patchFile, PatchApplicationOptions options)
 {
     if (!File.Exists(targetPath))
     {
@@ -359,8 +492,12 @@ static void ApplyModify(string targetPath, PatchFile patchFile)
     }
 
     var snapshot = ReadAllLinesPreservingNewlines(targetPath);
-    ApplyHunks(snapshot, patchFile.Hunks);
-    WriteAllLinesPreservingNewlines(targetPath, snapshot);
+    ApplyHunks(snapshot, patchFile.Hunks, options);
+
+    if (!options.CheckOnly)
+    {
+        WriteAllLinesPreservingNewlines(targetPath, snapshot);
+    }
 }
 
 static string BuildContentFromHunks(List<PatchHunk> hunks)
@@ -388,7 +525,7 @@ static string BuildContentFromHunks(List<PatchHunk> hunks)
     return builder.ToString();
 }
 
-static void ApplyHunks(FileSnapshot snapshot, List<PatchHunk> hunks)
+static void ApplyHunks(FileSnapshot snapshot, List<PatchHunk> hunks, PatchApplicationOptions options)
 {
     var lines = snapshot.Lines;
     int lineOffset = 0;
@@ -397,29 +534,44 @@ static void ApplyHunks(FileSnapshot snapshot, List<PatchHunk> hunks)
     foreach (var hunk in hunks)
     {
         int targetIndex = hunk.OriginalStart - 1 + lineOffset;
+        int relativeLine = 0;
+
+        if (targetIndex < 0)
+        {
+            throw new InvalidOperationException($"Invalid hunk target index computed for original line {hunk.OriginalStart}.");
+        }
 
         foreach (var patchLine in hunk.Lines)
         {
             switch (patchLine)
             {
                 case ContextLine context:
-                    if (targetIndex >= lines.Count || !string.Equals(lines[targetIndex], context.Content, StringComparison.Ordinal))
+                {
+                    if (targetIndex >= lines.Count || !LinesMatch(lines[targetIndex], context.Content, options))
                     {
-                        throw new InvalidOperationException($"Context mismatch applying hunk at line {hunk.OriginalStart}.");
+                        var actual = targetIndex < lines.Count ? lines[targetIndex] : null;
+                        ThrowLineMismatch($"Context mismatch applying hunk starting at original line {hunk.OriginalStart + relativeLine}.", context.Content, actual, options);
                     }
 
                     targetIndex++;
                     trailingNewLineOverride = context.HasTrailingNewLine;
+                    relativeLine++;
                     break;
+                }
                 case RemovedLine removed:
-                    if (targetIndex >= lines.Count || !string.Equals(lines[targetIndex], removed.Content, StringComparison.Ordinal))
+                {
+                    if (targetIndex >= lines.Count || !LinesMatch(lines[targetIndex], removed.Content, options))
                     {
-                        throw new InvalidOperationException($"Removal mismatch applying hunk at line {hunk.OriginalStart}.");
+                        var actual = targetIndex < lines.Count ? lines[targetIndex] : null;
+                        ThrowLineMismatch($"Removal mismatch applying hunk starting at original line {hunk.OriginalStart + relativeLine}.", removed.Content, actual, options);
                     }
 
                     lines.RemoveAt(targetIndex);
                     lineOffset--;
+                    trailingNewLineOverride = removed.HasTrailingNewLine;
+                    relativeLine++;
                     break;
+                }
                 case AddedLine added:
                 {
                     lines.Insert(targetIndex, added.Content);
@@ -470,3 +622,138 @@ static void WriteAllLinesPreservingNewlines(string path, FileSnapshot snapshot)
 
     File.WriteAllText(path, content);
 }
+
+
+static bool LinesMatch(string actual, string expected, PatchApplicationOptions options)
+{
+    if (options.IgnoreLineEndings)
+    {
+        actual = NormalizeLineEndings(actual);
+        expected = NormalizeLineEndings(expected);
+    }
+
+    if (options.IgnoreWhitespace)
+    {
+        actual = NormalizeWhitespace(actual);
+        expected = NormalizeWhitespace(expected);
+    }
+
+    return string.Equals(actual, expected, StringComparison.Ordinal);
+}
+
+static string NormalizeWhitespace(string value)
+{
+    if (value.Length == 0)
+    {
+        return value;
+    }
+
+    var builder = new StringBuilder(value.Length);
+
+    foreach (var ch in value)
+    {
+        if (!char.IsWhiteSpace(ch))
+        {
+            builder.Append(ch);
+        }
+    }
+
+    return builder.ToString();
+}
+
+static string NormalizeLineEndings(string value)
+{
+    if (value.IndexOf('\r', StringComparison.Ordinal) < 0)
+    {
+        return value;
+    }
+
+    return value.Replace("\r", string.Empty, StringComparison.Ordinal);
+}
+
+static string FormatLineForMessage(string line)
+{
+    return '\'' + line
+        .Replace("\\", "\\\\", StringComparison.Ordinal)
+        .Replace("\t", "\\t", StringComparison.Ordinal)
+        .Replace("\r", "\\r", StringComparison.Ordinal)
+        .Replace("\n", "\\n", StringComparison.Ordinal)
+        .Replace("'", "\'", StringComparison.Ordinal) + '\'';
+}
+
+static void ThrowLineMismatch(string message, string expected, string? actual, PatchApplicationOptions options)
+{
+    var builder = new StringBuilder();
+    builder.AppendLine(message);
+    builder.Append("Expected: ").AppendLine(FormatLineForMessage(expected));
+    builder.Append("Actual  : ").AppendLine(actual is null ? "<missing line>" : FormatLineForMessage(actual));
+
+    if (options.IgnoreWhitespace || options.IgnoreLineEndings)
+    {
+        builder.Append("Comparison settings: ");
+
+        if (options.IgnoreWhitespace && options.IgnoreLineEndings)
+        {
+            builder.Append("ignoring whitespace and line endings.");
+        }
+        else if (options.IgnoreWhitespace)
+        {
+            builder.Append("ignoring whitespace.");
+        }
+        else
+        {
+            builder.Append("ignoring line endings.");
+        }
+
+        builder.AppendLine();
+    }
+
+    throw new InvalidOperationException(builder.ToString());
+}
+
+static string GetDisplayPath(string path)
+{
+    try
+    {
+        var current = Directory.GetCurrentDirectory();
+        var relative = Path.GetRelativePath(current, path);
+
+        if (!relative.Contains("..", StringComparison.Ordinal))
+        {
+            return relative;
+        }
+    }
+    catch
+    {
+        return path;
+    }
+
+    return path;
+}
+
+static void TryDeletePatchFile(string patchFilePath)
+{
+    try
+    {
+        if (File.Exists(patchFilePath))
+        {
+            File.Delete(patchFilePath);
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Warning: Failed to remove patch file '{GetDisplayPath(patchFilePath)}': {ex.Message}");
+    }
+}
+
+static void PrintUsage()
+{
+    Console.Error.WriteLine("Usage: dotnet script apply_patch.cs -- [options] <patch-file> [<patch-file> ...] [target-directory]");
+    Console.Error.WriteLine();
+    Console.Error.WriteLine("Options:");
+    Console.Error.WriteLine("  --check                Validate patches without modifying files.");
+    Console.Error.WriteLine("  --ignore-whitespace    Ignore whitespace differences when matching context.");
+    Console.Error.WriteLine("  --ignore-eol           Ignore line-ending differences when matching context.");
+    Console.Error.WriteLine("  --target <directory>   Explicitly set the target directory.");
+}
+
