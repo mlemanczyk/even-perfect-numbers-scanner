@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Numerics;
 using PerfectNumbers.Core;
 
@@ -173,6 +174,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             return false;
         }
 
+        Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? factorCache = null;
         ulong divisor = 3UL;
         while (divisor <= allowedMax)
         {
@@ -183,7 +185,19 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             // TODO: Hoist MontgomeryDivisorData acquisition into the divisor-cycle cache so we reuse the
             // staged ProcessEightBitWindows-ready metadata instead of reloading the slower Montgomery
             // structs for every divisor.
-            ulong divisorCycle = DivisorCycleCache.Shared.GetCycleLength(divisor);
+            ulong divisorCycle;
+            if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
+            {
+                divisorCycle = DivisorCycleCache.Shared.GetCycleLength(divisor);
+            }
+            else
+            {
+                factorCache ??= new Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>(8);
+                if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(divisor, prime, factorCache, out divisorCycle) || divisorCycle == 0UL)
+                {
+                    divisorCycle = DivisorCycleCache.Shared.GetCycleLength(divisor);
+                }
+            }
             if (divisorCycle != 0UL)
             {
                 byte hit = CheckDivisor(prime, divisorCycle, divisorData);
@@ -220,12 +234,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     private static byte CheckDivisor(ulong prime, ulong divisorCycle, in MontgomeryDivisorData divisorData)
     {
-        ulong modulus = divisorData.Modulus;
-        if (modulus <= 1UL || (modulus & 1UL) == 0UL || divisorCycle == 0UL)
-        {
-            return 0;
-        }
-
         ulong residue = prime.Pow2MontgomeryModWithCycle(divisorCycle, divisorData);
         return residue == 1UL ? (byte)1 : (byte)0;
     }
@@ -305,12 +313,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             int length = primes.Length;
             if (length == 0)
             {
-                return;
-            }
-
-            if (divisor <= 1UL || (divisor & 1UL) == 0UL)
-            {
-                hits.Clear();
                 return;
             }
 

@@ -237,6 +237,7 @@ public static class MersenneNumberDivisorByDivisorTester
                                 Span<byte> hitsSpan = default;
                                 int hitIndex = 0;
                                 int index;
+                                Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? factorCache = null;
                                 ulong divisorCycle = 0UL;
 
                                 try
@@ -254,7 +255,6 @@ public static class MersenneNumberDivisorByDivisorTester
                                                 divisor = AcquireNextDivisor(ref nextDivisor, divisorLimit, ref divisorsExhaustedFlag, ref finalDivisorBits, out exhausted, ref localDivisorCursor, ref localDivisorsRemaining);
                                                 if (divisor != 0UL)
                                                 {
-                                                        divisorCycle = DivisorCycleCache.Shared.GetCycleLength(divisor);
 
                                                         activeCount = BuildPrimeBuffer(
                                                                 divisor,
@@ -280,6 +280,19 @@ public static class MersenneNumberDivisorByDivisorTester
                                                         if (activeCount == 0)
                                                         {
                                                                 continue;
+                                                        }
+                                                        divisorCycle = 0UL;
+                                                        if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
+                                                        {
+                                                                divisorCycle = DivisorCycleCache.Shared.GetCycleLength(divisor);
+                                                        }
+                                                        else
+                                                        {
+                                                                factorCache ??= new Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>(16);
+                                                                if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(divisor, primeBuffer[0], factorCache, out divisorCycle) || divisorCycle == 0UL)
+                                                                {
+                                                                        divisorCycle = DivisorCycleCache.Shared.GetCycleLength(divisor);
+                                                                }
                                                         }
 
                                                         hitsSpan = hitsBuffer.AsSpan(0, activeCount);

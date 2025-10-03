@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Numerics;
@@ -371,7 +372,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         }
 
         ulong exponent = exponents[index];
-        hits[index] = exponent.Pow2MontgomeryMod(divisor) == 1UL ? (byte)1 : (byte)0; // TODO: Replace Pow2MontgomeryMod with the ProcessEightBitWindows helper once available so GPU by-divisor scans reuse the benchmarked fast pow2 ladder.
+        hits[index] = exponent.Pow2MontgomeryModWindowed(divisor, keepMontgomery: false) == 1UL ? (byte)1 : (byte)0;
     }
 
     public sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
@@ -384,6 +385,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         private MemoryBuffer1D<ulong, Stride1D.Dense> _resultsBuffer;
         private ulong[] _hostBuffer;
         private int[]? _positionBuffer;
+        private Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? _factorCache;
         private int _capacity;
         private bool _disposed;
 
@@ -403,6 +405,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         internal void Reset()
         {
             _disposed = false;
+            _factorCache?.Clear();
         }
 
         public void CheckDivisor(ulong divisor, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
@@ -428,11 +431,15 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
             if (divisorCycle == 0UL)
             {
-                divisorCycle = DivisorCycleCache.Shared.GetCycleLength(divisor);
-                if (divisorCycle == 0UL)
+                Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry> cache = _factorCache ??= new Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>(16);
+                if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(divisor, primes[0], cache, out divisorCycle) || divisorCycle == 0UL)
                 {
-                    hits.Clear();
-                    return;
+                    divisorCycle = DivisorCycleCache.Shared.GetCycleLength(divisor);
+                    if (divisorCycle == 0UL)
+                    {
+                        hits.Clear();
+                        return;
+                    }
                 }
             }
 
@@ -569,6 +576,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             }
 
             _disposed = true;
+            _factorCache?.Clear();
             _owner._sessionPool.Add(this);
         }
     }
@@ -584,7 +592,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         ulong exponent = exponents[index];
 
-        results[index] = exponent.Pow2MontgomeryModMontgomery(divisor); // TODO: Swap this Montgomery-domain pow2 with the windowed helper slated to replace the slower ladder in Pow2Minus1Mod benchmarks.
+        results[index] = exponent.Pow2MontgomeryModWindowed(divisor, keepMontgomery: true);
     }
 
     public ulong DivisorLimit

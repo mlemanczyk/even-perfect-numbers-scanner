@@ -59,7 +59,7 @@ public class Pow2MontgomeryModBenchmarks
 
         for (int i = 0; i < SampleCount; i++)
         {
-            checksum ^= exponents[i].Pow2MontgomeryMod(divisors[i]);
+            checksum ^= exponents[i].Pow2MontgomeryModWindowed(divisors[i], keepMontgomery: false);
         }
 
         return checksum;
@@ -221,14 +221,20 @@ public class Pow2MontgomeryModBenchmarks
     {
         if (modulus <= 1UL || (modulus & 1UL) == 0UL)
         {
-            return new MontgomeryDivisorData(modulus, 0UL, 0UL, 0UL);
+            return new MontgomeryDivisorData(modulus, 0UL, 0UL, 0UL, 0UL);
         }
+
+        ulong nPrime = ComputeMontgomeryNPrime(modulus);
+        ulong montgomeryOne = ComputeMontgomeryResidue(1UL, modulus);
+        ulong montgomeryTwo = ComputeMontgomeryResidue(2UL, modulus);
+        ulong montgomeryTwoSquared = ULongExtensions.MontgomeryMultiply(montgomeryTwo, montgomeryTwo, modulus, nPrime);
 
         return new MontgomeryDivisorData(
             modulus,
-            ComputeMontgomeryNPrime(modulus),
-            ComputeMontgomeryResidue(1UL, modulus),
-            ComputeMontgomeryResidue(2UL, modulus));
+            nPrime,
+            montgomeryOne,
+            montgomeryTwo,
+            montgomeryTwoSquared);
     }
 
     private static ulong ComputeMontgomeryResidue(ulong value, ulong modulus) => (ulong)((UInt128)value * (UInt128.One << 64) % modulus);
@@ -472,3 +478,4 @@ public class Pow2MontgomeryModBenchmarks
         return (ulong)(product % modulus);
     }
 }
+

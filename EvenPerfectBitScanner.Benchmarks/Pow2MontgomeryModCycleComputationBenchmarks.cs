@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using PerfectNumbers.Core;
@@ -21,20 +22,25 @@ namespace EvenPerfectBitScanner.Benchmarks;
 public class Pow2MontgomeryModCycleComputationBenchmarks
 {
     private const int SampleCount = 256;
-
+    private const ulong OneShiftedLeft63 = 1UL << 63;
+    private const long OneShiftedLeft60 = 1L << 60;
     private readonly MontgomeryDivisorData[] _smallDivisors = new MontgomeryDivisorData[SampleCount];
     private readonly MontgomeryDivisorData[] _largeDivisors = new MontgomeryDivisorData[SampleCount];
+    // private readonly MontgomeryDivisorData[] _veryLargeDivisors = new MontgomeryDivisorData[SampleCount];
     private readonly ulong[] _smallExponents = new ulong[SampleCount];
     private readonly ulong[] _largeExponents = new ulong[SampleCount];
+    // private readonly ulong[] _veryLargeExponents = new ulong[SampleCount];
     private readonly ulong[] _smallCycles = new ulong[SampleCount];
     private readonly ulong[] _largeCycles = new ulong[SampleCount];
+    // private readonly ulong[] _veryLargeCycles = new ulong[SampleCount];
 
     private readonly Random _random = new(113);
 
     public enum InputScale
     {
         Small,
-        Large
+        Large,
+        // VeryLarge
     }
 
     [ParamsAllValues]
@@ -45,6 +51,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
     {
         for (int i = 0; i < SampleCount; i++)
         {
+            Console.WriteLine($"Generating sample {i}");
             ulong smallModulus = NextSmallOddModulus();
             _smallDivisors[i] = CreateMontgomeryDivisorData(smallModulus);
             _smallExponents[i] = NextSmallExponent();
@@ -54,6 +61,12 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
             _largeDivisors[i] = CreateMontgomeryDivisorData(largeModulus);
             _largeExponents[i] = NextLargeExponent();
             _largeCycles[i] = largeCycle;
+
+            // ulong veryLargeModulus = NextVeryLargeOddModulus();
+            // _veryLargeDivisors[i] = CreateMontgomeryDivisorData(veryLargeModulus);
+            // _veryLargeExponents[i] = NextVeryLargeExponent();
+            // Console.WriteLine($"Calculating cycle length {veryLargeModulus}");
+            // _veryLargeCycles[i] = MersenneDivisorCycles.CalculateCycleLengthGpu(veryLargeModulus);
         }
     }
 
@@ -69,7 +82,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 
         for (int i = 0; i < SampleCount; i++)
         {
-            checksum ^= exponents[i].Pow2MontgomeryMod(divisors[i]);
+            checksum ^= exponents[i].Pow2MontgomeryModWindowed(divisors[i], keepMontgomery: false);
         }
 
         return checksum;
@@ -114,23 +127,39 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 
     private void GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out ulong[] cycles)
     {
-        if (Scale == InputScale.Small)
+        switch (Scale)
         {
-            exponents = _smallExponents;
-            divisors = _smallDivisors;
-            cycles = _smallCycles;
-        }
-        else
-        {
-            exponents = _largeExponents;
-            divisors = _largeDivisors;
-            cycles = _largeCycles;
+            case InputScale.Small:
+                exponents = _smallExponents;
+                divisors = _smallDivisors;
+                cycles = _smallCycles;
+                break;
+            case InputScale.Large:
+                exponents = _largeExponents;
+                divisors = _largeDivisors;
+                cycles = _largeCycles;
+                break;
+            // case InputScale.VeryLarge:
+            //     exponents = _veryLargeExponents;
+            //     divisors = _veryLargeDivisors;
+            //     cycles = _veryLargeCycles;
+            //     break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(Scale), Scale, null);
         }
     }
 
     private ulong NextSmallExponent() => (ulong)_random.NextInt64(1L, 1_000_000L);
 
-    private ulong NextLargeExponent() => (ulong)_random.NextInt64(1L << 60, long.MaxValue);
+    private ulong NextLargeExponent() => (ulong)_random.NextInt64(OneShiftedLeft60, long.MaxValue);
+
+    private ulong NextVeryLargeExponent()
+    {
+        Span<byte> buffer = stackalloc byte[8];
+        _random.NextBytes(buffer);
+        ulong value = checked(BinaryPrimitives.ReadUInt64LittleEndian(buffer) | OneShiftedLeft63);
+        return value;
+    }
 
     private ulong NextSmallOddModulus()
     {
@@ -145,18 +174,32 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
         return (modulus, (ulong)bitLength);
     }
 
+    private ulong NextVeryLargeOddModulus()
+    {
+        Span<byte> buffer = stackalloc byte[8];
+        _random.NextBytes(buffer);
+        ulong value = BinaryPrimitives.ReadUInt64LittleEndian(buffer) | OneShiftedLeft63 | 1UL;
+        return value;
+    }
+
     private static MontgomeryDivisorData CreateMontgomeryDivisorData(ulong modulus)
     {
         if (modulus <= 1UL || (modulus & 1UL) == 0UL)
         {
-            return new MontgomeryDivisorData(modulus, 0UL, 0UL, 0UL);
+            return new MontgomeryDivisorData(modulus, 0UL, 0UL, 0UL, 0UL);
         }
+
+        ulong nPrime = ComputeMontgomeryNPrime(modulus);
+        ulong montgomeryOne = ComputeMontgomeryResidue(1UL, modulus);
+        ulong montgomeryTwo = ComputeMontgomeryResidue(2UL, modulus);
+        ulong montgomeryTwoSquared = ULongExtensions.MontgomeryMultiply(montgomeryTwo, montgomeryTwo, modulus, nPrime);
 
         return new MontgomeryDivisorData(
             modulus,
-            ComputeMontgomeryNPrime(modulus),
-            ComputeMontgomeryResidue(1UL, modulus),
-            ComputeMontgomeryResidue(2UL, modulus));
+            nPrime,
+            montgomeryOne,
+            montgomeryTwo,
+            montgomeryTwoSquared);
     }
 
     private static ulong ComputeMontgomeryResidue(ulong value, ulong modulus) => (ulong)((UInt128)value * (UInt128.One << 64) % modulus);

@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -14,6 +15,10 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     private const int NativeModuloBitMaskTableSize = 1024;
     private const ulong NativeModuloChunkMask = (1UL << NativeModuloChunkBits) - 1UL;
     private static readonly ulong[] NativeModuloBitMasks = CreateNativeModuloBitMasks();
+
+    private const int Pow2WindowSizeBits = 8;
+    private const int Pow2WindowOddPowerCount = 1 << (Pow2WindowSizeBits - 1);
+    private const int Pow2WindowMaxExponent = (1 << Pow2WindowSizeBits) - 1;
 
     public static readonly GpuUInt128 Zero = new();
     public static readonly GpuUInt128 One = new(1UL);
@@ -256,122 +261,24 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             return Zero;
         }
 
-        // TODO: Replace this single-bit ladder with the ProcessEightBitWindows strategy measured
-        // in GpuPow2ModBenchmarks once the GPU kernels can share the windowed helper. The windowed
-        // version held 21.5 µs for 33-bit moduli versus 51.0 µs here when scanning large divisors.
-        GpuUInt128 result = Zero;
-        ulong i = 0UL;
-        while (i < exponent)
+        GpuUInt128 pow = Pow2Mod(exponent, modulus);
+        if (pow.IsZero)
         {
-            // result = (result * 2) % modulus
-            result += result;
-            if (result.CompareTo(modulus) >= 0)
-            {
-                result -= modulus;
-            }
-
-            // result = (result + 1) % modulus
-            result += One;
-            if (result.CompareTo(modulus) >= 0)
-            {
-                result -= modulus;
-            }
-
-            i++;
+            pow = modulus;
         }
 
-        return result;
+        pow.Sub(One);
+        return pow;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Pow2Minus1ModBatch(GpuUInt128 modulus, ReadOnlySpan<ulong> exponents, Span<GpuUInt128> results)
     {
-        GpuUInt128 r0 = Zero, r1 = Zero, r2 = Zero, r3 = Zero, r4 = Zero, r5 = Zero, r6 = Zero, r7 = Zero;
-        ulong e0 = 0UL, e1 = 0UL, e2 = 0UL, e3 = 0UL, e4 = 0UL, e5 = 0UL, e6 = 0UL, e7 = 0UL;
-        bool a0 = false, a1 = false, a2 = false, a3 = false, a4 = false, a5 = false, a6 = false, a7 = false;
-
-        // TODO: Mirror the eight-bit window batching once the scalar helper above switches; the
-        // current bit-serial loop lags by ~3× on 8k–33-bit moduli compared to the windowed path.
-        int len = exponents.Length;
-        if (len > 0) { e0 = exponents[0]; a0 = true; }
-        if (len > 1) { e1 = exponents[1]; a1 = true; }
-        if (len > 2) { e2 = exponents[2]; a2 = true; }
-        if (len > 3) { e3 = exponents[3]; a3 = true; }
-        if (len > 4) { e4 = exponents[4]; a4 = true; }
-        if (len > 5) { e5 = exponents[5]; a5 = true; }
-        if (len > 6) { e6 = exponents[6]; a6 = true; }
-        if (len > 7) { e7 = exponents[7]; a7 = true; }
-
-        ulong max = 0UL;
-        if (a0 && e0 > max) max = e0;
-        if (a1 && e1 > max) max = e1;
-        if (a2 && e2 > max) max = e2;
-        if (a3 && e3 > max) max = e3;
-        if (a4 && e4 > max) max = e4;
-        if (a5 && e5 > max) max = e5;
-        if (a6 && e6 > max) max = e6;
-        if (a7 && e7 > max) max = e7;
-
-        for (ulong i = 0UL; i < max; i++)
+        int count = exponents.Length;
+        for (int i = 0; i < count; i++)
         {
-            if (a0)
-            {
-                r0 += r0; if (r0.CompareTo(modulus) >= 0) r0 -= modulus;
-                r0 += One; if (r0.CompareTo(modulus) >= 0) r0 -= modulus;
-                if (i + 1UL == e0) a0 = false;
-            }
-            if (a1)
-            {
-                r1 += r1; if (r1.CompareTo(modulus) >= 0) r1 -= modulus;
-                r1 += One; if (r1.CompareTo(modulus) >= 0) r1 -= modulus;
-                if (i + 1UL == e1) a1 = false;
-            }
-            if (a2)
-            {
-                r2 += r2; if (r2.CompareTo(modulus) >= 0) r2 -= modulus;
-                r2 += One; if (r2.CompareTo(modulus) >= 0) r2 -= modulus;
-                if (i + 1UL == e2) a2 = false;
-            }
-            if (a3)
-            {
-                r3 += r3; if (r3.CompareTo(modulus) >= 0) r3 -= modulus;
-                r3 += One; if (r3.CompareTo(modulus) >= 0) r3 -= modulus;
-                if (i + 1UL == e3) a3 = false;
-            }
-            if (a4)
-            {
-                r4 += r4; if (r4.CompareTo(modulus) >= 0) r4 -= modulus;
-                r4 += One; if (r4.CompareTo(modulus) >= 0) r4 -= modulus;
-                if (i + 1UL == e4) a4 = false;
-            }
-            if (a5)
-            {
-                r5 += r5; if (r5.CompareTo(modulus) >= 0) r5 -= modulus;
-                r5 += One; if (r5.CompareTo(modulus) >= 0) r5 -= modulus;
-                if (i + 1UL == e5) a5 = false;
-            }
-            if (a6)
-            {
-                r6 += r6; if (r6.CompareTo(modulus) >= 0) r6 -= modulus;
-                r6 += One; if (r6.CompareTo(modulus) >= 0) r6 -= modulus;
-                if (i + 1UL == e6) a6 = false;
-            }
-            if (a7)
-            {
-                r7 += r7; if (r7.CompareTo(modulus) >= 0) r7 -= modulus;
-                r7 += One; if (r7.CompareTo(modulus) >= 0) r7 -= modulus;
-                if (i + 1UL == e7) a7 = false;
-            }
+            results[i] = Pow2Minus1Mod(exponents[i], modulus);
         }
-
-        if (len > 0) results[0] = r0;
-        if (len > 1) results[1] = r1;
-        if (len > 2) results[2] = r2;
-        if (len > 3) results[3] = r3;
-        if (len > 4) results[4] = r4;
-        if (len > 5) results[5] = r5;
-        if (len > 6) results[6] = r6;
-        if (len > 7) results[7] = r7;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -483,7 +390,6 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         }
     }
 
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GpuUInt128 Pow2Mod(ulong exponent, GpuUInt128 modulus)
     {
@@ -492,36 +398,71 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             return new();
         }
 
-        const int WindowSizeBits = 8;
-        const ulong WindowMask = (1UL << WindowSizeBits) - 1UL;
-
-        GpuUInt128 result = new(1UL);
-        GpuUInt128 baseVal = new(2UL);
-
-        ulong e = exponent;
-        while (e != 0UL)
+        if (exponent == 0UL)
         {
-            int remainingBits = BitOperations.Log2(e) + 1;
-            int bitsToProcess = remainingBits >= WindowSizeBits ? WindowSizeBits : remainingBits;
-            ulong chunk = e & (WindowMask >> (WindowSizeBits - bitsToProcess));
+            return new GpuUInt128(1UL);
+        }
 
-            for (int bitIndex = 0; bitIndex < bitsToProcess; bitIndex++)
+        Span<GpuUInt128> oddPowers = stackalloc GpuUInt128[Pow2WindowOddPowerCount];
+        GpuUInt128 power = new GpuUInt128(1UL);
+        int oddIndex = 0;
+
+        for (int bit = 1; bit <= Pow2WindowMaxExponent; bit++)
+        {
+            power += power;
+            if (power.CompareTo(modulus) >= 0)
             {
-                if ((chunk & 1UL) != 0UL)
-                {
-                    result.MulMod(baseVal, modulus);
-                }
-
-                baseVal.MulMod(baseVal, modulus);
-                chunk >>= 1;
+                power.Sub(modulus);
             }
 
-            e >>= bitsToProcess;
+            if ((bit & 1) != 0)
+            {
+                oddPowers[oddIndex++] = power;
+            }
+        }
+
+        GpuUInt128 result = new GpuUInt128(1UL);
+        int bitLength = BitOperations.Log2(exponent) + 1;
+        int index = bitLength - 1;
+
+        while (index >= 0)
+        {
+            if (((exponent >> index) & 1UL) == 0UL)
+            {
+                result.SquareMod(modulus);
+                index--;
+                continue;
+            }
+
+            int windowStart = index - Pow2WindowSizeBits + 1;
+            if (windowStart < 0)
+            {
+                windowStart = 0;
+            }
+
+            while (((exponent >> windowStart) & 1UL) == 0UL)
+            {
+                windowStart++;
+            }
+
+            int windowBitCount = index - windowStart + 1;
+            for (int square = 0; square < windowBitCount; square++)
+            {
+                result.SquareMod(modulus);
+            }
+
+            ulong mask = (1UL << windowBitCount) - 1UL;
+            ulong windowValue = (exponent >> windowStart) & mask;
+            int tableIndex = (int)((windowValue - 1UL) >> 1);
+
+            GpuUInt128 factor = oddPowers[tableIndex];
+            result.MulMod(factor, modulus);
+
+            index = windowStart - 1;
         }
 
         return result;
     }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int TrailingZeroCount(GpuUInt128 value)
     {
@@ -1257,7 +1198,6 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         // p3 = hHH + c2
         p3 = hHH + c2;
     }
-
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong MulMod64(ulong a, ulong b, ulong modulus)

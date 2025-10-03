@@ -1,9 +1,14 @@
 using System.Buffers;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using PerfectNumbers.Core.Gpu;
 using ILGPU;
 using ILGPU.Runtime;
-using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core;
 
@@ -145,6 +150,342 @@ public class MersenneDivisorCycles
 
 		return order;
 	}
+
+    public static bool TryCalculateCycleLengthForExponent(
+        ulong divisor,
+        ulong exponent,
+        Dictionary<ulong, FactorCacheEntry>? factorCache,
+        out ulong cycleLength)
+    {
+        cycleLength = 0UL;
+
+        if ((divisor & (divisor - 1UL)) == 0UL)
+        {
+            cycleLength = 1UL;
+            return true;
+        }
+
+        if (divisor <= 3UL || exponent <= 1UL)
+        {
+            cycleLength = CalculateCycleLength(divisor);
+            return true;
+        }
+
+        ulong phi = divisor - 1UL;
+        if (phi == 0UL)
+        {
+            return false;
+        }
+
+        int twoCount = BitOperations.TrailingZeroCount(phi);
+        ulong reducedPhi = phi >> twoCount;
+        if (reducedPhi == 0UL || (reducedPhi % exponent) != 0UL)
+        {
+            return false;
+        }
+
+        ulong k = reducedPhi / exponent;
+        if (k == 0UL)
+        {
+            return false;
+        }
+
+        Dictionary<ulong, int> factorCounts = new(8);
+        if (twoCount > 0)
+        {
+            factorCounts[2UL] = twoCount;
+        }
+
+        if (!AccumulateFactors(exponent, factorCache, factorCounts) || !AccumulateFactors(k, factorCache, factorCounts))
+        {
+            return false;
+        }
+
+        cycleLength = ReduceOrder(divisor, phi, factorCounts);
+        return true;
+    }
+
+    private static bool AccumulateFactors(
+        ulong value,
+        Dictionary<ulong, FactorCacheEntry>? cache,
+        Dictionary<ulong, int> counts)
+    {
+        if (value <= 1UL)
+        {
+            return true;
+        }
+
+        if (!TryGetFactorization(value, cache, out FactorCacheEntry factorization))
+        {
+            return false;
+        }
+
+        ulong[] primes = factorization.Primes;
+        byte[] exponents = factorization.Exponents;
+        int length = factorization.Count;
+
+        for (int i = 0; i < length; i++)
+        {
+            AddFactor(counts, primes[i], exponents[i]);
+        }
+
+        return true;
+    }
+
+    private static bool TryGetFactorization(
+        ulong value,
+        Dictionary<ulong, FactorCacheEntry>? cache,
+        out FactorCacheEntry factorization)
+    {
+        if (cache is not null && cache.TryGetValue(value, out factorization))
+        {
+            return true;
+        }
+
+        Dictionary<ulong, int> scratch = new(8);
+        if (!TryFactorIntoCountsInternal(value, scratch))
+        {
+            factorization = default!;
+            return false;
+        }
+
+        int count = scratch.Count;
+        ulong[] primes = new ulong[count];
+        byte[] exponents = new byte[count];
+        int index = 0;
+        foreach (KeyValuePair<ulong, int> entry in scratch)
+        {
+            primes[index] = entry.Key;
+            exponents[index] = checked((byte)entry.Value);
+            index++;
+        }
+
+        Array.Sort(primes, exponents);
+        factorization = new FactorCacheEntry(primes, exponents, count);
+
+        if (cache is not null)
+        {
+            cache[value] = factorization;
+        }
+
+        return true;
+    }
+
+    private static bool TryFactorIntoCountsInternal(ulong value, Dictionary<ulong, int> counts)
+    {
+        if (value <= 1UL)
+        {
+            return true;
+        }
+
+        ulong remaining = value;
+        uint[] smallPrimes = PrimesGenerator.SmallPrimes;
+        ulong[] smallPrimesSquared = PrimesGenerator.SmallPrimesPow2;
+        int smallLength = smallPrimes.Length;
+
+        for (int i = 0; i < smallLength; i++)
+        {
+            ulong prime = smallPrimes[i];
+            if (smallPrimesSquared[i] > remaining)
+            {
+                break;
+            }
+
+            while ((remaining % prime) == 0UL)
+            {
+                AddFactor(counts, prime);
+                remaining /= prime;
+            }
+        }
+
+        if (remaining == 1UL)
+        {
+            return true;
+        }
+
+        if (PrimeTester.IsPrimeInternal(remaining, CancellationToken.None))
+        {
+            AddFactor(counts, remaining);
+            return true;
+        }
+
+        ulong factor = PollardRho64(remaining);
+        if (factor == 0UL || factor == remaining)
+        {
+            return false;
+        }
+
+        ulong quotient = remaining / factor;
+        return TryFactorIntoCountsInternal(factor, counts) && TryFactorIntoCountsInternal(quotient, counts);
+    }
+
+    private static void AddFactor(Dictionary<ulong, int> counts, ulong factor)
+    {
+        if (counts.TryGetValue(factor, out int existing))
+        {
+            counts[factor] = existing + 1;
+        }
+        else
+        {
+            counts[factor] = 1;
+        }
+    }
+
+    private static void AddFactor(Dictionary<ulong, int> counts, ulong factor, int multiplicity)
+    {
+        if (counts.TryGetValue(factor, out int existing))
+        {
+            counts[factor] = existing + multiplicity;
+        }
+        else
+        {
+            counts[factor] = multiplicity;
+        }
+    }
+
+    private static ulong ReduceOrder(ulong divisor, ulong initialOrder, Dictionary<ulong, int> factorCounts)
+    {
+        if (factorCounts.Count == 0)
+        {
+            return initialOrder;
+        }
+
+        MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(divisor);
+        int count = factorCounts.Count;
+        ulong[] primes = ArrayPool<ulong>.Shared.Rent(count);
+        try
+        {
+            int index = 0;
+            foreach (KeyValuePair<ulong, int> entry in factorCounts)
+            {
+                primes[index] = entry.Key;
+                index++;
+            }
+
+            Array.Sort(primes, 0, count);
+
+            ulong order = initialOrder;
+            for (int i = 0; i < count; i++)
+            {
+                ulong prime = primes[i];
+                int multiplicity = factorCounts[prime];
+
+                for (int iteration = 0; iteration < multiplicity; iteration++)
+                {
+                    if (order % prime != 0UL)
+                    {
+                        break;
+                    }
+
+                    ulong candidate = order / prime;
+                    if (candidate.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL)
+                    {
+                        order = candidate;
+                        continue;
+                    }
+
+                    break;
+                }
+            }
+
+            return order;
+        }
+        finally
+        {
+            ArrayPool<ulong>.Shared.Return(primes, clearArray: false);
+        }
+    }
+
+    private static ulong PollardRho64(ulong n)
+    {
+        if ((n & 1UL) == 0UL)
+        {
+            return 2UL;
+        }
+
+        while (true)
+        {
+            ulong c = (NextRandomUInt64() % (n - 1UL)) + 1UL;
+            ulong x = (NextRandomUInt64() % (n - 2UL)) + 2UL;
+            ulong y = x;
+            ulong d = 1UL;
+
+            while (d == 1UL)
+            {
+                x = AdvancePolynomial(x, c, n);
+                y = AdvancePolynomial(y, c, n);
+                y = AdvancePolynomial(y, c, n);
+
+                ulong diff = x > y ? x - y : y - x;
+                d = BinaryGcd(diff, n);
+            }
+
+            if (d != n)
+            {
+                return d;
+            }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong AdvancePolynomial(ulong x, ulong c, ulong modulus)
+    {
+        UInt128 value = (UInt128)x * x + c;
+        return (ulong)(value % modulus);
+    }
+
+    private static ulong BinaryGcd(ulong a, ulong b)
+    {
+        if (a == 0UL)
+        {
+            return b;
+        }
+
+        if (b == 0UL)
+        {
+            return a;
+        }
+
+        int shift = BitOperations.TrailingZeroCount(a | b);
+        a >>= BitOperations.TrailingZeroCount(a);
+
+        while (true)
+        {
+            b >>= BitOperations.TrailingZeroCount(b);
+            if (a > b)
+            {
+                (a, b) = (b, a);
+            }
+
+            b -= a;
+            if (b == 0UL)
+            {
+                return a << shift;
+            }
+        }
+    }
+
+    private static ulong NextRandomUInt64()
+    {
+        Span<byte> buffer = stackalloc byte[8];
+        RandomNumberGenerator.Fill(buffer);
+        return BinaryPrimitives.ReadUInt64LittleEndian(buffer);
+    }
+
+    public readonly struct FactorCacheEntry
+    {
+        public FactorCacheEntry(ulong[] primes, byte[] exponents, int count)
+        {
+            Primes = primes;
+            Exponents = exponents;
+            Count = count;
+        }
+        public ulong[] Primes { get; }
+
+        public byte[] Exponents { get; }
+
+        public int Count { get; }
+    }
 
 	public static (long nextPosition, long completeCount) FindLast(string path)
 	{

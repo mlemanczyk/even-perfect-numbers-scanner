@@ -4,42 +4,42 @@ using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core;
 
-public readonly struct MontgomeryDivisorData(ulong modulus, ulong nPrime, ulong montgomeryOne, ulong montgomeryTwo)
+public readonly struct MontgomeryDivisorData(ulong modulus, ulong nPrime, ulong montgomeryOne, ulong montgomeryTwo, ulong montgomeryTwoSquared)
 {
-    public ulong Modulus { get; } = modulus;
+    public readonly ulong Modulus = modulus;
 
-    public ulong NPrime { get; } = nPrime;
+    public readonly ulong NPrime = nPrime;
 
-    public ulong MontgomeryOne { get; } = montgomeryOne;
+    public readonly ulong MontgomeryOne = montgomeryOne;
 
-    public ulong MontgomeryTwo { get; } = montgomeryTwo;
+    public readonly ulong MontgomeryTwo = montgomeryTwo;
+    public readonly ulong MontgomeryTwoSquared = montgomeryTwoSquared;
 }
 
 internal static class MontgomeryDivisorDataCache
 {
     private static readonly ConcurrentDictionary<ulong, MontgomeryDivisorData> Cache = new();
 
-    public static MontgomeryDivisorData Get(ulong modulus)
-    {
-        if (modulus <= 1UL || (modulus & 1UL) == 0UL)
-        {
-            return new MontgomeryDivisorData(modulus, 0UL, 0UL, 0UL);
-        }
-
-        return Cache.GetOrAdd(modulus, static m => Create(m));
-    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static MontgomeryDivisorData Get(ulong modulus) => Cache.GetOrAdd(modulus, static m => Create(m));
 
     private static MontgomeryDivisorData Create(ulong modulus)
     {
+        ulong nPrime = ComputeMontgomeryNPrime(modulus);
+        ulong montgomeryOne = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64, modulus);
+        ulong montgomeryTwo = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64x2, modulus);
+        ulong montgomeryTwoSquared = ULongExtensions.MontgomeryMultiply(montgomeryTwo, montgomeryTwo, modulus, nPrime);
+
         return new MontgomeryDivisorData(
             modulus,
-            ComputeMontgomeryNPrime(modulus),
-            ComputeMontgomeryResidue(1UL, modulus),
-            ComputeMontgomeryResidue(2UL, modulus));
+            nPrime,
+            montgomeryOne,
+            montgomeryTwo,
+            montgomeryTwoSquared);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ComputeMontgomeryResidue(ulong value, ulong modulus) => (ulong)((UInt128)value * (UInt128.One << 64) % modulus);
+    private static ulong ComputeMontgomeryResidue(UInt128 value, ulong modulus) => (ulong)(value % modulus);
 
     private static ulong ComputeMontgomeryNPrime(ulong modulus)
     {

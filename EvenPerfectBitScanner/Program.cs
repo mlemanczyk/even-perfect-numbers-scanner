@@ -128,7 +128,7 @@ internal static class Program
                 mersenneOption = arg.AsSpan(arg.IndexOf('=') + 1);
                 if (mersenneOption.Equals("pow2mod", StringComparison.OrdinalIgnoreCase))
                 {
-                    kernelType = GpuKernelType.Pow2Mod; // TODO: Switch this mode to the ProcessEightBitWindows kernel once Pow2Minus1Mod adopts the benchmarked faster windowed ladder.
+                    kernelType = GpuKernelType.Pow2Mod; // Dispatch to the ProcessEightBitWindows pow2mod kernel.
                 }
                 else if (mersenneOption.Equals("lucas", StringComparison.OrdinalIgnoreCase))
                 {
@@ -485,7 +485,7 @@ internal static class Program
         {
             MersenneTesters = new ThreadLocal<MersenneNumberTester>(() =>
             {
-                // TODO: Swap the underlying pow2mod kernels to ProcessEightBitWindows once Pow2Minus1Mod migrates to the windowed helper highlighted in GpuPow2ModBenchmarks.
+                // ProcessEightBitWindows windowed pow2 ladder is the default kernel.
                 var tester = new MersenneNumberTester(
                                             useIncremental: !useLucas,
                                             useOrderCache: false,
@@ -1362,7 +1362,7 @@ internal static class Program
         searchedMersenne = true;
         if (_useByDivisorMode)
         {
-            // TODO: Route by-divisor scans through the ProcessEightBitWindows pow2mod kernel once the windowed Pow2Minus1Mod helper replaces the slower single-bit ladder.
+            // Windowed pow2mod kernel handles by-divisor scans.
             return _byDivisorTester!.IsPrime(p, out detailedCheck);
         }
 

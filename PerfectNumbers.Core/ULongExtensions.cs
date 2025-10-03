@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Gpu;
@@ -6,6 +7,8 @@ namespace PerfectNumbers.Core;
 
 public static class ULongExtensions
 {
+    private const int Pow2WindowSize = 8;
+    private const ulong Pow2WindowFallbackThreshold = 32UL;
     public static ulong CalculateOrder(this ulong q)
     {
         if (q <= 2UL)
@@ -293,25 +296,85 @@ public static class ULongExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong Pow2MontgomeryMod(this ulong exponent, in MontgomeryDivisorData divisor)
+    public static ulong Pow2MontgomeryModWindowed(this ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
     {
         ulong modulus = divisor.Modulus;
-        if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+        if (exponent == 0UL)
         {
-            return 0UL;
+            return keepMontgomery ? divisor.MontgomeryOne : 1UL % modulus;
         }
 
+        if (exponent <= Pow2WindowFallbackThreshold)
+        {
+            return Pow2MontgomeryModSingleBit(exponent, divisor, keepMontgomery);
+        }
+
+        int bitLength = BitOperations.Log2(exponent) + 1;
+        int windowSize = GetWindowSize(bitLength);
+        int oddPowerCount = 1 << (windowSize - 1);
+
+        ulong result = divisor.MontgomeryOne;
+        ulong nPrime = divisor.NPrime;
+        Span<ulong> oddPowers = stackalloc ulong[oddPowerCount];
+        InitializeMontgomeryOddPowers(divisor, modulus, nPrime, oddPowers);
+
+        int index = bitLength - 1;
+        while (index >= 0)
+        {
+            if (((exponent >> index) & 1UL) == 0UL)
+            {
+                result = result.MontgomeryMultiply(result, modulus, nPrime);
+                index--;
+                continue;
+            }
+
+            int windowStart = index - windowSize + 1;
+            if (windowStart < 0)
+            {
+                windowStart = 0;
+            }
+
+            while (((exponent >> windowStart) & 1UL) == 0UL)
+            {
+                windowStart++;
+            }
+
+            int windowLength = index - windowStart + 1;
+            for (int square = 0; square < windowLength; square++)
+            {
+                result = result.MontgomeryMultiply(result, modulus, nPrime);
+            }
+
+            ulong mask = (1UL << windowLength) - 1UL;
+            ulong windowValue = (exponent >> windowStart) & mask;
+            int tableIndex = (int)((windowValue - 1UL) >> 1);
+            ulong multiplier = oddPowers[tableIndex];
+            result = result.MontgomeryMultiply(multiplier, modulus, nPrime);
+
+            index = windowStart - 1;
+        }
+
+        if (keepMontgomery)
+        {
+            return result;
+        }
+
+        return result.MontgomeryMultiply(1UL, modulus, nPrime);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong Pow2MontgomeryModSingleBit(ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
+    {
+        ulong modulus = divisor.Modulus;
+        ulong nPrime = divisor.NPrime;
         ulong result = divisor.MontgomeryOne;
         ulong baseVal = divisor.MontgomeryTwo;
-        ulong nPrime = divisor.NPrime;
         ulong remainingExponent = exponent;
 
-        while (remainingExponent > 0UL)
+        while (remainingExponent != 0UL)
         {
             if ((remainingExponent & 1UL) != 0UL)
             {
-                // TODO: Switch to the ProcessEightBitWindows helper once the scalar implementation ships so CPU callers
-                // inherit the same 2× speedup that the benchmarked windowed ladder delivered for large exponents.
                 result = result.MontgomeryMultiply(baseVal, modulus, nPrime);
             }
 
@@ -324,68 +387,68 @@ public static class ULongExtensions
             baseVal = baseVal.MontgomeryMultiply(baseVal, modulus, nPrime);
         }
 
-        return result.MontgomeryMultiply(1UL, modulus, nPrime);
+        return keepMontgomery ? result : result.MontgomeryMultiply(1UL, modulus, nPrime);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong Pow2MontgomeryModMontgomery(this ulong exponent, in MontgomeryDivisorData divisor)
+    private static int GetWindowSize(int bitLength)
     {
-        ulong modulus = divisor.Modulus;
-        if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+        if (bitLength <= 6)
         {
-            return 0UL;
+            return Math.Max(bitLength, 1);
         }
 
-        ulong result = divisor.MontgomeryOne;
-        ulong baseVal = divisor.MontgomeryTwo;
-        ulong remainingExponent = exponent;
-
-        while (remainingExponent > 0UL)
+        if (bitLength <= 23)
         {
-            if ((remainingExponent & 1UL) != 0UL)
-            {
-                // TODO: Route this Montgomery-domain variant through the same windowed pow2 helper once available so delta
-                // stepping matches the ProcessEightBitWindows gains highlighted by GpuPow2ModBenchmarks.
-                result = result.MontgomeryMultiply(baseVal, modulus, divisor.NPrime);
-            }
-
-            remainingExponent >>= 1;
-            if (remainingExponent == 0UL)
-            {
-                break;
-            }
-
-            baseVal = baseVal.MontgomeryMultiply(baseVal, modulus, divisor.NPrime);
+            return 4;
         }
 
-        return result;
+        if (bitLength <= 79)
+        {
+            return 5;
+        }
+
+        if (bitLength <= 239)
+        {
+            return 6;
+        }
+
+        if (bitLength <= 671)
+        {
+            return 7;
+        }
+
+        return Pow2WindowSize;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void InitializeMontgomeryOddPowers(in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime, Span<ulong> oddPowers)
+    {
+        oddPowers[0] = divisor.MontgomeryTwo;
+        if (oddPowers.Length == 1)
+        {
+            return;
+        }
+
+        ulong square = divisor.MontgomeryTwoSquared;
+        for (int i = 1; i < oddPowers.Length; i++)
+        {
+            oddPowers[i] = oddPowers[i - 1].MontgomeryMultiply(square, modulus, nPrime);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Pow2MontgomeryModWithCycle(this ulong exponent, ulong cycleLength, in MontgomeryDivisorData divisor)
     {
-        if (cycleLength == 0UL)
-        {
-            return exponent.Pow2MontgomeryMod(divisor);
-        }
-
-        // TODO: Swap this modulo with the divisor-cycle remainder helper from Pow2MontgomeryModCycleComputationBenchmarks so we
-        // advance the exponent using cached cycle deltas instead of paying for a fresh `%` on every query.
         ulong rotationCount = exponent % cycleLength;
-        return rotationCount.Pow2MontgomeryModFromCycleRemainder(divisor);
+        return Pow2MontgomeryModWindowed(rotationCount, divisor, keepMontgomery: false);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Pow2MontgomeryModFromCycleRemainder(this ulong reducedExponent, in MontgomeryDivisorData divisor)
     {
-        if (reducedExponent == 0UL)
-        {
-            return 1UL;
-        }
-
-        return reducedExponent.Pow2MontgomeryMod(divisor);
+        return Pow2MontgomeryModWindowed(reducedExponent, divisor, keepMontgomery: false);
     }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static UInt128 PowMod(this ulong exponent, UInt128 modulus)
     {
