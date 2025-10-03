@@ -1,0 +1,168 @@
+using System.Collections.Generic;
+using FluentAssertions;
+using Xunit;
+
+namespace PerfectNumbers.Core.Tests;
+
+public class PrimeOrderCalculatorTests
+{
+    public static IEnumerable<object[]> SmallPrimes()
+    {
+        yield return new object[] { 3UL };
+        yield return new object[] { 5UL };
+        yield return new object[] { 7UL };
+        yield return new object[] { 11UL };
+        yield return new object[] { 13UL };
+        yield return new object[] { 17UL };
+        yield return new object[] { 19UL };
+        yield return new object[] { 31UL };
+        yield return new object[] { 61UL };
+        yield return new object[] { 89UL };
+        yield return new object[] { 127UL };
+        yield return new object[] { 521UL };
+    }
+
+    public static IEnumerable<object[]> PrimesWithPrevious()
+    {
+        yield return new object[] { 5UL, 3UL };
+        yield return new object[] { 7UL, 5UL };
+        yield return new object[] { 11UL, 7UL };
+        yield return new object[] { 13UL, 11UL };
+        yield return new object[] { 17UL, 13UL };
+        yield return new object[] { 19UL, 17UL };
+        yield return new object[] { 31UL, 29UL };
+        yield return new object[] { 61UL, 59UL };
+        yield return new object[] { 89UL, 83UL };
+        yield return new object[] { 127UL, 113UL };
+        yield return new object[] { 521UL, 509UL };
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [MemberData(nameof(SmallPrimes))]
+    public void Calculate_heuristic_mode_matches_naive_cycle_length(ulong prime)
+    {
+        ulong expected = ComputeOrderByDoubling(prime);
+
+        PrimeOrderCalculator.PrimeOrderResult result = PrimeOrderCalculator.Calculate(
+            prime,
+            previousOrder: null,
+            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+
+        result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
+        result.Order.Should().Be(expected);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [MemberData(nameof(PrimesWithPrevious))]
+    public void Calculate_heuristic_mode_matches_strict_mode_even_with_previous_order(ulong prime, ulong previousPrime)
+    {
+        ulong previousOrder = ComputeOrderByDoubling(previousPrime);
+
+        PrimeOrderCalculator.PrimeOrderResult heuristic = PrimeOrderCalculator.Calculate(
+            prime,
+            previousOrder,
+            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+
+        PrimeOrderCalculator.PrimeOrderResult strict = PrimeOrderCalculator.Calculate(
+            prime,
+            previousOrder: null,
+            PrimeOrderCalculator.PrimeOrderSearchConfig.StrictDefault);
+
+        heuristic.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
+        strict.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
+        heuristic.Order.Should().Be(strict.Order);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(2UL, 1UL)]
+    [InlineData(3UL, 2UL)]
+    public void Calculate_handles_trivial_primes(ulong prime, ulong expectedOrder)
+    {
+        PrimeOrderCalculator.PrimeOrderResult result = PrimeOrderCalculator.Calculate(
+            prime,
+            previousOrder: null,
+            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+
+        result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
+        result.Order.Should().Be(expectedOrder);
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void Calculate_heuristic_mode_returns_unresolved_when_phi_cannot_be_factored()
+    {
+        var config = new PrimeOrderCalculator.PrimeOrderSearchConfig(
+            smallFactorLimit: 1,
+            pollardRhoMilliseconds: 0,
+            maxPowChecks: 8,
+            mode: PrimeOrderCalculator.PrimeOrderMode.Heuristic);
+
+        PrimeOrderCalculator.PrimeOrderResult result = PrimeOrderCalculator.Calculate(
+            prime: 13UL,
+            previousOrder: null,
+            config);
+
+        result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.HeuristicUnresolved);
+        result.Order.Should().Be(ComputeOrderByDoubling(13UL));
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void Calculate_heuristic_mode_attempts_candidates_before_falling_back_to_strict_mode()
+    {
+        var heuristicConfig = new PrimeOrderCalculator.PrimeOrderSearchConfig(
+            smallFactorLimit: 2,
+            pollardRhoMilliseconds: 0,
+            maxPowChecks: 1,
+            mode: PrimeOrderCalculator.PrimeOrderMode.Heuristic);
+
+        PrimeOrderCalculator.PrimeOrderResult heuristic = PrimeOrderCalculator.Calculate(
+            prime: 239UL,
+            previousOrder: null,
+            heuristicConfig);
+
+        heuristic.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.HeuristicUnresolved);
+        heuristic.Order.Should().Be(ComputeOrderByDoubling(239UL));
+
+        var strictConfig = new PrimeOrderCalculator.PrimeOrderSearchConfig(
+            smallFactorLimit: 2,
+            pollardRhoMilliseconds: 0,
+            maxPowChecks: 1,
+            mode: PrimeOrderCalculator.PrimeOrderMode.Strict);
+
+        PrimeOrderCalculator.PrimeOrderResult strict = PrimeOrderCalculator.Calculate(
+            prime: 239UL,
+            previousOrder: null,
+            strictConfig);
+
+        strict.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
+        strict.Order.Should().Be(heuristic.Order);
+    }
+
+    private static ulong ComputeOrderByDoubling(ulong prime)
+    {
+        if (prime == 2UL)
+        {
+            return 1UL;
+        }
+
+        if (prime == 3UL)
+        {
+            return 2UL;
+        }
+
+        ulong order = 1UL;
+        ulong value = 2UL % prime;
+
+        while (value != 1UL)
+        {
+            value = (value * 2UL) % prime;
+            order++;
+        }
+
+        return order;
+    }
+}
