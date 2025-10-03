@@ -31,6 +31,7 @@ It supports the standard `git diff` patch files as input. You should be able to 
 * Keep patch filenames unique and delete applied files to prevent accidental re-use.
 * When a hunk fails, inspect the around-lines immediately and adjust rather than retrying the same diff.
 * Prefer single-purpose patches (one logical change per file) so rollbacks or fixes stay focused.
+* Use `nl -ba` to show line numbers, when needed.
 
 If you want to make any changes, create a patch file and run the script to apply it. Always run it from the root directory and reference any modified files with relative paths respectively in the patch.
 
