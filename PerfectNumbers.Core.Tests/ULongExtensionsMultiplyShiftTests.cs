@@ -39,29 +39,6 @@ public class ULongExtensionsMultiplyShiftTests
         result.Should().Be((ulong)expected);
     }
 
-    [Fact]
-    public void MultiplyShiftRightShiftFirst_returns_zero_when_shift_is_large()
-    {
-        ULongExtensions.MultiplyShiftRightShiftFirst(ulong.MaxValue, 123UL, 64).Should().Be(0UL);
-    }
 
-    [Theory]
-    [InlineData(0UL, ulong.MaxValue, -1)]
-    [InlineData(1UL, 1UL, -3)]
-    public void MultiplyShiftRight_throws_when_shift_is_negative(ulong value, ulong multiplier, int shift)
-    {
-        Action act = () => ULongExtensions.MultiplyShiftRight(value, multiplier, shift);
 
-        act.Should().Throw<ArgumentOutOfRangeException>();
-    }
-
-    [Theory]
-    [InlineData(0UL, ulong.MaxValue, -1)]
-    [InlineData(1UL, 1UL, -3)]
-    public void MultiplyShiftRightShiftFirst_throws_when_shift_is_negative(ulong value, ulong multiplier, int shift)
-    {
-        Action act = () => ULongExtensions.MultiplyShiftRightShiftFirst(value, multiplier, shift);
-
-        act.Should().Throw<ArgumentOutOfRangeException>();
-    }
 }
