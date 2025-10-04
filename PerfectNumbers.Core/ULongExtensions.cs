@@ -57,6 +57,17 @@ public static class ULongExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int GetBitLength(this ulong value)
+    {
+        if (value == 0UL)
+        {
+            return 0;
+        }
+
+        return 64 - BitOperations.LeadingZeroCount(value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong MultiplyShiftRight(ulong value, ulong multiplier, int shift)
     {
         if (shift < 0)

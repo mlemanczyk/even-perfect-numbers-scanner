@@ -691,7 +691,6 @@ internal static partial class PrimeOrderCalculator
 
     private static bool Pow2EqualsOne(ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
     {
-        // TODO: Implement the GPU heuristic path so TryPow2Mod can verify candidates on the device instead of immediately falling back to the CPU Montgomery reducer.
         GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, prime, out ulong remainder);
         if (status == GpuPow2ModStatus.Success)
         {

@@ -35,12 +35,12 @@ public class PrimeOrderGpuHeuristicsTests
     }
 
     [Fact]
-    public void TryPow2Mod_returns_unavailable_for_unmarked_prime()
+    public void TryPow2Mod_returns_success_for_supported_prime()
     {
         GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(1UL, 193UL, out ulong remainder);
 
-        status.Should().Be(GpuPow2ModStatus.Unavailable);
-        remainder.Should().Be(0UL);
+        status.Should().Be(GpuPow2ModStatus.Success);
+        remainder.Should().Be(2UL);
     }
 
     [Fact]
@@ -76,8 +76,8 @@ public class PrimeOrderGpuHeuristicsTests
             remainder.Should().Be(0UL);
 
             GpuPow2ModStatus followUp = PrimeOrderGpuHeuristics.TryPow2Mod(4UL, 193UL, out ulong followUpRemainder);
-            followUp.Should().Be(GpuPow2ModStatus.Unavailable);
-            followUpRemainder.Should().Be(0UL);
+            followUp.Should().Be(GpuPow2ModStatus.Success);
+            followUpRemainder.Should().Be(16UL);
         }
         finally
         {
@@ -108,15 +108,15 @@ public class PrimeOrderGpuHeuristicsTests
     }
 
     [Fact]
-    public void TryPow2ModBatch_returns_unavailable_and_clears_remainders_for_unmarked_prime()
+    public void TryPow2ModBatch_returns_success_for_supported_prime()
     {
         ulong[] remainders = { 123UL, 456UL };
         ulong[] exponents = { 1UL, 2UL };
         GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponents, 257UL, remainders);
 
-        status.Should().Be(GpuPow2ModStatus.Unavailable);
-        remainders[0].Should().Be(0UL);
-        remainders[1].Should().Be(0UL);
+        status.Should().Be(GpuPow2ModStatus.Success);
+        remainders[0].Should().Be(2UL);
+        remainders[1].Should().Be(4UL);
     }
 
     [Fact]
