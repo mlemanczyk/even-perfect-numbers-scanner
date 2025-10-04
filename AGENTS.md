@@ -31,14 +31,23 @@ It supports the standard `git diff` patch files as input. You should be able to 
 * `--ignore-eol`
 * `--ignore-line-endings`
 * `--target` - allows specifying target root directory for the patch
+* `--profile` - capture read/parse/apply timings for each patch file.
+* `--replace-line <path> <line-number> <expected-text> <new-text>` - replace a single line by absolute number (use `_` as the expected text to skip validation)
 
 * Build patches in standard `git diff` format.
     * It supports `---`, `+++`, and `@@`.
     * It doesn't support `***` or `*** Begin/End Patch` wrappers.
     * It requires `diff --git` at the beginning.
     * Patch header needs the actual line numbers.
+    * When hand-writing a diff, always include the numeric ranges in every `@@ -start,count +start,count @@` header; missing or zero counts will cause `--check` to fail immediately.
 * Always check if the patch will work by using `--check` parameter, without making changes to the files, which would force patch changes. Try applying the patch only when `--check` passed.
 * Build patches in small, line-precise hunks; confirm target lines with `Get-Content` or `nl -ba` before writing the diff to avoid context mismatches.
+* Capture the exact start lines for each hunk while drafting the `@@ -start,length +start,length @@` header; double-check them with `nl -ba` so the first verification succeeds.
+* For one-off line edits, prefer the `--replace-line <path> <line-number> <expected-text> <new-text>` option. Pass `_` as the expected text to skip validation when necessary.
+* Before calling `--replace-line`, capture the target number with `nl -ba` (or an equivalent command) so the replacement lands exactly once without retrying.
+* After every successful patch application, regenerate a fresh diff from the updated files before preparing the next patch so the hunk headers and context reflect the latest line numbers.
+* If the patch script flags repeated mismatches, regenerate a fresh diff for the updated file instead of tweaking stale context blocks.
+* When `--check` reveals that only whitespace or EOL normalization differs, rerun it with `--ignore-whitespace` and/or `--ignore-line-endings` so validation concentrates on the meaningful edits.
 * Regenerate the diff whenever the file shifts—never reuse an old hunk after other edits.
 * Keep patch filenames unique and delete applied files to prevent accidental re-use.
 * When a hunk fails, inspect the around-lines immediately and adjust rather than retrying the same diff.
@@ -127,7 +136,46 @@ The following checks were executed with ILGPU 1.5.3 on CPU and OpenCL accelerato
 - [x] `UInt128` bit shifts: attempts failed in kernels; avoid inside device code.
 - [x] GPU context pooling: supported and recommended (validated in a separate program).
 
+Additional numeric-type probe results (`tools/GpuNumericTypeProbe.csx`, ILGPU 1.5.3 on the CPU accelerator):
+
+- `System.Numerics.BigInteger`: unsupported. Kernels that exercise addition, subtraction, multiplication, division, modulo, and `CompareTo` all fail with `InternalCompilerException`, indicating fundamental codegen gaps for the type.
+- `PeterO.Numbers.EInteger`: unsupported. Attempts to compile kernels that call addition, subtraction, multiplication, division, remainder, and `CompareTo` throw `InternalCompilerException`, so none of the arithmetic helpers are currently usable on the device.
+- `PeterO.Numbers.ERational`: unsupported. Kernels that call addition, subtraction, multiplication, division, and `CompareTo` trigger `InternalCompilerException`; the type also lacks a remainder/modulo API for device usage.
+
+Patch-preparation checklist for reliable `--check` runs:
+
+- Always capture context with `nl -ba` before composing each hunk so the `@@` header line numbers match the target file on the first try.
+- Trim or normalize trailing whitespace while drafting the patch, or rely on `--ignore-whitespace` during verification when formatting noise is unavoidable, then re-run without ignores to confirm the final diff matches exactly.
+- Prefer regenerating the patch from scratch whenever the working tree changes instead of editing previous diffs; stale context is the most common source of mismatches.
+
+- The patch parser now ignores blank metadata lines between `diff --git`, `---`, and `+++` headers, so you no longer need to insert dummy empty separators to satisfy the checker. Keep the header compact unless your diff tool emits those blank lines naturally.
+
+### apply_patch.cs profiling snapshot (2025-10-04)
+
+- Latest timing check: `dotnet script apply_patch.cs -- --profile --check /tmp/agents_todo_update.diff`.
+- Patch characteristics: 2 files, 4 hunks, 31 lines, 3468 bytes.
+- Timings: read 0.45 ms, parse 2.96 ms, apply 2.96 ms.
+- Focus next on streaming the patch reader and pooled buffer reuse to reduce the parse APPLY bottleneck highlighted above.
+
+Mersenne divisor size estimates:
+
+- Any prime divisor `q` of a Mersenne number `2^p - 1` must satisfy `q ≡ 1 (mod 2p)`. The minimal `q` therefore appears at `q = 2p + 1` when the multiplier `k = 1` yields a prime.
+- For candidate exponents `p` in the `[138,000,000, 200,000,000]` range, the minimal compliant divisor lands below `2 · 200,000,000 + 1 = 400,000,001`, which fits in 29 bits (`2^29 = 536,870,912`).
+- Extending the search up to `p = 600,000,000` pushes the minimal divisor to `1,200,000,001`, requiring 31 bits (`2^31 = 2,147,483,648`).
+- Larger `k` values (and thus larger `q`) are possible—up to nearly `2^p - 1`—so the heuristics and storage should plan for wider integers when deep trial factoring is necessary, but the noted bit widths cover the first admissible divisors for these exponent bands.
+
+- Because every proper divisor of `2^p - 1` is at most `(2^p - 1) / 2`, the worst-case bit-width for any admissible `q` is `p - 1` bits (since `⌊(2^p - 1) / 2⌋ = 2^{p-1} - 1`). Consequently we need roughly `199,999,999` bits when `p ≤ 200,000,000` and `599,999,999` bits when `p ≤ 600,000,000`. In terms of the `q = 2kp + 1` form, this translates to `k_max = ⌊((2^p - 1) / 2 - 1) / (2p)⌋`, which is approximately `2^{p-2} / p` for large `p`.
+
 Practical guidance:
 - Use native `%` and `/` in kernels when working with 32-bit or 64-bit integers if it is the most efficient option for the target backend.
 - For `UInt128` in kernels, avoid `%`/`/`; implement reductions via Montgomery/Barrett, or use Mersenne-specific folding for mod `2^p-1`.
 - Prefer Mersenne folding over general modulo for `2^p-1` moduli to remove branches in hot loops.
+
+- Heuristic multiply-shift benchmarks (2025-10-04):
+  - Run `dotnet run -c Release --project tools/HeuristicMultiplyShiftTiming/HeuristicMultiplyShiftTiming.csproj` to compare the `HeuristicArithmetic` helpers without the BenchmarkDotNet harness.
+  - Timings below report the average nanoseconds per call over 200,000,000 iterations; all variants produced identical checksums, confirming consistent arithmetic.
+    - `NearOverflowShift`: `MultiplyShiftRight` ≈ 2.37 ns, shift-first ≈ 4.71 ns, naive `(value * multiplier) >> shift` ≈ 0.85 ns.
+    - `HalfRange`: `MultiplyShiftRight` ≈ 2.11 ns, shift-first ≈ 4.15 ns, naive ≈ 0.70 ns.
+    - `MixedBits`: `MultiplyShiftRight` ≈ 1.43 ns, shift-first ≈ 2.83 ns, naive ≈ 0.60 ns.
+    - `Sparse`: `MultiplyShiftRight` ≈ 1.57 ns, shift-first ≈ 2.84 ns, naive ≈ 0.59 ns.
+  - The shift-first rewrite roughly doubles the per-call cost on CPU, but it stays within 64-bit arithmetic and is the preferred fallback for GPU heuristics when avoiding `UInt128` overflow is mandatory.

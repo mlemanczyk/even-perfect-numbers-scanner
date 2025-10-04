@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Threading;
+using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
 
@@ -954,7 +955,17 @@ internal static partial class PrimeOrderCalculator
         {
             return UInt128.Zero;
         }
-
+        if (modulus <= (UInt128)ulong.MaxValue && exponent <= (UInt128)ulong.MaxValue)
+        {
+            ulong prime64 = (ulong)modulus;
+            ulong exponent64 = (ulong)exponent;
+            // TODO: Extend PrimeOrderGpuHeuristics to handle 128-bit moduli so this fast path can remain on the device.
+            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent64, prime64, out ulong remainder);
+            if (status == GpuPow2ModStatus.Success)
+            {
+                return remainder;
+            }
+        }
         BigInteger result = BigInteger.ModPow(2, (BigInteger)exponent, (BigInteger)modulus);
         return (UInt128)result;
     }
