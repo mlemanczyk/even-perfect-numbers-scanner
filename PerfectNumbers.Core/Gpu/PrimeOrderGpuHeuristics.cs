@@ -4,8 +4,6 @@ using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core;
 using System.Runtime.InteropServices;
-using System.Numerics;
-
 namespace PerfectNumbers.Core.Gpu;
 
 internal enum GpuPow2ModStatus
@@ -18,7 +16,7 @@ internal enum GpuPow2ModStatus
 internal static class PrimeOrderGpuHeuristics
 {
     private static readonly ConcurrentDictionary<ulong, byte> OverflowedPrimes = new();
-    private static readonly ConcurrentDictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, GpuUInt128, ArrayView1D<ulong, Stride1D.Dense>>> Pow2ModKernelCache = new();
+    private static readonly ConcurrentDictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>> Pow2ModKernelCache = new();
     private static PrimeOrderGpuCapability s_capability = PrimeOrderGpuCapability.Default;
 
     internal static ConcurrentDictionary<ulong, byte> OverflowRegistry => OverflowedPrimes;
@@ -108,7 +106,8 @@ internal static class PrimeOrderGpuHeuristics
                 exponentBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(exponents), exponents.Length);
                 remainderBuffer.MemSetToZero();
 
-                kernel(stream, exponents.Length, exponentBuffer.View, new GpuUInt128(prime), remainderBuffer.View);
+                MontgomeryDivisorData divisor = MontgomeryDivisorDataCache.Get(prime);
+                kernel(stream, exponents.Length, exponentBuffer.View, divisor, remainderBuffer.View);
 
                 stream.Synchronize();
 
@@ -142,44 +141,24 @@ internal static class PrimeOrderGpuHeuristics
             return 0UL;
         }
 
-        ulong result = 1UL % modulus;
-        ulong baseValue = 2UL % modulus;
-        ulong remaining = exponent;
-
-        while (remaining > 0UL)
-        {
-            if ((remaining & 1UL) != 0UL)
-            {
-                result = (ulong)(((UInt128)result * baseValue) % modulus);
-            }
-
-            remaining >>= 1;
-            if (remaining == 0UL)
-            {
-                break;
-            }
-
-            baseValue = (ulong)(((UInt128)baseValue * baseValue) % modulus);
-        }
-
-        return result;
+        MontgomeryDivisorData divisor = MontgomeryDivisorDataCache.Get(modulus);
+        return exponent.Pow2MontgomeryModWindowed(divisor, keepMontgomery: false);
     }
 
-    private static Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, GpuUInt128, ArrayView1D<ulong, Stride1D.Dense>> GetPow2ModKernel(Accelerator accelerator)
+    private static Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> GetPow2ModKernel(Accelerator accelerator)
     {
         return Pow2ModKernelCache.GetOrAdd(accelerator, static accel =>
         {
-            var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, GpuUInt128, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernel);
+            var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernel);
             var kernel = KernelUtil.GetKernel(loaded);
-            return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, GpuUInt128, ArrayView1D<ulong, Stride1D.Dense>>>();
+            return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
         });
     }
 
-    private static void Pow2ModKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> exponents, GpuUInt128 modulus, ArrayView1D<ulong, Stride1D.Dense> remainders)
+    private static void Pow2ModKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> exponents, MontgomeryDivisorData divisor, ArrayView1D<ulong, Stride1D.Dense> remainders)
     {
         ulong exponent = exponents[index];
-        GpuUInt128 result = GpuUInt128.Pow2Mod(exponent, modulus);
-        remainders[index] = result.Low;
+        remainders[index] = exponent.Pow2MontgomeryModWindowed(divisor, keepMontgomery: false);
     }
 
     internal readonly record struct PrimeOrderGpuCapability(int ModulusBits, int ExponentBits)
