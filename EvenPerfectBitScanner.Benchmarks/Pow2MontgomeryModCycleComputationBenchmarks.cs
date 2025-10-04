@@ -28,15 +28,18 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
     private readonly MontgomeryDivisorData[] _smallDivisors = new MontgomeryDivisorData[SampleCount];
     private readonly MontgomeryDivisorData[] _largeDivisors = new MontgomeryDivisorData[SampleCount];
     private readonly MontgomeryDivisorData[] _veryLargeDivisors = new MontgomeryDivisorData[SampleCount];
+    private readonly UInt128[] _wideModuli = new UInt128[SampleCount];
     private readonly ulong[] _smallExponents = new ulong[SampleCount];
     private readonly ulong[] _largeExponents = new ulong[SampleCount];
     private readonly ulong[] _veryLargeExponents = new ulong[SampleCount];
     private readonly ulong[] _smallCycles = new ulong[SampleCount];
     private readonly ulong[] _largeCycles = new ulong[SampleCount];
     private readonly ulong[] _veryLargeCycles = new ulong[SampleCount];
+    private readonly UInt128[] _wideCycles = new UInt128[SampleCount];
 
     private readonly Random _random = new(113);
     private ulong? _previousPrimeOrder;
+    private UInt128? _previousWidePrimeOrder;
 
     public enum InputScale
     {
@@ -73,6 +76,10 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
             Console.WriteLine($"Calculating cycle length {veryLargeModulus}");
 #endif
             _veryLargeCycles[i] = CalculateCycleLengthWithHeuristics(veryLargeModulus);
+
+            UInt128 wideModulus = NextWideOddModulus();
+            _wideModuli[i] = wideModulus;
+            _wideCycles[i] = CalculateCycleLengthWithHeuristics(wideModulus);
         }
     }
 
@@ -147,6 +154,21 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
         return checksum;
     }
 
+    [Benchmark]
+    public UInt128 HeuristicWideCycleComputation()
+    {
+        UInt128 checksum = UInt128.Zero;
+
+        for (int i = 0; i < SampleCount; i++)
+        {
+            UInt128 cycle = CalculateCycleLengthWithHeuristics(_wideModuli[i]);
+            _wideCycles[i] = cycle;
+            checksum ^= cycle;
+        }
+
+        return checksum;
+    }
+
     private void GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out ulong[] cycles)
     {
         switch (Scale)
@@ -204,6 +226,17 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
         return value;
     }
 
+    private UInt128 NextWideOddModulus()
+    {
+        Span<byte> buffer = stackalloc byte[16];
+        _random.NextBytes(buffer);
+        ulong low = BinaryPrimitives.ReadUInt64LittleEndian(buffer);
+        Span<byte> highSlice = buffer.Slice(8, 8);
+        ulong high = BinaryPrimitives.ReadUInt64LittleEndian(highSlice) | (1UL << 63);
+        UInt128 value = ((UInt128)high << 64) | low;
+        return value | UInt128.One;
+    }
+
     private static MontgomeryDivisorData CreateMontgomeryDivisorData(ulong modulus)
     {
         if (modulus <= 1UL || (modulus & 1UL) == 0UL)
@@ -259,6 +292,33 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 
         Console.WriteLine($"Heuristic failed for {modulus}, falling back to full cycle calculation");
         return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLength(modulus);
+    }
+
+    private UInt128 CalculateCycleLengthWithHeuristics(UInt128 modulus)
+    {
+        if (modulus <= UInt128.One || (modulus & UInt128.One) == UInt128.Zero)
+        {
+            return MersenneDivisorCycles.GetCycle(modulus);
+        }
+
+#if DEBUG
+        Console.WriteLine("Trying heuristic. Wide prime order calculation");
+#endif
+        PrimeOrderCalculator.PrimeOrderResultWide orderResult = PrimeOrderCalculator.Calculate(
+            modulus,
+            _previousWidePrimeOrder,
+            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+
+        if (orderResult.Order != UInt128.Zero)
+        {
+            _previousWidePrimeOrder = orderResult.Order;
+            return orderResult.Order;
+        }
+
+        _previousWidePrimeOrder = null;
+
+        Console.WriteLine($"Wide heuristic failed for {modulus}, falling back to full cycle calculation");
+        return MersenneDivisorCycles.GetCycle(modulus);
     }
 
     private static ulong ComputeMontgomeryResidue(ulong value, ulong modulus) => (ulong)((UInt128)value * (UInt128.One << 64) % modulus);
