@@ -23,6 +23,8 @@ To make any changes to the files in the repository, you should always utilize a 
 dotnet script apply_patch.cs -- <patch-file> [target-directory]
 ```
 
+> **Temporary workflow notice:** Until the pending apply_patch.cs performance and correctness TODOs are complete, do not invoke the script in this repository. Edit files directly with shell tools (sed, tee, cat, python, etc.) and stage the results via git. Re-enable the helper only after the TODO tracker explicitly calls out that the ban has been lifted.
+
 It supports the standard `git diff` patch files as input. You should be able to run it both in the local and remote `Codex` environments. You should expect it to work both in `Windows` and `Linux` environments. Make sure that you include `diff --git` lines, headers and file prefixes in the patch files to avoid applying issues.
 
 `apply_patch.cs` supports several parameters, depending on your needs:
@@ -62,6 +64,7 @@ Do **not** attempt to apply the changes manually, or with `Python`, or with `Pow
 ### Test execution time policy
 
 - Always estimate runtime before launching any tests or long-running samples. If a test or ad-hoc run is likely to exceed 2 minutes, do not run it unless the user explicitly requests a longer run and provides justification.
+- Never apply the two-minute guard to benchmark or profiling runs; allow them to finish and capture the summary unless the console log shows the job is clearly stuck.
 - Do not hardcode timeouts inside test code. Enforce time limits from the runner/shell layer so developers can run tests locally without artificial constraints.
 - Prefer targeted filters over full suites to keep runs short: `--filter FullyQualifiedName~<ClassOrMethod>` or `--filter "FullyQualifiedName=Namespace.Class.Method"`.
 - Keep GPU-heavy tests minimal and scoped. If a kernel compile or warmup is expected to take >2 minutes, skip running it during regular iterations.
@@ -144,11 +147,13 @@ Additional numeric-type probe results (`tools/GpuNumericTypeProbe.csx`, ILGPU 1.
 
 Patch-preparation checklist for reliable `--check` runs:
 
+- Manually review every patch file before running `--check`; confirm the hunks reflect only the intended edits and eliminate accidental whitespace-only noise ahead of time.
 - Always capture context with `nl -ba` before composing each hunk so the `@@` header line numbers match the target file on the first try.
+- Ensure every hunk carries at least three unchanged context lines above and below the edits whenever the surrounding file provides them; regenerate the diff if the file changed since the previous attempt so the context stays accurate.
 - Trim or normalize trailing whitespace while drafting the patch, or rely on `--ignore-whitespace` during verification when formatting noise is unavoidable, then re-run without ignores to confirm the final diff matches exactly.
 - Prefer regenerating the patch from scratch whenever the working tree changes instead of editing previous diffs; stale context is the most common source of mismatches.
 
-- The patch parser now ignores blank metadata lines between `diff --git`, `---`, and `+++` headers, so you no longer need to insert dummy empty separators to satisfy the checker. Keep the header compact unless your diff tool emits those blank lines naturally.
+- The patch parser now ignores blank metadata lines between `diff --git`, `---`, and `+++` headers and skips stray blank separators between hunks, so you no longer need to insert dummy empty lines to satisfy the checker. Keep the header compact unless your diff tool emits those blank lines naturally.
 
 ### apply_patch.cs profiling snapshot (2025-10-04)
 
@@ -172,7 +177,7 @@ Practical guidance:
 - Prefer Mersenne folding over general modulo for `2^p-1` moduli to remove branches in hot loops.
 
 - Heuristic multiply-shift benchmarks (2025-10-04):
-  - Run `dotnet run -c Release --project tools/HeuristicMultiplyShiftTiming/HeuristicMultiplyShiftTiming.csproj` to compare the `HeuristicArithmetic` helpers without the BenchmarkDotNet harness.
+  - Run `dotnet run -c Release --project tools/HeuristicMultiplyShiftTiming/HeuristicMultiplyShiftTiming.csproj` to compare the `ULongExtensions` helpers without the BenchmarkDotNet harness.
   - Timings below report the average nanoseconds per call over 200,000,000 iterations; all variants produced identical checksums, confirming consistent arithmetic.
     - `NearOverflowShift`: `MultiplyShiftRight` ≈ 2.37 ns, shift-first ≈ 4.71 ns, naive `(value * multiplier) >> shift` ≈ 0.85 ns.
     - `HalfRange`: `MultiplyShiftRight` ≈ 2.11 ns, shift-first ≈ 4.15 ns, naive ≈ 0.70 ns.

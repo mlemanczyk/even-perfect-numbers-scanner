@@ -28,13 +28,13 @@ public class HeuristicMultiplyShiftBenchmarks
     [Benchmark(Baseline = true)]
     public ulong SafeMultiplyShift()
     {
-        return HeuristicArithmetic.MultiplyShiftRight(Input.Value, Input.Multiplier, Input.Shift);
+        return ULongExtensions.MultiplyShiftRight(Input.Value, Input.Multiplier, Input.Shift);
     }
 
     [Benchmark]
     public ulong ShiftFirstMultiplyShift()
     {
-        return HeuristicArithmetic.MultiplyShiftRightShiftFirst(Input.Value, Input.Multiplier, Input.Shift);
+        return ULongExtensions.MultiplyShiftRightShiftFirst(Input.Value, Input.Multiplier, Input.Shift);
     }
 
     [Benchmark]

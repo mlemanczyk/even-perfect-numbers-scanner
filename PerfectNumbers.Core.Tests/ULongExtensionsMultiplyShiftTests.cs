@@ -6,7 +6,7 @@ using Xunit;
 namespace PerfectNumbers.Core.Tests;
 
 [Trait("Category", "Fast")]
-public class HeuristicArithmeticTests
+public class ULongExtensionsMultiplyShiftTests
 {
     [Theory]
     [InlineData(0UL, 0UL, 1)]
@@ -18,7 +18,7 @@ public class HeuristicArithmeticTests
     {
         BigInteger expected = ((BigInteger)value * multiplier) >> shift;
 
-        ulong result = HeuristicArithmetic.MultiplyShiftRight(value, multiplier, shift);
+        ulong result = ULongExtensions.MultiplyShiftRight(value, multiplier, shift);
 
         result.Should().Be((ulong)expected);
     }
@@ -34,7 +34,7 @@ public class HeuristicArithmeticTests
     {
         BigInteger expected = ((BigInteger)value * multiplier) >> shift;
 
-        ulong result = HeuristicArithmetic.MultiplyShiftRightShiftFirst(value, multiplier, shift);
+        ulong result = ULongExtensions.MultiplyShiftRightShiftFirst(value, multiplier, shift);
 
         result.Should().Be((ulong)expected);
     }
@@ -42,7 +42,7 @@ public class HeuristicArithmeticTests
     [Fact]
     public void MultiplyShiftRightShiftFirst_returns_zero_when_shift_is_large()
     {
-        HeuristicArithmetic.MultiplyShiftRightShiftFirst(ulong.MaxValue, 123UL, 64).Should().Be(0UL);
+        ULongExtensions.MultiplyShiftRightShiftFirst(ulong.MaxValue, 123UL, 64).Should().Be(0UL);
     }
 
     [Theory]
@@ -50,7 +50,7 @@ public class HeuristicArithmeticTests
     [InlineData(1UL, 1UL, -3)]
     public void MultiplyShiftRight_throws_when_shift_is_negative(ulong value, ulong multiplier, int shift)
     {
-        Action act = () => HeuristicArithmetic.MultiplyShiftRight(value, multiplier, shift);
+        Action act = () => ULongExtensions.MultiplyShiftRight(value, multiplier, shift);
 
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
@@ -60,7 +60,7 @@ public class HeuristicArithmeticTests
     [InlineData(1UL, 1UL, -3)]
     public void MultiplyShiftRightShiftFirst_throws_when_shift_is_negative(ulong value, ulong multiplier, int shift)
     {
-        Action act = () => HeuristicArithmetic.MultiplyShiftRightShiftFirst(value, multiplier, shift);
+        Action act = () => ULongExtensions.MultiplyShiftRightShiftFirst(value, multiplier, shift);
 
         act.Should().Throw<ArgumentOutOfRangeException>();
     }

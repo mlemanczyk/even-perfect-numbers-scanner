@@ -464,7 +464,7 @@ static PatchHunk ParseHunk(string header, PatchLineReader reader)
 
         if (line.Length == 0)
         {
-            patchLines.Add(new ContextLine(string.Empty, true));
+            // Skip stray blank separators so hunks without an empty line still parse correctly.
             continue;
         }
 

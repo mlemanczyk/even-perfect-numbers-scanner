@@ -9,11 +9,16 @@ namespace PerfectNumbers.Core.Tests;
 [Trait("Category", "Fast")]
 public class PrimeOrderGpuHeuristicsTests
 {
+    public PrimeOrderGpuHeuristicsTests()
+    {
+        PrimeOrderGpuHeuristics.ClearAllOverflowForTesting();
+        PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
+    }
+
     [Fact]
     public void TryPow2Mod_returns_overflow_for_marked_prime()
     {
         const ulong prime = 97UL;
-        PrimeOrderGpuHeuristics.ClearAllOverflowForTesting();
         try
         {
             PrimeOrderGpuHeuristics.MarkOverflow(prime);
@@ -32,8 +37,6 @@ public class PrimeOrderGpuHeuristicsTests
     [Fact]
     public void TryPow2Mod_returns_unavailable_for_unmarked_prime()
     {
-        PrimeOrderGpuHeuristics.ClearAllOverflowForTesting();
-
         GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(1UL, 193UL, out ulong remainder);
 
         status.Should().Be(GpuPow2ModStatus.Unavailable);
@@ -41,10 +44,51 @@ public class PrimeOrderGpuHeuristicsTests
     }
 
     [Fact]
+    public void TryPow2Mod_returns_overflow_when_modulus_exceeds_capability()
+    {
+        const ulong prime = 97UL;
+        var capability = new PrimeOrderGpuHeuristics.PrimeOrderGpuCapability(6, 64);
+        PrimeOrderGpuHeuristics.OverrideCapabilitiesForTesting(capability);
+        try
+        {
+            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(1UL, prime, out ulong remainder);
+
+            status.Should().Be(GpuPow2ModStatus.Overflow);
+            remainder.Should().Be(0UL);
+        }
+        finally
+        {
+            PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
+            PrimeOrderGpuHeuristics.ClearOverflow(prime);
+        }
+    }
+
+    [Fact]
+    public void TryPow2Mod_returns_overflow_when_exponent_exceeds_capability()
+    {
+        var capability = new PrimeOrderGpuHeuristics.PrimeOrderGpuCapability(64, 3);
+        PrimeOrderGpuHeuristics.OverrideCapabilitiesForTesting(capability);
+        try
+        {
+            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(16UL, 193UL, out ulong remainder);
+
+            status.Should().Be(GpuPow2ModStatus.Overflow);
+            remainder.Should().Be(0UL);
+
+            GpuPow2ModStatus followUp = PrimeOrderGpuHeuristics.TryPow2Mod(4UL, 193UL, out ulong followUpRemainder);
+            followUp.Should().Be(GpuPow2ModStatus.Unavailable);
+            followUpRemainder.Should().Be(0UL);
+        }
+        finally
+        {
+            PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
+        }
+    }
+
+    [Fact]
     public void TryPow2ModBatch_returns_overflow_for_marked_prime()
     {
         const ulong prime = 193UL;
-        PrimeOrderGpuHeuristics.ClearAllOverflowForTesting();
         try
         {
             PrimeOrderGpuHeuristics.MarkOverflow(prime);
@@ -66,8 +110,6 @@ public class PrimeOrderGpuHeuristicsTests
     [Fact]
     public void TryPow2ModBatch_returns_unavailable_and_clears_remainders_for_unmarked_prime()
     {
-        PrimeOrderGpuHeuristics.ClearAllOverflowForTesting();
-
         ulong[] remainders = { 123UL, 456UL };
         ulong[] exponents = { 1UL, 2UL };
         GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponents, 257UL, remainders);
@@ -75,6 +117,52 @@ public class PrimeOrderGpuHeuristicsTests
         status.Should().Be(GpuPow2ModStatus.Unavailable);
         remainders[0].Should().Be(0UL);
         remainders[1].Should().Be(0UL);
+    }
+
+    [Fact]
+    public void TryPow2ModBatch_returns_overflow_when_modulus_exceeds_capability()
+    {
+        const ulong prime = 97UL;
+        var capability = new PrimeOrderGpuHeuristics.PrimeOrderGpuCapability(6, 64);
+        PrimeOrderGpuHeuristics.OverrideCapabilitiesForTesting(capability);
+        try
+        {
+            ulong[] exponents = { 1UL, 2UL };
+            ulong[] remainders = { 5UL, 6UL };
+
+            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponents, prime, remainders);
+
+            status.Should().Be(GpuPow2ModStatus.Overflow);
+            remainders[0].Should().Be(0UL);
+            remainders[1].Should().Be(0UL);
+        }
+        finally
+        {
+            PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
+            PrimeOrderGpuHeuristics.ClearOverflow(prime);
+        }
+    }
+
+    [Fact]
+    public void TryPow2ModBatch_returns_overflow_when_any_exponent_exceeds_capability()
+    {
+        var capability = new PrimeOrderGpuHeuristics.PrimeOrderGpuCapability(64, 3);
+        PrimeOrderGpuHeuristics.OverrideCapabilitiesForTesting(capability);
+        try
+        {
+            ulong[] exponents = { 2UL, 16UL };
+            ulong[] remainders = { 9UL, 11UL };
+
+            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponents, 193UL, remainders);
+
+            status.Should().Be(GpuPow2ModStatus.Overflow);
+            remainders[0].Should().Be(0UL);
+            remainders[1].Should().Be(0UL);
+        }
+        finally
+        {
+            PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
+        }
     }
 
     [Fact]
@@ -92,7 +180,6 @@ public class PrimeOrderGpuHeuristicsTests
     public void Calculate_falls_back_to_cpu_when_gpu_overflow_is_marked()
     {
         const ulong prime = 7UL;
-        PrimeOrderGpuHeuristics.ClearAllOverflowForTesting();
         try
         {
             PrimeOrderGpuHeuristics.MarkOverflow(prime);

@@ -42,7 +42,7 @@ internal static class Program
 
         for (int i = 0; i < Iterations; i++)
         {
-            checksum += HeuristicArithmetic.MultiplyShiftRight(value, input.Multiplier, input.Shift);
+            checksum += ULongExtensions.MultiplyShiftRight(value, input.Multiplier, input.Shift);
             value += 1UL;
         }
 
@@ -58,7 +58,7 @@ internal static class Program
 
         for (int i = 0; i < Iterations; i++)
         {
-            checksum += HeuristicArithmetic.MultiplyShiftRightShiftFirst(value, input.Multiplier, input.Shift);
+            checksum += ULongExtensions.MultiplyShiftRightShiftFirst(value, input.Multiplier, input.Shift);
             value += 1UL;
         }
 
