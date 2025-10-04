@@ -1,0 +1,1 @@
+- Extend the GPU numeric type probe to cover proposed custom types such as GpuUInt256 and GpuUInt512 once their definitions are available so we can plan the wide-order heuristics on the device.

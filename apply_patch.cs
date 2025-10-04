@@ -1,6 +1,8 @@
 #nullable enable
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -46,6 +48,29 @@ internal readonly record struct PatchApplicationOptions(bool CheckOnly, bool Ign
 
 internal sealed record PatchRunResult(string PatchFilePath, bool Success, string? ErrorMessage);
 
+internal sealed record PatchProfileEntry(
+    string PatchFilePath,
+    int FileCount,
+    int HunkCount,
+    int LineCount,
+    long PatchBytes,
+    TimeSpan ReadTime,
+    TimeSpan ParseTime,
+    TimeSpan ApplyTime);
+
+internal sealed record LineReplacement(string RelativePath, int LineNumber, string? ExpectedContent, string NewContent);
+
+internal sealed class LineReplacementException : Exception
+{
+    public LineReplacementException(LineReplacement replacement, string message)
+        : base(message)
+    {
+        Replacement = replacement;
+    }
+
+    public LineReplacement Replacement { get; }
+}
+
 var args = Args?.ToArray() ?? Array.Empty<string>();
 if (args.Length == 0)
 {
@@ -56,8 +81,10 @@ if (args.Length == 0)
 bool checkOnly = false;
 bool ignoreWhitespace = false;
 bool ignoreLineEndings = false;
+bool profile = false;
 string? explicitTargetRoot = null;
 var patchFileArguments = new List<string>();
+var lineReplacements = new List<LineReplacement>();
 
 for (int i = 0; i < args.Length; i++)
 {
@@ -81,6 +108,12 @@ for (int i = 0; i < args.Length; i++)
         continue;
     }
 
+    if (string.Equals(argument, "--profile", StringComparison.Ordinal))
+    {
+        profile = true;
+        continue;
+    }
+
     if (string.Equals(argument, "--target", StringComparison.Ordinal))
     {
         if (i + 1 >= args.Length)
@@ -93,10 +126,38 @@ for (int i = 0; i < args.Length; i++)
         continue;
     }
 
+    if (string.Equals(argument, "--replace-line", StringComparison.Ordinal))
+    {
+        if (i + 4 >= args.Length)
+        {
+            Console.Error.WriteLine("--replace-line requires <path> <line-number> <expected-text> <new-text> arguments.");
+            Environment.Exit(1);
+        }
+
+        var replacementPath = args[++i];
+
+        if (!int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var replacementLine) || replacementLine <= 0)
+        {
+            Console.Error.WriteLine("--replace-line requires a positive integer line number.");
+            Environment.Exit(1);
+        }
+
+        var expected = args[++i];
+
+        if (string.Equals(expected, "_", StringComparison.Ordinal))
+        {
+            expected = null;
+        }
+
+        var newContent = args[++i];
+        lineReplacements.Add(new LineReplacement(replacementPath, replacementLine, expected, newContent));
+        continue;
+    }
+
     patchFileArguments.Add(argument);
 }
 
-if (patchFileArguments.Count == 0)
+if (patchFileArguments.Count == 0 && lineReplacements.Count == 0)
 {
     PrintUsage();
     Environment.Exit(1);
@@ -127,9 +188,9 @@ else
     targetRoot = Directory.GetCurrentDirectory();
 }
 
-if (patchFileArguments.Count == 0)
+if (patchFileArguments.Count == 0 && lineReplacements.Count == 0)
 {
-    Console.Error.WriteLine("No patch files specified.");
+    Console.Error.WriteLine("No patch files or line replacements specified.");
     Environment.Exit(1);
 }
 
@@ -144,6 +205,7 @@ if (!Directory.Exists(targetRoot))
 var patchFilePaths = patchFileArguments.Select(Path.GetFullPath).ToList();
 var applicationOptions = new PatchApplicationOptions(checkOnly, ignoreWhitespace, ignoreLineEndings);
 var patchResults = new List<PatchRunResult>();
+List<PatchProfileEntry>? patchProfiles = profile ? new List<PatchProfileEntry>() : null;
 
 foreach (var patchFilePath in patchFilePaths)
 {
@@ -154,12 +216,51 @@ foreach (var patchFilePath in patchFilePaths)
             throw new FileNotFoundException($"Patch file '{patchFilePath}' does not exist.", patchFilePath);
         }
 
-        var patchText = File.ReadAllLines(patchFilePath);
-        var parsedFiles = ParsePatch(patchText);
+        Stopwatch? stopwatch = null;
+        TimeSpan readDuration = default;
+        TimeSpan parseDuration = default;
+        TimeSpan applyDuration = default;
+        long patchBytes = 0L;
+        int fileCount = 0;
+        int hunkCount = 0;
+        int lineCount = 0;
+
+        if (profile)
+        {
+            stopwatch = Stopwatch.StartNew();
+            patchBytes = new FileInfo(patchFilePath).Length;
+        }
+
+        var parsedFiles = ParsePatchFromFile(patchFilePath);
+
+        if (stopwatch is not null)
+        {
+            readDuration = TimeSpan.Zero;
+            parseDuration = stopwatch.Elapsed;
+            fileCount = parsedFiles.Count;
+
+            foreach (var parsedFile in parsedFiles)
+            {
+                hunkCount += parsedFile.Hunks.Count;
+
+                foreach (var hunk in parsedFile.Hunks)
+                {
+                    lineCount += hunk.Lines.Count;
+                }
+            }
+
+            stopwatch.Restart();
+        }
 
         foreach (var patchFile in parsedFiles)
         {
             ApplyPatch(targetRoot, patchFile, applicationOptions);
+        }
+
+        if (stopwatch is not null && patchProfiles is not null)
+        {
+            applyDuration = stopwatch.Elapsed;
+            patchProfiles.Add(new PatchProfileEntry(patchFilePath, fileCount, hunkCount, lineCount, patchBytes, readDuration, parseDuration, applyDuration));
         }
 
         patchResults.Add(new PatchRunResult(patchFilePath, true, null));
@@ -175,13 +276,26 @@ foreach (var patchFilePath in patchFilePaths)
     }
 }
 
+if (lineReplacements.Count > 0)
+{
+    var replacementResults = ApplyLineReplacements(targetRoot, lineReplacements, applicationOptions);
+    patchResults.AddRange(replacementResults);
+}
+
 foreach (var result in patchResults)
 {
     var displayPath = GetDisplayPath(result.PatchFilePath);
 
     if (result.Success)
     {
-        Console.WriteLine($"Patch '{displayPath}' applied successfully.");
+        if (applicationOptions.CheckOnly)
+        {
+            Console.WriteLine($"Patch '{displayPath}' verified successfully. Ready to apply.");
+        }
+        else
+        {
+            Console.WriteLine($"Patch '{displayPath}' applied successfully.");
+        }
     }
     else
     {
@@ -189,139 +303,168 @@ foreach (var result in patchResults)
     }
 }
 
+if (patchProfiles is { Count: > 0 })
+{
+    Console.WriteLine("Patch profiling summary:");
+
+    foreach (var entry in patchProfiles)
+    {
+        var displayPath = GetDisplayPath(entry.PatchFilePath);
+        Console.WriteLine(
+            $"- {displayPath}: read {entry.ReadTime.TotalMilliseconds:F2} ms, parse {entry.ParseTime.TotalMilliseconds:F2} ms, apply {entry.ApplyTime.TotalMilliseconds:F2} ms " +
+            $"(files={entry.FileCount}, hunks={entry.HunkCount}, lines={entry.LineCount}, bytes={entry.PatchBytes})");
+    }
+
+    var totalFiles = patchProfiles.Sum(static e => e.FileCount);
+    var totalHunks = patchProfiles.Sum(static e => e.HunkCount);
+    var totalLines = patchProfiles.Sum(static e => e.LineCount);
+    var totalBytes = patchProfiles.Sum(static e => e.PatchBytes);
+    var totalRead = TimeSpan.FromTicks(patchProfiles.Sum(static e => e.ReadTime.Ticks));
+    var totalParse = TimeSpan.FromTicks(patchProfiles.Sum(static e => e.ParseTime.Ticks));
+    var totalApply = TimeSpan.FromTicks(patchProfiles.Sum(static e => e.ApplyTime.Ticks));
+
+    Console.WriteLine(
+        $"Totals: read {totalRead.TotalMilliseconds:F2} ms, parse {totalParse.TotalMilliseconds:F2} ms, apply {totalApply.TotalMilliseconds:F2} ms " +
+        $"(files={totalFiles}, hunks={totalHunks}, lines={totalLines}, bytes={totalBytes})");
+}
+
 if (patchResults.Any(static r => !r.Success))
 {
     Environment.Exit(1);
 }
 
-static List<PatchFile> ParsePatch(IReadOnlyList<string> lines)
+static List<PatchFile> ParsePatchFromFile(string patchFilePath)
+{
+    using var stream = File.OpenRead(patchFilePath);
+    using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 16_384, leaveOpen: false);
+    using var lineReader = new PatchLineReader(reader);
+    var files = ParsePatch(lineReader);
+    return files;
+}
+
+static List<PatchFile> ParsePatch(PatchLineReader reader)
 {
     var files = new List<PatchFile>();
-    int index = 0;
+    string? diffHeader = null;
+    string? originalPath = null;
+    string? modifiedPath = null;
+    List<PatchHunk>? hunks = null;
 
-    while (index < lines.Count)
+    while (reader.TryRead(out var currentLine))
     {
-        if (!lines[index].StartsWith("diff --git ", StringComparison.Ordinal))
+        if (currentLine is null)
         {
-            index++;
+            break;
+        }
+
+        if (string.IsNullOrWhiteSpace(currentLine))
+        {
             continue;
         }
 
-        var diffHeader = lines[index];
-        index++;
-
-        string? originalPath = null;
-        string? modifiedPath = null;
-        var hunks = new List<PatchHunk>();
-        PatchFileType type = PatchFileType.Modify;
-
-        while (index < lines.Count)
+        if (!currentLine.StartsWith("diff --git ", StringComparison.Ordinal))
         {
-            var line = lines[index];
-
-            if (line.StartsWith("diff --git ", StringComparison.Ordinal) && hunks.Count > 0)
+            if (diffHeader is null)
             {
-                break;
-            }
-
-            if (line.StartsWith("--- ", StringComparison.Ordinal))
-            {
-                originalPath = NormalizePath(line.Substring(4));
-                index++;
                 continue;
             }
 
-            if (line.StartsWith("+++ ", StringComparison.Ordinal))
+            if (currentLine.StartsWith("--- ", StringComparison.Ordinal))
             {
-                modifiedPath = NormalizePath(line.Substring(4));
-                index++;
+                originalPath = NormalizePath(currentLine.AsSpan(4));
                 continue;
             }
 
-            if (line.StartsWith("@@", StringComparison.Ordinal))
+            if (currentLine.StartsWith("+++ ", StringComparison.Ordinal))
             {
-                var hunk = ParseHunk(lines, ref index);
+                modifiedPath = NormalizePath(currentLine.AsSpan(4));
+                continue;
+            }
+
+            if (currentLine.StartsWith("@@", StringComparison.Ordinal))
+            {
+                hunks ??= new List<PatchHunk>();
+                var hunk = ParseHunk(currentLine, reader);
                 hunks.Add(hunk);
                 continue;
             }
 
-            index++;
+            continue;
         }
 
-        if (originalPath is null || modifiedPath is null)
+        if (diffHeader is not null)
         {
-            throw new InvalidOperationException($"Missing file paths for patch header: {diffHeader}");
+            FinalizePatchFile(files, diffHeader, originalPath, modifiedPath, hunks);
         }
 
-        if (IsDevNull(originalPath) && !IsDevNull(modifiedPath))
-        {
-            type = PatchFileType.Add;
-        }
-        else if (!IsDevNull(originalPath) && IsDevNull(modifiedPath))
-        {
-            type = PatchFileType.Delete;
-        }
+        diffHeader = currentLine;
+        originalPath = null;
+        modifiedPath = null;
+        hunks = new List<PatchHunk>();
+    }
 
-        files.Add(new PatchFile(originalPath, modifiedPath, hunks, type));
+    if (diffHeader is not null)
+    {
+        FinalizePatchFile(files, diffHeader, originalPath, modifiedPath, hunks);
     }
 
     return files;
 }
 
-static PatchHunk ParseHunk(IReadOnlyList<string> lines, ref int index)
+static PatchHunk ParseHunk(string header, PatchLineReader reader)
 {
-    var header = lines[index];
     var (originalStart, originalLength, modifiedStart, modifiedLength) = ParseHunkHeader(header);
-    index++;
-
     var patchLines = new List<PatchLine>();
 
-    while (index < lines.Count)
+    while (reader.TryPeek(out var nextLine))
     {
-        var line = lines[index];
-
-        if (line.StartsWith("diff --git ", StringComparison.Ordinal) || line.StartsWith("@@", StringComparison.Ordinal))
+        if (nextLine is null)
         {
             break;
         }
 
-        if (line.StartsWith("+++ ", StringComparison.Ordinal) || line.StartsWith("--- ", StringComparison.Ordinal))
+        if (nextLine.StartsWith("diff --git ", StringComparison.Ordinal) ||
+            nextLine.StartsWith("@@", StringComparison.Ordinal) ||
+            nextLine.StartsWith("+++ ", StringComparison.Ordinal) ||
+            nextLine.StartsWith("--- ", StringComparison.Ordinal))
         {
             break;
         }
+
+        if (!reader.TryRead(out var consumed) || consumed is null)
+        {
+            break;
+        }
+
+        var line = consumed;
 
         if (line.StartsWith("+", StringComparison.Ordinal))
         {
             patchLines.Add(new AddedLine(line.Substring(1), true));
-            index++;
             continue;
         }
 
         if (line.StartsWith("-", StringComparison.Ordinal))
         {
             patchLines.Add(new RemovedLine(line.Substring(1), true));
-            index++;
             continue;
         }
 
         if (line.StartsWith(" ", StringComparison.Ordinal))
         {
             patchLines.Add(new ContextLine(line.Substring(1), true));
-            index++;
             continue;
         }
 
         if (line.StartsWith("\\ No newline at end of file", StringComparison.Ordinal))
         {
             MarkLastLineWithoutTrailingNewline(patchLines);
-            index++;
             continue;
         }
 
         if (line.Length == 0)
         {
-            patchLines.Add(new ContextLine(string.Empty, true));
-            index++;
+            // Skip stray blank separators so hunks without an empty line still parse correctly.
             continue;
         }
 
@@ -329,6 +472,193 @@ static PatchHunk ParseHunk(IReadOnlyList<string> lines, ref int index)
     }
 
     return new PatchHunk(originalStart, originalLength, modifiedStart, modifiedLength, patchLines);
+}
+
+static void FinalizePatchFile(
+    List<PatchFile> files,
+    string diffHeader,
+    string? originalPath,
+    string? modifiedPath,
+    List<PatchHunk>? hunks)
+{
+    if (originalPath is null || modifiedPath is null)
+    {
+        throw new InvalidOperationException($"Missing file paths for patch header: {diffHeader}");
+    }
+
+    PatchFileType type = PatchFileType.Modify;
+
+    if (IsDevNull(originalPath) && !IsDevNull(modifiedPath))
+    {
+        type = PatchFileType.Add;
+    }
+    else if (!IsDevNull(originalPath) && IsDevNull(modifiedPath))
+    {
+        type = PatchFileType.Delete;
+    }
+
+    files.Add(new PatchFile(originalPath, modifiedPath, hunks ?? new List<PatchHunk>(), type));
+}
+
+private sealed class PatchLineReader : IDisposable
+{
+    private const int ReadBufferSize = 4096;
+    private const int InitialLineBufferSize = 256;
+
+    private readonly StreamReader _reader;
+    private readonly char[] _readBuffer;
+    private char[] _lineBuffer;
+    private int _readLength;
+    private int _readIndex;
+    private string? _bufferedLine;
+    private bool _hasBufferedLine;
+    private bool _disposed;
+
+    public PatchLineReader(StreamReader reader)
+    {
+        _reader = reader;
+        _readBuffer = ArrayPool<char>.Shared.Rent(ReadBufferSize);
+        _lineBuffer = ArrayPool<char>.Shared.Rent(InitialLineBufferSize);
+    }
+
+    public bool TryPeek(out string? line)
+    {
+        if (!_hasBufferedLine)
+        {
+            if (!TryReadLineInternal(out _bufferedLine))
+            {
+                line = null;
+                return false;
+            }
+
+            _hasBufferedLine = true;
+        }
+
+        line = _bufferedLine;
+        return line is not null;
+    }
+
+    public bool TryRead(out string? line)
+    {
+        if (_hasBufferedLine)
+        {
+            line = _bufferedLine;
+            _bufferedLine = null;
+            _hasBufferedLine = false;
+            return line is not null;
+        }
+
+        return TryReadLineInternal(out line);
+    }
+
+    private bool TryReadLineInternal(out string? line)
+    {
+        if (_disposed)
+        {
+            line = null;
+            return false;
+        }
+
+        int length = 0;
+
+        while (true)
+        {
+            if (!TryReadChar(out char current))
+            {
+                if (length == 0)
+                {
+                    line = null;
+                    return false;
+                }
+
+                break;
+            }
+
+            if (current == '\r')
+            {
+                if ((_readIndex < _readLength) || EnsureCharBuffer())
+                {
+                    if (_readIndex < _readLength && _readBuffer[_readIndex] == '\n')
+                    {
+                        _readIndex++;
+                    }
+                }
+
+                break;
+            }
+
+            if (current == '\n')
+            {
+                break;
+            }
+
+            EnsureLineCapacity(length, length + 1);
+            _lineBuffer[length++] = current;
+        }
+
+        line = new string(_lineBuffer, 0, length);
+        return true;
+    }
+
+    private bool TryReadChar(out char value)
+    {
+        if (!EnsureCharBuffer())
+        {
+            value = '\0';
+            return false;
+        }
+
+        value = _readBuffer[_readIndex++];
+        return true;
+    }
+
+    private bool EnsureCharBuffer()
+    {
+        if (_readIndex < _readLength)
+        {
+            return true;
+        }
+
+        if (_disposed)
+        {
+            return false;
+        }
+
+        _readLength = _reader.Read(_readBuffer, 0, _readBuffer.Length);
+        _readIndex = 0;
+        return _readLength > 0;
+    }
+
+    private void EnsureLineCapacity(int currentLength, int requiredLength)
+    {
+        if (requiredLength <= _lineBuffer.Length)
+        {
+            return;
+        }
+
+        int newSize = _lineBuffer.Length * 2;
+        while (newSize < requiredLength)
+        {
+            newSize *= 2;
+        }
+
+        char[] newBuffer = ArrayPool<char>.Shared.Rent(newSize);
+        Array.Copy(_lineBuffer, newBuffer, currentLength);
+        ArrayPool<char>.Shared.Return(_lineBuffer);
+        _lineBuffer = newBuffer;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        ArrayPool<char>.Shared.Return(_readBuffer);
+        ArrayPool<char>.Shared.Return(_lineBuffer);
+    }
 }
 
 static void MarkLastLineWithoutTrailingNewline(List<PatchLine> lines)
@@ -351,20 +681,37 @@ static void MarkLastLineWithoutTrailingNewline(List<PatchLine> lines)
 
 static (int originalStart, int originalLength, int modifiedStart, int modifiedLength) ParseHunkHeader(string header)
 {
-    // Format: @@ -start,length +start,length @@ optional text
-    int firstSpace = header.IndexOf(' ');
-    int secondSpace = header.IndexOf(' ', firstSpace + 1);
-    var originalRange = header.Substring(firstSpace + 1, secondSpace - firstSpace - 1);
-    var modifiedRangeEnd = header.IndexOf(' ', secondSpace + 1);
-    string modifiedRange;
+    var span = header.AsSpan();
 
-    if (modifiedRangeEnd == -1)
+    int firstSpace = span.IndexOf(' ');
+
+    if (firstSpace < 0)
     {
-        modifiedRange = header.Substring(secondSpace + 1).TrimEnd('@').Trim();
+        throw new InvalidOperationException($"Invalid hunk header: '{header}'.");
+    }
+
+    span = span[(firstSpace + 1)..];
+
+    int secondSpace = span.IndexOf(' ');
+
+    if (secondSpace < 0)
+    {
+        throw new InvalidOperationException($"Invalid hunk header: '{header}'.");
+    }
+
+    var originalRange = span[..secondSpace];
+    span = span[(secondSpace + 1)..];
+
+    int thirdSpace = span.IndexOf(' ');
+    ReadOnlySpan<char> modifiedRange;
+
+    if (thirdSpace < 0)
+    {
+        modifiedRange = span;
     }
     else
     {
-        modifiedRange = header.Substring(secondSpace + 1, modifiedRangeEnd - secondSpace - 1);
+        modifiedRange = span[..thirdSpace];
     }
 
     var (originalStart, originalLength) = ParseRange(originalRange);
@@ -372,25 +719,35 @@ static (int originalStart, int originalLength, int modifiedStart, int modifiedLe
     return (originalStart, originalLength, modifiedStart, modifiedLength);
 }
 
-static (int start, int length) ParseRange(string range)
+static (int start, int length) ParseRange(ReadOnlySpan<char> range)
 {
-    // Format: -start,length or +start,length
-    int commaIndex = range.IndexOf(',');
-    string startText;
-    string lengthText;
+    if (range.Length == 0)
+    {
+        throw new InvalidOperationException("Range descriptor cannot be empty.");
+    }
+
+    if (range[0] != '-' && range[0] != '+')
+    {
+        throw new InvalidOperationException($"Unexpected range prefix: '{range[0]}' in '{range.ToString()}'.");
+    }
+
+    var numericPortion = range[1..];
+    int commaIndex = numericPortion.IndexOf(',');
+    ReadOnlySpan<char> startText;
+    ReadOnlySpan<char> lengthText;
 
     if (commaIndex >= 0)
     {
-        startText = range.Substring(1, commaIndex - 1);
-        lengthText = range[(commaIndex + 1)..];
+        startText = numericPortion[..commaIndex];
+        lengthText = numericPortion[(commaIndex + 1)..];
     }
     else
     {
-        startText = range.Substring(1);
+        startText = numericPortion;
         lengthText = "1";
     }
 
-    return (int.Parse(startText, CultureInfo.InvariantCulture), int.Parse(lengthText, CultureInfo.InvariantCulture));
+    return (int.Parse(startText, NumberStyles.Integer, CultureInfo.InvariantCulture), int.Parse(lengthText, NumberStyles.Integer, CultureInfo.InvariantCulture));
 }
 
 static void ApplyPatch(string root, PatchFile patchFile, PatchApplicationOptions options)
@@ -428,17 +785,19 @@ static string NormalizeRelativePath(string path)
     return path;
 }
 
-static string NormalizePath(string headerPath)
+static string NormalizePath(ReadOnlySpan<char> headerPath)
 {
     var trimmed = headerPath.Trim();
 
     if (trimmed.StartsWith("a/", StringComparison.Ordinal) || trimmed.StartsWith("b/", StringComparison.Ordinal))
     {
-        return trimmed.Substring(2);
+        trimmed = trimmed[2..];
     }
 
-    return trimmed;
+    return new string(trimmed);
 }
+
+static string NormalizePath(string headerPath) => NormalizePath(headerPath.AsSpan());
 
 static bool IsDevNull(string? path)
 {
@@ -746,6 +1105,103 @@ static void TryDeletePatchFile(string patchFilePath)
     }
 }
 
+static List<PatchRunResult> ApplyLineReplacements(string root, List<LineReplacement> replacements, PatchApplicationOptions options)
+{
+    var results = new List<PatchRunResult>();
+
+    foreach (var group in replacements.GroupBy(static r => NormalizeRelativePath(r.RelativePath), StringComparer.Ordinal))
+    {
+        var normalizedPath = group.Key;
+        var replacementsForFile = group.OrderBy(static r => r.LineNumber).ToList();
+
+        if (replacementsForFile.Count == 0)
+        {
+            continue;
+        }
+
+        try
+        {
+            var targetPath = Path.Combine(root, normalizedPath);
+
+            if (!File.Exists(targetPath))
+            {
+                var displayPath = GetDisplayPath(targetPath);
+                throw new LineReplacementException(replacementsForFile[0], $"Cannot replace line because file '{displayPath}' does not exist.");
+            }
+
+            var snapshot = ReadAllLinesPreservingNewlines(targetPath);
+            var lines = snapshot.Lines;
+            var pending = new List<(int Index, string NewContent)>();
+
+            foreach (var replacement in replacementsForFile)
+            {
+                if (replacement.LineNumber <= 0)
+                {
+                    throw new LineReplacementException(replacement, $"Line numbers must be positive. Received {replacement.LineNumber} for '{GetDisplayPath(targetPath)}'.");
+                }
+
+                int index = replacement.LineNumber - 1;
+
+                if (index >= lines.Count)
+                {
+                    throw new LineReplacementException(replacement, $"File '{GetDisplayPath(targetPath)}' contains only {lines.Count} lines. Cannot replace line {replacement.LineNumber}.");
+                }
+
+                if (replacement.ExpectedContent is not null)
+                {
+                    var actual = lines[index];
+
+                    if (!LinesMatch(actual, replacement.ExpectedContent, options))
+                    {
+                        try
+                        {
+                            ThrowLineMismatch($"Line {replacement.LineNumber} mismatch in '{GetDisplayPath(targetPath)}'.", replacement.ExpectedContent, actual, options);
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            throw new LineReplacementException(replacement, ex.Message);
+                        }
+                    }
+                }
+
+                pending.Add((index, replacement.NewContent));
+            }
+
+            if (!options.CheckOnly)
+            {
+                foreach (var (index, newContent) in pending)
+                {
+                    lines[index] = newContent;
+                }
+
+                WriteAllLinesPreservingNewlines(targetPath, snapshot);
+            }
+
+            foreach (var replacement in replacementsForFile)
+            {
+                results.Add(new PatchRunResult(BuildReplacementDisplay(replacement), true, null));
+            }
+        }
+        catch (LineReplacementException ex)
+        {
+            results.Add(new PatchRunResult(BuildReplacementDisplay(ex.Replacement), false, ex.Message));
+        }
+        catch (Exception ex)
+        {
+            var fallback = replacementsForFile[0];
+            results.Add(new PatchRunResult(BuildReplacementDisplay(fallback), false, ex.Message));
+        }
+    }
+
+    return results;
+}
+
+static string BuildReplacementDisplay(LineReplacement replacement)
+{
+    var normalizedPath = NormalizeRelativePath(replacement.RelativePath);
+    return $"replace-line:{normalizedPath}:{replacement.LineNumber}";
+}
+
 static void PrintUsage()
 {
     Console.Error.WriteLine("Usage: dotnet script apply_patch.cs -- [options] <patch-file> [<patch-file> ...] [target-directory]");
@@ -754,6 +1210,9 @@ static void PrintUsage()
     Console.Error.WriteLine("  --check                Validate patches without modifying files.");
     Console.Error.WriteLine("  --ignore-whitespace    Ignore whitespace differences when matching context.");
     Console.Error.WriteLine("  --ignore-eol           Ignore line-ending differences when matching context.");
+    Console.Error.WriteLine("  --profile              Collect read/parse/apply timings for each patch file.");
     Console.Error.WriteLine("  --target <directory>   Explicitly set the target directory.");
+    Console.Error.WriteLine("  --replace-line <path> <line-number> <expected-text> <new-text>");
+    Console.Error.WriteLine("                        Replace a single line by absolute number; use '_' as expected-text to skip validation.");
 }
 

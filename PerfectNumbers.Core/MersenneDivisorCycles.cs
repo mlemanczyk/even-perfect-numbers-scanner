@@ -189,6 +189,16 @@ public class MersenneDivisorCycles
             return true;
         }
 
+        PrimeOrderCalculator.PrimeOrderResult orderResult = PrimeOrderCalculator.Calculate(
+            divisor,
+            previousOrder: null,
+            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+        if (orderResult.Order != 0UL)
+        {
+            cycleLength = orderResult.Order;
+            return true;
+        }
+
         ulong phi = divisor - 1UL;
         if (phi == 0UL)
         {

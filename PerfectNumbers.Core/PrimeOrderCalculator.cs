@@ -4,7 +4,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using PerfectNumbers.Core.Gpu;
 using System.Threading;
 
 namespace PerfectNumbers.Core;
@@ -134,7 +136,7 @@ internal static partial class PrimeOrderCalculator
         {
             ulong factor = factorSpan[i].Value;
             ulong reduced = phi / factor;
-            if (reduced.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL)
+            if (Pow2EqualsOne(reduced, prime, divisorData))
             {
                 return false;
             }
@@ -149,7 +151,7 @@ internal static partial class PrimeOrderCalculator
         if ((prime & 7UL) == 1UL || (prime & 7UL) == 7UL)
         {
             ulong half = phi >> 1;
-            if (half.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL)
+            if (Pow2EqualsOne(half, prime, divisorData))
             {
                 order = half;
             }
@@ -191,7 +193,7 @@ internal static partial class PrimeOrderCalculator
                     }
 
                     ulong reduced = order / primeFactor;
-                    if (reduced.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL)
+                    if (Pow2EqualsOne(reduced, prime, divisorData))
                     {
                         order = reduced;
                         continue;
@@ -223,7 +225,7 @@ internal static partial class PrimeOrderCalculator
 #if DEBUG
         Console.WriteLine("Verifying a^order ≡ 1 (mod p)");
 #endif
-        if (order.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) != 1UL)
+        if (!Pow2EqualsOne(order, prime, divisorData))
         {
             return false;
         }
@@ -283,7 +285,7 @@ internal static partial class PrimeOrderCalculator
                 }
 
                 reduced /= primeFactor;
-                if (reduced.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL)
+                if (Pow2EqualsOne(reduced, prime, divisorData))
                 {
                     return false;
                 }
@@ -355,32 +357,108 @@ internal static partial class PrimeOrderCalculator
         int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
         int powUsed = 0;
         int candidateCount = candidates.Count;
+        bool allowGpuBatch = true;
+        Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
 
 #if DEBUG
         Console.WriteLine($"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
 #endif
-        for (int i = 0; i < candidateCount; i++)
+        int index = 0;
+        const int MaxGpuBatchSize = 256;
+        const int StackGpuBatchSize = 32;
+        Span<ulong> stackGpuRemainders = stackalloc ulong[StackGpuBatchSize];
+        while (index < candidateCount && powUsed < powBudget)
         {
-            if (powUsed >= powBudget)
+            int remaining = candidateCount - index;
+            int budgetRemaining = powBudget - powUsed;
+            int batchSize = Math.Min(remaining, Math.Min(budgetRemaining, MaxGpuBatchSize));
+            if (batchSize <= 0)
             {
                 break;
             }
 
-            ulong candidate = candidates[i];
-            powUsed++;
+            ReadOnlySpan<ulong> batch = candidateSpan.Slice(index, batchSize);
+            ulong[]? gpuPool = null;
+            Span<ulong> pooledGpuRemainders = default;
+            bool gpuSuccess = false;
+            bool gpuStackRemainders = false;
+            GpuPow2ModStatus status = GpuPow2ModStatus.Unavailable;
 
-            if (candidate.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) != 1UL)
+            if (allowGpuBatch)
             {
-                continue;
+                if (batchSize <= StackGpuBatchSize)
+                {
+                    Span<ulong> localRemainders = stackGpuRemainders.Slice(0, batchSize);
+                    status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, localRemainders);
+                    if (status == GpuPow2ModStatus.Success)
+                    {
+                        gpuSuccess = true;
+                        gpuStackRemainders = true;
+                    }
+                }
+                else
+                {
+                    gpuPool = ArrayPool<ulong>.Shared.Rent(batchSize);
+                    Span<ulong> pooledRemainders = gpuPool.AsSpan(0, batchSize);
+                    status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, pooledRemainders);
+                    if (status == GpuPow2ModStatus.Success)
+                    {
+                        pooledGpuRemainders = pooledRemainders;
+                        gpuSuccess = true;
+                    }
+                    else
+                    {
+                        ArrayPool<ulong>.Shared.Return(gpuPool, clearArray: false);
+                        gpuPool = null;
+                    }
+                }
+
+                if (!gpuSuccess && (status == GpuPow2ModStatus.Overflow || status == GpuPow2ModStatus.Unavailable))
+                {
+                    allowGpuBatch = false;
+                }
             }
 
-            if (!TryConfirmCandidate(prime, candidate, divisorData, config, ref powUsed, powBudget))
+            for (int i = 0; i < batchSize && powUsed < powBudget; i++)
             {
-                continue;
+                ulong candidate = batch[i];
+                powUsed++;
+
+                bool equalsOne;
+                if (gpuSuccess)
+                {
+                    ulong remainderValue = gpuStackRemainders ? stackGpuRemainders[i] : pooledGpuRemainders[i];
+                    equalsOne = remainderValue == 1UL;
+                }
+                else
+                {
+                    equalsOne = Pow2EqualsOne(candidate, prime, divisorData);
+                }
+                if (!equalsOne)
+                {
+                    continue;
+                }
+
+                if (!TryConfirmCandidate(prime, candidate, divisorData, config, ref powUsed, powBudget))
+                {
+                    continue;
+                }
+
+                if (gpuPool is not null)
+                {
+                    ArrayPool<ulong>.Shared.Return(gpuPool, clearArray: false);
+                }
+
+                result = candidate;
+                return true;
             }
 
-            result = candidate;
-            return true;
+            if (gpuPool is not null)
+            {
+                ArrayPool<ulong>.Shared.Return(gpuPool, clearArray: false);
+            }
+
+            index += batchSize;
         }
 
 #if DEBUG
@@ -601,7 +679,7 @@ internal static partial class PrimeOrderCalculator
                 }
 
                 powUsed++;
-                if (reduced.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL)
+                if (Pow2EqualsOne(reduced, prime, divisorData))
                 {
                     return false;
                 }
@@ -609,6 +687,17 @@ internal static partial class PrimeOrderCalculator
         }
 
         return true;
+    }
+
+    private static bool Pow2EqualsOne(ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
+    {
+        GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, prime, out ulong remainder);
+        if (status == GpuPow2ModStatus.Success)
+        {
+            return remainder == 1UL;
+        }
+
+        return exponent.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL;
     }
 
     private static PartialFactorResult PartialFactor(ulong value, PrimeOrderSearchConfig config)
