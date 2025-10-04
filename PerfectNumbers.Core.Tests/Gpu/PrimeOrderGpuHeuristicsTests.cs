@@ -11,7 +11,7 @@ public class PrimeOrderGpuHeuristicsTests
 {
     public PrimeOrderGpuHeuristicsTests()
     {
-        PrimeOrderGpuHeuristics.ClearAllOverflowForTesting();
+        PrimeOrderGpuHeuristics.OverflowRegistry.Clear();
         PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
     }
 
@@ -21,7 +21,7 @@ public class PrimeOrderGpuHeuristicsTests
         const ulong prime = 97UL;
         try
         {
-            PrimeOrderGpuHeuristics.MarkOverflow(prime);
+            PrimeOrderGpuHeuristics.OverflowRegistry[prime] = 0;
 
             GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(1UL, prime, out ulong remainder);
 
@@ -30,7 +30,7 @@ public class PrimeOrderGpuHeuristicsTests
         }
         finally
         {
-            PrimeOrderGpuHeuristics.ClearOverflow(prime);
+            PrimeOrderGpuHeuristics.OverflowRegistry.TryRemove(prime, out _);
         }
     }
 
@@ -59,7 +59,7 @@ public class PrimeOrderGpuHeuristicsTests
         finally
         {
             PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
-            PrimeOrderGpuHeuristics.ClearOverflow(prime);
+            PrimeOrderGpuHeuristics.OverflowRegistry.TryRemove(prime, out _);
         }
     }
 
@@ -91,7 +91,7 @@ public class PrimeOrderGpuHeuristicsTests
         const ulong prime = 193UL;
         try
         {
-            PrimeOrderGpuHeuristics.MarkOverflow(prime);
+            PrimeOrderGpuHeuristics.OverflowRegistry[prime] = 0;
 
             ulong[] remainders = new ulong[2];
             ulong[] exponents = { 1UL, 2UL };
@@ -103,7 +103,7 @@ public class PrimeOrderGpuHeuristicsTests
         }
         finally
         {
-            PrimeOrderGpuHeuristics.ClearOverflow(prime);
+            PrimeOrderGpuHeuristics.OverflowRegistry.TryRemove(prime, out _);
         }
     }
 
@@ -139,7 +139,7 @@ public class PrimeOrderGpuHeuristicsTests
         finally
         {
             PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
-            PrimeOrderGpuHeuristics.ClearOverflow(prime);
+            PrimeOrderGpuHeuristics.OverflowRegistry.TryRemove(prime, out _);
         }
     }
 
@@ -182,7 +182,7 @@ public class PrimeOrderGpuHeuristicsTests
         const ulong prime = 7UL;
         try
         {
-            PrimeOrderGpuHeuristics.MarkOverflow(prime);
+            PrimeOrderGpuHeuristics.OverflowRegistry[prime] = 0;
 
             PrimeOrderCalculator.PrimeOrderResult result = PrimeOrderCalculator.Calculate(prime, null, PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
@@ -191,7 +191,7 @@ public class PrimeOrderGpuHeuristicsTests
         }
         finally
         {
-            PrimeOrderGpuHeuristics.ClearOverflow(prime);
+            PrimeOrderGpuHeuristics.OverflowRegistry.TryRemove(prime, out _);
         }
     }
 }

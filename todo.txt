@@ -1,4 +1,3 @@
-- Inline the overflow tracking helpers in PrimeOrderGpuHeuristics so call sites can cache the dictionary locally and reduce delegate indirection.
 - Move the ulong bit-length helper into ULongExtensions and update PrimeOrderGpuHeuristics (and any other callers) to reuse it.
 - Implement the GPU heuristics for PrimeOrderCalculator using ILGPU. Reuse the numeric type compatibility probe results to select between EInteger, ERational, GpuUInt128, or any new GPU-specific big-integer representations, guarantee parity with the CPU heuristic algorithm (including 128-bit primes), prefer the shift-first multiply/shift variant to stay within device ranges, and wire the calculator through the accelerator path.
 - Extend the GPU numeric type probe to cover proposed custom types such as GpuUInt256 and GpuUInt512 once their definitions are available so we can plan the wide-order heuristics on the device.

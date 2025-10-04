@@ -16,6 +16,8 @@ internal static class PrimeOrderGpuHeuristics
     private static readonly ConcurrentDictionary<ulong, byte> OverflowedPrimes = new();
     private static PrimeOrderGpuCapability s_capability = PrimeOrderGpuCapability.Default;
 
+    internal static ConcurrentDictionary<ulong, byte> OverflowRegistry => OverflowedPrimes;
+
     internal static void OverrideCapabilitiesForTesting(PrimeOrderGpuCapability capability)
     {
         s_capability = capability;
@@ -26,12 +28,6 @@ internal static class PrimeOrderGpuHeuristics
         s_capability = PrimeOrderGpuCapability.Default;
     }
 
-    internal static void MarkOverflow(ulong prime) => OverflowedPrimes[prime] = 0;
-
-    internal static void ClearOverflow(ulong prime) => OverflowedPrimes.TryRemove(prime, out _);
-
-    internal static void ClearAllOverflowForTesting() => OverflowedPrimes.Clear();
-
     public static GpuPow2ModStatus TryPow2Mod(ulong exponent, ulong prime, out ulong remainder)
     {
         remainder = 0UL;
@@ -40,7 +36,9 @@ internal static class PrimeOrderGpuHeuristics
             return GpuPow2ModStatus.Unavailable;
         }
 
-        if (OverflowedPrimes.ContainsKey(prime))
+        ConcurrentDictionary<ulong, byte> overflowRegistry = OverflowedPrimes;
+
+        if (overflowRegistry.ContainsKey(prime))
         {
             return GpuPow2ModStatus.Overflow;
         }
@@ -49,7 +47,7 @@ internal static class PrimeOrderGpuHeuristics
 
         if (!SupportsPrime(prime, capability))
         {
-            MarkOverflow(prime);
+            overflowRegistry[prime] = 0;
             return GpuPow2ModStatus.Overflow;
         }
 
@@ -81,7 +79,9 @@ internal static class PrimeOrderGpuHeuristics
             return GpuPow2ModStatus.Unavailable;
         }
 
-        if (OverflowedPrimes.ContainsKey(prime))
+        ConcurrentDictionary<ulong, byte> overflowRegistry = OverflowedPrimes;
+
+        if (overflowRegistry.ContainsKey(prime))
         {
             return GpuPow2ModStatus.Overflow;
         }
@@ -90,7 +90,7 @@ internal static class PrimeOrderGpuHeuristics
 
         if (!SupportsPrime(prime, capability))
         {
-            MarkOverflow(prime);
+            overflowRegistry[prime] = 0;
             return GpuPow2ModStatus.Overflow;
         }
 
