@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Numerics;
 using FluentAssertions;
 using Xunit;
 
@@ -140,6 +141,29 @@ public class PrimeOrderCalculatorTests
 
         strict.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
         strict.Order.Should().Be(heuristic.Order);
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void Calculate_handles_128_bit_prime()
+    {
+        UInt128 prime = UInt128.Parse("18446744073709641691");
+
+        PrimeOrderCalculator.PrimeOrderResultWide result = PrimeOrderCalculator.Calculate(
+            prime,
+            previousOrder: null,
+            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+
+        result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
+        result.Order.Should().Be((UInt128)1229782938247309446UL);
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void GetCycle_uses_wide_prime_heuristic()
+    {
+        UInt128 prime = UInt128.Parse("18446744073709641691");
+        MersenneDivisorCycles.GetCycle(prime).Should().Be((UInt128)1229782938247309446UL);
     }
 
     private static ulong ComputeOrderByDoubling(ulong prime)

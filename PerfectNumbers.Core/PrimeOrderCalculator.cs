@@ -9,7 +9,7 @@ using System.Threading;
 
 namespace PerfectNumbers.Core;
 
-internal static class PrimeOrderCalculator
+internal static partial class PrimeOrderCalculator
 {
     internal enum PrimeOrderStatus
     {
