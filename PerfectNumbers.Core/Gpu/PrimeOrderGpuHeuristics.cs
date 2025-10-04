@@ -73,7 +73,7 @@ internal static class PrimeOrderGpuHeuristics
 
         PrimeOrderGpuCapability capability = s_capability;
 
-        if (!SupportsPrime(prime, capability))
+        if (prime.GetBitLength() > capability.ModulusBits)
         {
             overflowRegistry[prime] = 0;
             return GpuPow2ModStatus.Overflow;
@@ -81,7 +81,7 @@ internal static class PrimeOrderGpuHeuristics
 
         for (int i = 0; i < exponents.Length; i++)
         {
-            if (!SupportsExponent(exponents[i], capability))
+            if (exponents[i].GetBitLength() > capability.ExponentBits)
             {
                 return GpuPow2ModStatus.Overflow;
             }
@@ -89,16 +89,6 @@ internal static class PrimeOrderGpuHeuristics
 
         bool computed = TryComputeOnGpu(exponents, prime, target);
         return computed ? GpuPow2ModStatus.Success : GpuPow2ModStatus.Unavailable;
-    }
-
-    private static bool SupportsPrime(ulong prime, PrimeOrderGpuCapability capability)
-    {
-        return prime.GetBitLength() <= capability.ModulusBits;
-    }
-
-    private static bool SupportsExponent(ulong exponent, PrimeOrderGpuCapability capability)
-    {
-        return exponent.GetBitLength() <= capability.ExponentBits;
     }
 
     private static bool TryComputeOnGpu(ReadOnlySpan<ulong> exponents, ulong prime, Span<ulong> results)
