@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Numerics;
-using System.Threading;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -15,22 +14,17 @@ internal enum GpuPow2ModStatus
 internal static class PrimeOrderGpuHeuristics
 {
     private static readonly ConcurrentDictionary<ulong, byte> OverflowedPrimes = new();
-    private static int s_modulusBitLimit = PrimeOrderGpuCapability.Default.ModulusBits;
-    private static int s_exponentBitLimit = PrimeOrderGpuCapability.Default.ExponentBits;
+    private static PrimeOrderGpuCapability s_capability = PrimeOrderGpuCapability.Default;
 
     internal static void OverrideCapabilitiesForTesting(PrimeOrderGpuCapability capability)
     {
-        Volatile.Write(ref s_modulusBitLimit, capability.ModulusBits);
-        Volatile.Write(ref s_exponentBitLimit, capability.ExponentBits);
+        s_capability = capability;
     }
 
     internal static void ResetCapabilitiesForTesting()
     {
-        OverrideCapabilitiesForTesting(PrimeOrderGpuCapability.Default);
+        s_capability = PrimeOrderGpuCapability.Default;
     }
-
-    private static PrimeOrderGpuCapability Capabilities
-        => new(Volatile.Read(ref s_modulusBitLimit), Volatile.Read(ref s_exponentBitLimit));
 
     internal static void MarkOverflow(ulong prime) => OverflowedPrimes[prime] = 0;
 
@@ -51,7 +45,7 @@ internal static class PrimeOrderGpuHeuristics
             return GpuPow2ModStatus.Overflow;
         }
 
-        PrimeOrderGpuCapability capability = Capabilities;
+        PrimeOrderGpuCapability capability = s_capability;
 
         if (!SupportsPrime(prime, capability))
         {
@@ -92,7 +86,7 @@ internal static class PrimeOrderGpuHeuristics
             return GpuPow2ModStatus.Overflow;
         }
 
-        PrimeOrderGpuCapability capability = Capabilities;
+        PrimeOrderGpuCapability capability = s_capability;
 
         if (!SupportsPrime(prime, capability))
         {
