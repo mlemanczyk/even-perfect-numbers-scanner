@@ -876,54 +876,26 @@ internal static partial class PrimeOrderCalculator
         return order;
     }
 
-    private readonly struct CandidateKey
+    private readonly struct CandidateKey(int primary, long secondary, long tertiary)
     {
-        public CandidateKey(int primary, long secondary, long tertiary)
-        {
-            Primary = primary;
-            Secondary = secondary;
-            Tertiary = tertiary;
-        }
-
-        public int Primary { get; }
-
-        public long Secondary { get; }
-
-        public long Tertiary { get; }
+        public readonly int Primary = primary;
+        public readonly long Secondary = secondary;
+        public readonly long Tertiary = tertiary;
     }
 
-    private readonly struct FactorEntry
+    private readonly struct FactorEntry(ulong value, int exponent)
     {
-        public FactorEntry(ulong value, int exponent)
-        {
-            Value = value;
-            Exponent = exponent;
-        }
-
-        public ulong Value { get; }
-
-        public int Exponent { get; }
+        public readonly ulong Value = value;
+        public readonly int Exponent = exponent;
     }
 
-    private readonly struct PartialFactorResult
+    private readonly struct PartialFactorResult(FactorEntry[]? factors, ulong cofactor, bool fullyFactored, int count)
     {
-        public PartialFactorResult(FactorEntry[]? factors, ulong cofactor, bool fullyFactored, int count)
-        {
-            Factors = factors;
-            Cofactor = cofactor;
-            FullyFactored = fullyFactored;
-            Count = count;
-        }
-
-        public FactorEntry[]? Factors { get; }
-
-        public ulong Cofactor { get; }
-
-        public bool FullyFactored { get; }
-
-        public int Count { get; }
-
-        public static PartialFactorResult Empty => new(null, 1UL, true, 0);
+        public readonly FactorEntry[]? Factors = factors;
+        public readonly ulong Cofactor = cofactor;
+        public readonly bool FullyFactored = fullyFactored;
+        public readonly int Count = count;
+        public readonly static PartialFactorResult Empty = new(null, 1UL, true, 0);
 
         public PartialFactorResult WithAdditionalPrime(ulong prime)
         {
