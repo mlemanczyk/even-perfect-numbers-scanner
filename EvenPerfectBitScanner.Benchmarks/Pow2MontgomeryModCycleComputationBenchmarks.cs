@@ -77,6 +77,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 #endif
             _veryLargeCycles[i] = CalculateCycleLengthWithHeuristics(veryLargeModulus);
 
+            Console.WriteLine($"Generating wide sample {i}");
             UInt128 wideModulus = NextWideOddModulus();
             _wideModuli[i] = wideModulus;
             _wideCycles[i] = CalculateCycleLengthWithHeuristics(wideModulus);
