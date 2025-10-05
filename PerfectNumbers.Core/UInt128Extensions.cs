@@ -67,6 +67,7 @@ public static class UInt128Extensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static UInt128 Pow2MontgomeryModWindowed(this UInt128 exponent, UInt128 modulus)
     {
+        // TODO: Prototype a UInt128-native Pow2MontgomeryModWindowed path that matches the GPU implementation once a faster modular multiplication helper is available, so we can revisit removing the GPU struct dependency without regressing benchmarks.
         if (modulus == UInt128.One)
         {
             return UInt128.Zero;
@@ -139,10 +140,7 @@ public static class UInt128Extensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool ShouldUseSingleBit(UInt128 exponent)
-    {
-        return (exponent >> 64) == UInt128.Zero && (ulong)exponent <= Pow2WindowFallbackThreshold;
-    }
+    private static bool ShouldUseSingleBit(UInt128 exponent) => (exponent >> 64) == UInt128.Zero && (ulong)exponent <= Pow2WindowFallbackThreshold;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetWindowSize(int bitLength)
