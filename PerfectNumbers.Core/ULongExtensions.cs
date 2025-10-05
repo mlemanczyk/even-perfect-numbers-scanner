@@ -11,10 +11,410 @@ public static class ULongExtensions
     private const ulong Pow2WindowFallbackThreshold = 32UL;
     private const int Pow2WindowOddPowerCount = 1 << (Pow2WindowSize - 1);
 
-    [InlineArray(Pow2WindowOddPowerCount)]
     private struct Pow2OddPowerTable
     {
-        private ulong _element0;
+        public ulong Element0;
+        public ulong Element1;
+        public ulong Element2;
+        public ulong Element3;
+        public ulong Element4;
+        public ulong Element5;
+        public ulong Element6;
+        public ulong Element7;
+        public ulong Element8;
+        public ulong Element9;
+        public ulong Element10;
+        public ulong Element11;
+        public ulong Element12;
+        public ulong Element13;
+        public ulong Element14;
+        public ulong Element15;
+        public ulong Element16;
+        public ulong Element17;
+        public ulong Element18;
+        public ulong Element19;
+        public ulong Element20;
+        public ulong Element21;
+        public ulong Element22;
+        public ulong Element23;
+        public ulong Element24;
+        public ulong Element25;
+        public ulong Element26;
+        public ulong Element27;
+        public ulong Element28;
+        public ulong Element29;
+        public ulong Element30;
+        public ulong Element31;
+        public ulong Element32;
+        public ulong Element33;
+        public ulong Element34;
+        public ulong Element35;
+        public ulong Element36;
+        public ulong Element37;
+        public ulong Element38;
+        public ulong Element39;
+        public ulong Element40;
+        public ulong Element41;
+        public ulong Element42;
+        public ulong Element43;
+        public ulong Element44;
+        public ulong Element45;
+        public ulong Element46;
+        public ulong Element47;
+        public ulong Element48;
+        public ulong Element49;
+        public ulong Element50;
+        public ulong Element51;
+        public ulong Element52;
+        public ulong Element53;
+        public ulong Element54;
+        public ulong Element55;
+        public ulong Element56;
+        public ulong Element57;
+        public ulong Element58;
+        public ulong Element59;
+        public ulong Element60;
+        public ulong Element61;
+        public ulong Element62;
+        public ulong Element63;
+        public ulong Element64;
+        public ulong Element65;
+        public ulong Element66;
+        public ulong Element67;
+        public ulong Element68;
+        public ulong Element69;
+        public ulong Element70;
+        public ulong Element71;
+        public ulong Element72;
+        public ulong Element73;
+        public ulong Element74;
+        public ulong Element75;
+        public ulong Element76;
+        public ulong Element77;
+        public ulong Element78;
+        public ulong Element79;
+        public ulong Element80;
+        public ulong Element81;
+        public ulong Element82;
+        public ulong Element83;
+        public ulong Element84;
+        public ulong Element85;
+        public ulong Element86;
+        public ulong Element87;
+        public ulong Element88;
+        public ulong Element89;
+        public ulong Element90;
+        public ulong Element91;
+        public ulong Element92;
+        public ulong Element93;
+        public ulong Element94;
+        public ulong Element95;
+        public ulong Element96;
+        public ulong Element97;
+        public ulong Element98;
+        public ulong Element99;
+        public ulong Element100;
+        public ulong Element101;
+        public ulong Element102;
+        public ulong Element103;
+        public ulong Element104;
+        public ulong Element105;
+        public ulong Element106;
+        public ulong Element107;
+        public ulong Element108;
+        public ulong Element109;
+        public ulong Element110;
+        public ulong Element111;
+        public ulong Element112;
+        public ulong Element113;
+        public ulong Element114;
+        public ulong Element115;
+        public ulong Element116;
+        public ulong Element117;
+        public ulong Element118;
+        public ulong Element119;
+        public ulong Element120;
+        public ulong Element121;
+        public ulong Element122;
+        public ulong Element123;
+        public ulong Element124;
+        public ulong Element125;
+        public ulong Element126;
+        public ulong Element127;
+
+        public ref ulong this[int index]
+        {
+            get
+            {
+                return ref GetElementRef(index);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private ref ulong GetElementRef(int index)
+        {
+            switch (index)
+            {
+                case 0:
+                    return ref Element0;
+                case 1:
+                    return ref Element1;
+                case 2:
+                    return ref Element2;
+                case 3:
+                    return ref Element3;
+                case 4:
+                    return ref Element4;
+                case 5:
+                    return ref Element5;
+                case 6:
+                    return ref Element6;
+                case 7:
+                    return ref Element7;
+                case 8:
+                    return ref Element8;
+                case 9:
+                    return ref Element9;
+                case 10:
+                    return ref Element10;
+                case 11:
+                    return ref Element11;
+                case 12:
+                    return ref Element12;
+                case 13:
+                    return ref Element13;
+                case 14:
+                    return ref Element14;
+                case 15:
+                    return ref Element15;
+                case 16:
+                    return ref Element16;
+                case 17:
+                    return ref Element17;
+                case 18:
+                    return ref Element18;
+                case 19:
+                    return ref Element19;
+                case 20:
+                    return ref Element20;
+                case 21:
+                    return ref Element21;
+                case 22:
+                    return ref Element22;
+                case 23:
+                    return ref Element23;
+                case 24:
+                    return ref Element24;
+                case 25:
+                    return ref Element25;
+                case 26:
+                    return ref Element26;
+                case 27:
+                    return ref Element27;
+                case 28:
+                    return ref Element28;
+                case 29:
+                    return ref Element29;
+                case 30:
+                    return ref Element30;
+                case 31:
+                    return ref Element31;
+                case 32:
+                    return ref Element32;
+                case 33:
+                    return ref Element33;
+                case 34:
+                    return ref Element34;
+                case 35:
+                    return ref Element35;
+                case 36:
+                    return ref Element36;
+                case 37:
+                    return ref Element37;
+                case 38:
+                    return ref Element38;
+                case 39:
+                    return ref Element39;
+                case 40:
+                    return ref Element40;
+                case 41:
+                    return ref Element41;
+                case 42:
+                    return ref Element42;
+                case 43:
+                    return ref Element43;
+                case 44:
+                    return ref Element44;
+                case 45:
+                    return ref Element45;
+                case 46:
+                    return ref Element46;
+                case 47:
+                    return ref Element47;
+                case 48:
+                    return ref Element48;
+                case 49:
+                    return ref Element49;
+                case 50:
+                    return ref Element50;
+                case 51:
+                    return ref Element51;
+                case 52:
+                    return ref Element52;
+                case 53:
+                    return ref Element53;
+                case 54:
+                    return ref Element54;
+                case 55:
+                    return ref Element55;
+                case 56:
+                    return ref Element56;
+                case 57:
+                    return ref Element57;
+                case 58:
+                    return ref Element58;
+                case 59:
+                    return ref Element59;
+                case 60:
+                    return ref Element60;
+                case 61:
+                    return ref Element61;
+                case 62:
+                    return ref Element62;
+                case 63:
+                    return ref Element63;
+                case 64:
+                    return ref Element64;
+                case 65:
+                    return ref Element65;
+                case 66:
+                    return ref Element66;
+                case 67:
+                    return ref Element67;
+                case 68:
+                    return ref Element68;
+                case 69:
+                    return ref Element69;
+                case 70:
+                    return ref Element70;
+                case 71:
+                    return ref Element71;
+                case 72:
+                    return ref Element72;
+                case 73:
+                    return ref Element73;
+                case 74:
+                    return ref Element74;
+                case 75:
+                    return ref Element75;
+                case 76:
+                    return ref Element76;
+                case 77:
+                    return ref Element77;
+                case 78:
+                    return ref Element78;
+                case 79:
+                    return ref Element79;
+                case 80:
+                    return ref Element80;
+                case 81:
+                    return ref Element81;
+                case 82:
+                    return ref Element82;
+                case 83:
+                    return ref Element83;
+                case 84:
+                    return ref Element84;
+                case 85:
+                    return ref Element85;
+                case 86:
+                    return ref Element86;
+                case 87:
+                    return ref Element87;
+                case 88:
+                    return ref Element88;
+                case 89:
+                    return ref Element89;
+                case 90:
+                    return ref Element90;
+                case 91:
+                    return ref Element91;
+                case 92:
+                    return ref Element92;
+                case 93:
+                    return ref Element93;
+                case 94:
+                    return ref Element94;
+                case 95:
+                    return ref Element95;
+                case 96:
+                    return ref Element96;
+                case 97:
+                    return ref Element97;
+                case 98:
+                    return ref Element98;
+                case 99:
+                    return ref Element99;
+                case 100:
+                    return ref Element100;
+                case 101:
+                    return ref Element101;
+                case 102:
+                    return ref Element102;
+                case 103:
+                    return ref Element103;
+                case 104:
+                    return ref Element104;
+                case 105:
+                    return ref Element105;
+                case 106:
+                    return ref Element106;
+                case 107:
+                    return ref Element107;
+                case 108:
+                    return ref Element108;
+                case 109:
+                    return ref Element109;
+                case 110:
+                    return ref Element110;
+                case 111:
+                    return ref Element111;
+                case 112:
+                    return ref Element112;
+                case 113:
+                    return ref Element113;
+                case 114:
+                    return ref Element114;
+                case 115:
+                    return ref Element115;
+                case 116:
+                    return ref Element116;
+                case 117:
+                    return ref Element117;
+                case 118:
+                    return ref Element118;
+                case 119:
+                    return ref Element119;
+                case 120:
+                    return ref Element120;
+                case 121:
+                    return ref Element121;
+                case 122:
+                    return ref Element122;
+                case 123:
+                    return ref Element123;
+                case 124:
+                    return ref Element124;
+                case 125:
+                    return ref Element125;
+                case 126:
+                    return ref Element126;
+                case 127:
+                    return ref Element127;
+                default:
+                    return ref Element0;
+            }
+        }
     }
 
     public static ulong CalculateOrder(this ulong q)
