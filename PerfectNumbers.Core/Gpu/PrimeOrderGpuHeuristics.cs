@@ -1497,8 +1497,8 @@ internal static partial class PrimeOrderGpuHeuristics
                 continue;
             }
 
-            ulong reduced = phi / factor;
-            if (Pow2EqualsOneKernel(reduced, prime, divisor))
+            ulong reduced = phi / factor;            
+            if (reduced.Pow2MontgomeryModWindowed(divisor, keepMontgomery: false) == 1UL)
             {
                 return false;
             }
@@ -1514,7 +1514,7 @@ internal static partial class PrimeOrderGpuHeuristics
         if (residue == 1UL || residue == 7UL)
         {
             ulong half = phi >> 1;
-            if (Pow2EqualsOneKernel(half, prime, divisor))
+            if (Pow2EqualsOneKernel(half, divisor))
             {
                 order = half;
             }
@@ -1548,7 +1548,7 @@ internal static partial class PrimeOrderGpuHeuristics
                 }
 
                 ulong reduced = order / primeFactor;
-                if (Pow2EqualsOneKernel(reduced, prime, divisor))
+                if (Pow2EqualsOneKernel(reduced, divisor))
                 {
                     order = reduced;
                     continue;
@@ -1579,7 +1579,7 @@ internal static partial class PrimeOrderGpuHeuristics
             return false;
         }
 
-        if (!Pow2EqualsOneKernel(order, prime, divisor))
+        if (!Pow2EqualsOneKernel(order, divisor))
         {
             return false;
         }
@@ -1623,7 +1623,7 @@ internal static partial class PrimeOrderGpuHeuristics
                 }
 
                 reduced /= primeFactor;
-                if (Pow2EqualsOneKernel(reduced, prime, divisor))
+                if (Pow2EqualsOneKernel(reduced, divisor))
                 {
                     return false;
                 }
@@ -1714,7 +1714,7 @@ internal static partial class PrimeOrderGpuHeuristics
             }
 
             powUsed++;
-            if (!Pow2EqualsOneKernel(candidate, prime, divisor))
+            if (!Pow2EqualsOneKernel(candidate, divisor))
             {
                 continue;
             }
@@ -2014,7 +2014,7 @@ internal static partial class PrimeOrderGpuHeuristics
                 }
 
                 powUsed++;
-                if (Pow2EqualsOneKernel(reduced, prime, divisor))
+                if (Pow2EqualsOneKernel(reduced, divisor))
                 {
                     return false;
                 }
@@ -2280,7 +2280,7 @@ internal static partial class PrimeOrderGpuHeuristics
         }
     }
 
-    private static bool Pow2EqualsOneKernel(ulong exponent, ulong prime, in MontgomeryDivisorData divisor)
+    private static bool Pow2EqualsOneKernel(ulong exponent, in MontgomeryDivisorData divisor)
     {
         return exponent.Pow2MontgomeryModWindowed(divisor, keepMontgomery: false) == 1UL;
     }
