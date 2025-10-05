@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using ILGPU.Algorithms;
 using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
@@ -679,7 +680,8 @@ public static class ULongExtensions
                 Element127 = value;
                 return;
             default:
-                throw new ArgumentOutOfRangeException(nameof(index), index, "Pow2OddPowerTable index must be between 0 and 127.");
+                // ILGPU kernels cannot throw exceptions, and callers guarantee the index range.
+                return;
             }
         }
     }
@@ -1011,7 +1013,7 @@ public static class ULongExtensions
             return Pow2MontgomeryModSingleBit(exponent, divisor, keepMontgomery);
         }
 
-        int bitLength = BitOperations.Log2(exponent) + 1;
+        int bitLength = GetPortableBitLength(exponent);
         int windowSize = GetWindowSize(bitLength);
         int oddPowerCount = 1 << (windowSize - 1);
 
@@ -1093,6 +1095,16 @@ public static class ULongExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetPortableBitLength(ulong value)
+    {
+        if (value == 0UL)
+        {
+            return 0;
+        }
+
+        return 64 - XMath.LeadingZeroCount(value);
+    }
+
     private static int GetWindowSize(int bitLength)
     {
         if (bitLength <= 6)
