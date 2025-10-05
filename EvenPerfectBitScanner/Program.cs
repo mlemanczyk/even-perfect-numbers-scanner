@@ -1319,9 +1319,9 @@ internal static class Program
             int zeroCountValue = 0;
             int maxZeroBlockValue = 0;
             ComputeBitStats(p, out bitLength, out zeroCountValue, out maxZeroBlockValue);
+            zf = (double)zeroCountValue / bitLength;
             if (_zeroFracHard >= 0)
             {
-                zf = (double)zeroCountValue / bitLength;
                 if (zf > _zeroFracHard)
                 {
                     return false;
@@ -1330,7 +1330,6 @@ internal static class Program
 
             if (_zeroFracConj >= 0 && _maxZeroConj >= 0)
             {
-                zf = (double)zeroCountValue / bitLength;
                 if (zf > _zeroFracConj && maxZeroBlockValue >= _maxZeroConj)
                 {
                     return false;

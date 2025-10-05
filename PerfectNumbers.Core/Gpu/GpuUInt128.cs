@@ -55,6 +55,26 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public readonly int GetBitLength()
+    {
+        if (High != 0UL)
+        {
+            return 64 + (64 - BitOperations.LeadingZeroCount(High));
+        }
+
+        ulong low = Low;
+        if (low == 0UL)
+        {
+            return 0;
+        }
+
+        return 64 - BitOperations.LeadingZeroCount(low);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int GetBitLength(GpuUInt128 value) => value.GetBitLength();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static implicit operator GpuUInt128(UInt128 value) => new(value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -562,6 +582,43 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         var (highPart, lowPart) = Mul64(Low, value);
         High = highPart + High * value;
         Low = lowPart;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static GpuUInt128 DivideExact(GpuUInt128 dividend, GpuUInt128 divisor)
+    {
+        int divisorBits = divisor.GetBitLength();
+        int shift = dividend.GetBitLength() - divisorBits;
+
+        GpuUInt128 quotient = Zero;
+        GpuUInt128 remainder = dividend;
+        GpuUInt128 shiftedDivisor = divisor << shift;
+        GpuUInt128 quotientBit = One << shift;
+
+        while (true)
+        {
+            if (remainder.CompareTo(shiftedDivisor) >= 0)
+            {
+                remainder.Sub(shiftedDivisor);
+                quotient.Add(quotientBit);
+            }
+
+            if (shift == 0)
+            {
+                break;
+            }
+
+            shift--;
+            shiftedDivisor.ShiftRight(1);
+            quotientBit.ShiftRight(1);
+        }
+
+        if (!remainder.IsZero)
+        {
+            throw new InvalidOperationException("DivideExact requires divisible operands.");
+        }
+
+        return quotient;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -1,4 +1,6 @@
 using System;
+using System.Numerics;
+using System.Reflection;
 using FluentAssertions;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
@@ -12,6 +14,7 @@ public class PrimeOrderGpuHeuristicsTests
     public PrimeOrderGpuHeuristicsTests()
     {
         PrimeOrderGpuHeuristics.OverflowRegistry.Clear();
+        PrimeOrderGpuHeuristics.OverflowRegistryWide.Clear();
         PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
     }
 
@@ -158,6 +161,160 @@ public class PrimeOrderGpuHeuristicsTests
             status.Should().Be(GpuPow2ModStatus.Overflow);
             remainders[0].Should().Be(0UL);
             remainders[1].Should().Be(0UL);
+        }
+        finally
+        {
+            PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
+        }
+    }
+
+    [Fact]
+    public void TryPow2ModWide_returns_overflow_for_marked_prime()
+    {
+        UInt128 prime = ((UInt128)1 << 80) + 7;
+        try
+        {
+            PrimeOrderGpuHeuristics.OverflowRegistryWide[prime] = 0;
+
+            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(UInt128.One, prime, out UInt128 remainder);
+
+            status.Should().Be(GpuPow2ModStatus.Overflow);
+            remainder.Should().Be(UInt128.Zero);
+        }
+        finally
+        {
+            PrimeOrderGpuHeuristics.OverflowRegistryWide.TryRemove(prime, out _);
+        }
+    }
+
+    [Fact]
+    public void TryPow2ModWide_returns_success_for_supported_prime()
+    {
+        UInt128 prime = ((UInt128)1 << 96) + 11;
+        UInt128 exponent = ((UInt128)1 << 64) + 3;
+
+        GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, prime, out UInt128 remainder);
+
+        status.Should().Be(GpuPow2ModStatus.Success);
+        UInt128 expected = (UInt128)BigInteger.ModPow(2, (BigInteger)exponent, (BigInteger)prime);
+        remainder.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("193", "31")]
+    [InlineData("193", "255")]
+    [InlineData("79228162514264337593543950347", "36893488147419103251")]
+    public void Pow2ModKernelCore_matches_cpu_windowed_path(string modulusText, string exponentText)
+    {
+        UInt128 modulus = UInt128.Parse(modulusText);
+        UInt128 exponent = UInt128.Parse(exponentText);
+
+        var method = typeof(PrimeOrderGpuHeuristics).GetMethod("Pow2ModKernelCore", BindingFlags.NonPublic | BindingFlags.Static);
+        method.Should().NotBeNull();
+
+        object? gpuResultObject = method!.Invoke(null, new object[] { new GpuUInt128(exponent), new GpuUInt128(modulus) });
+        GpuUInt128 gpuResult = (GpuUInt128)gpuResultObject!;
+        UInt128 expected = exponent.Pow2MontgomeryModWindowed(modulus);
+
+        ((UInt128)gpuResult).Should().Be(expected);
+    }
+
+    [Fact]
+    public void TryPow2ModWide_returns_overflow_when_modulus_exceeds_capability()
+    {
+        UInt128 prime = ((UInt128)1 << 80) + 9;
+        var capability = new PrimeOrderGpuHeuristics.PrimeOrderGpuCapability(64, 128);
+        PrimeOrderGpuHeuristics.OverrideCapabilitiesForTesting(capability);
+        try
+        {
+            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(UInt128.One, prime, out UInt128 remainder);
+
+            status.Should().Be(GpuPow2ModStatus.Overflow);
+            remainder.Should().Be(UInt128.Zero);
+        }
+        finally
+        {
+            PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
+            PrimeOrderGpuHeuristics.OverflowRegistryWide.TryRemove(prime, out _);
+        }
+    }
+
+    [Fact]
+    public void TryPow2ModWide_returns_overflow_when_exponent_exceeds_capability()
+    {
+        var capability = new PrimeOrderGpuHeuristics.PrimeOrderGpuCapability(128, 4);
+        PrimeOrderGpuHeuristics.OverrideCapabilitiesForTesting(capability);
+        try
+        {
+            UInt128 exponent = UInt128.One << 8;
+            UInt128 prime = ((UInt128)1 << 70) + 3;
+
+            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, prime, out UInt128 remainder);
+
+            status.Should().Be(GpuPow2ModStatus.Overflow);
+            remainder.Should().Be(UInt128.Zero);
+        }
+        finally
+        {
+            PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
+        }
+    }
+
+    [Fact]
+    public void TryPow2ModBatchWide_returns_success_for_supported_prime()
+    {
+        UInt128 prime = ((UInt128)1 << 90) + 19;
+        UInt128[] exponents = { UInt128.One, ((UInt128)1 << 64) + 5 };
+        UInt128[] remainders = { UInt128.Zero, UInt128.Zero };
+
+        GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponents, prime, remainders);
+
+        status.Should().Be(GpuPow2ModStatus.Success);
+        for (int i = 0; i < exponents.Length; i++)
+        {
+            UInt128 expected = (UInt128)BigInteger.ModPow(2, (BigInteger)exponents[i], (BigInteger)prime);
+            remainders[i].Should().Be(expected);
+        }
+    }
+
+    [Fact]
+    public void TryPow2ModBatchWide_returns_overflow_when_modulus_exceeds_capability()
+    {
+        UInt128 prime = ((UInt128)1 << 88) + 13;
+        UInt128[] exponents = { UInt128.One, (UInt128)5 };
+        UInt128[] remainders = { UInt128.Zero, UInt128.Zero };
+        var capability = new PrimeOrderGpuHeuristics.PrimeOrderGpuCapability(64, 128);
+        PrimeOrderGpuHeuristics.OverrideCapabilitiesForTesting(capability);
+        try
+        {
+            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponents, prime, remainders);
+
+            status.Should().Be(GpuPow2ModStatus.Overflow);
+            remainders[0].Should().Be(UInt128.Zero);
+            remainders[1].Should().Be(UInt128.Zero);
+        }
+        finally
+        {
+            PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
+            PrimeOrderGpuHeuristics.OverflowRegistryWide.TryRemove(prime, out _);
+        }
+    }
+
+    [Fact]
+    public void TryPow2ModBatchWide_returns_overflow_when_any_exponent_exceeds_capability()
+    {
+        UInt128 prime = ((UInt128)1 << 72) + 23;
+        UInt128[] exponents = { UInt128.One << 5, UInt128.One << 9 };
+        UInt128[] remainders = { UInt128.Zero, UInt128.Zero };
+        var capability = new PrimeOrderGpuHeuristics.PrimeOrderGpuCapability(128, 6);
+        PrimeOrderGpuHeuristics.OverrideCapabilitiesForTesting(capability);
+        try
+        {
+            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponents, prime, remainders);
+
+            status.Should().Be(GpuPow2ModStatus.Overflow);
+            remainders[0].Should().Be(UInt128.Zero);
+            remainders[1].Should().Be(UInt128.Zero);
         }
         finally
         {
