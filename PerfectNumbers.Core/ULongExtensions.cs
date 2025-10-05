@@ -142,277 +142,544 @@ public static class ULongExtensions
         public ulong Element126;
         public ulong Element127;
 
-        public ref ulong this[int index]
+        public ulong this[int index]
         {
             get
             {
-                return ref GetElementRef(index);
+                return GetElement(index);
+            }
+
+            set
+            {
+                SetElement(index, value);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private ref ulong GetElementRef(int index)
+        private ulong GetElement(int index) => index switch
+        {
+            0 => Element0,
+            1 => Element1,
+            2 => Element2,
+            3 => Element3,
+            4 => Element4,
+            5 => Element5,
+            6 => Element6,
+            7 => Element7,
+            8 => Element8,
+            9 => Element9,
+            10 => Element10,
+            11 => Element11,
+            12 => Element12,
+            13 => Element13,
+            14 => Element14,
+            15 => Element15,
+            16 => Element16,
+            17 => Element17,
+            18 => Element18,
+            19 => Element19,
+            20 => Element20,
+            21 => Element21,
+            22 => Element22,
+            23 => Element23,
+            24 => Element24,
+            25 => Element25,
+            26 => Element26,
+            27 => Element27,
+            28 => Element28,
+            29 => Element29,
+            30 => Element30,
+            31 => Element31,
+            32 => Element32,
+            33 => Element33,
+            34 => Element34,
+            35 => Element35,
+            36 => Element36,
+            37 => Element37,
+            38 => Element38,
+            39 => Element39,
+            40 => Element40,
+            41 => Element41,
+            42 => Element42,
+            43 => Element43,
+            44 => Element44,
+            45 => Element45,
+            46 => Element46,
+            47 => Element47,
+            48 => Element48,
+            49 => Element49,
+            50 => Element50,
+            51 => Element51,
+            52 => Element52,
+            53 => Element53,
+            54 => Element54,
+            55 => Element55,
+            56 => Element56,
+            57 => Element57,
+            58 => Element58,
+            59 => Element59,
+            60 => Element60,
+            61 => Element61,
+            62 => Element62,
+            63 => Element63,
+            64 => Element64,
+            65 => Element65,
+            66 => Element66,
+            67 => Element67,
+            68 => Element68,
+            69 => Element69,
+            70 => Element70,
+            71 => Element71,
+            72 => Element72,
+            73 => Element73,
+            74 => Element74,
+            75 => Element75,
+            76 => Element76,
+            77 => Element77,
+            78 => Element78,
+            79 => Element79,
+            80 => Element80,
+            81 => Element81,
+            82 => Element82,
+            83 => Element83,
+            84 => Element84,
+            85 => Element85,
+            86 => Element86,
+            87 => Element87,
+            88 => Element88,
+            89 => Element89,
+            90 => Element90,
+            91 => Element91,
+            92 => Element92,
+            93 => Element93,
+            94 => Element94,
+            95 => Element95,
+            96 => Element96,
+            97 => Element97,
+            98 => Element98,
+            99 => Element99,
+            100 => Element100,
+            101 => Element101,
+            102 => Element102,
+            103 => Element103,
+            104 => Element104,
+            105 => Element105,
+            106 => Element106,
+            107 => Element107,
+            108 => Element108,
+            109 => Element109,
+            110 => Element110,
+            111 => Element111,
+            112 => Element112,
+            113 => Element113,
+            114 => Element114,
+            115 => Element115,
+            116 => Element116,
+            117 => Element117,
+            118 => Element118,
+            119 => Element119,
+            120 => Element120,
+            121 => Element121,
+            122 => Element122,
+            123 => Element123,
+            124 => Element124,
+            125 => Element125,
+            126 => Element126,
+            127 => Element127,
+            _ => Element0,
+        };
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetElement(int index, ulong value)
         {
             switch (index)
             {
-                case 0:
-                    return ref Element0;
-                case 1:
-                    return ref Element1;
-                case 2:
-                    return ref Element2;
-                case 3:
-                    return ref Element3;
-                case 4:
-                    return ref Element4;
-                case 5:
-                    return ref Element5;
-                case 6:
-                    return ref Element6;
-                case 7:
-                    return ref Element7;
-                case 8:
-                    return ref Element8;
-                case 9:
-                    return ref Element9;
-                case 10:
-                    return ref Element10;
-                case 11:
-                    return ref Element11;
-                case 12:
-                    return ref Element12;
-                case 13:
-                    return ref Element13;
-                case 14:
-                    return ref Element14;
-                case 15:
-                    return ref Element15;
-                case 16:
-                    return ref Element16;
-                case 17:
-                    return ref Element17;
-                case 18:
-                    return ref Element18;
-                case 19:
-                    return ref Element19;
-                case 20:
-                    return ref Element20;
-                case 21:
-                    return ref Element21;
-                case 22:
-                    return ref Element22;
-                case 23:
-                    return ref Element23;
-                case 24:
-                    return ref Element24;
-                case 25:
-                    return ref Element25;
-                case 26:
-                    return ref Element26;
-                case 27:
-                    return ref Element27;
-                case 28:
-                    return ref Element28;
-                case 29:
-                    return ref Element29;
-                case 30:
-                    return ref Element30;
-                case 31:
-                    return ref Element31;
-                case 32:
-                    return ref Element32;
-                case 33:
-                    return ref Element33;
-                case 34:
-                    return ref Element34;
-                case 35:
-                    return ref Element35;
-                case 36:
-                    return ref Element36;
-                case 37:
-                    return ref Element37;
-                case 38:
-                    return ref Element38;
-                case 39:
-                    return ref Element39;
-                case 40:
-                    return ref Element40;
-                case 41:
-                    return ref Element41;
-                case 42:
-                    return ref Element42;
-                case 43:
-                    return ref Element43;
-                case 44:
-                    return ref Element44;
-                case 45:
-                    return ref Element45;
-                case 46:
-                    return ref Element46;
-                case 47:
-                    return ref Element47;
-                case 48:
-                    return ref Element48;
-                case 49:
-                    return ref Element49;
-                case 50:
-                    return ref Element50;
-                case 51:
-                    return ref Element51;
-                case 52:
-                    return ref Element52;
-                case 53:
-                    return ref Element53;
-                case 54:
-                    return ref Element54;
-                case 55:
-                    return ref Element55;
-                case 56:
-                    return ref Element56;
-                case 57:
-                    return ref Element57;
-                case 58:
-                    return ref Element58;
-                case 59:
-                    return ref Element59;
-                case 60:
-                    return ref Element60;
-                case 61:
-                    return ref Element61;
-                case 62:
-                    return ref Element62;
-                case 63:
-                    return ref Element63;
-                case 64:
-                    return ref Element64;
-                case 65:
-                    return ref Element65;
-                case 66:
-                    return ref Element66;
-                case 67:
-                    return ref Element67;
-                case 68:
-                    return ref Element68;
-                case 69:
-                    return ref Element69;
-                case 70:
-                    return ref Element70;
-                case 71:
-                    return ref Element71;
-                case 72:
-                    return ref Element72;
-                case 73:
-                    return ref Element73;
-                case 74:
-                    return ref Element74;
-                case 75:
-                    return ref Element75;
-                case 76:
-                    return ref Element76;
-                case 77:
-                    return ref Element77;
-                case 78:
-                    return ref Element78;
-                case 79:
-                    return ref Element79;
-                case 80:
-                    return ref Element80;
-                case 81:
-                    return ref Element81;
-                case 82:
-                    return ref Element82;
-                case 83:
-                    return ref Element83;
-                case 84:
-                    return ref Element84;
-                case 85:
-                    return ref Element85;
-                case 86:
-                    return ref Element86;
-                case 87:
-                    return ref Element87;
-                case 88:
-                    return ref Element88;
-                case 89:
-                    return ref Element89;
-                case 90:
-                    return ref Element90;
-                case 91:
-                    return ref Element91;
-                case 92:
-                    return ref Element92;
-                case 93:
-                    return ref Element93;
-                case 94:
-                    return ref Element94;
-                case 95:
-                    return ref Element95;
-                case 96:
-                    return ref Element96;
-                case 97:
-                    return ref Element97;
-                case 98:
-                    return ref Element98;
-                case 99:
-                    return ref Element99;
-                case 100:
-                    return ref Element100;
-                case 101:
-                    return ref Element101;
-                case 102:
-                    return ref Element102;
-                case 103:
-                    return ref Element103;
-                case 104:
-                    return ref Element104;
-                case 105:
-                    return ref Element105;
-                case 106:
-                    return ref Element106;
-                case 107:
-                    return ref Element107;
-                case 108:
-                    return ref Element108;
-                case 109:
-                    return ref Element109;
-                case 110:
-                    return ref Element110;
-                case 111:
-                    return ref Element111;
-                case 112:
-                    return ref Element112;
-                case 113:
-                    return ref Element113;
-                case 114:
-                    return ref Element114;
-                case 115:
-                    return ref Element115;
-                case 116:
-                    return ref Element116;
-                case 117:
-                    return ref Element117;
-                case 118:
-                    return ref Element118;
-                case 119:
-                    return ref Element119;
-                case 120:
-                    return ref Element120;
-                case 121:
-                    return ref Element121;
-                case 122:
-                    return ref Element122;
-                case 123:
-                    return ref Element123;
-                case 124:
-                    return ref Element124;
-                case 125:
-                    return ref Element125;
-                case 126:
-                    return ref Element126;
-                case 127:
-                    return ref Element127;
-                default:
-                    return ref Element0;
+            case 0:
+                Element0 = value;
+                return;
+            case 1:
+                Element1 = value;
+                return;
+            case 2:
+                Element2 = value;
+                return;
+            case 3:
+                Element3 = value;
+                return;
+            case 4:
+                Element4 = value;
+                return;
+            case 5:
+                Element5 = value;
+                return;
+            case 6:
+                Element6 = value;
+                return;
+            case 7:
+                Element7 = value;
+                return;
+            case 8:
+                Element8 = value;
+                return;
+            case 9:
+                Element9 = value;
+                return;
+            case 10:
+                Element10 = value;
+                return;
+            case 11:
+                Element11 = value;
+                return;
+            case 12:
+                Element12 = value;
+                return;
+            case 13:
+                Element13 = value;
+                return;
+            case 14:
+                Element14 = value;
+                return;
+            case 15:
+                Element15 = value;
+                return;
+            case 16:
+                Element16 = value;
+                return;
+            case 17:
+                Element17 = value;
+                return;
+            case 18:
+                Element18 = value;
+                return;
+            case 19:
+                Element19 = value;
+                return;
+            case 20:
+                Element20 = value;
+                return;
+            case 21:
+                Element21 = value;
+                return;
+            case 22:
+                Element22 = value;
+                return;
+            case 23:
+                Element23 = value;
+                return;
+            case 24:
+                Element24 = value;
+                return;
+            case 25:
+                Element25 = value;
+                return;
+            case 26:
+                Element26 = value;
+                return;
+            case 27:
+                Element27 = value;
+                return;
+            case 28:
+                Element28 = value;
+                return;
+            case 29:
+                Element29 = value;
+                return;
+            case 30:
+                Element30 = value;
+                return;
+            case 31:
+                Element31 = value;
+                return;
+            case 32:
+                Element32 = value;
+                return;
+            case 33:
+                Element33 = value;
+                return;
+            case 34:
+                Element34 = value;
+                return;
+            case 35:
+                Element35 = value;
+                return;
+            case 36:
+                Element36 = value;
+                return;
+            case 37:
+                Element37 = value;
+                return;
+            case 38:
+                Element38 = value;
+                return;
+            case 39:
+                Element39 = value;
+                return;
+            case 40:
+                Element40 = value;
+                return;
+            case 41:
+                Element41 = value;
+                return;
+            case 42:
+                Element42 = value;
+                return;
+            case 43:
+                Element43 = value;
+                return;
+            case 44:
+                Element44 = value;
+                return;
+            case 45:
+                Element45 = value;
+                return;
+            case 46:
+                Element46 = value;
+                return;
+            case 47:
+                Element47 = value;
+                return;
+            case 48:
+                Element48 = value;
+                return;
+            case 49:
+                Element49 = value;
+                return;
+            case 50:
+                Element50 = value;
+                return;
+            case 51:
+                Element51 = value;
+                return;
+            case 52:
+                Element52 = value;
+                return;
+            case 53:
+                Element53 = value;
+                return;
+            case 54:
+                Element54 = value;
+                return;
+            case 55:
+                Element55 = value;
+                return;
+            case 56:
+                Element56 = value;
+                return;
+            case 57:
+                Element57 = value;
+                return;
+            case 58:
+                Element58 = value;
+                return;
+            case 59:
+                Element59 = value;
+                return;
+            case 60:
+                Element60 = value;
+                return;
+            case 61:
+                Element61 = value;
+                return;
+            case 62:
+                Element62 = value;
+                return;
+            case 63:
+                Element63 = value;
+                return;
+            case 64:
+                Element64 = value;
+                return;
+            case 65:
+                Element65 = value;
+                return;
+            case 66:
+                Element66 = value;
+                return;
+            case 67:
+                Element67 = value;
+                return;
+            case 68:
+                Element68 = value;
+                return;
+            case 69:
+                Element69 = value;
+                return;
+            case 70:
+                Element70 = value;
+                return;
+            case 71:
+                Element71 = value;
+                return;
+            case 72:
+                Element72 = value;
+                return;
+            case 73:
+                Element73 = value;
+                return;
+            case 74:
+                Element74 = value;
+                return;
+            case 75:
+                Element75 = value;
+                return;
+            case 76:
+                Element76 = value;
+                return;
+            case 77:
+                Element77 = value;
+                return;
+            case 78:
+                Element78 = value;
+                return;
+            case 79:
+                Element79 = value;
+                return;
+            case 80:
+                Element80 = value;
+                return;
+            case 81:
+                Element81 = value;
+                return;
+            case 82:
+                Element82 = value;
+                return;
+            case 83:
+                Element83 = value;
+                return;
+            case 84:
+                Element84 = value;
+                return;
+            case 85:
+                Element85 = value;
+                return;
+            case 86:
+                Element86 = value;
+                return;
+            case 87:
+                Element87 = value;
+                return;
+            case 88:
+                Element88 = value;
+                return;
+            case 89:
+                Element89 = value;
+                return;
+            case 90:
+                Element90 = value;
+                return;
+            case 91:
+                Element91 = value;
+                return;
+            case 92:
+                Element92 = value;
+                return;
+            case 93:
+                Element93 = value;
+                return;
+            case 94:
+                Element94 = value;
+                return;
+            case 95:
+                Element95 = value;
+                return;
+            case 96:
+                Element96 = value;
+                return;
+            case 97:
+                Element97 = value;
+                return;
+            case 98:
+                Element98 = value;
+                return;
+            case 99:
+                Element99 = value;
+                return;
+            case 100:
+                Element100 = value;
+                return;
+            case 101:
+                Element101 = value;
+                return;
+            case 102:
+                Element102 = value;
+                return;
+            case 103:
+                Element103 = value;
+                return;
+            case 104:
+                Element104 = value;
+                return;
+            case 105:
+                Element105 = value;
+                return;
+            case 106:
+                Element106 = value;
+                return;
+            case 107:
+                Element107 = value;
+                return;
+            case 108:
+                Element108 = value;
+                return;
+            case 109:
+                Element109 = value;
+                return;
+            case 110:
+                Element110 = value;
+                return;
+            case 111:
+                Element111 = value;
+                return;
+            case 112:
+                Element112 = value;
+                return;
+            case 113:
+                Element113 = value;
+                return;
+            case 114:
+                Element114 = value;
+                return;
+            case 115:
+                Element115 = value;
+                return;
+            case 116:
+                Element116 = value;
+                return;
+            case 117:
+                Element117 = value;
+                return;
+            case 118:
+                Element118 = value;
+                return;
+            case 119:
+                Element119 = value;
+                return;
+            case 120:
+                Element120 = value;
+                return;
+            case 121:
+                Element121 = value;
+                return;
+            case 122:
+                Element122 = value;
+                return;
+            case 123:
+                Element123 = value;
+                return;
+            case 124:
+                Element124 = value;
+                return;
+            case 125:
+                Element125 = value;
+                return;
+            case 126:
+                Element126 = value;
+                return;
+            case 127:
+                Element127 = value;
+                return;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(index), index, "Pow2OddPowerTable index must be between 0 and 127.");
             }
         }
     }
