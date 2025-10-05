@@ -9,6 +9,14 @@ public static class ULongExtensions
 {
     private const int Pow2WindowSize = 8;
     private const ulong Pow2WindowFallbackThreshold = 32UL;
+    private const int Pow2WindowOddPowerCount = 1 << (Pow2WindowSize - 1);
+
+    [InlineArray(Pow2WindowOddPowerCount)]
+    private struct Pow2OddPowerTable
+    {
+        private ulong _element0;
+    }
+
     public static ulong CalculateOrder(this ulong q)
     {
         if (q <= 2UL)
@@ -342,8 +350,8 @@ public static class ULongExtensions
 
         ulong result = divisor.MontgomeryOne;
         ulong nPrime = divisor.NPrime;
-        Span<ulong> oddPowers = stackalloc ulong[oddPowerCount];
-        InitializeMontgomeryOddPowers(divisor, modulus, nPrime, oddPowers);
+        Pow2OddPowerTable oddPowers = default;
+        InitializeMontgomeryOddPowers(divisor, modulus, nPrime, ref oddPowers, oddPowerCount);
 
         int index = bitLength - 1;
         while (index >= 0)
@@ -449,18 +457,19 @@ public static class ULongExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void InitializeMontgomeryOddPowers(in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime, Span<ulong> oddPowers)
+    private static void InitializeMontgomeryOddPowers(in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime, ref Pow2OddPowerTable oddPowers, int oddPowerCount)
     {
         oddPowers[0] = divisor.MontgomeryTwo;
-        if (oddPowers.Length == 1)
+        if (oddPowerCount == 1)
         {
             return;
         }
 
         ulong square = divisor.MontgomeryTwoSquared;
-        for (int i = 1; i < oddPowers.Length; i++)
+        for (int i = 1; i < oddPowerCount; i++)
         {
-            oddPowers[i] = oddPowers[i - 1].MontgomeryMultiply(square, modulus, nPrime);
+            ulong previous = oddPowers[i - 1];
+            oddPowers[i] = previous.MontgomeryMultiply(square, modulus, nPrime);
         }
     }
 
