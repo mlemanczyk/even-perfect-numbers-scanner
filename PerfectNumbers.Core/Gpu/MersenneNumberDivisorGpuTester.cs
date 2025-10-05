@@ -5,6 +5,9 @@ using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
 
+/// <summary>
+/// Provides GPU-accelerated divisibility checks for Mersenne numbers with prime exponents p >= 31.
+/// </summary>
 public sealed class MersenneNumberDivisorGpuTester
 {
 	private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, GpuUInt128, ArrayView<byte>>> _kernelCache = new();

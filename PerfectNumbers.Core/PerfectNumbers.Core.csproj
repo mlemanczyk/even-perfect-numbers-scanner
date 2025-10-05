@@ -17,6 +17,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="EvenPerfectBitScanner.Tests" />
     <InternalsVisibleTo Include="PerfectNumbers.Core.Tests" />
+    <InternalsVisibleTo Include="ILGPURuntime" />
     <InternalsVisibleTo Include="HeuristicMultiplyShiftTiming" />
     <InternalsVisibleTo Include="EvenPerfectBitScanner.Benchmarks" />
   </ItemGroup>

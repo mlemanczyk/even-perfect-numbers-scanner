@@ -13,6 +13,9 @@ using CycleRemainderStepper = PerfectNumbers.Core.CycleRemainderStepper;
 
 namespace PerfectNumbers.Core.Gpu;
 
+/// <summary>
+/// Scans Mersenne divisors on the GPU for prime exponents p >= 31 using per-divisor Montgomery data.
+/// </summary>
 public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDivisorByDivisorTester
 {
     private int _gpuBatchSize = GpuConstants.ScanBatchSize;
