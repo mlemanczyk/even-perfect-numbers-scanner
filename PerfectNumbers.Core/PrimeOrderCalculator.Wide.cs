@@ -23,7 +23,15 @@ internal static partial class PrimeOrderCalculator
     }
 
     public static PrimeOrderResultWide Calculate(UInt128 prime, UInt128? previousOrder, PrimeOrderSearchConfig config)
+        => Calculate(prime, previousOrder, config, PrimeOrderHeuristicDevice.Gpu);
+
+    public static PrimeOrderResultWide Calculate(
+        UInt128 prime,
+        UInt128? previousOrder,
+        PrimeOrderSearchConfig config,
+        PrimeOrderHeuristicDevice device)
     {
+        using var scope = UsePow2Mode(device);
         if (prime <= ulong.MaxValue)
         {
             ulong? previous = null;
@@ -40,7 +48,7 @@ internal static partial class PrimeOrderCalculator
                 }
             }
 
-            PrimeOrderResult result = Calculate((ulong)prime, previous, config);
+            PrimeOrderResult result = Calculate((ulong)prime, previous, config, device);
             return new PrimeOrderResultWide(result.Status, result.Order);
         }
 
@@ -60,12 +68,23 @@ internal static partial class PrimeOrderCalculator
         }
 
         UInt128 phi = prime - UInt128.One;
+        using var debugScope = UseDebugLogging(!IsGpuHeuristicDevice);
         PartialFactorResult128 phiFactors = PartialFactorWide(phi, config);
         if (phiFactors.Factors is null)
         {
             return FinishStrictlyWide(prime, config.Mode);
         }
 
+        return RunHeuristicPipelineWide(prime, previousOrder, config, phi, phiFactors);
+    }
+
+    private static PrimeOrderResultWide RunHeuristicPipelineWide(
+        UInt128 prime,
+        UInt128? previousOrder,
+        PrimeOrderSearchConfig config,
+        UInt128 phi,
+        PartialFactorResult128 phiFactors)
+    {
         if (phiFactors.FullyFactored && TrySpecialMaxWide(phi, prime, phiFactors))
         {
             return new PrimeOrderResultWide(PrimeOrderStatus.Found, phi);
@@ -553,41 +572,29 @@ internal static partial class PrimeOrderCalculator
         }
 
         Dictionary<UInt128, int> counts = new(capacity: 8);
-        UInt128 remaining = value;
-        uint[] primes = PrimesGenerator.SmallPrimes;
-        ulong[] squares = PrimesGenerator.SmallPrimesPow2;
-        int primeCount = primes.Length;
         uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
+        UInt128 remaining;
 
-        for (int i = 0; i < primeCount; i++)
+        if (IsGpuPow2Allowed && value <= ulong.MaxValue)
         {
-            uint primeCandidate = primes[i];
-            if (primeCandidate > limit)
+            Dictionary<ulong, int> narrowCounts = new(capacity: 8);
+            if (TryPopulateSmallPrimeFactorsGpu((ulong)value, limit, narrowCounts, out ulong narrowRemaining))
             {
-                break;
-            }
+                foreach (KeyValuePair<ulong, int> entry in narrowCounts)
+                {
+                    counts[(UInt128)entry.Key] = entry.Value;
+                }
 
-            UInt128 primeValue = primeCandidate;
-            UInt128 primeSquare = (UInt128)squares[i];
-            if (primeSquare > remaining)
+                remaining = (UInt128)narrowRemaining;
+            }
+            else
             {
-                break;
+                remaining = PopulateSmallPrimeFactorsCpuWide(value, limit, counts);
             }
-
-            if ((remaining % primeValue) != UInt128.Zero)
-            {
-                continue;
-            }
-
-            int exponent = 0;
-            do
-            {
-                remaining /= primeValue;
-                exponent++;
-            }
-            while ((remaining % primeValue) == UInt128.Zero);
-
-            counts[primeValue] = exponent;
+        }
+        else
+        {
+            remaining = PopulateSmallPrimeFactorsCpuWide(value, limit, counts);
         }
 
         List<UInt128> pending = new();
@@ -682,6 +689,46 @@ internal static partial class PrimeOrderCalculator
         return new PartialFactorResult128(resultArray, cofactor, fullyFactored, index);
     }
 
+    private static UInt128 PopulateSmallPrimeFactorsCpuWide(UInt128 value, uint limit, Dictionary<UInt128, int> counts)
+    {
+        UInt128 remaining = value;
+        uint[] primes = PrimesGenerator.SmallPrimes;
+        ulong[] squares = PrimesGenerator.SmallPrimesPow2;
+        int primeCount = primes.Length;
+
+        for (int i = 0; i < primeCount; i++)
+        {
+            uint primeCandidate = primes[i];
+            if (primeCandidate > limit)
+            {
+                break;
+            }
+
+            UInt128 primeSquare = (UInt128)squares[i];
+            if (primeSquare > remaining)
+            {
+                break;
+            }
+
+            UInt128 primeValue = primeCandidate;
+            if ((remaining % primeValue) != UInt128.Zero)
+            {
+                continue;
+            }
+
+            int exponent = 0;
+            do
+            {
+                remaining /= primeValue;
+                exponent++;
+            }
+            while ((remaining % primeValue) == UInt128.Zero);
+
+            counts[primeValue] = exponent;
+        }
+
+        return remaining;
+    }
     private static bool TryPollardRhoWide(UInt128 n, Stopwatch stopwatch, long budgetTicks, out UInt128 factor)
     {
         factor = UInt128.Zero;
@@ -955,21 +1002,25 @@ internal static partial class PrimeOrderCalculator
         {
             return UInt128.Zero;
         }
-        if (modulus <= (UInt128)ulong.MaxValue && exponent <= (UInt128)ulong.MaxValue)
-        {
-            ulong prime64 = (ulong)modulus;
-            ulong exponent64 = (ulong)exponent;
-            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent64, prime64, out ulong remainder);
-            if (status == GpuPow2ModStatus.Success)
-            {
-                return remainder;
-            }
-        }
 
-        GpuPow2ModStatus wideStatus = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, modulus, out UInt128 wideRemainder);
-        if (wideStatus == GpuPow2ModStatus.Success)
+        if (IsGpuPow2Allowed)
         {
-            return wideRemainder;
+            if (modulus <= (UInt128)ulong.MaxValue && exponent <= (UInt128)ulong.MaxValue)
+            {
+                ulong prime64 = (ulong)modulus;
+                ulong exponent64 = (ulong)exponent;
+                GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent64, prime64, out ulong remainder);
+                if (status == GpuPow2ModStatus.Success)
+                {
+                    return remainder;
+                }
+            }
+
+            GpuPow2ModStatus wideStatus = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, modulus, out UInt128 wideRemainder);
+            if (wideStatus == GpuPow2ModStatus.Success)
+            {
+                return wideRemainder;
+            }
         }
 
         return exponent.Pow2MontgomeryModWindowed(modulus);

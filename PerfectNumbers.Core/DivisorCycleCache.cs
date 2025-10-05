@@ -262,8 +262,38 @@ public sealed class DivisorCycleCache
         }
 
         ulong divisor = divisors[index];
+
+        if ((divisor & (divisor - 1UL)) == 0UL)
+        {
+            cycles[index] = 1UL;
+            status[index] = ByteOne;
+            pow[index] = 1UL;
+            order[index] = 1UL;
+            return;
+        }
+
         ulong currentPow = pow[index];
         ulong currentOrder = order[index];
+
+        if (divisor <= 3UL)
+        {
+            while (currentPow != 1UL)
+            {
+                currentPow += currentPow;
+                if (currentPow >= divisor)
+                {
+                    currentPow -= divisor;
+                }
+
+                currentOrder++;
+            }
+
+            cycles[index] = currentOrder;
+            status[index] = ByteOne;
+            pow[index] = currentPow;
+            order[index] = currentOrder;
+            return;
+        }
 
         do
         {

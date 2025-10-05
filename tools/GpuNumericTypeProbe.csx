@@ -1,5 +1,6 @@
 #r "nuget: ILGPU, 1.5.3"
 #r "nuget: PeterO.Numbers, 1.8.1"
+#r "nuget: Open.Numeric.Primes, 4.0.4"
 
 using System;
 using System.Numerics;
@@ -7,6 +8,7 @@ using ILGPU;
 using ILGPU.Runtime;
 using ILGPU.Runtime.CPU;
 using PeterO.Numbers;
+using Open.Numeric.Primes;
 
 var context = Context.CreateDefault();
 var accelerator = context.CreateCPUAccelerator(0);
@@ -20,7 +22,8 @@ try
     [
         ProbeBigInteger(accelerator),
         ProbeEInteger(accelerator),
-        ProbeERational(accelerator)
+        ProbeERational(accelerator),
+        ProbeOpenNumericPrimesIsPrime(accelerator)
     ];
 
     foreach (ProbeResult result in results)
@@ -110,6 +113,31 @@ static ProbeResult ProbeERational(Accelerator accelerator)
 
         return ProbeResult.Failure("PeterO.Numbers.ERational", details);
     }
+}
+
+static ProbeResult ProbeOpenNumericPrimesIsPrime(Accelerator accelerator)
+{
+    try
+    {
+        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<int, Stride1D.Dense>>(OpenNumericPrimesIsPrimeKernel);
+        using var buffer = accelerator.Allocate1D<int>(4);
+        kernel(new Index1D((int)buffer.Length), buffer.View);
+        accelerator.Synchronize();
+        return ProbeResult.Success(
+            "Open.Numeric.Primes.Prime.Numbers.IsPrime",
+            "IsPrime compiles and runs on the CPU accelerator kernel.");
+    }
+    catch (Exception ex)
+    {
+        return ProbeResult.Failure("Open.Numeric.Primes.Prime.Numbers.IsPrime", ex);
+    }
+}
+
+static void OpenNumericPrimesIsPrimeKernel(Index1D index, ArrayView1D<int, Stride1D.Dense> data)
+{
+    ulong value = (ulong)(index + 2);
+    bool isPrime = Prime.Numbers.IsPrime(value);
+    data[index] = isPrime ? 1 : 0;
 }
 
 static void BigIntegerKernel(Index1D index, ArrayView1D<int, Stride1D.Dense> data)
