@@ -143,7 +143,8 @@ public class MersenneDivisorCycles
         PrimeOrderCalculator.PrimeOrderResultWide wideResult = PrimeOrderCalculator.Calculate(
             divisor,
             previousOrder: null,
-            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
+            PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
         if (wideResult.Order != UInt128.Zero)
         {
             return wideResult.Order;
@@ -192,7 +193,8 @@ public class MersenneDivisorCycles
         PrimeOrderCalculator.PrimeOrderResult orderResult = PrimeOrderCalculator.Calculate(
             divisor,
             previousOrder: null,
-            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
+            PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
         if (orderResult.Order != 0UL)
         {
             cycleLength = orderResult.Order;
@@ -818,15 +820,24 @@ public class MersenneDivisorCycles
 
         public static ulong CalculateCycleLength(ulong divisor)
         {
-                // For divisor = 2^k, cycle is 1
+                if (TryCalculateCycleLengthHeuristic(divisor, out ulong cycleLength))
+                        return cycleLength;
+
+                return CalculateCycleLengthFallback(divisor);
+        }
+
+        internal static bool TryCalculateCycleLengthHeuristic(ulong divisor, out ulong cycleLength)
+        {
                 if ((divisor & (divisor - 1UL)) == 0UL)
                 {
-                        return 1UL;
+                        cycleLength = 1UL;
+                        return true;
                 }
 
                 if (divisor <= 3UL)
                 {
-                        return CalculateCycleLengthFallback(divisor);
+                        cycleLength = CalculateCycleLengthFallback(divisor);
+                        return true;
                 }
 
                 if (PrimeTester.IsPrimeInternal(divisor, CancellationToken.None))
@@ -834,14 +845,17 @@ public class MersenneDivisorCycles
                         PrimeOrderCalculator.PrimeOrderResult orderResult = PrimeOrderCalculator.Calculate(
                                 divisor,
                                 previousOrder: null,
-                                PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+                                PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
+                                PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
                         if (orderResult.Order != 0UL)
                         {
-                                return orderResult.Order;
+                                cycleLength = orderResult.Order;
+                                return true;
                         }
                 }
 
-                return CalculateCycleLengthFallback(divisor);
+                cycleLength = 0UL;
+                return false;
         }
 
         private static ulong CalculateCycleLengthFallback(ulong divisor)
