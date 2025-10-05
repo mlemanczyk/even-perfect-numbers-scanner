@@ -499,6 +499,7 @@ internal static class Program
                                             maxK: residueKMax);
                 if (!useLucas)
                 {
+                    Console.WriteLine("Warming up orders");
                     tester.WarmUpOrders(currentP, _orderWarmupLimitOverride ?? 5_000_000UL);
                 }
 
@@ -673,12 +674,11 @@ internal static class Program
 
         if (!useDivisor && !useByDivisor)
         {
-            Console.WriteLine("Warming up orders...");
-
             threadCount = Math.Max(1, threadCount);
             _ = MersenneTesters.Value;
             if (!useLucas)
             {
+                Console.WriteLine("Warming up orders...");
                 MersenneTesters.Value!.WarmUpOrders(currentP, _orderWarmupLimitOverride ?? 5_000_000UL);
             }
         }
