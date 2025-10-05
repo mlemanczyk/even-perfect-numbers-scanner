@@ -959,15 +959,20 @@ internal static partial class PrimeOrderCalculator
         {
             ulong prime64 = (ulong)modulus;
             ulong exponent64 = (ulong)exponent;
-            // TODO: Extend PrimeOrderGpuHeuristics to handle 128-bit moduli so this fast path can remain on the device.
             GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent64, prime64, out ulong remainder);
             if (status == GpuPow2ModStatus.Success)
             {
                 return remainder;
             }
         }
-        BigInteger result = BigInteger.ModPow(2, (BigInteger)exponent, (BigInteger)modulus);
-        return (UInt128)result;
+
+        GpuPow2ModStatus wideStatus = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, modulus, out UInt128 wideRemainder);
+        if (wideStatus == GpuPow2ModStatus.Success)
+        {
+            return wideRemainder;
+        }
+
+        return exponent.Pow2MontgomeryModWindowed(modulus);
     }
 
     private static void AddFactor(Dictionary<UInt128, int> counts, UInt128 prime, int exponent)

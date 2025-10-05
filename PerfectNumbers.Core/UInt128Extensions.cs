@@ -1,10 +1,15 @@
+using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
 
 public static class UInt128Extensions
 {
+    private const int Pow2WindowSize = 8;
+    private const ulong Pow2WindowFallbackThreshold = 32UL;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static UInt128 BinaryGcd(this UInt128 u, UInt128 v)
     {
@@ -38,6 +43,315 @@ public static class UInt128Extensions
         while (v != zero);
 
         return u << shift;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int GetBitLength(this UInt128 value)
+    {
+        ulong high = (ulong)(value >> 64);
+        if (high != 0UL)
+        {
+            return 64 + (64 - BitOperations.LeadingZeroCount(high));
+        }
+
+        ulong low = (ulong)value;
+        if (low == 0UL)
+        {
+            return 0;
+        }
+
+        return 64 - BitOperations.LeadingZeroCount(low);
+    }
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UInt128 Pow2MontgomeryModWindowed(this UInt128 exponent, UInt128 modulus)
+    {
+        if (modulus == UInt128.One)
+        {
+            return UInt128.Zero;
+        }
+
+        if (exponent == UInt128.Zero)
+        {
+            return UInt128.One % modulus;
+        }
+
+        GpuUInt128 modulusGpu = new(modulus);
+        GpuUInt128 baseValue = new(2UL);
+        if (baseValue.CompareTo(modulusGpu) >= 0)
+        {
+            baseValue.Sub(modulusGpu);
+        }
+
+        if (ShouldUseSingleBit(exponent))
+        {
+            GpuUInt128 singleBitResult = Pow2MontgomeryModSingleBit(exponent, modulusGpu, baseValue);
+            return (UInt128)singleBitResult;
+        }
+
+        GpuUInt128 exponentGpu = new(exponent);
+        int bitLength = exponentGpu.GetBitLength();
+        int windowSize = GetWindowSize(bitLength);
+        int oddPowerCount = 1 << (windowSize - 1);
+
+        Span<GpuUInt128> oddPowers = stackalloc GpuUInt128[oddPowerCount];
+        InitializeOddPowers(baseValue, modulusGpu, oddPowers);
+
+        GpuUInt128 result = GpuUInt128.One;
+        int index = bitLength - 1;
+
+        while (index >= 0)
+        {
+            if (!IsBitSet(exponentGpu, index))
+            {
+                result.MulMod(result, modulusGpu);
+                index--;
+                continue;
+            }
+
+            int windowStart = index - windowSize + 1;
+            if (windowStart < 0)
+            {
+                windowStart = 0;
+            }
+
+            while (!IsBitSet(exponentGpu, windowStart))
+            {
+                windowStart++;
+            }
+
+            int windowBitCount = index - windowStart + 1;
+            for (int square = 0; square < windowBitCount; square++)
+            {
+                result.MulMod(result, modulusGpu);
+            }
+
+            ulong windowValue = ExtractWindowValue(exponentGpu, windowStart, windowBitCount);
+            int tableIndex = (int)((windowValue - 1UL) >> 1);
+            GpuUInt128 factor = oddPowers[tableIndex];
+            result.MulMod(factor, modulusGpu);
+
+            index = windowStart - 1;
+        }
+
+        return (UInt128)result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ShouldUseSingleBit(UInt128 exponent)
+    {
+        return (exponent >> 64) == UInt128.Zero && (ulong)exponent <= Pow2WindowFallbackThreshold;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetWindowSize(int bitLength)
+    {
+        if (bitLength <= Pow2WindowSize)
+        {
+            return Math.Max(bitLength, 1);
+        }
+
+        if (bitLength <= 23)
+        {
+            return 4;
+        }
+
+        if (bitLength <= 79)
+        {
+            return 5;
+        }
+
+        if (bitLength <= 239)
+        {
+            return 6;
+        }
+
+        if (bitLength <= 671)
+        {
+            return 7;
+        }
+
+        return Pow2WindowSize;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void InitializeOddPowers(GpuUInt128 baseValue, GpuUInt128 modulus, Span<GpuUInt128> oddPowers)
+    {
+        oddPowers[0] = baseValue;
+        if (oddPowers.Length == 1)
+        {
+            return;
+        }
+
+        // Reusing baseValue to hold base^2 for the shared odd-power ladder, just like the GPU helper.
+        baseValue.MulMod(baseValue, modulus);
+        for (int i = 1; i < oddPowers.Length; i++)
+        {
+            oddPowers[i] = oddPowers[i - 1];
+            oddPowers[i].MulMod(baseValue, modulus);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static GpuUInt128 Pow2MontgomeryModSingleBit(UInt128 exponent, GpuUInt128 modulus, GpuUInt128 baseValue)
+    {
+        GpuUInt128 result = GpuUInt128.One;
+        GpuUInt128 remainingExponent = new(exponent);
+
+        while (!remainingExponent.IsZero)
+        {
+            if ((remainingExponent.Low & 1UL) != 0UL)
+            {
+                result.MulMod(baseValue, modulus);
+            }
+
+            remainingExponent.ShiftRight(1);
+            if (remainingExponent.IsZero)
+            {
+                break;
+            }
+
+            // Reusing baseValue to hold the squared base in-place between iterations.
+            baseValue.MulMod(baseValue, modulus);
+        }
+
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsBitSet(in GpuUInt128 value, int bitIndex)
+    {
+        if (bitIndex >= 64)
+        {
+            return ((value.High >> (bitIndex - 64)) & 1UL) != 0UL;
+        }
+
+        return ((value.Low >> bitIndex) & 1UL) != 0UL;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ExtractWindowValue(in GpuUInt128 exponent, int windowStart, int windowBitCount)
+    {
+        if (windowStart != 0)
+        {
+            GpuUInt128 shifted = exponent;
+            shifted.ShiftRight(windowStart);
+            ulong mask = (1UL << windowBitCount) - 1UL;
+            return shifted.Low & mask;
+        }
+
+        ulong directMask = (1UL << windowBitCount) - 1UL;
+        return exponent.Low & directMask;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static UInt128 ReduceProductBitwise(ulong p3, ulong p2, ulong p1, ulong p0, UInt128 modulus)
+    {
+        UInt128 remainder = UInt128.Zero;
+        for (int bit = 63; bit >= 0; bit--)
+        {
+            remainder <<= 1;
+            remainder |= (UInt128)((p3 >> bit) & 1UL);
+            if (remainder >= modulus)
+            {
+                remainder -= modulus;
+            }
+        }
+
+        for (int bit = 63; bit >= 0; bit--)
+        {
+            remainder <<= 1;
+            remainder |= (UInt128)((p2 >> bit) & 1UL);
+            if (remainder >= modulus)
+            {
+                remainder -= modulus;
+            }
+        }
+
+        for (int bit = 63; bit >= 0; bit--)
+        {
+            remainder <<= 1;
+            remainder |= (UInt128)((p1 >> bit) & 1UL);
+            if (remainder >= modulus)
+            {
+                remainder -= modulus;
+            }
+        }
+
+        for (int bit = 63; bit >= 0; bit--)
+        {
+            remainder <<= 1;
+            remainder |= (UInt128)((p0 >> bit) & 1UL);
+            if (remainder >= modulus)
+            {
+                remainder -= modulus;
+            }
+        }
+
+        return remainder;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void MultiplyFull(UInt128 left, UInt128 right, out ulong p3, out ulong p2, out ulong p1, out ulong p0)
+    {
+        ulong leftLow = (ulong)left;
+        ulong leftHigh = (ulong)(left >> 64);
+        ulong rightLow = (ulong)right;
+        ulong rightHigh = (ulong)(right >> 64);
+
+        var partial0 = Multiply64(leftLow, rightLow);
+        var partial1 = Multiply64(leftLow, rightHigh);
+        var partial2 = Multiply64(leftHigh, rightLow);
+        var partial3 = Multiply64(leftHigh, rightHigh);
+
+        p0 = partial0.Low;
+        ulong carry = partial0.High;
+        ulong sum = carry + partial1.Low;
+        ulong carryMid = sum < partial1.Low ? 1UL : 0UL;
+        sum += partial2.Low;
+        if (sum < partial2.Low)
+        {
+            carryMid++;
+        }
+
+        p1 = sum;
+        sum = partial1.High + partial2.High;
+        ulong carryHigh = sum < partial2.High ? 1UL : 0UL;
+        sum += partial3.Low;
+        if (sum < partial3.Low)
+        {
+            carryHigh++;
+        }
+
+        sum += carryMid;
+        if (sum < carryMid)
+        {
+            carryHigh++;
+        }
+
+        p2 = sum;
+        p3 = partial3.High + carryHigh;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (ulong High, ulong Low) Multiply64(ulong left, ulong right)
+    {
+        ulong a0 = (uint)left;
+        ulong a1 = left >> 32;
+        ulong b0 = (uint)right;
+        ulong b1 = right >> 32;
+
+        ulong lo = a0 * b0;
+        ulong mid1 = a1 * b0;
+        b0 = a0 * b1;
+        b1 *= a1;
+
+        a0 = (lo >> 32) + (uint)mid1 + (uint)b0;
+        a1 = (lo & 0xFFFFFFFFUL) | (a0 << 32);
+        b1 += (mid1 >> 32) + (b0 >> 32) + (a0 >> 32);
+
+        return (b1, a1);
     }
 
     public static ulong CalculateOrder(this UInt128 q)
@@ -294,31 +608,31 @@ public static class UInt128Extensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static UInt128 MulMod(this UInt128 a, UInt128 b, UInt128 modulus)
     {
-        UInt128 one = UInt128.One,
-                result = UInt128.Zero,
-                zero = UInt128.Zero;
-
-        while (b != zero)
+        if (modulus <= UInt128.One)
         {
-            if ((b & one) != zero)
-            {
-                result += a;
-                if (result >= modulus)
-                {
-                    result -= modulus;
-                }
-            }
-
-            a <<= 1;
-            if (a >= modulus)
-            {
-                a -= modulus;
-            }
-
-            b >>= 1;
+            return UInt128.Zero;
         }
 
-        return result;
+        UInt128 left = a % modulus;
+        UInt128 right = b % modulus;
+        if (left == UInt128.Zero || right == UInt128.Zero)
+        {
+            return UInt128.Zero;
+        }
+
+        if ((modulus >> 64) == UInt128.Zero)
+        {
+            // Reusing left to hold the reduced product; this mirrors the inline UInt128 multiply
+            // that topped MulMod64Benchmarks for 64-bit moduli.
+            ulong modulus64 = (ulong)modulus;
+            left = (UInt128)(((UInt128)(ulong)left * (ulong)right) % modulus64);
+            return left;
+        }
+
+        MultiplyFull(left, right, out var p3, out var p2, out var p1, out var p0);
+        // Reusing left to capture the reduced 128-bit remainder before returning.
+        left = ReduceProductBitwise(p3, p2, p1, p0, modulus);
+        return left;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
