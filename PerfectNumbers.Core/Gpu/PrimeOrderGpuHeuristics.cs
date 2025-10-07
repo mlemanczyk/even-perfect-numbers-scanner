@@ -7,6 +7,7 @@ using System.Numerics;
 using PerfectNumbers.Core;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+using ILGPU.Runtime.OpenCL;
 namespace PerfectNumbers.Core.Gpu;
 
 internal enum GpuPow2ModStatus
@@ -408,393 +409,393 @@ internal static partial class PrimeOrderGpuHeuristics
         {
             switch (index)
             {
-            case 0:
-                Element0 = value;
-                return;
-            case 1:
-                Element1 = value;
-                return;
-            case 2:
-                Element2 = value;
-                return;
-            case 3:
-                Element3 = value;
-                return;
-            case 4:
-                Element4 = value;
-                return;
-            case 5:
-                Element5 = value;
-                return;
-            case 6:
-                Element6 = value;
-                return;
-            case 7:
-                Element7 = value;
-                return;
-            case 8:
-                Element8 = value;
-                return;
-            case 9:
-                Element9 = value;
-                return;
-            case 10:
-                Element10 = value;
-                return;
-            case 11:
-                Element11 = value;
-                return;
-            case 12:
-                Element12 = value;
-                return;
-            case 13:
-                Element13 = value;
-                return;
-            case 14:
-                Element14 = value;
-                return;
-            case 15:
-                Element15 = value;
-                return;
-            case 16:
-                Element16 = value;
-                return;
-            case 17:
-                Element17 = value;
-                return;
-            case 18:
-                Element18 = value;
-                return;
-            case 19:
-                Element19 = value;
-                return;
-            case 20:
-                Element20 = value;
-                return;
-            case 21:
-                Element21 = value;
-                return;
-            case 22:
-                Element22 = value;
-                return;
-            case 23:
-                Element23 = value;
-                return;
-            case 24:
-                Element24 = value;
-                return;
-            case 25:
-                Element25 = value;
-                return;
-            case 26:
-                Element26 = value;
-                return;
-            case 27:
-                Element27 = value;
-                return;
-            case 28:
-                Element28 = value;
-                return;
-            case 29:
-                Element29 = value;
-                return;
-            case 30:
-                Element30 = value;
-                return;
-            case 31:
-                Element31 = value;
-                return;
-            case 32:
-                Element32 = value;
-                return;
-            case 33:
-                Element33 = value;
-                return;
-            case 34:
-                Element34 = value;
-                return;
-            case 35:
-                Element35 = value;
-                return;
-            case 36:
-                Element36 = value;
-                return;
-            case 37:
-                Element37 = value;
-                return;
-            case 38:
-                Element38 = value;
-                return;
-            case 39:
-                Element39 = value;
-                return;
-            case 40:
-                Element40 = value;
-                return;
-            case 41:
-                Element41 = value;
-                return;
-            case 42:
-                Element42 = value;
-                return;
-            case 43:
-                Element43 = value;
-                return;
-            case 44:
-                Element44 = value;
-                return;
-            case 45:
-                Element45 = value;
-                return;
-            case 46:
-                Element46 = value;
-                return;
-            case 47:
-                Element47 = value;
-                return;
-            case 48:
-                Element48 = value;
-                return;
-            case 49:
-                Element49 = value;
-                return;
-            case 50:
-                Element50 = value;
-                return;
-            case 51:
-                Element51 = value;
-                return;
-            case 52:
-                Element52 = value;
-                return;
-            case 53:
-                Element53 = value;
-                return;
-            case 54:
-                Element54 = value;
-                return;
-            case 55:
-                Element55 = value;
-                return;
-            case 56:
-                Element56 = value;
-                return;
-            case 57:
-                Element57 = value;
-                return;
-            case 58:
-                Element58 = value;
-                return;
-            case 59:
-                Element59 = value;
-                return;
-            case 60:
-                Element60 = value;
-                return;
-            case 61:
-                Element61 = value;
-                return;
-            case 62:
-                Element62 = value;
-                return;
-            case 63:
-                Element63 = value;
-                return;
-            case 64:
-                Element64 = value;
-                return;
-            case 65:
-                Element65 = value;
-                return;
-            case 66:
-                Element66 = value;
-                return;
-            case 67:
-                Element67 = value;
-                return;
-            case 68:
-                Element68 = value;
-                return;
-            case 69:
-                Element69 = value;
-                return;
-            case 70:
-                Element70 = value;
-                return;
-            case 71:
-                Element71 = value;
-                return;
-            case 72:
-                Element72 = value;
-                return;
-            case 73:
-                Element73 = value;
-                return;
-            case 74:
-                Element74 = value;
-                return;
-            case 75:
-                Element75 = value;
-                return;
-            case 76:
-                Element76 = value;
-                return;
-            case 77:
-                Element77 = value;
-                return;
-            case 78:
-                Element78 = value;
-                return;
-            case 79:
-                Element79 = value;
-                return;
-            case 80:
-                Element80 = value;
-                return;
-            case 81:
-                Element81 = value;
-                return;
-            case 82:
-                Element82 = value;
-                return;
-            case 83:
-                Element83 = value;
-                return;
-            case 84:
-                Element84 = value;
-                return;
-            case 85:
-                Element85 = value;
-                return;
-            case 86:
-                Element86 = value;
-                return;
-            case 87:
-                Element87 = value;
-                return;
-            case 88:
-                Element88 = value;
-                return;
-            case 89:
-                Element89 = value;
-                return;
-            case 90:
-                Element90 = value;
-                return;
-            case 91:
-                Element91 = value;
-                return;
-            case 92:
-                Element92 = value;
-                return;
-            case 93:
-                Element93 = value;
-                return;
-            case 94:
-                Element94 = value;
-                return;
-            case 95:
-                Element95 = value;
-                return;
-            case 96:
-                Element96 = value;
-                return;
-            case 97:
-                Element97 = value;
-                return;
-            case 98:
-                Element98 = value;
-                return;
-            case 99:
-                Element99 = value;
-                return;
-            case 100:
-                Element100 = value;
-                return;
-            case 101:
-                Element101 = value;
-                return;
-            case 102:
-                Element102 = value;
-                return;
-            case 103:
-                Element103 = value;
-                return;
-            case 104:
-                Element104 = value;
-                return;
-            case 105:
-                Element105 = value;
-                return;
-            case 106:
-                Element106 = value;
-                return;
-            case 107:
-                Element107 = value;
-                return;
-            case 108:
-                Element108 = value;
-                return;
-            case 109:
-                Element109 = value;
-                return;
-            case 110:
-                Element110 = value;
-                return;
-            case 111:
-                Element111 = value;
-                return;
-            case 112:
-                Element112 = value;
-                return;
-            case 113:
-                Element113 = value;
-                return;
-            case 114:
-                Element114 = value;
-                return;
-            case 115:
-                Element115 = value;
-                return;
-            case 116:
-                Element116 = value;
-                return;
-            case 117:
-                Element117 = value;
-                return;
-            case 118:
-                Element118 = value;
-                return;
-            case 119:
-                Element119 = value;
-                return;
-            case 120:
-                Element120 = value;
-                return;
-            case 121:
-                Element121 = value;
-                return;
-            case 122:
-                Element122 = value;
-                return;
-            case 123:
-                Element123 = value;
-                return;
-            case 124:
-                Element124 = value;
-                return;
-            case 125:
-                Element125 = value;
-                return;
-            case 126:
-                Element126 = value;
-                return;
-            case 127:
-                Element127 = value;
-                return;
-            default:
-                // ILGPU kernels cannot throw exceptions, and callers guarantee the index range.
-                return;
+                case 0:
+                    Element0 = value;
+                    return;
+                case 1:
+                    Element1 = value;
+                    return;
+                case 2:
+                    Element2 = value;
+                    return;
+                case 3:
+                    Element3 = value;
+                    return;
+                case 4:
+                    Element4 = value;
+                    return;
+                case 5:
+                    Element5 = value;
+                    return;
+                case 6:
+                    Element6 = value;
+                    return;
+                case 7:
+                    Element7 = value;
+                    return;
+                case 8:
+                    Element8 = value;
+                    return;
+                case 9:
+                    Element9 = value;
+                    return;
+                case 10:
+                    Element10 = value;
+                    return;
+                case 11:
+                    Element11 = value;
+                    return;
+                case 12:
+                    Element12 = value;
+                    return;
+                case 13:
+                    Element13 = value;
+                    return;
+                case 14:
+                    Element14 = value;
+                    return;
+                case 15:
+                    Element15 = value;
+                    return;
+                case 16:
+                    Element16 = value;
+                    return;
+                case 17:
+                    Element17 = value;
+                    return;
+                case 18:
+                    Element18 = value;
+                    return;
+                case 19:
+                    Element19 = value;
+                    return;
+                case 20:
+                    Element20 = value;
+                    return;
+                case 21:
+                    Element21 = value;
+                    return;
+                case 22:
+                    Element22 = value;
+                    return;
+                case 23:
+                    Element23 = value;
+                    return;
+                case 24:
+                    Element24 = value;
+                    return;
+                case 25:
+                    Element25 = value;
+                    return;
+                case 26:
+                    Element26 = value;
+                    return;
+                case 27:
+                    Element27 = value;
+                    return;
+                case 28:
+                    Element28 = value;
+                    return;
+                case 29:
+                    Element29 = value;
+                    return;
+                case 30:
+                    Element30 = value;
+                    return;
+                case 31:
+                    Element31 = value;
+                    return;
+                case 32:
+                    Element32 = value;
+                    return;
+                case 33:
+                    Element33 = value;
+                    return;
+                case 34:
+                    Element34 = value;
+                    return;
+                case 35:
+                    Element35 = value;
+                    return;
+                case 36:
+                    Element36 = value;
+                    return;
+                case 37:
+                    Element37 = value;
+                    return;
+                case 38:
+                    Element38 = value;
+                    return;
+                case 39:
+                    Element39 = value;
+                    return;
+                case 40:
+                    Element40 = value;
+                    return;
+                case 41:
+                    Element41 = value;
+                    return;
+                case 42:
+                    Element42 = value;
+                    return;
+                case 43:
+                    Element43 = value;
+                    return;
+                case 44:
+                    Element44 = value;
+                    return;
+                case 45:
+                    Element45 = value;
+                    return;
+                case 46:
+                    Element46 = value;
+                    return;
+                case 47:
+                    Element47 = value;
+                    return;
+                case 48:
+                    Element48 = value;
+                    return;
+                case 49:
+                    Element49 = value;
+                    return;
+                case 50:
+                    Element50 = value;
+                    return;
+                case 51:
+                    Element51 = value;
+                    return;
+                case 52:
+                    Element52 = value;
+                    return;
+                case 53:
+                    Element53 = value;
+                    return;
+                case 54:
+                    Element54 = value;
+                    return;
+                case 55:
+                    Element55 = value;
+                    return;
+                case 56:
+                    Element56 = value;
+                    return;
+                case 57:
+                    Element57 = value;
+                    return;
+                case 58:
+                    Element58 = value;
+                    return;
+                case 59:
+                    Element59 = value;
+                    return;
+                case 60:
+                    Element60 = value;
+                    return;
+                case 61:
+                    Element61 = value;
+                    return;
+                case 62:
+                    Element62 = value;
+                    return;
+                case 63:
+                    Element63 = value;
+                    return;
+                case 64:
+                    Element64 = value;
+                    return;
+                case 65:
+                    Element65 = value;
+                    return;
+                case 66:
+                    Element66 = value;
+                    return;
+                case 67:
+                    Element67 = value;
+                    return;
+                case 68:
+                    Element68 = value;
+                    return;
+                case 69:
+                    Element69 = value;
+                    return;
+                case 70:
+                    Element70 = value;
+                    return;
+                case 71:
+                    Element71 = value;
+                    return;
+                case 72:
+                    Element72 = value;
+                    return;
+                case 73:
+                    Element73 = value;
+                    return;
+                case 74:
+                    Element74 = value;
+                    return;
+                case 75:
+                    Element75 = value;
+                    return;
+                case 76:
+                    Element76 = value;
+                    return;
+                case 77:
+                    Element77 = value;
+                    return;
+                case 78:
+                    Element78 = value;
+                    return;
+                case 79:
+                    Element79 = value;
+                    return;
+                case 80:
+                    Element80 = value;
+                    return;
+                case 81:
+                    Element81 = value;
+                    return;
+                case 82:
+                    Element82 = value;
+                    return;
+                case 83:
+                    Element83 = value;
+                    return;
+                case 84:
+                    Element84 = value;
+                    return;
+                case 85:
+                    Element85 = value;
+                    return;
+                case 86:
+                    Element86 = value;
+                    return;
+                case 87:
+                    Element87 = value;
+                    return;
+                case 88:
+                    Element88 = value;
+                    return;
+                case 89:
+                    Element89 = value;
+                    return;
+                case 90:
+                    Element90 = value;
+                    return;
+                case 91:
+                    Element91 = value;
+                    return;
+                case 92:
+                    Element92 = value;
+                    return;
+                case 93:
+                    Element93 = value;
+                    return;
+                case 94:
+                    Element94 = value;
+                    return;
+                case 95:
+                    Element95 = value;
+                    return;
+                case 96:
+                    Element96 = value;
+                    return;
+                case 97:
+                    Element97 = value;
+                    return;
+                case 98:
+                    Element98 = value;
+                    return;
+                case 99:
+                    Element99 = value;
+                    return;
+                case 100:
+                    Element100 = value;
+                    return;
+                case 101:
+                    Element101 = value;
+                    return;
+                case 102:
+                    Element102 = value;
+                    return;
+                case 103:
+                    Element103 = value;
+                    return;
+                case 104:
+                    Element104 = value;
+                    return;
+                case 105:
+                    Element105 = value;
+                    return;
+                case 106:
+                    Element106 = value;
+                    return;
+                case 107:
+                    Element107 = value;
+                    return;
+                case 108:
+                    Element108 = value;
+                    return;
+                case 109:
+                    Element109 = value;
+                    return;
+                case 110:
+                    Element110 = value;
+                    return;
+                case 111:
+                    Element111 = value;
+                    return;
+                case 112:
+                    Element112 = value;
+                    return;
+                case 113:
+                    Element113 = value;
+                    return;
+                case 114:
+                    Element114 = value;
+                    return;
+                case 115:
+                    Element115 = value;
+                    return;
+                case 116:
+                    Element116 = value;
+                    return;
+                case 117:
+                    Element117 = value;
+                    return;
+                case 118:
+                    Element118 = value;
+                    return;
+                case 119:
+                    Element119 = value;
+                    return;
+                case 120:
+                    Element120 = value;
+                    return;
+                case 121:
+                    Element121 = value;
+                    return;
+                case 122:
+                    Element122 = value;
+                    return;
+                case 123:
+                    Element123 = value;
+                    return;
+                case 124:
+                    Element124 = value;
+                    return;
+                case 125:
+                    Element125 = value;
+                    return;
+                case 126:
+                    Element126 = value;
+                    return;
+                case 127:
+                    Element127 = value;
+                    return;
+                default:
+                    // ILGPU kernels cannot throw exceptions, and callers guarantee the index range.
+                    return;
             }
         }
     }
@@ -905,63 +906,72 @@ internal static partial class PrimeOrderGpuHeuristics
         try
         {
             var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
-            try
-            {
-                using var execution = lease.EnterExecutionScope();
-                Accelerator accelerator = lease.Accelerator;
-                AcceleratorStream stream = lease.Stream;
+            var execution = lease.EnterExecutionScope();
+            Accelerator accelerator = lease.Accelerator;
+            AcceleratorStream stream = lease.Stream;
 
-                var kernel = GetPartialFactorKernel(accelerator);
-                SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
+            var kernel = GetPartialFactorKernel(accelerator);
+            SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
 
-                using var factorBuffer = accelerator.Allocate1D<ulong>(primeTargets.Length);
-                using var exponentBuffer = accelerator.Allocate1D<int>(exponentTargets.Length);
-                using var countBuffer = accelerator.Allocate1D<int>(1);
-                using var remainingBuffer = accelerator.Allocate1D<ulong>(1);
-                using var fullyFactoredBuffer = accelerator.Allocate1D<byte>(1);
+            var factorBuffer = accelerator.Allocate1D<ulong>(primeTargets.Length);
+            var exponentBuffer = accelerator.Allocate1D<int>(exponentTargets.Length);
+            var countBuffer = accelerator.Allocate1D<int>(1);
+            var remainingBuffer = accelerator.Allocate1D<ulong>(1);
+            var fullyFactoredBuffer = accelerator.Allocate1D<byte>(1);
 
-                factorBuffer.MemSetToZero();
-                exponentBuffer.MemSetToZero();
-                countBuffer.MemSetToZero();
-                remainingBuffer.MemSetToZero();
-                fullyFactoredBuffer.MemSetToZero();
+            factorBuffer.MemSetToZero();
+            exponentBuffer.MemSetToZero();
+            countBuffer.MemSetToZero();
+            remainingBuffer.MemSetToZero();
+            fullyFactoredBuffer.MemSetToZero();
 
-                kernel(
-                    stream,
-                    1,
-                    cache.Primes!.View,
-                    cache.Squares!.View,
-                    cache.Count,
-                    primeTargets.Length,
-                    value,
-                    limit,
-                    factorBuffer.View,
-                    exponentBuffer.View,
-                    countBuffer.View,
-                    remainingBuffer.View,
-                    fullyFactoredBuffer.View);
+            kernel(
+                stream,
+                1,
+                cache.Primes!.View,
+                cache.Squares!.View,
+                cache.Count,
+                primeTargets.Length,
+                value,
+                limit,
+                factorBuffer.View,
+                exponentBuffer.View,
+                countBuffer.View,
+                remainingBuffer.View,
+                fullyFactoredBuffer.View);
 
-                stream.Synchronize();
+            stream.Synchronize();
 
-                countBuffer.View.CopyToCPU(ref factorCount, 1);
-                factorCount = Math.Min(factorCount, primeTargets.Length);
-                factorBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(primeTargets), primeTargets.Length);
-                exponentBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(exponentTargets), exponentTargets.Length);
-                remainingBuffer.View.CopyToCPU(ref remaining, 1);
+            countBuffer.View.CopyToCPU(ref factorCount, 1);
+            factorCount = Math.Min(factorCount, primeTargets.Length);
+            factorBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(primeTargets), primeTargets.Length);
+            exponentBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(exponentTargets), exponentTargets.Length);
+            remainingBuffer.View.CopyToCPU(ref remaining, 1);
 
-                byte fullyFactoredFlag = 0;
-                fullyFactoredBuffer.View.CopyToCPU(ref fullyFactoredFlag, 1);
-                fullyFactored = fullyFactoredFlag != 0;
+            byte fullyFactoredFlag = 0;
+            fullyFactoredBuffer.View.CopyToCPU(ref fullyFactoredFlag, 1);
+            fullyFactored = fullyFactoredFlag != 0;
 
-                return true;
-            }
-            finally
-            {
-                lease.Dispose();
-            }
+            factorBuffer.Dispose();
+            exponentBuffer.Dispose();
+            countBuffer.Dispose();
+            remainingBuffer.Dispose();
+            fullyFactoredBuffer.Dispose();
+            execution.Dispose();
+            lease.Dispose();
+            return true;
+        }
+        catch (CLException ex)
+        {
+            Console.WriteLine($"GPU ERROR ({ex.Error}): {ex.Message}");
+            factorCount = 0;
+            remaining = value;
+            fullyFactored = false;
+            return false;
         }
         catch (Exception ex) when (ex is AcceleratorException or InternalCompilerException or NotSupportedException or InvalidOperationException or AggregateException)
         {
+            Console.WriteLine($"GPU ERROR: {ex.Message}");
             factorCount = 0;
             remaining = value;
             fullyFactored = false;
@@ -1497,7 +1507,7 @@ internal static partial class PrimeOrderGpuHeuristics
                 continue;
             }
 
-            ulong reduced = phi / factor;            
+            ulong reduced = phi / factor;
             if (reduced.Pow2MontgomeryModWindowed(divisor, keepMontgomery: false) == 1UL)
             {
                 return false;
