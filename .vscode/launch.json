@@ -20,9 +20,22 @@
       "request": "launch",
       "preLaunchTask": "Build Debug",
       "program": "${workspaceFolder}/${input:projectName}/bin/Debug/net8.0/${input:projectName}.dll",
-      "args": [
-        "--increment=add --mersenne=residue --threads=128 --gpu-scan-batch=512000 --primes-device=gpu --mersenne-device=gpu --mod-reduction=barrett128 --block-size=10000000 --gpu-prime-threads=32 --write-batch-size=10000 --divisor-cycles-device=gpu"
-      ],
+			"args": [
+				"--increment=add",
+				"--mersenne=bydivisor",
+				"--threads=1",
+				"--gpu-scan-batch=256000",
+				"--primes-device=gpu",
+				"--mersenne-device=gpu",
+				"--mod-reduction=barrett128",
+				"--block-size=1000000",
+				"--gpu-prime-threads=64",
+				"--write-batch-size=10000",
+				"--divisor-cycles-device=gpu",
+				"--prime=31",
+				"--results-prefix=test-",
+				"--filter-p=sorted-primes-passed-residue-_even_perfect_bit_scan_inc-add_thr-16_blk-10000000_mers-incremental_mersdev-gpu_ntt-reference_red-barrett128_primesdev-gpu_order-off_orderdev-gpu_gcd-off_modfix-off_gputh-64_llslice-32_scanb-512000_warm-5000000.csv"
+			],
       "cwd": "${workspaceFolder}",
       "stopAtEntry": false,
       "console": "internalConsole"
