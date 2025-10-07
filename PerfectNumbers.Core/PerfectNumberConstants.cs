@@ -7,6 +7,7 @@ public static class PerfectNumberConstants
     public const ulong ExtraDivisorCycleSearchLimit = 64UL;
     public const int MaxQForDivisorCycles = 4_000_000;
     public static readonly uint PrimesLimit = 1_000_000; //(ulong)Array.MaxLength;// 1_000_000;
+    public const int MaxOddPowersCount = 128;
     // TODO: Load these limits from the benchmark-driven configuration so CPU and GPU scans stay aligned with the optimal
     // divisor-cycle datasets we generate offline.
     // TODO: Promote these magic numbers into a runtime profile derived from EvenPerfectBitScanner.Benchmarks so we can retune

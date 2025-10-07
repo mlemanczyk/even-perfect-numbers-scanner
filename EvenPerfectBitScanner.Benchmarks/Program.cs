@@ -1,5 +1,6 @@
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Running;
+using PerfectNumbers.Core.Gpu;
 
 namespace EvenPerfectBitScanner.Benchmarks;
 
@@ -7,15 +8,16 @@ public static class Program
 {
     public static void Main(string[] args)
     {
-        var config = DefaultConfig.Instance.WithOptions(ConfigOptions.JoinSummary);
-        BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
+        // var config = DefaultConfig.Instance.WithOptions(ConfigOptions.JoinSummary | ConfigOptions.DisableOptimizationsValidator);
+        // BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
 
-        // Pow2MontgomeryModCycleComputationBenchmarks benchmarks = new()
-        // {
-        //     Scale = Pow2MontgomeryModCycleComputationBenchmarks.InputScale.Large
-        // };
+        Pow2MontgomeryModCycleComputationBenchmarks benchmarks = new()
+        {
+            Scale = Pow2MontgomeryModCycleComputationBenchmarks.InputScale.Large
+        };
 
-        // benchmarks.Setup();
+        GpuPrimeWorkLimiter.SetLimit(1);
+        benchmarks.Setup();
 
         // Console.WriteLine("Press ENTER to run");
         // Console.ReadLine();

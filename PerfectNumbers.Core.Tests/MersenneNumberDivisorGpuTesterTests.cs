@@ -146,13 +146,13 @@ public class MersenneNumberDivisorGpuTesterTests
         ulong[] primes = { 31UL, 37UL, 41UL, 43UL };
         byte[] hits = new byte[primes.Length];
 
-        ulong cycle223 = MersenneDivisorCycles.CalculateCycleLength(223UL);
-        session.CheckDivisor(223UL, cycle223, primes, hits);
+        ulong cycle223 = MersenneDivisorCycles.CalculateCycleLength(223UL, MontgomeryDivisorData.FromModulus(223UL));
+        session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes, hits);
         hits.Should().ContainInOrder(new byte[] { 0, 1, 0, 0 });
 
         Array.Fill(hits, (byte)0);
-        ulong cycle13367 = MersenneDivisorCycles.CalculateCycleLength(13367UL);
-        session.CheckDivisor(13367UL, cycle13367, primes, hits);
+        ulong cycle13367 = MersenneDivisorCycles.CalculateCycleLength(13367UL, MontgomeryDivisorData.FromModulus(13367UL));
+        session.CheckDivisor(13367UL, MontgomeryDivisorData.FromModulus(13367UL), cycle13367, primes, hits);
         hits.Should().ContainInOrder(new byte[] { 0, 0, 1, 0 });
     }
 
@@ -171,8 +171,8 @@ public class MersenneNumberDivisorGpuTesterTests
         ulong[] primes = { 31UL, 37UL, 41UL, 43UL, 47UL };
         byte[] hits = new byte[primes.Length];
 
-        ulong cycle223 = MersenneDivisorCycles.CalculateCycleLength(223UL);
-        session.CheckDivisor(223UL, cycle223, primes, hits);
+        ulong cycle223 = MersenneDivisorCycles.CalculateCycleLength(223UL, MontgomeryDivisorData.FromModulus(223UL));
+        session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes, hits);
 
         hits.Should().ContainInOrder(new byte[] { 0, 1, 0, 0, 0 });
     }
@@ -192,8 +192,8 @@ public class MersenneNumberDivisorGpuTesterTests
         ulong[] primes = { 31UL, 37UL, 41UL, 43UL, 47UL };
         byte[] hits = new byte[primes.Length];
 
-        ulong cycle223 = MersenneDivisorCycles.CalculateCycleLength(223UL);
-        session.CheckDivisor(223UL, cycle223, primes, hits);
+        ulong cycle223 = MersenneDivisorCycles.CalculateCycleLength(223UL, MontgomeryDivisorData.FromModulus(223UL));
+        session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes, hits);
 
         hits.Should().ContainInOrder(new byte[] { 0, 1, 0, 0, 0 });
     }

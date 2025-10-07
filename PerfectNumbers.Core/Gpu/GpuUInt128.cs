@@ -8,7 +8,6 @@ namespace PerfectNumbers.Core.Gpu;
 public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 {
     public ulong High;
-
     public ulong Low;
 
     private const int NativeModuloChunkBits = 8;
@@ -21,690 +20,8 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     private const int Pow2WindowOddPowerCount = 1 << (Pow2WindowSizeBits - 1);
     private const int Pow2WindowMaxExponent = (1 << Pow2WindowSizeBits) - 1;
 
-    private struct Pow2OddPowerTable
-    {
-        public GpuUInt128 Element0;
-        public GpuUInt128 Element1;
-        public GpuUInt128 Element2;
-        public GpuUInt128 Element3;
-        public GpuUInt128 Element4;
-        public GpuUInt128 Element5;
-        public GpuUInt128 Element6;
-        public GpuUInt128 Element7;
-        public GpuUInt128 Element8;
-        public GpuUInt128 Element9;
-        public GpuUInt128 Element10;
-        public GpuUInt128 Element11;
-        public GpuUInt128 Element12;
-        public GpuUInt128 Element13;
-        public GpuUInt128 Element14;
-        public GpuUInt128 Element15;
-        public GpuUInt128 Element16;
-        public GpuUInt128 Element17;
-        public GpuUInt128 Element18;
-        public GpuUInt128 Element19;
-        public GpuUInt128 Element20;
-        public GpuUInt128 Element21;
-        public GpuUInt128 Element22;
-        public GpuUInt128 Element23;
-        public GpuUInt128 Element24;
-        public GpuUInt128 Element25;
-        public GpuUInt128 Element26;
-        public GpuUInt128 Element27;
-        public GpuUInt128 Element28;
-        public GpuUInt128 Element29;
-        public GpuUInt128 Element30;
-        public GpuUInt128 Element31;
-        public GpuUInt128 Element32;
-        public GpuUInt128 Element33;
-        public GpuUInt128 Element34;
-        public GpuUInt128 Element35;
-        public GpuUInt128 Element36;
-        public GpuUInt128 Element37;
-        public GpuUInt128 Element38;
-        public GpuUInt128 Element39;
-        public GpuUInt128 Element40;
-        public GpuUInt128 Element41;
-        public GpuUInt128 Element42;
-        public GpuUInt128 Element43;
-        public GpuUInt128 Element44;
-        public GpuUInt128 Element45;
-        public GpuUInt128 Element46;
-        public GpuUInt128 Element47;
-        public GpuUInt128 Element48;
-        public GpuUInt128 Element49;
-        public GpuUInt128 Element50;
-        public GpuUInt128 Element51;
-        public GpuUInt128 Element52;
-        public GpuUInt128 Element53;
-        public GpuUInt128 Element54;
-        public GpuUInt128 Element55;
-        public GpuUInt128 Element56;
-        public GpuUInt128 Element57;
-        public GpuUInt128 Element58;
-        public GpuUInt128 Element59;
-        public GpuUInt128 Element60;
-        public GpuUInt128 Element61;
-        public GpuUInt128 Element62;
-        public GpuUInt128 Element63;
-        public GpuUInt128 Element64;
-        public GpuUInt128 Element65;
-        public GpuUInt128 Element66;
-        public GpuUInt128 Element67;
-        public GpuUInt128 Element68;
-        public GpuUInt128 Element69;
-        public GpuUInt128 Element70;
-        public GpuUInt128 Element71;
-        public GpuUInt128 Element72;
-        public GpuUInt128 Element73;
-        public GpuUInt128 Element74;
-        public GpuUInt128 Element75;
-        public GpuUInt128 Element76;
-        public GpuUInt128 Element77;
-        public GpuUInt128 Element78;
-        public GpuUInt128 Element79;
-        public GpuUInt128 Element80;
-        public GpuUInt128 Element81;
-        public GpuUInt128 Element82;
-        public GpuUInt128 Element83;
-        public GpuUInt128 Element84;
-        public GpuUInt128 Element85;
-        public GpuUInt128 Element86;
-        public GpuUInt128 Element87;
-        public GpuUInt128 Element88;
-        public GpuUInt128 Element89;
-        public GpuUInt128 Element90;
-        public GpuUInt128 Element91;
-        public GpuUInt128 Element92;
-        public GpuUInt128 Element93;
-        public GpuUInt128 Element94;
-        public GpuUInt128 Element95;
-        public GpuUInt128 Element96;
-        public GpuUInt128 Element97;
-        public GpuUInt128 Element98;
-        public GpuUInt128 Element99;
-        public GpuUInt128 Element100;
-        public GpuUInt128 Element101;
-        public GpuUInt128 Element102;
-        public GpuUInt128 Element103;
-        public GpuUInt128 Element104;
-        public GpuUInt128 Element105;
-        public GpuUInt128 Element106;
-        public GpuUInt128 Element107;
-        public GpuUInt128 Element108;
-        public GpuUInt128 Element109;
-        public GpuUInt128 Element110;
-        public GpuUInt128 Element111;
-        public GpuUInt128 Element112;
-        public GpuUInt128 Element113;
-        public GpuUInt128 Element114;
-        public GpuUInt128 Element115;
-        public GpuUInt128 Element116;
-        public GpuUInt128 Element117;
-        public GpuUInt128 Element118;
-        public GpuUInt128 Element119;
-        public GpuUInt128 Element120;
-        public GpuUInt128 Element121;
-        public GpuUInt128 Element122;
-        public GpuUInt128 Element123;
-        public GpuUInt128 Element124;
-        public GpuUInt128 Element125;
-        public GpuUInt128 Element126;
-        public GpuUInt128 Element127;
-
-        public GpuUInt128 this[int index]
-        {
-            readonly get
-            {
-                return GetElement(index);
-            }
-
-            set
-            {
-                SetElement(index, value);
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private readonly GpuUInt128 GetElement(int index) => index switch
-        {
-            0 => Element0,
-            1 => Element1,
-            2 => Element2,
-            3 => Element3,
-            4 => Element4,
-            5 => Element5,
-            6 => Element6,
-            7 => Element7,
-            8 => Element8,
-            9 => Element9,
-            10 => Element10,
-            11 => Element11,
-            12 => Element12,
-            13 => Element13,
-            14 => Element14,
-            15 => Element15,
-            16 => Element16,
-            17 => Element17,
-            18 => Element18,
-            19 => Element19,
-            20 => Element20,
-            21 => Element21,
-            22 => Element22,
-            23 => Element23,
-            24 => Element24,
-            25 => Element25,
-            26 => Element26,
-            27 => Element27,
-            28 => Element28,
-            29 => Element29,
-            30 => Element30,
-            31 => Element31,
-            32 => Element32,
-            33 => Element33,
-            34 => Element34,
-            35 => Element35,
-            36 => Element36,
-            37 => Element37,
-            38 => Element38,
-            39 => Element39,
-            40 => Element40,
-            41 => Element41,
-            42 => Element42,
-            43 => Element43,
-            44 => Element44,
-            45 => Element45,
-            46 => Element46,
-            47 => Element47,
-            48 => Element48,
-            49 => Element49,
-            50 => Element50,
-            51 => Element51,
-            52 => Element52,
-            53 => Element53,
-            54 => Element54,
-            55 => Element55,
-            56 => Element56,
-            57 => Element57,
-            58 => Element58,
-            59 => Element59,
-            60 => Element60,
-            61 => Element61,
-            62 => Element62,
-            63 => Element63,
-            64 => Element64,
-            65 => Element65,
-            66 => Element66,
-            67 => Element67,
-            68 => Element68,
-            69 => Element69,
-            70 => Element70,
-            71 => Element71,
-            72 => Element72,
-            73 => Element73,
-            74 => Element74,
-            75 => Element75,
-            76 => Element76,
-            77 => Element77,
-            78 => Element78,
-            79 => Element79,
-            80 => Element80,
-            81 => Element81,
-            82 => Element82,
-            83 => Element83,
-            84 => Element84,
-            85 => Element85,
-            86 => Element86,
-            87 => Element87,
-            88 => Element88,
-            89 => Element89,
-            90 => Element90,
-            91 => Element91,
-            92 => Element92,
-            93 => Element93,
-            94 => Element94,
-            95 => Element95,
-            96 => Element96,
-            97 => Element97,
-            98 => Element98,
-            99 => Element99,
-            100 => Element100,
-            101 => Element101,
-            102 => Element102,
-            103 => Element103,
-            104 => Element104,
-            105 => Element105,
-            106 => Element106,
-            107 => Element107,
-            108 => Element108,
-            109 => Element109,
-            110 => Element110,
-            111 => Element111,
-            112 => Element112,
-            113 => Element113,
-            114 => Element114,
-            115 => Element115,
-            116 => Element116,
-            117 => Element117,
-            118 => Element118,
-            119 => Element119,
-            120 => Element120,
-            121 => Element121,
-            122 => Element122,
-            123 => Element123,
-            124 => Element124,
-            125 => Element125,
-            126 => Element126,
-            127 => Element127,
-            _ => Element0,
-        };
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SetElement(int index, GpuUInt128 value)
-        {
-            switch (index)
-            {
-            case 0:
-                Element0 = value;
-                return;
-            case 1:
-                Element1 = value;
-                return;
-            case 2:
-                Element2 = value;
-                return;
-            case 3:
-                Element3 = value;
-                return;
-            case 4:
-                Element4 = value;
-                return;
-            case 5:
-                Element5 = value;
-                return;
-            case 6:
-                Element6 = value;
-                return;
-            case 7:
-                Element7 = value;
-                return;
-            case 8:
-                Element8 = value;
-                return;
-            case 9:
-                Element9 = value;
-                return;
-            case 10:
-                Element10 = value;
-                return;
-            case 11:
-                Element11 = value;
-                return;
-            case 12:
-                Element12 = value;
-                return;
-            case 13:
-                Element13 = value;
-                return;
-            case 14:
-                Element14 = value;
-                return;
-            case 15:
-                Element15 = value;
-                return;
-            case 16:
-                Element16 = value;
-                return;
-            case 17:
-                Element17 = value;
-                return;
-            case 18:
-                Element18 = value;
-                return;
-            case 19:
-                Element19 = value;
-                return;
-            case 20:
-                Element20 = value;
-                return;
-            case 21:
-                Element21 = value;
-                return;
-            case 22:
-                Element22 = value;
-                return;
-            case 23:
-                Element23 = value;
-                return;
-            case 24:
-                Element24 = value;
-                return;
-            case 25:
-                Element25 = value;
-                return;
-            case 26:
-                Element26 = value;
-                return;
-            case 27:
-                Element27 = value;
-                return;
-            case 28:
-                Element28 = value;
-                return;
-            case 29:
-                Element29 = value;
-                return;
-            case 30:
-                Element30 = value;
-                return;
-            case 31:
-                Element31 = value;
-                return;
-            case 32:
-                Element32 = value;
-                return;
-            case 33:
-                Element33 = value;
-                return;
-            case 34:
-                Element34 = value;
-                return;
-            case 35:
-                Element35 = value;
-                return;
-            case 36:
-                Element36 = value;
-                return;
-            case 37:
-                Element37 = value;
-                return;
-            case 38:
-                Element38 = value;
-                return;
-            case 39:
-                Element39 = value;
-                return;
-            case 40:
-                Element40 = value;
-                return;
-            case 41:
-                Element41 = value;
-                return;
-            case 42:
-                Element42 = value;
-                return;
-            case 43:
-                Element43 = value;
-                return;
-            case 44:
-                Element44 = value;
-                return;
-            case 45:
-                Element45 = value;
-                return;
-            case 46:
-                Element46 = value;
-                return;
-            case 47:
-                Element47 = value;
-                return;
-            case 48:
-                Element48 = value;
-                return;
-            case 49:
-                Element49 = value;
-                return;
-            case 50:
-                Element50 = value;
-                return;
-            case 51:
-                Element51 = value;
-                return;
-            case 52:
-                Element52 = value;
-                return;
-            case 53:
-                Element53 = value;
-                return;
-            case 54:
-                Element54 = value;
-                return;
-            case 55:
-                Element55 = value;
-                return;
-            case 56:
-                Element56 = value;
-                return;
-            case 57:
-                Element57 = value;
-                return;
-            case 58:
-                Element58 = value;
-                return;
-            case 59:
-                Element59 = value;
-                return;
-            case 60:
-                Element60 = value;
-                return;
-            case 61:
-                Element61 = value;
-                return;
-            case 62:
-                Element62 = value;
-                return;
-            case 63:
-                Element63 = value;
-                return;
-            case 64:
-                Element64 = value;
-                return;
-            case 65:
-                Element65 = value;
-                return;
-            case 66:
-                Element66 = value;
-                return;
-            case 67:
-                Element67 = value;
-                return;
-            case 68:
-                Element68 = value;
-                return;
-            case 69:
-                Element69 = value;
-                return;
-            case 70:
-                Element70 = value;
-                return;
-            case 71:
-                Element71 = value;
-                return;
-            case 72:
-                Element72 = value;
-                return;
-            case 73:
-                Element73 = value;
-                return;
-            case 74:
-                Element74 = value;
-                return;
-            case 75:
-                Element75 = value;
-                return;
-            case 76:
-                Element76 = value;
-                return;
-            case 77:
-                Element77 = value;
-                return;
-            case 78:
-                Element78 = value;
-                return;
-            case 79:
-                Element79 = value;
-                return;
-            case 80:
-                Element80 = value;
-                return;
-            case 81:
-                Element81 = value;
-                return;
-            case 82:
-                Element82 = value;
-                return;
-            case 83:
-                Element83 = value;
-                return;
-            case 84:
-                Element84 = value;
-                return;
-            case 85:
-                Element85 = value;
-                return;
-            case 86:
-                Element86 = value;
-                return;
-            case 87:
-                Element87 = value;
-                return;
-            case 88:
-                Element88 = value;
-                return;
-            case 89:
-                Element89 = value;
-                return;
-            case 90:
-                Element90 = value;
-                return;
-            case 91:
-                Element91 = value;
-                return;
-            case 92:
-                Element92 = value;
-                return;
-            case 93:
-                Element93 = value;
-                return;
-            case 94:
-                Element94 = value;
-                return;
-            case 95:
-                Element95 = value;
-                return;
-            case 96:
-                Element96 = value;
-                return;
-            case 97:
-                Element97 = value;
-                return;
-            case 98:
-                Element98 = value;
-                return;
-            case 99:
-                Element99 = value;
-                return;
-            case 100:
-                Element100 = value;
-                return;
-            case 101:
-                Element101 = value;
-                return;
-            case 102:
-                Element102 = value;
-                return;
-            case 103:
-                Element103 = value;
-                return;
-            case 104:
-                Element104 = value;
-                return;
-            case 105:
-                Element105 = value;
-                return;
-            case 106:
-                Element106 = value;
-                return;
-            case 107:
-                Element107 = value;
-                return;
-            case 108:
-                Element108 = value;
-                return;
-            case 109:
-                Element109 = value;
-                return;
-            case 110:
-                Element110 = value;
-                return;
-            case 111:
-                Element111 = value;
-                return;
-            case 112:
-                Element112 = value;
-                return;
-            case 113:
-                Element113 = value;
-                return;
-            case 114:
-                Element114 = value;
-                return;
-            case 115:
-                Element115 = value;
-                return;
-            case 116:
-                Element116 = value;
-                return;
-            case 117:
-                Element117 = value;
-                return;
-            case 118:
-                Element118 = value;
-                return;
-            case 119:
-                Element119 = value;
-                return;
-            case 120:
-                Element120 = value;
-                return;
-            case 121:
-                Element121 = value;
-                return;
-            case 122:
-                Element122 = value;
-                return;
-            case 123:
-                Element123 = value;
-                return;
-            case 124:
-                Element124 = value;
-                return;
-            case 125:
-                Element125 = value;
-                return;
-            case 126:
-                Element126 = value;
-                return;
-            case 127:
-                Element127 = value;
-                return;
-            default:
-                // ILGPU kernels cannot throw exceptions, and callers guarantee the index range.
-                return;
-            }
-        }
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int GetScalarBitLength(ulong value)
-    {
-        if (value == 0UL)
-        {
-            return 0;
-        }
-
-        return 64 - XMath.LeadingZeroCount(value);
-    }
+    private static int GetScalarBitLength(ulong value) => value == 0UL ? 0 : 64 - XMath.LeadingZeroCount(value);
 
     public static readonly GpuUInt128 Zero = new();
     public static readonly GpuUInt128 One = new(1UL);
@@ -743,22 +60,20 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int GetBitLength()
     {
-        if (High != 0UL)
+        ulong temp = High;
+        if (temp != 0UL)
         {
-            return 64 + (64 - BitOperations.LeadingZeroCount(High));
+            return 64 + (64 - BitOperations.LeadingZeroCount(temp));
         }
 
-        ulong low = Low;
-        if (low == 0UL)
+        temp = Low;
+        if (temp == 0UL)
         {
             return 0;
         }
 
-        return 64 - BitOperations.LeadingZeroCount(low);
+        return 64 - BitOperations.LeadingZeroCount(temp);
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int GetBitLength(GpuUInt128 value) => value.GetBitLength();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static implicit operator GpuUInt128(UInt128 value) => new(value);
@@ -770,6 +85,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public static implicit operator UInt128(GpuUInt128 value) =>
         ((UInt128)value.High << 64) | value.Low;
 
+    // TODO: The operators modifying the state of left is intuitive and can easily lead to bugs. Change this back to return a new instance, but replace where possible with method calls, if we want to modify the state of the instance.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GpuUInt128 operator +(GpuUInt128 left, GpuUInt128 right)
     {
@@ -809,16 +125,17 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         ulong high = value.High;
         ulong low = value.Low;
 
+        int shiftedValue;
         if (shift >= 64)
         {
-            int longShift = shift - 64;
-            value.High = low << longShift;
+            shiftedValue = shift - 64;
+            value.High = low << shiftedValue;
             value.Low = 0UL;
             return value;
         }
 
-        int inverseShift = 64 - shift;
-        value.High = (high << shift) | (low >> inverseShift);
+        shiftedValue = 64 - shift;
+        value.High = (high << shift) | (low >> shiftedValue);
         value.Low = low << shift;
         return value;
     }
@@ -835,16 +152,17 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         ulong high = value.High;
         ulong low = value.Low;
 
+        int shiftedValue;
         if (shift >= 64)
         {
-            int longShift = shift - 64;
-            value.Low = longShift == 0 ? high : high >> longShift;
+            shiftedValue = shift - 64;
+            value.Low = shiftedValue == 0 ? high : high >> shiftedValue;
             value.High = 0UL;
             return value;
         }
 
-        int inverseShift = 64 - shift;
-        value.Low = (low >> shift) | (high << inverseShift);
+        shiftedValue = 64 - shift;
+        value.Low = (low >> shift) | (high << shiftedValue);
         value.High = high >> shift;
         return value;
     }
@@ -913,17 +231,20 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public void Add(GpuUInt128 other)
     {
         ulong originalLow = Low;
+        // We're reusing originalLow for carry to avoid an extra local.
         ulong low = originalLow + other.Low;
-        ulong carry = low < originalLow ? 1UL : 0UL;
-        High = High + other.High + carry;
+        originalLow = low < originalLow ? 1UL : 0UL;
         Low = low;
+        // We're reusing low for the final sum to avoid an extra local and to keep max stack frame at 3 instead of 4 with one statement.
+        low = High + other.High;
+        High = low + originalLow;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Add(ulong value)
     {
         ulong low = Low + value;
-        High += (low < Low ? 1UL : 0UL);
+        High += low < Low ? 1UL : 0UL;
         Low = low;
     }
 
@@ -962,10 +283,11 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GpuUInt128 Pow2Minus1Mod(ulong exponent, GpuUInt128 modulus)
     {
-        if (modulus.IsZero)
-        {
-            return Zero;
-        }
+        // This should never happen in production code
+        // if (modulus.IsZero)
+        // {
+        //     return Zero;
+        // }
 
         GpuUInt128 pow = Pow2Mod(exponent, modulus);
         if (pow.IsZero)
@@ -1034,30 +356,34 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong MulHigh(ulong x, ulong y)
     {
+        // TODO: Review if we can reuse any other existing variables to reduce registry pressure.
         ulong xLow = (uint)x;
         ulong yLow = (uint)y;
         ulong lowProduct = xLow * yLow;
 
         ulong yHigh = y >> 32;
-        ulong cross = xLow * yHigh;
+        // We're reusing xLow for the cross product to avoid an extra local.
+        xLow *= yHigh;
 
         ulong xHigh = x >> 32;
-        ulong result = xHigh * yHigh;
-        ulong temp = xHigh * yLow;
+        // We're reusing yHigh for the result to void an extra local.
+        yHigh *= xHigh;
+        // We're reusing yLow for the other cross product to avoid an extra local.
+        yLow *= xHigh;
 
         // Keeping the wide partial sum in a dedicated local prevents the JIT from
         // materialising it on the stack before the final carry propagation. The
         // additional store looks redundant in C#, but it shortens the generated
         // instruction sequence by avoiding an extra temporary and results in a
         // measurable throughput win in the MulHigh benchmarks.
-        result += cross >> 32;
-        result += temp >> 32;
+        yHigh += (xLow >> 32);
+        // We've more instructions with this but the max method stack frame is 3 instead of 4.
+        yHigh += (yLow >> 32);
 
         lowProduct >>= 32;
-        lowProduct += (uint)cross;
-        lowProduct += (uint)temp;
-        result += lowProduct >> 32;
-        return result;
+        lowProduct += (uint)xLow + (uint)yLow;
+        yHigh += lowProduct >> 32;
+        return yHigh;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1099,23 +425,25 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GpuUInt128 Pow2Mod(ulong exponent, GpuUInt128 modulus)
     {
-        if (modulus.IsZero || modulus == One)
-        {
-            return new();
-        }
+        // This should never happen in production code.
+        // if (modulus.IsZero || modulus == One)
+        // {
+        //     return new();
+        // }
 
-        if (exponent == 0UL)
-        {
-            return new GpuUInt128(1UL);
-        }
+        // This should never happen in production code.
+        // if (exponent == 0UL)
+        // {
+        //     return new GpuUInt128(1UL);
+        // }
 
-        Pow2OddPowerTable oddPowers = default;
-        GpuUInt128 power = new GpuUInt128(1UL);
+        GpuUInt128[] oddPowers = new GpuUInt128[PerfectNumberConstants.MaxOddPowersCount];
+        GpuUInt128 power = new(1UL);
         int oddIndex = 0;
 
         for (int bit = 1; bit <= Pow2WindowMaxExponent; bit++)
         {
-            power += power;
+            power.Add(power);
             if (power.CompareTo(modulus) >= 0)
             {
                 power.Sub(modulus);
@@ -1128,7 +456,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             }
         }
 
-        GpuUInt128 result = new GpuUInt128(1UL);
+        GpuUInt128 result = GpuUInt128.One;
         int bitLength = GetScalarBitLength(exponent);
         int index = bitLength - 1;
 
@@ -2144,14 +1472,14 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 }
 
-    // TODO: Check if the TODO below is still relevant.
+// TODO: Check if the TODO below is still relevant.
 
-    // TODO(MOD-OPT): Montgomery/Barrett integration plan
-    // - Introduce caches of modulus-dependent constants:
-    //   * Montgomery: n' (-(n^{-1}) mod 2^64 or 2^128), R2 = (R^2 mod n)
-    //   * Barrett: mu = floor(2^k / n) for k ∈ {128, 192, 256}
-    // - Add fast-path for 64-bit NTT primes (modulus.High == 0UL) using pure 64-bit ops.
-    // - Expose helpers to retrieve/calc constants once per modulus and reuse in kernels.
-    // - Wire these into MulMod and SquareMod hot paths under feature toggles.
-    // - Ensure ILGPU compatibility (no BigInteger, no % inside kernels).
+// TODO(MOD-OPT): Montgomery/Barrett integration plan
+// - Introduce caches of modulus-dependent constants:
+//   * Montgomery: n' (-(n^{-1}) mod 2^64 or 2^128), R2 = (R^2 mod n)
+//   * Barrett: mu = floor(2^k / n) for k ∈ {128, 192, 256}
+// - Add fast-path for 64-bit NTT primes (modulus.High == 0UL) using pure 64-bit ops.
+// - Expose helpers to retrieve/calc constants once per modulus and reuse in kernels.
+// - Wire these into MulMod and SquareMod hot paths under feature toggles.
+// - Ensure ILGPU compatibility (no BigInteger, no % inside kernels).
 

@@ -375,7 +375,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
                 for (int i = 0; i < batchSize; i++)
                 {
-                    divisorDataSpan[i] = MontgomeryDivisorDataCache.Get(divisorSpan[i]);
+                    divisorDataSpan[i] = MontgomeryDivisorData.FromModulus(divisorSpan[i]);
                 }
 
                 divisorView.CopyFromCPU(ref MemoryMarshal.GetReference(divisorDataSpan), batchSize);
@@ -538,7 +538,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             _disposed = false;
         }
 
-        public void CheckDivisor(ulong divisor, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
+        public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
         {
             if (_disposed)
             {
@@ -551,7 +551,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                 return;
             }
 
-            MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(divisor);
             if (divisorData.Modulus <= 1UL || (divisorData.Modulus & 1UL) == 0UL)
             {
                 hits.Clear();

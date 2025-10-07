@@ -194,7 +194,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             processedCount++;
             lastProcessed = candidate;
 
-            if (MersenneDivisorCycles.CycleEqualsExponentForMersenneCandidate(candidate, prime))
+            MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(candidate);
+            if (MersenneDivisorCycles.CycleEqualsExponentForMersenneCandidate(candidate, divisorData, prime))
             {
                 processedAll = true;
                 return true;
@@ -272,7 +273,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             _disposed = false;
         }
 
-        public void CheckDivisor(ulong divisor, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
+        public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
         {
             if (_disposed)
             {
@@ -288,7 +289,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             for (int i = 0; i < length; i++)
             {
                 ulong prime = primes[i];
-                bool divides = MersenneDivisorCycles.CycleEqualsExponentForMersenneCandidate(divisor, prime);
+                bool divides = MersenneDivisorCycles.CycleEqualsExponentForMersenneCandidate(divisor, divisorData, prime);
                 hits[i] = divides ? (byte)1 : (byte)0;
             }
         }

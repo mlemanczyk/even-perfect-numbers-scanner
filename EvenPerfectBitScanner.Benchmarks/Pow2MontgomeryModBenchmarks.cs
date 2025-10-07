@@ -39,7 +39,7 @@ public class Pow2MontgomeryModBenchmarks
             ulong smallModulus = NextSmallOddModulus();
             _smallDivisors[i] = CreateMontgomeryDivisorData(smallModulus);
             _smallExponents[i] = NextSmallExponent();
-            _smallCycles[i] = MersenneDivisorCycles.CalculateCycleLength(smallModulus);
+            _smallCycles[i] = MersenneDivisorCycles.CalculateCycleLength(smallModulus, MontgomeryDivisorData.FromModulus(smallModulus));
 
             (ulong largeModulus, ulong largeCycle) = NextLargeModulusAndCycle();
             _largeDivisors[i] = CreateMontgomeryDivisorData(largeModulus);

@@ -20,6 +20,6 @@ public interface IMersenneNumberDivisorByDivisorTester
 
     public interface IDivisorScanSession : IDisposable
     {
-        void CheckDivisor(ulong divisor, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits);
+        void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits);
     }
 }

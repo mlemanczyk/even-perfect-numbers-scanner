@@ -48,6 +48,7 @@ public class PrimeOrderCalculatorTests
         PrimeOrderCalculator.PrimeOrderResult result = PrimeOrderCalculator.Calculate(
             prime,
             previousOrder: null,
+            MontgomeryDivisorData.FromModulus(prime),
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
         result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
@@ -64,11 +65,13 @@ public class PrimeOrderCalculatorTests
         PrimeOrderCalculator.PrimeOrderResult heuristic = PrimeOrderCalculator.Calculate(
             prime,
             previousOrder,
+            MontgomeryDivisorData.FromModulus(prime),
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
         PrimeOrderCalculator.PrimeOrderResult strict = PrimeOrderCalculator.Calculate(
             prime,
             previousOrder: null,
+            MontgomeryDivisorData.FromModulus(prime),
             PrimeOrderCalculator.PrimeOrderSearchConfig.StrictDefault);
 
         heuristic.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
@@ -85,6 +88,7 @@ public class PrimeOrderCalculatorTests
         PrimeOrderCalculator.PrimeOrderResult result = PrimeOrderCalculator.Calculate(
             prime,
             previousOrder: null,
+            MontgomeryDivisorData.FromModulus(prime),
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
         result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
@@ -104,6 +108,7 @@ public class PrimeOrderCalculatorTests
         PrimeOrderCalculator.PrimeOrderResult result = PrimeOrderCalculator.Calculate(
             prime: 13UL,
             previousOrder: null,
+            MontgomeryDivisorData.FromModulus(13UL),
             config);
 
         result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.HeuristicUnresolved);
@@ -120,9 +125,11 @@ public class PrimeOrderCalculatorTests
             maxPowChecks: 1,
             mode: PrimeOrderCalculator.PrimeOrderMode.Heuristic);
 
+        MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(239UL);
         PrimeOrderCalculator.PrimeOrderResult heuristic = PrimeOrderCalculator.Calculate(
             prime: 239UL,
             previousOrder: null,
+            divisorData,
             heuristicConfig);
 
         heuristic.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.HeuristicUnresolved);
@@ -137,6 +144,7 @@ public class PrimeOrderCalculatorTests
         PrimeOrderCalculator.PrimeOrderResult strict = PrimeOrderCalculator.Calculate(
             prime: 239UL,
             previousOrder: null,
+            divisorData,
             strictConfig);
 
         strict.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);

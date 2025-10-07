@@ -14,29 +14,6 @@ public readonly struct MontgomeryDivisorData(ulong modulus, ulong nPrime, ulong 
 
     public readonly ulong MontgomeryTwo = montgomeryTwo;
     public readonly ulong MontgomeryTwoSquared = montgomeryTwoSquared;
-}
-
-internal static class MontgomeryDivisorDataCache
-{
-    private static readonly ConcurrentDictionary<ulong, MontgomeryDivisorData> Cache = new();
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static MontgomeryDivisorData Get(ulong modulus) => Cache.GetOrAdd(modulus, static m => Create(m));
-
-    private static MontgomeryDivisorData Create(ulong modulus)
-    {
-        ulong nPrime = ComputeMontgomeryNPrime(modulus);
-        ulong montgomeryOne = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64, modulus);
-        ulong montgomeryTwo = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64x2, modulus);
-        ulong montgomeryTwoSquared = ULongExtensions.MontgomeryMultiply(montgomeryTwo, montgomeryTwo, modulus, nPrime);
-
-        return new MontgomeryDivisorData(
-            modulus,
-            nPrime,
-            montgomeryOne,
-            montgomeryTwo,
-            montgomeryTwoSquared);
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ComputeMontgomeryResidue(UInt128 value, ulong modulus) => (ulong)(value % modulus);
@@ -53,4 +30,28 @@ internal static class MontgomeryDivisorDataCache
         inv *= unchecked(2UL - modulus * inv);
         return unchecked(0UL - inv);
     }
+
+    public static MontgomeryDivisorData FromModulus(ulong modulus)
+    {
+        ulong nPrime = ComputeMontgomeryNPrime(modulus);
+        ulong montgomeryOne = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64, modulus);
+        ulong montgomeryTwo = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64x2, modulus);
+        ulong montgomeryTwoSquared = ULongExtensions.MontgomeryMultiply(montgomeryTwo, montgomeryTwo, modulus, nPrime);
+
+        return new MontgomeryDivisorData(
+            modulus,
+            nPrime,
+            montgomeryOne,
+            montgomeryTwo,
+            montgomeryTwoSquared);
+    }
+
+}
+
+internal static class MontgomeryDivisorDataCache
+{
+    private static readonly ConcurrentDictionary<ulong, MontgomeryDivisorData> Cache = new();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static MontgomeryDivisorData Get(ulong modulus) => Cache.GetOrAdd(modulus, static m => MontgomeryDivisorData.FromModulus(m));
 }

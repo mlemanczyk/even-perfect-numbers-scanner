@@ -35,13 +35,13 @@ public class MersenneNumberDivisorCpuTesterTests
                 ulong[] primes = { 5UL, 7UL, 11UL, 13UL };
                 byte[] hits = new byte[primes.Length];
 
-                ulong cycle23 = MersenneDivisorCycles.CalculateCycleLength(23UL);
-                session.CheckDivisor(23UL, cycle23, primes, hits);
+                ulong cycle23 = MersenneDivisorCycles.CalculateCycleLength(23UL, MontgomeryDivisorData.FromModulus(23UL));
+                session.CheckDivisor(23UL, MontgomeryDivisorData.FromModulus(23UL), cycle23, primes, hits);
                 hits.Should().ContainInOrder(new byte[] { 0, 0, 1, 0 });
 
                 Array.Fill(hits, (byte)0);
-                ulong cycle31 = MersenneDivisorCycles.CalculateCycleLength(31UL);
-                session.CheckDivisor(31UL, cycle31, primes, hits);
+                ulong cycle31 = MersenneDivisorCycles.CalculateCycleLength(31UL, MontgomeryDivisorData.FromModulus(31UL));
+                session.CheckDivisor(31UL, MontgomeryDivisorData.FromModulus(31UL), cycle31, primes, hits);
                 hits.Should().ContainInOrder(new byte[] { 1, 0, 0, 0 });
         }
 }

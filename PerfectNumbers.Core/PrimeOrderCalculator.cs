@@ -146,20 +146,21 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    public static PrimeOrderResult Calculate(ulong prime, ulong? previousOrder, PrimeOrderSearchConfig config)
-        => Calculate(prime, previousOrder, config, PrimeOrderHeuristicDevice.Gpu);
+    public static PrimeOrderResult Calculate(ulong prime, ulong? previousOrder, in MontgomeryDivisorData divisorData, PrimeOrderSearchConfig config)
+        => Calculate(prime, previousOrder, divisorData, config, PrimeOrderHeuristicDevice.Gpu);
 
     public static PrimeOrderResult Calculate(
         ulong prime,
         ulong? previousOrder,
+        in MontgomeryDivisorData divisorData,
         PrimeOrderSearchConfig config,
         PrimeOrderHeuristicDevice device)
     {
         using var scope = UsePow2Mode(device);
-        return CalculateInternal(prime, previousOrder, config);
+        return CalculateInternal(prime, previousOrder, divisorData, config);
     }
 
-    private static PrimeOrderResult CalculateInternal(ulong prime, ulong? previousOrder, PrimeOrderSearchConfig config)
+    private static PrimeOrderResult CalculateInternal(ulong prime, ulong? previousOrder, MontgomeryDivisorData divisorData, PrimeOrderSearchConfig config)
     {
         if (prime <= 3UL)
         {
@@ -167,7 +168,6 @@ internal static partial class PrimeOrderCalculator
         }
 
         ulong phi = prime - 1UL;
-        MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(prime);
 
         if (IsGpuHeuristicDevice && PrimeOrderGpuHeuristics.TryCalculateOrder(prime, previousOrder, config, divisorData, out PrimeOrderResult gpuResult))
         {
@@ -448,8 +448,8 @@ internal static partial class PrimeOrderCalculator
 
         DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
         int index = 0;
-        const int MaxGpuBatchSize = 256;
-        const int StackGpuBatchSize = 32;
+        const int MaxGpuBatchSize = 1024;
+        const int StackGpuBatchSize = 1024;
         Span<ulong> stackGpuRemainders = stackalloc ulong[StackGpuBatchSize];
         while (index < candidateCount && powUsed < powBudget)
         {
@@ -473,7 +473,7 @@ internal static partial class PrimeOrderCalculator
                 if (batchSize <= StackGpuBatchSize)
                 {
                     Span<ulong> localRemainders = stackGpuRemainders.Slice(0, batchSize);
-                    status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, localRemainders);
+                    status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, localRemainders, divisorData);
                     if (status == GpuPow2ModStatus.Success)
                     {
                         gpuSuccess = true;
@@ -484,7 +484,7 @@ internal static partial class PrimeOrderCalculator
                 {
                     gpuPool = ArrayPool<ulong>.Shared.Rent(batchSize);
                     Span<ulong> pooledRemainders = gpuPool.AsSpan(0, batchSize);
-                    status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, pooledRemainders);
+                    status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, pooledRemainders, divisorData);
                     if (status == GpuPow2ModStatus.Success)
                     {
                         pooledGpuRemainders = pooledRemainders;
@@ -775,7 +775,7 @@ internal static partial class PrimeOrderCalculator
     {
         if (IsGpuPow2Allowed)
         {
-            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, prime, out ulong remainder);
+            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, prime, out ulong remainder, divisorData);
             if (status == GpuPow2ModStatus.Success)
             {
                 return remainder == 1UL;

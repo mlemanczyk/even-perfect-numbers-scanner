@@ -109,14 +109,16 @@ public sealed class DivisorCycleCache
             ArrayPool<int>.Shared.Return(rentedMissing, clearArray: false);
         }
     }
-    
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ComputeCyclesCpu(ReadOnlySpan<ulong> divisors, Span<ulong> cycles, ReadOnlySpan<int> indices)
     {
         for (int i = 0; i < indices.Length; i++)
         {
             int targetIndex = indices[i];
-            cycles[targetIndex] = MersenneDivisorCycles.CalculateCycleLength(divisors[targetIndex]);
+            ulong divisor = divisors[targetIndex];
+            MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
+            cycles[targetIndex] = MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData);
         }
     }
 

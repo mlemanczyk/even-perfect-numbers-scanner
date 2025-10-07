@@ -27,73 +27,37 @@ internal static partial class PrimeOrderGpuHeuristics
     private static readonly ConcurrentDictionary<Accelerator, OrderKernelLauncher> OrderKernelCache = new();
     private static readonly ConcurrentDictionary<Accelerator, SmallPrimeDeviceCache> SmallPrimeDeviceCaches = new();
 
-    public readonly struct OrderKernelConfig
+    public readonly struct OrderKernelConfig(ulong previousOrder, byte hasPreviousOrder, uint smallFactorLimit, int maxPowChecks, int mode)
     {
-        public OrderKernelConfig(ulong previousOrder, byte hasPreviousOrder, uint smallFactorLimit, int maxPowChecks, int mode)
-        {
-            PreviousOrder = previousOrder;
-            HasPreviousOrder = hasPreviousOrder;
-            SmallFactorLimit = smallFactorLimit;
-            MaxPowChecks = maxPowChecks;
-            Mode = mode;
-        }
-
-        public ulong PreviousOrder { get; }
-
-        public byte HasPreviousOrder { get; }
-
-        public uint SmallFactorLimit { get; }
-
-        public int MaxPowChecks { get; }
-
-        public int Mode { get; }
+        public readonly ulong PreviousOrder = previousOrder;
+        public readonly byte HasPreviousOrder = hasPreviousOrder;
+        public readonly uint SmallFactorLimit = smallFactorLimit;
+        public readonly int MaxPowChecks = maxPowChecks;
+        public readonly int Mode = mode;
     }
 
-    public readonly struct OrderKernelBuffers
+    public readonly struct OrderKernelBuffers(
+        ArrayView1D<ulong, Stride1D.Dense> phiFactors,
+        ArrayView1D<int, Stride1D.Dense> phiExponents,
+        ArrayView1D<ulong, Stride1D.Dense> workFactors,
+        ArrayView1D<int, Stride1D.Dense> workExponents,
+        ArrayView1D<ulong, Stride1D.Dense> candidates,
+        ArrayView1D<int, Stride1D.Dense> stackIndex,
+        ArrayView1D<int, Stride1D.Dense> stackExponent,
+        ArrayView1D<ulong, Stride1D.Dense> stackProduct,
+        ArrayView1D<ulong, Stride1D.Dense> result,
+        ArrayView1D<byte, Stride1D.Dense> status)
     {
-        public OrderKernelBuffers(
-            ArrayView1D<ulong, Stride1D.Dense> phiFactors,
-            ArrayView1D<int, Stride1D.Dense> phiExponents,
-            ArrayView1D<ulong, Stride1D.Dense> workFactors,
-            ArrayView1D<int, Stride1D.Dense> workExponents,
-            ArrayView1D<ulong, Stride1D.Dense> candidates,
-            ArrayView1D<int, Stride1D.Dense> stackIndex,
-            ArrayView1D<int, Stride1D.Dense> stackExponent,
-            ArrayView1D<ulong, Stride1D.Dense> stackProduct,
-            ArrayView1D<ulong, Stride1D.Dense> result,
-            ArrayView1D<byte, Stride1D.Dense> status)
-        {
-            PhiFactors = phiFactors;
-            PhiExponents = phiExponents;
-            WorkFactors = workFactors;
-            WorkExponents = workExponents;
-            Candidates = candidates;
-            StackIndex = stackIndex;
-            StackExponent = stackExponent;
-            StackProduct = stackProduct;
-            Result = result;
-            Status = status;
-        }
-
-        public ArrayView1D<ulong, Stride1D.Dense> PhiFactors { get; }
-
-        public ArrayView1D<int, Stride1D.Dense> PhiExponents { get; }
-
-        public ArrayView1D<ulong, Stride1D.Dense> WorkFactors { get; }
-
-        public ArrayView1D<int, Stride1D.Dense> WorkExponents { get; }
-
-        public ArrayView1D<ulong, Stride1D.Dense> Candidates { get; }
-
-        public ArrayView1D<int, Stride1D.Dense> StackIndex { get; }
-
-        public ArrayView1D<int, Stride1D.Dense> StackExponent { get; }
-
-        public ArrayView1D<ulong, Stride1D.Dense> StackProduct { get; }
-
-        public ArrayView1D<ulong, Stride1D.Dense> Result { get; }
-
-        public ArrayView1D<byte, Stride1D.Dense> Status { get; }
+        public readonly ArrayView1D<ulong, Stride1D.Dense> PhiFactors = phiFactors;
+        public readonly ArrayView1D<int, Stride1D.Dense> PhiExponents = phiExponents;
+        public readonly ArrayView1D<ulong, Stride1D.Dense> WorkFactors = workFactors;
+        public readonly ArrayView1D<int, Stride1D.Dense> WorkExponents = workExponents;
+        public readonly ArrayView1D<ulong, Stride1D.Dense> Candidates = candidates;
+        public readonly ArrayView1D<int, Stride1D.Dense> StackIndex = stackIndex;
+        public readonly ArrayView1D<int, Stride1D.Dense> StackExponent = stackExponent;
+        public readonly ArrayView1D<ulong, Stride1D.Dense> StackProduct = stackProduct;
+        public readonly ArrayView1D<ulong, Stride1D.Dense> Result = result;
+        public readonly ArrayView1D<byte, Stride1D.Dense> Status = status;
     }
 
     private delegate void OrderKernelLauncher(
@@ -124,681 +88,6 @@ internal static partial class PrimeOrderGpuHeuristics
     private const int HeuristicStackCapacity = 256;
 
     private const int GpuSmallPrimeFactorSlots = 64;
-
-
-    private struct Pow2OddPowerTable
-    {
-        public GpuUInt128 Element0;
-        public GpuUInt128 Element1;
-        public GpuUInt128 Element2;
-        public GpuUInt128 Element3;
-        public GpuUInt128 Element4;
-        public GpuUInt128 Element5;
-        public GpuUInt128 Element6;
-        public GpuUInt128 Element7;
-        public GpuUInt128 Element8;
-        public GpuUInt128 Element9;
-        public GpuUInt128 Element10;
-        public GpuUInt128 Element11;
-        public GpuUInt128 Element12;
-        public GpuUInt128 Element13;
-        public GpuUInt128 Element14;
-        public GpuUInt128 Element15;
-        public GpuUInt128 Element16;
-        public GpuUInt128 Element17;
-        public GpuUInt128 Element18;
-        public GpuUInt128 Element19;
-        public GpuUInt128 Element20;
-        public GpuUInt128 Element21;
-        public GpuUInt128 Element22;
-        public GpuUInt128 Element23;
-        public GpuUInt128 Element24;
-        public GpuUInt128 Element25;
-        public GpuUInt128 Element26;
-        public GpuUInt128 Element27;
-        public GpuUInt128 Element28;
-        public GpuUInt128 Element29;
-        public GpuUInt128 Element30;
-        public GpuUInt128 Element31;
-        public GpuUInt128 Element32;
-        public GpuUInt128 Element33;
-        public GpuUInt128 Element34;
-        public GpuUInt128 Element35;
-        public GpuUInt128 Element36;
-        public GpuUInt128 Element37;
-        public GpuUInt128 Element38;
-        public GpuUInt128 Element39;
-        public GpuUInt128 Element40;
-        public GpuUInt128 Element41;
-        public GpuUInt128 Element42;
-        public GpuUInt128 Element43;
-        public GpuUInt128 Element44;
-        public GpuUInt128 Element45;
-        public GpuUInt128 Element46;
-        public GpuUInt128 Element47;
-        public GpuUInt128 Element48;
-        public GpuUInt128 Element49;
-        public GpuUInt128 Element50;
-        public GpuUInt128 Element51;
-        public GpuUInt128 Element52;
-        public GpuUInt128 Element53;
-        public GpuUInt128 Element54;
-        public GpuUInt128 Element55;
-        public GpuUInt128 Element56;
-        public GpuUInt128 Element57;
-        public GpuUInt128 Element58;
-        public GpuUInt128 Element59;
-        public GpuUInt128 Element60;
-        public GpuUInt128 Element61;
-        public GpuUInt128 Element62;
-        public GpuUInt128 Element63;
-        public GpuUInt128 Element64;
-        public GpuUInt128 Element65;
-        public GpuUInt128 Element66;
-        public GpuUInt128 Element67;
-        public GpuUInt128 Element68;
-        public GpuUInt128 Element69;
-        public GpuUInt128 Element70;
-        public GpuUInt128 Element71;
-        public GpuUInt128 Element72;
-        public GpuUInt128 Element73;
-        public GpuUInt128 Element74;
-        public GpuUInt128 Element75;
-        public GpuUInt128 Element76;
-        public GpuUInt128 Element77;
-        public GpuUInt128 Element78;
-        public GpuUInt128 Element79;
-        public GpuUInt128 Element80;
-        public GpuUInt128 Element81;
-        public GpuUInt128 Element82;
-        public GpuUInt128 Element83;
-        public GpuUInt128 Element84;
-        public GpuUInt128 Element85;
-        public GpuUInt128 Element86;
-        public GpuUInt128 Element87;
-        public GpuUInt128 Element88;
-        public GpuUInt128 Element89;
-        public GpuUInt128 Element90;
-        public GpuUInt128 Element91;
-        public GpuUInt128 Element92;
-        public GpuUInt128 Element93;
-        public GpuUInt128 Element94;
-        public GpuUInt128 Element95;
-        public GpuUInt128 Element96;
-        public GpuUInt128 Element97;
-        public GpuUInt128 Element98;
-        public GpuUInt128 Element99;
-        public GpuUInt128 Element100;
-        public GpuUInt128 Element101;
-        public GpuUInt128 Element102;
-        public GpuUInt128 Element103;
-        public GpuUInt128 Element104;
-        public GpuUInt128 Element105;
-        public GpuUInt128 Element106;
-        public GpuUInt128 Element107;
-        public GpuUInt128 Element108;
-        public GpuUInt128 Element109;
-        public GpuUInt128 Element110;
-        public GpuUInt128 Element111;
-        public GpuUInt128 Element112;
-        public GpuUInt128 Element113;
-        public GpuUInt128 Element114;
-        public GpuUInt128 Element115;
-        public GpuUInt128 Element116;
-        public GpuUInt128 Element117;
-        public GpuUInt128 Element118;
-        public GpuUInt128 Element119;
-        public GpuUInt128 Element120;
-        public GpuUInt128 Element121;
-        public GpuUInt128 Element122;
-        public GpuUInt128 Element123;
-        public GpuUInt128 Element124;
-        public GpuUInt128 Element125;
-        public GpuUInt128 Element126;
-        public GpuUInt128 Element127;
-
-        public GpuUInt128 this[int index]
-        {
-            readonly get
-            {
-                return GetElement(index);
-            }
-
-            set
-            {
-                SetElement(index, value);
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private readonly GpuUInt128 GetElement(int index) => index switch
-        {
-            0 => Element0,
-            1 => Element1,
-            2 => Element2,
-            3 => Element3,
-            4 => Element4,
-            5 => Element5,
-            6 => Element6,
-            7 => Element7,
-            8 => Element8,
-            9 => Element9,
-            10 => Element10,
-            11 => Element11,
-            12 => Element12,
-            13 => Element13,
-            14 => Element14,
-            15 => Element15,
-            16 => Element16,
-            17 => Element17,
-            18 => Element18,
-            19 => Element19,
-            20 => Element20,
-            21 => Element21,
-            22 => Element22,
-            23 => Element23,
-            24 => Element24,
-            25 => Element25,
-            26 => Element26,
-            27 => Element27,
-            28 => Element28,
-            29 => Element29,
-            30 => Element30,
-            31 => Element31,
-            32 => Element32,
-            33 => Element33,
-            34 => Element34,
-            35 => Element35,
-            36 => Element36,
-            37 => Element37,
-            38 => Element38,
-            39 => Element39,
-            40 => Element40,
-            41 => Element41,
-            42 => Element42,
-            43 => Element43,
-            44 => Element44,
-            45 => Element45,
-            46 => Element46,
-            47 => Element47,
-            48 => Element48,
-            49 => Element49,
-            50 => Element50,
-            51 => Element51,
-            52 => Element52,
-            53 => Element53,
-            54 => Element54,
-            55 => Element55,
-            56 => Element56,
-            57 => Element57,
-            58 => Element58,
-            59 => Element59,
-            60 => Element60,
-            61 => Element61,
-            62 => Element62,
-            63 => Element63,
-            64 => Element64,
-            65 => Element65,
-            66 => Element66,
-            67 => Element67,
-            68 => Element68,
-            69 => Element69,
-            70 => Element70,
-            71 => Element71,
-            72 => Element72,
-            73 => Element73,
-            74 => Element74,
-            75 => Element75,
-            76 => Element76,
-            77 => Element77,
-            78 => Element78,
-            79 => Element79,
-            80 => Element80,
-            81 => Element81,
-            82 => Element82,
-            83 => Element83,
-            84 => Element84,
-            85 => Element85,
-            86 => Element86,
-            87 => Element87,
-            88 => Element88,
-            89 => Element89,
-            90 => Element90,
-            91 => Element91,
-            92 => Element92,
-            93 => Element93,
-            94 => Element94,
-            95 => Element95,
-            96 => Element96,
-            97 => Element97,
-            98 => Element98,
-            99 => Element99,
-            100 => Element100,
-            101 => Element101,
-            102 => Element102,
-            103 => Element103,
-            104 => Element104,
-            105 => Element105,
-            106 => Element106,
-            107 => Element107,
-            108 => Element108,
-            109 => Element109,
-            110 => Element110,
-            111 => Element111,
-            112 => Element112,
-            113 => Element113,
-            114 => Element114,
-            115 => Element115,
-            116 => Element116,
-            117 => Element117,
-            118 => Element118,
-            119 => Element119,
-            120 => Element120,
-            121 => Element121,
-            122 => Element122,
-            123 => Element123,
-            124 => Element124,
-            125 => Element125,
-            126 => Element126,
-            127 => Element127,
-            _ => Element0,
-        };
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SetElement(int index, GpuUInt128 value)
-        {
-            switch (index)
-            {
-                case 0:
-                    Element0 = value;
-                    return;
-                case 1:
-                    Element1 = value;
-                    return;
-                case 2:
-                    Element2 = value;
-                    return;
-                case 3:
-                    Element3 = value;
-                    return;
-                case 4:
-                    Element4 = value;
-                    return;
-                case 5:
-                    Element5 = value;
-                    return;
-                case 6:
-                    Element6 = value;
-                    return;
-                case 7:
-                    Element7 = value;
-                    return;
-                case 8:
-                    Element8 = value;
-                    return;
-                case 9:
-                    Element9 = value;
-                    return;
-                case 10:
-                    Element10 = value;
-                    return;
-                case 11:
-                    Element11 = value;
-                    return;
-                case 12:
-                    Element12 = value;
-                    return;
-                case 13:
-                    Element13 = value;
-                    return;
-                case 14:
-                    Element14 = value;
-                    return;
-                case 15:
-                    Element15 = value;
-                    return;
-                case 16:
-                    Element16 = value;
-                    return;
-                case 17:
-                    Element17 = value;
-                    return;
-                case 18:
-                    Element18 = value;
-                    return;
-                case 19:
-                    Element19 = value;
-                    return;
-                case 20:
-                    Element20 = value;
-                    return;
-                case 21:
-                    Element21 = value;
-                    return;
-                case 22:
-                    Element22 = value;
-                    return;
-                case 23:
-                    Element23 = value;
-                    return;
-                case 24:
-                    Element24 = value;
-                    return;
-                case 25:
-                    Element25 = value;
-                    return;
-                case 26:
-                    Element26 = value;
-                    return;
-                case 27:
-                    Element27 = value;
-                    return;
-                case 28:
-                    Element28 = value;
-                    return;
-                case 29:
-                    Element29 = value;
-                    return;
-                case 30:
-                    Element30 = value;
-                    return;
-                case 31:
-                    Element31 = value;
-                    return;
-                case 32:
-                    Element32 = value;
-                    return;
-                case 33:
-                    Element33 = value;
-                    return;
-                case 34:
-                    Element34 = value;
-                    return;
-                case 35:
-                    Element35 = value;
-                    return;
-                case 36:
-                    Element36 = value;
-                    return;
-                case 37:
-                    Element37 = value;
-                    return;
-                case 38:
-                    Element38 = value;
-                    return;
-                case 39:
-                    Element39 = value;
-                    return;
-                case 40:
-                    Element40 = value;
-                    return;
-                case 41:
-                    Element41 = value;
-                    return;
-                case 42:
-                    Element42 = value;
-                    return;
-                case 43:
-                    Element43 = value;
-                    return;
-                case 44:
-                    Element44 = value;
-                    return;
-                case 45:
-                    Element45 = value;
-                    return;
-                case 46:
-                    Element46 = value;
-                    return;
-                case 47:
-                    Element47 = value;
-                    return;
-                case 48:
-                    Element48 = value;
-                    return;
-                case 49:
-                    Element49 = value;
-                    return;
-                case 50:
-                    Element50 = value;
-                    return;
-                case 51:
-                    Element51 = value;
-                    return;
-                case 52:
-                    Element52 = value;
-                    return;
-                case 53:
-                    Element53 = value;
-                    return;
-                case 54:
-                    Element54 = value;
-                    return;
-                case 55:
-                    Element55 = value;
-                    return;
-                case 56:
-                    Element56 = value;
-                    return;
-                case 57:
-                    Element57 = value;
-                    return;
-                case 58:
-                    Element58 = value;
-                    return;
-                case 59:
-                    Element59 = value;
-                    return;
-                case 60:
-                    Element60 = value;
-                    return;
-                case 61:
-                    Element61 = value;
-                    return;
-                case 62:
-                    Element62 = value;
-                    return;
-                case 63:
-                    Element63 = value;
-                    return;
-                case 64:
-                    Element64 = value;
-                    return;
-                case 65:
-                    Element65 = value;
-                    return;
-                case 66:
-                    Element66 = value;
-                    return;
-                case 67:
-                    Element67 = value;
-                    return;
-                case 68:
-                    Element68 = value;
-                    return;
-                case 69:
-                    Element69 = value;
-                    return;
-                case 70:
-                    Element70 = value;
-                    return;
-                case 71:
-                    Element71 = value;
-                    return;
-                case 72:
-                    Element72 = value;
-                    return;
-                case 73:
-                    Element73 = value;
-                    return;
-                case 74:
-                    Element74 = value;
-                    return;
-                case 75:
-                    Element75 = value;
-                    return;
-                case 76:
-                    Element76 = value;
-                    return;
-                case 77:
-                    Element77 = value;
-                    return;
-                case 78:
-                    Element78 = value;
-                    return;
-                case 79:
-                    Element79 = value;
-                    return;
-                case 80:
-                    Element80 = value;
-                    return;
-                case 81:
-                    Element81 = value;
-                    return;
-                case 82:
-                    Element82 = value;
-                    return;
-                case 83:
-                    Element83 = value;
-                    return;
-                case 84:
-                    Element84 = value;
-                    return;
-                case 85:
-                    Element85 = value;
-                    return;
-                case 86:
-                    Element86 = value;
-                    return;
-                case 87:
-                    Element87 = value;
-                    return;
-                case 88:
-                    Element88 = value;
-                    return;
-                case 89:
-                    Element89 = value;
-                    return;
-                case 90:
-                    Element90 = value;
-                    return;
-                case 91:
-                    Element91 = value;
-                    return;
-                case 92:
-                    Element92 = value;
-                    return;
-                case 93:
-                    Element93 = value;
-                    return;
-                case 94:
-                    Element94 = value;
-                    return;
-                case 95:
-                    Element95 = value;
-                    return;
-                case 96:
-                    Element96 = value;
-                    return;
-                case 97:
-                    Element97 = value;
-                    return;
-                case 98:
-                    Element98 = value;
-                    return;
-                case 99:
-                    Element99 = value;
-                    return;
-                case 100:
-                    Element100 = value;
-                    return;
-                case 101:
-                    Element101 = value;
-                    return;
-                case 102:
-                    Element102 = value;
-                    return;
-                case 103:
-                    Element103 = value;
-                    return;
-                case 104:
-                    Element104 = value;
-                    return;
-                case 105:
-                    Element105 = value;
-                    return;
-                case 106:
-                    Element106 = value;
-                    return;
-                case 107:
-                    Element107 = value;
-                    return;
-                case 108:
-                    Element108 = value;
-                    return;
-                case 109:
-                    Element109 = value;
-                    return;
-                case 110:
-                    Element110 = value;
-                    return;
-                case 111:
-                    Element111 = value;
-                    return;
-                case 112:
-                    Element112 = value;
-                    return;
-                case 113:
-                    Element113 = value;
-                    return;
-                case 114:
-                    Element114 = value;
-                    return;
-                case 115:
-                    Element115 = value;
-                    return;
-                case 116:
-                    Element116 = value;
-                    return;
-                case 117:
-                    Element117 = value;
-                    return;
-                case 118:
-                    Element118 = value;
-                    return;
-                case 119:
-                    Element119 = value;
-                    return;
-                case 120:
-                    Element120 = value;
-                    return;
-                case 121:
-                    Element121 = value;
-                    return;
-                case 122:
-                    Element122 = value;
-                    return;
-                case 123:
-                    Element123 = value;
-                    return;
-                case 124:
-                    Element124 = value;
-                    return;
-                case 125:
-                    Element125 = value;
-                    return;
-                case 126:
-                    Element126 = value;
-                    return;
-                case 127:
-                    Element127 = value;
-                    return;
-                default:
-                    // ILGPU kernels cannot throw exceptions, and callers guarantee the index range.
-                    return;
-            }
-        }
-    }
 
     internal static ConcurrentDictionary<ulong, byte> OverflowRegistry => OverflowedPrimes;
     internal static ConcurrentDictionary<UInt128, byte> OverflowRegistryWide => OverflowedPrimesWide;
@@ -1039,36 +328,44 @@ internal static partial class PrimeOrderGpuHeuristics
         remainingOut[0] = remainingLocal;
         fullyFactoredOut[0] = remainingLocal == 1UL ? (byte)1 : (byte)0;
     }
-    public static GpuPow2ModStatus TryPow2Mod(ulong exponent, ulong prime, out ulong remainder)
+    public static GpuPow2ModStatus TryPow2Mod(ulong exponent, ulong prime, out ulong remainder, in MontgomeryDivisorData divisorData)
     {
         Span<ulong> exponents = stackalloc ulong[1];
         Span<ulong> remainders = stackalloc ulong[1];
         exponents[0] = exponent;
 
-        GpuPow2ModStatus status = TryPow2ModBatch(exponents, prime, remainders);
+        GpuPow2ModStatus status = TryPow2ModBatch(exponents, prime, remainders, divisorData);
         remainder = remainders[0];
         return status;
     }
 
-    public static GpuPow2ModStatus TryPow2ModBatch(ReadOnlySpan<ulong> exponents, ulong prime, Span<ulong> remainders)
+    public static GpuPow2ModStatus TryPow2ModBatch(ReadOnlySpan<ulong> exponents, ulong prime, Span<ulong> remainders, in MontgomeryDivisorData divisorData)
     {
-        if (exponents.Length == 0)
-        {
-            return GpuPow2ModStatus.Success;
-        }
+        // This will never occur in production code
+        // if (exponents.Length == 0)
+        // {
+        //     return GpuPow2ModStatus.Success;
+        // }
 
-        if (remainders.Length < exponents.Length)
-        {
-            throw new ArgumentException("Remainder span is shorter than the exponent span.", nameof(remainders));
-        }
+        // This will never occur in production code
+        // if (remainders.Length < exponents.Length)
+        // {
+        //     throw new ArgumentException("Remainder span is shorter than the exponent span.", nameof(remainders));
+        // }
 
-        Span<ulong> target = remainders.Slice(0, exponents.Length);
-        target.Clear();
+        // This will never occur in production code
+        // if (remainders.Length > exponents.Length)
+        //     throw new ArgumentException("Remainder span is longer than the exponent span.", nameof(remainders));
 
-        if (prime <= 1UL)
-        {
-            return GpuPow2ModStatus.Unavailable;
-        }
+        // We need to clear more, but we save on allocations    
+        // Span<ulong> target = remainders[..exponents.Length];
+        remainders.Clear();
+
+        // This will never occur in production code
+        // if (prime <= 1UL)
+        // {
+        //     return GpuPow2ModStatus.Unavailable;
+        // }
 
         ConcurrentDictionary<ulong, byte> overflowRegistry = OverflowedPrimes;
 
@@ -1093,11 +390,11 @@ internal static partial class PrimeOrderGpuHeuristics
             }
         }
 
-        bool computed = TryComputeOnGpu(exponents, prime, target);
+        bool computed = TryComputeOnGpu(exponents, prime, divisorData, remainders);
         return computed ? GpuPow2ModStatus.Success : GpuPow2ModStatus.Unavailable;
     }
 
-    public static GpuPow2ModStatus TryPow2Mod(UInt128 exponent, UInt128 prime, out UInt128 remainder)
+    public static GpuPow2ModStatus TryPow2Mod(in UInt128 exponent, in UInt128 prime, out UInt128 remainder)
     {
         Span<UInt128> exponents = stackalloc UInt128[1];
         Span<UInt128> remainders = stackalloc UInt128[1];
@@ -1122,103 +419,110 @@ internal static partial class PrimeOrderGpuHeuristics
     {
         result = default;
 
-        try
+        var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+        var execution = lease.EnterExecutionScope();
+        Accelerator accelerator = lease.Accelerator;
+        AcceleratorStream stream = lease.Stream;
+
+        var kernel = GetOrderKernel(accelerator);
+        SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
+
+        var phiFactorBuffer = accelerator.Allocate1D<ulong>(GpuSmallPrimeFactorSlots);
+        var phiExponentBuffer = accelerator.Allocate1D<int>(GpuSmallPrimeFactorSlots);
+        var workFactorBuffer = accelerator.Allocate1D<ulong>(GpuSmallPrimeFactorSlots);
+        var workExponentBuffer = accelerator.Allocate1D<int>(GpuSmallPrimeFactorSlots);
+        var candidateBuffer = accelerator.Allocate1D<ulong>(HeuristicCandidateLimit);
+        var stackIndexBuffer = accelerator.Allocate1D<int>(HeuristicStackCapacity);
+        var stackExponentBuffer = accelerator.Allocate1D<int>(HeuristicStackCapacity);
+        var stackProductBuffer = accelerator.Allocate1D<ulong>(HeuristicStackCapacity);
+        var resultBuffer = accelerator.Allocate1D<ulong>(1);
+        var statusBuffer = accelerator.Allocate1D<byte>(1);
+
+        phiFactorBuffer.MemSetToZero();
+        phiExponentBuffer.MemSetToZero();
+        workFactorBuffer.MemSetToZero();
+        workExponentBuffer.MemSetToZero();
+        candidateBuffer.MemSetToZero();
+        stackIndexBuffer.MemSetToZero();
+        stackExponentBuffer.MemSetToZero();
+        stackProductBuffer.MemSetToZero();
+        resultBuffer.MemSetToZero();
+        statusBuffer.MemSetToZero();
+
+        uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
+        byte hasPrevious = previousOrder.HasValue ? (byte)1 : (byte)0;
+        ulong previousValue = previousOrder ?? 0UL;
+
+        var kernelConfig = new OrderKernelConfig(previousValue, hasPrevious, limit, config.MaxPowChecks, (int)config.Mode);
+        var buffers = new OrderKernelBuffers(
+            phiFactorBuffer.View,
+            phiExponentBuffer.View,
+            workFactorBuffer.View,
+            workExponentBuffer.View,
+            candidateBuffer.View,
+            stackIndexBuffer.View,
+            stackExponentBuffer.View,
+            stackProductBuffer.View,
+            resultBuffer.View,
+            statusBuffer.View);
+
+        kernel(
+            stream,
+            1,
+            prime,
+            kernelConfig,
+            divisorData,
+            cache.Primes!.View,
+            cache.Squares!.View,
+            cache.Count,
+            buffers);
+
+        stream.Synchronize();
+
+        byte status = 0;
+        statusBuffer.View.CopyToCPU(ref status, 1);
+
+        PrimeOrderKernelStatus kernelStatus = (PrimeOrderKernelStatus)status;
+        if (kernelStatus == PrimeOrderKernelStatus.Fallback)
         {
-            var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
-            try
-            {
-                using var execution = lease.EnterExecutionScope();
-                Accelerator accelerator = lease.Accelerator;
-                AcceleratorStream stream = lease.Stream;
-
-                var kernel = GetOrderKernel(accelerator);
-                SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
-
-                using var phiFactorBuffer = accelerator.Allocate1D<ulong>(GpuSmallPrimeFactorSlots);
-                using var phiExponentBuffer = accelerator.Allocate1D<int>(GpuSmallPrimeFactorSlots);
-                using var workFactorBuffer = accelerator.Allocate1D<ulong>(GpuSmallPrimeFactorSlots);
-                using var workExponentBuffer = accelerator.Allocate1D<int>(GpuSmallPrimeFactorSlots);
-                using var candidateBuffer = accelerator.Allocate1D<ulong>(HeuristicCandidateLimit);
-                using var stackIndexBuffer = accelerator.Allocate1D<int>(HeuristicStackCapacity);
-                using var stackExponentBuffer = accelerator.Allocate1D<int>(HeuristicStackCapacity);
-                using var stackProductBuffer = accelerator.Allocate1D<ulong>(HeuristicStackCapacity);
-                using var resultBuffer = accelerator.Allocate1D<ulong>(1);
-                using var statusBuffer = accelerator.Allocate1D<byte>(1);
-
-                phiFactorBuffer.MemSetToZero();
-                phiExponentBuffer.MemSetToZero();
-                workFactorBuffer.MemSetToZero();
-                workExponentBuffer.MemSetToZero();
-                candidateBuffer.MemSetToZero();
-                stackIndexBuffer.MemSetToZero();
-                stackExponentBuffer.MemSetToZero();
-                stackProductBuffer.MemSetToZero();
-                resultBuffer.MemSetToZero();
-                statusBuffer.MemSetToZero();
-
-                uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
-                byte hasPrevious = previousOrder.HasValue ? (byte)1 : (byte)0;
-                ulong previousValue = previousOrder ?? 0UL;
-
-                var kernelConfig = new OrderKernelConfig(previousValue, hasPrevious, limit, config.MaxPowChecks, (int)config.Mode);
-                var buffers = new OrderKernelBuffers(
-                    phiFactorBuffer.View,
-                    phiExponentBuffer.View,
-                    workFactorBuffer.View,
-                    workExponentBuffer.View,
-                    candidateBuffer.View,
-                    stackIndexBuffer.View,
-                    stackExponentBuffer.View,
-                    stackProductBuffer.View,
-                    resultBuffer.View,
-                    statusBuffer.View);
-
-                kernel(
-                    stream,
-                    1,
-                    prime,
-                    kernelConfig,
-                    divisorData,
-                    cache.Primes!.View,
-                    cache.Squares!.View,
-                    cache.Count,
-                    buffers);
-
-                stream.Synchronize();
-
-                byte status = 0;
-                statusBuffer.View.CopyToCPU(ref status, 1);
-
-                PrimeOrderKernelStatus kernelStatus = (PrimeOrderKernelStatus)status;
-                if (kernelStatus == PrimeOrderKernelStatus.Fallback)
-                {
-                    return false;
-                }
-
-                if (kernelStatus == PrimeOrderKernelStatus.PollardOverflow)
-                {
-                    throw new InvalidOperationException("GPU Pollard Rho stack overflow; increase HeuristicStackCapacity.");
-                }
-
-                ulong order = 0UL;
-                resultBuffer.View.CopyToCPU(ref order, 1);
-
-                PrimeOrderCalculator.PrimeOrderStatus finalStatus = kernelStatus == PrimeOrderKernelStatus.Found
-                    ? PrimeOrderCalculator.PrimeOrderStatus.Found
-                    : PrimeOrderCalculator.PrimeOrderStatus.HeuristicUnresolved;
-
-                result = new PrimeOrderCalculator.PrimeOrderResult(finalStatus, order);
-                return true;
-            }
-            finally
-            {
-                lease.Dispose();
-            }
-        }
-        catch (Exception ex) when (ex is AcceleratorException or InternalCompilerException or NotSupportedException or InvalidOperationException or AggregateException)
-        {
-            result = default;
+            DisposeResources();
+            lease.Dispose();
             return false;
+        }
+
+        if (kernelStatus == PrimeOrderKernelStatus.PollardOverflow)
+        {
+            DisposeResources();
+            lease.Dispose();
+            throw new InvalidOperationException("GPU Pollard Rho stack overflow; increase HeuristicStackCapacity.");
+        }
+
+        ulong order = 0UL;
+        resultBuffer.View.CopyToCPU(ref order, 1);
+
+        PrimeOrderCalculator.PrimeOrderStatus finalStatus = kernelStatus == PrimeOrderKernelStatus.Found
+            ? PrimeOrderCalculator.PrimeOrderStatus.Found
+            : PrimeOrderCalculator.PrimeOrderStatus.HeuristicUnresolved;
+
+        result = new PrimeOrderCalculator.PrimeOrderResult(finalStatus, order);
+        DisposeResources();
+        lease.Dispose();
+
+        return true;
+
+        void DisposeResources()
+        {
+            phiFactorBuffer.Dispose();
+            phiExponentBuffer.Dispose();
+            workFactorBuffer.Dispose();
+            workExponentBuffer.Dispose();
+            candidateBuffer.Dispose();
+            stackIndexBuffer.Dispose();
+            stackExponentBuffer.Dispose();
+            stackProductBuffer.Dispose();
+            resultBuffer.Dispose();
+            statusBuffer.Dispose();
+            execution.Dispose();
         }
     }
 
@@ -2356,49 +1660,48 @@ internal static partial class PrimeOrderGpuHeuristics
         return computed ? GpuPow2ModStatus.Success : GpuPow2ModStatus.Unavailable;
     }
 
-    private static bool TryComputeOnGpu(ReadOnlySpan<ulong> exponents, ulong prime, Span<ulong> results)
+    private static bool TryComputeOnGpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorData divisorData, Span<ulong> results)
     {
+        var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+        var execution = lease.EnterExecutionScope();
+        Accelerator accelerator = lease.Accelerator;
+        AcceleratorStream stream = lease.Stream;
+        var kernel = GetPow2ModKernel(accelerator);
+        var exponentBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
+        var remainderBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
+
+        exponentBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(exponents), exponents.Length);
+        remainderBuffer.MemSetToZero();
+
         try
         {
-            var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
-            try
-            {
-                using var execution = lease.EnterExecutionScope();
-                Accelerator accelerator = lease.Accelerator;
-                AcceleratorStream stream = lease.Stream;
-                var kernel = GetPow2ModKernel(accelerator);
-                using var exponentBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
-                using var remainderBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
-
-                exponentBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(exponents), exponents.Length);
-                remainderBuffer.MemSetToZero();
-
-                MontgomeryDivisorData divisor = MontgomeryDivisorDataCache.Get(prime);
-                kernel(stream, exponents.Length, exponentBuffer.View, divisor, remainderBuffer.View);
-
-                stream.Synchronize();
-
-                remainderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(results), results.Length);
-                return true;
-            }
-            finally
-            {
-                lease.Dispose();
-            }
+            kernel(stream, exponents.Length, exponentBuffer.View, divisorData, remainderBuffer.View);
+            stream.Synchronize();
         }
-        catch (Exception ex) when (ex is AcceleratorException or InternalCompilerException or NotSupportedException or InvalidOperationException or AggregateException)
+        catch (Exception)
         {
-            ComputePow2ModCpu(exponents, prime, results);
-            return true;
+            Console.WriteLine($"Exception for {prime} and exponents: {string.Join(",", exponents.ToArray())}.");
+            exponentBuffer.Dispose();
+            remainderBuffer.Dispose();
+            execution.Dispose();
+            lease.Dispose();
+            throw;
         }
+
+        remainderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(results), exponents.Length);
+        exponentBuffer.Dispose();
+        remainderBuffer.Dispose();
+        execution.Dispose();
+        lease.Dispose();
+        return true;
     }
 
-    private static void ComputePow2ModCpu(ReadOnlySpan<ulong> exponents, ulong prime, Span<ulong> results)
+    private static void ComputePow2ModCpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorData divisorData, Span<ulong> results)
     {
         int length = exponents.Length;
         for (int i = 0; i < length; i++)
         {
-            results[i] = Pow2ModCpu(exponents[i], prime);
+            results[i] = Pow2ModCpu(exponents[i], prime, divisorData);
         }
     }
 
@@ -2416,12 +1719,12 @@ internal static partial class PrimeOrderGpuHeuristics
 
         try
         {
-            using var execution = lease.EnterExecutionScope();
+            var execution = lease.EnterExecutionScope();
             Accelerator accelerator = lease.Accelerator;
             AcceleratorStream stream = lease.Stream;
             var kernel = GetPow2ModWideKernel(accelerator);
-            using var exponentBuffer = accelerator.Allocate1D<GpuUInt128>(length);
-            using var remainderBuffer = accelerator.Allocate1D<GpuUInt128>(length);
+            var exponentBuffer = accelerator.Allocate1D<GpuUInt128>(length);
+            var remainderBuffer = accelerator.Allocate1D<GpuUInt128>(length);
 
             Span<GpuUInt128> exponentSpan = length <= WideStackThreshold
                 ? stackalloc GpuUInt128[length]
@@ -2451,12 +1754,15 @@ internal static partial class PrimeOrderGpuHeuristics
                 results[i] = (UInt128)resultSpan[i];
             }
 
+            exponentBuffer.Dispose();
+            remainderBuffer.Dispose();
+            execution.Dispose();
             return true;
         }
-        catch (Exception ex) when (ex is AcceleratorException or InternalCompilerException or NotSupportedException or InvalidOperationException or AggregateException)
+        catch (Exception)
         {
-            ComputePow2ModCpuWide(exponents, prime, results);
-            return true;
+            Console.WriteLine($"Exception when computing {prime} with exponents: {string.Join(", ", exponents.ToArray())}");
+            throw;
         }
         finally
         {
@@ -2483,15 +1789,14 @@ internal static partial class PrimeOrderGpuHeuristics
         }
     }
 
-    private static ulong Pow2ModCpu(ulong exponent, ulong modulus)
+    private static ulong Pow2ModCpu(ulong exponent, ulong modulus, in MontgomeryDivisorData divisorData)
     {
         if (modulus <= 1UL)
         {
             return 0UL;
         }
 
-        MontgomeryDivisorData divisor = MontgomeryDivisorDataCache.Get(modulus);
-        return exponent.Pow2MontgomeryModWindowed(divisor, keepMontgomery: false);
+        return exponent.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false);
     }
 
     private static Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> GetPow2ModKernel(Accelerator accelerator)
@@ -2526,39 +1831,68 @@ internal static partial class PrimeOrderGpuHeuristics
         remainders[index] = Pow2ModKernelCore(exponent, modulus);
     }
 
+    private static GpuUInt128[] InitializeOddPowersTable(GpuUInt128 baseValue, GpuUInt128 modulus, int oddPowerCount)
+    {
+        GpuUInt128[] result = new GpuUInt128[PerfectNumberConstants.MaxOddPowersCount];
+        result[0] = baseValue;
+        if (oddPowerCount == 1)
+        {
+            return result;
+        }
+
+        // Reusing baseValue to hold base^2 for the shared odd-power ladder that follows.
+        baseValue.MulMod(baseValue, modulus);
+
+        // TODO: We can calculate baseValue % modulus before loop and use it to increase ladderEntry calculation speed - we'll reuse the base for incremental calculations.
+        GpuUInt128 current = baseValue;
+
+        // We're manually assigning each field to prevent the compiler to initialize each field twice due to auto-initialization. We're using the action to lower the code base size.
+        for (int i = 1; i < oddPowerCount; i++)
+        {
+            current.MulMod(baseValue, modulus);
+            result[i] = current;
+        }
+
+        return result;
+    }
+
     private static GpuUInt128 Pow2ModKernelCore(GpuUInt128 exponent, GpuUInt128 modulus)
     {
-        if (modulus == GpuUInt128.One)
-        {
-            return GpuUInt128.Zero;
-        }
+        // This should never happen in production code.
+        // if (modulus == GpuUInt128.One)
+        // {
+        //     return GpuUInt128.Zero;
+        // }
 
-        if (exponent.IsZero)
-        {
-            return GpuUInt128.One;
-        }
+        // This should never happen in production code.
+        // if (exponent.IsZero)
+        // {
+        //     return GpuUInt128.One;
+        // }
 
-        GpuUInt128 baseValue = new GpuUInt128(2UL);
-        if (baseValue.CompareTo(modulus) >= 0)
-        {
-            baseValue.Sub(modulus);
-        }
+        GpuUInt128 baseValue = UInt128Numbers.TwoGpu;
+
+        // This should never happen in production code - 2 should never be greater or equal modulus.
+        // if (baseValue.CompareTo(modulus) >= 0)
+        // {
+        //     baseValue.Sub(modulus);
+        // }
 
         if (ShouldUseSingleBit(exponent))
         {
             return Pow2MontgomeryModSingleBit(exponent, modulus, baseValue);
         }
 
-        int bitLength = exponent.GetBitLength();
-        int windowSize = GetWindowSize(bitLength);
+        int index = exponent.GetBitLength();
+        int windowSize = GetWindowSize(index);
+        index--;
+
         int oddPowerCount = 1 << (windowSize - 1);
-
-        Pow2OddPowerTable oddPowers = default;
-        InitializeOddPowers(ref oddPowers, baseValue, modulus, oddPowerCount);
-
+        GpuUInt128[] oddPowers = InitializeOddPowersTable(baseValue, modulus, oddPowerCount);
         GpuUInt128 result = GpuUInt128.One;
-        int index = bitLength - 1;
 
+        int windowStart;
+        ulong windowValue;
         while (index >= 0)
         {
             if (!IsBitSet(exponent, index))
@@ -2568,7 +1902,7 @@ internal static partial class PrimeOrderGpuHeuristics
                 continue;
             }
 
-            int windowStart = index - windowSize + 1;
+            windowStart = index - windowSize + 1;
             if (windowStart < 0)
             {
                 windowStart = 0;
@@ -2579,24 +1913,27 @@ internal static partial class PrimeOrderGpuHeuristics
                 windowStart++;
             }
 
-            int windowBitCount = index - windowStart + 1;
-            for (int square = 0; square < windowBitCount; square++)
+            // We're reusing oddPowerCount as windowBitCount here to lower registry pressure & avoid additional allocation
+            oddPowerCount = index - windowStart + 1;
+            index = windowStart - 1;
+            windowValue = ExtractWindowValue(exponent, windowStart, oddPowerCount);
+
+            // We're reusing windowStart as square here to lower registry pressure & avoid additional allocation
+            for (windowStart = 0; windowStart < oddPowerCount; windowStart++)
             {
                 result.MulMod(result, modulus);
             }
 
-            ulong windowValue = ExtractWindowValue(exponent, windowStart, windowBitCount);
-            int tableIndex = (int)((windowValue - 1UL) >> 1);
-            GpuUInt128 factor = oddPowers[tableIndex];
-            result.MulMod(factor, modulus);
-
-            index = windowStart - 1;
+            // We're reusing windowStart as tableIndex here to lower registry pressure & avoid additional allocation
+            windowStart = (int)((windowValue - 1UL) >> 1);
+            result.MulMod(oddPowers[windowStart], modulus);
         }
 
         return result;
     }
 
-    private static bool ShouldUseSingleBit(in GpuUInt128 exponent) => exponent.High == 0UL && exponent.Low <= Pow2WindowFallbackThreshold;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ShouldUseSingleBit(GpuUInt128 exponent) => exponent.High == 0UL && exponent.Low <= Pow2WindowFallbackThreshold;
 
     private static int GetWindowSize(int bitLength)
     {
@@ -2628,24 +1965,6 @@ internal static partial class PrimeOrderGpuHeuristics
         return Pow2WindowSizeBits;
     }
 
-    private static void InitializeOddPowers(ref Pow2OddPowerTable oddPowers, GpuUInt128 baseValue, GpuUInt128 modulus, int oddPowerCount)
-    {
-        oddPowers[0] = baseValue;
-        if (oddPowerCount == 1)
-        {
-            return;
-        }
-
-        // Reusing baseValue to hold base^2 for the shared odd-power ladder that follows.
-        baseValue.MulMod(baseValue, modulus);
-        for (int i = 1; i < oddPowerCount; i++)
-        {
-            GpuUInt128 ladderEntry = oddPowers[i - 1];
-            ladderEntry.MulMod(baseValue, modulus);
-            oddPowers[i] = ladderEntry;
-        }
-    }
-
     private static GpuUInt128 Pow2MontgomeryModSingleBit(GpuUInt128 exponent, GpuUInt128 modulus, GpuUInt128 baseValue)
     {
         GpuUInt128 result = GpuUInt128.One;
@@ -2670,7 +1989,7 @@ internal static partial class PrimeOrderGpuHeuristics
         return result;
     }
 
-    private static bool IsBitSet(in GpuUInt128 value, int bitIndex)
+    private static bool IsBitSet(GpuUInt128 value, int bitIndex)
     {
         if (bitIndex >= 64)
         {
@@ -2680,14 +1999,13 @@ internal static partial class PrimeOrderGpuHeuristics
         return ((value.Low >> bitIndex) & 1UL) != 0UL;
     }
 
-    private static ulong ExtractWindowValue(in GpuUInt128 exponent, int windowStart, int windowBitCount)
+    private static ulong ExtractWindowValue(GpuUInt128 exponent, int windowStart, int windowBitCount)
     {
         if (windowStart != 0)
         {
-            GpuUInt128 shifted = exponent;
-            shifted.ShiftRight(windowStart);
+            exponent.ShiftRight(windowStart);
             ulong mask = (1UL << windowBitCount) - 1UL;
-            return shifted.Low & mask;
+            return exponent.Low & mask;
         }
 
         ulong directMask = (1UL << windowBitCount) - 1UL;

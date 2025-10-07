@@ -261,9 +261,10 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 
     private ulong CalculateCycleLengthWithHeuristics(ulong modulus, ulong fallbackOrder = 0UL)
     {
+        MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(modulus);
         if (modulus <= 1UL || (modulus & 1UL) == 0UL)
         {
-            return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLength(modulus);
+            return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLength(modulus, divisorData);
         }
 
         // When the below is uncommented, the benchmark never completes due to the primality test cost on very large random set.
@@ -281,6 +282,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
         PrimeOrderCalculator.PrimeOrderResult orderResult = PrimeOrderCalculator.Calculate(
             modulus,
             _previousPrimeOrder,
+            divisorData,
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
         if (orderResult.Order != 0UL)
@@ -292,7 +294,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
         _previousPrimeOrder = null;
 
         Console.WriteLine($"Heuristic failed for {modulus}, falling back to full cycle calculation");
-        return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLength(modulus);
+        return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLength(modulus, divisorData);
     }
 
     private UInt128 CalculateCycleLengthWithHeuristics(UInt128 modulus)

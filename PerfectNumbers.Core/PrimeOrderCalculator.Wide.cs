@@ -32,6 +32,7 @@ internal static partial class PrimeOrderCalculator
         PrimeOrderHeuristicDevice device)
     {
         using var scope = UsePow2Mode(device);
+        MontgomeryDivisorData divisorData;
         if (prime <= ulong.MaxValue)
         {
             ulong? previous = null;
@@ -48,14 +49,20 @@ internal static partial class PrimeOrderCalculator
                 }
             }
 
-            PrimeOrderResult result = Calculate((ulong)prime, previous, config, device);
+            ulong prime64 = (ulong)prime;
+            divisorData = MontgomeryDivisorData.FromModulus(prime64);
+            PrimeOrderResult result = Calculate(prime64, previous, divisorData, config, device);
             return new PrimeOrderResultWide(result.Status, result.Order);
         }
+        else
+        {
+            divisorData = default;
+        }
 
-        return CalculateWideInternal(prime, previousOrder, config);
+        return CalculateWideInternal(prime, previousOrder, divisorData, config);
     }
 
-    private static PrimeOrderResultWide CalculateWideInternal(UInt128 prime, UInt128? previousOrder, PrimeOrderSearchConfig config)
+    private static PrimeOrderResultWide CalculateWideInternal(UInt128 prime, UInt128? previousOrder, in MontgomeryDivisorData divisorData, PrimeOrderSearchConfig config)
     {
         if (prime <= UInt128.One)
         {
@@ -72,53 +79,54 @@ internal static partial class PrimeOrderCalculator
         PartialFactorResult128 phiFactors = PartialFactorWide(phi, config);
         if (phiFactors.Factors is null)
         {
-            return FinishStrictlyWide(prime, config.Mode);
+            return FinishStrictlyWide(prime, divisorData, config.Mode);
         }
 
-        return RunHeuristicPipelineWide(prime, previousOrder, config, phi, phiFactors);
+        return RunHeuristicPipelineWide(prime, previousOrder, divisorData, config, phi, phiFactors);
     }
 
     private static PrimeOrderResultWide RunHeuristicPipelineWide(
         UInt128 prime,
         UInt128? previousOrder,
+        in MontgomeryDivisorData divisorData,
         PrimeOrderSearchConfig config,
         UInt128 phi,
         PartialFactorResult128 phiFactors)
     {
-        if (phiFactors.FullyFactored && TrySpecialMaxWide(phi, prime, phiFactors))
+        if (phiFactors.FullyFactored && TrySpecialMaxWide(phi, prime, divisorData, phiFactors))
         {
             return new PrimeOrderResultWide(PrimeOrderStatus.Found, phi);
         }
 
-        UInt128 candidateOrder = InitializeStartingOrderWide(prime, phi);
-        candidateOrder = ExponentLoweringWide(candidateOrder, prime, phiFactors);
+        UInt128 candidateOrder = InitializeStartingOrderWide(prime, phi, divisorData);
+        candidateOrder = ExponentLoweringWide(candidateOrder, prime, divisorData, phiFactors);
 
-        if (TryConfirmOrderWide(prime, candidateOrder, config))
+        if (TryConfirmOrderWide(prime, candidateOrder, divisorData, config))
         {
             return new PrimeOrderResultWide(PrimeOrderStatus.Found, candidateOrder);
         }
 
         if (config.Mode == PrimeOrderMode.Strict)
         {
-            return FinishStrictlyWide(prime, PrimeOrderMode.Strict);
+            return FinishStrictlyWide(prime, divisorData, PrimeOrderMode.Strict);
         }
 
-        if (TryHeuristicFinishWide(prime, candidateOrder, previousOrder, config, out UInt128 order))
+        if (TryHeuristicFinishWide(prime, candidateOrder, previousOrder, divisorData, config, out UInt128 order))
         {
             return new PrimeOrderResultWide(PrimeOrderStatus.Found, order);
         }
 
-        return FinishStrictlyWide(prime, config.Mode);
+        return FinishStrictlyWide(prime, divisorData, config.Mode);
     }
 
-    private static PrimeOrderResultWide FinishStrictlyWide(UInt128 prime, PrimeOrderMode mode)
+    private static PrimeOrderResultWide FinishStrictlyWide(UInt128 prime, in MontgomeryDivisorData divisorData, PrimeOrderMode mode)
     {
-        UInt128 strictOrder = CalculateByFactorizationWide(prime);
+        UInt128 strictOrder = CalculateByFactorizationWide(prime, divisorData);
         PrimeOrderStatus status = mode == PrimeOrderMode.Strict ? PrimeOrderStatus.Found : PrimeOrderStatus.HeuristicUnresolved;
         return new PrimeOrderResultWide(status, strictOrder);
     }
 
-    private static bool TrySpecialMaxWide(UInt128 phi, UInt128 prime, PartialFactorResult128 factors)
+    private static bool TrySpecialMaxWide(UInt128 phi, UInt128 prime, in MontgomeryDivisorData divisorData, PartialFactorResult128 factors)
     {
         ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
         int length = factors.Count;
@@ -126,7 +134,7 @@ internal static partial class PrimeOrderCalculator
         {
             UInt128 factor = factorSpan[i].Value;
             UInt128 reduced = phi / factor;
-            if (Pow2ModWide(reduced, prime) == UInt128.One)
+            if (Pow2ModWide(reduced, prime, divisorData) == UInt128.One)
             {
                 return false;
             }
@@ -135,14 +143,14 @@ internal static partial class PrimeOrderCalculator
         return true;
     }
 
-    private static UInt128 InitializeStartingOrderWide(UInt128 prime, UInt128 phi)
+    private static UInt128 InitializeStartingOrderWide(UInt128 prime, UInt128 phi, in MontgomeryDivisorData divisorData)
     {
         UInt128 order = phi;
         UInt128 mod8 = prime & (UInt128)7UL;
         if (mod8 == UInt128.One || mod8 == (UInt128)7UL)
         {
             UInt128 half = phi >> 1;
-            if (Pow2ModWide(half, prime) == UInt128.One)
+            if (Pow2ModWide(half, prime, divisorData) == UInt128.One)
             {
                 order = half;
             }
@@ -151,7 +159,7 @@ internal static partial class PrimeOrderCalculator
         return order;
     }
 
-    private static UInt128 ExponentLoweringWide(UInt128 order, UInt128 prime, PartialFactorResult128 factors)
+    private static UInt128 ExponentLoweringWide(UInt128 order, UInt128 prime, in MontgomeryDivisorData divisorData, PartialFactorResult128 factors)
     {
         FactorEntry128[]? tempArray = null;
         try
@@ -184,7 +192,7 @@ internal static partial class PrimeOrderCalculator
                     if ((order % primeFactor) == UInt128.Zero)
                     {
                         UInt128 reduced = order / primeFactor;
-                        if (Pow2ModWide(reduced, prime) == UInt128.One)
+                        if (Pow2ModWide(reduced, prime, divisorData) == UInt128.One)
                         {
                             order = reduced;
                             continue;
@@ -206,14 +214,14 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static bool TryConfirmOrderWide(UInt128 prime, UInt128 order, PrimeOrderSearchConfig config)
+    private static bool TryConfirmOrderWide(UInt128 prime, UInt128 order, in MontgomeryDivisorData divisorData, PrimeOrderSearchConfig config)
     {
         if (order == UInt128.Zero)
         {
             return false;
         }
 
-        if (Pow2ModWide(order, prime) != UInt128.One)
+        if (Pow2ModWide(order, prime, divisorData) != UInt128.One)
         {
             return false;
         }
@@ -253,7 +261,7 @@ internal static partial class PrimeOrderCalculator
                 }
 
                 reduced /= primeFactor;
-                if (Pow2ModWide(reduced, prime) == UInt128.One)
+                if (Pow2ModWide(reduced, prime, divisorData) == UInt128.One)
                 {
                     return false;
                 }
@@ -267,6 +275,7 @@ internal static partial class PrimeOrderCalculator
         UInt128 prime,
         UInt128 order,
         UInt128? previousOrder,
+        in MontgomeryDivisorData divisorData,
         PrimeOrderSearchConfig config,
         out UInt128 result)
     {
@@ -322,12 +331,12 @@ internal static partial class PrimeOrderCalculator
             UInt128 candidate = candidates[i];
             powUsed++;
 
-            if (Pow2ModWide(candidate, prime) != UInt128.One)
+            if (Pow2ModWide(candidate, prime, divisorData) != UInt128.One)
             {
                 continue;
             }
 
-            if (!TryConfirmCandidateWide(prime, candidate, config, ref powUsed, powBudget))
+            if (!TryConfirmCandidateWide(prime, candidate, config, ref powUsed, powBudget, divisorData))
             {
                 continue;
             }
@@ -511,7 +520,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static bool TryConfirmCandidateWide(UInt128 prime, UInt128 candidate, PrimeOrderSearchConfig config, ref int powUsed, int powBudget)
+    private static bool TryConfirmCandidateWide(UInt128 prime, UInt128 candidate, PrimeOrderSearchConfig config, ref int powUsed, int powBudget, in MontgomeryDivisorData divisorData)
     {
         PartialFactorResult128 factorization = PartialFactorWide(candidate, config);
         if (factorization.Factors is null)
@@ -554,7 +563,7 @@ internal static partial class PrimeOrderCalculator
                 }
 
                 powUsed++;
-                if (Pow2ModWide(reduced, prime) == UInt128.One)
+                if (Pow2ModWide(reduced, prime, divisorData) == UInt128.One)
                 {
                     return false;
                 }
@@ -826,7 +835,7 @@ internal static partial class PrimeOrderCalculator
         return 64 + BitOperations.TrailingZeroCount(high);
     }
 
-    private static UInt128 CalculateByFactorizationWide(UInt128 prime)
+    private static UInt128 CalculateByFactorizationWide(in UInt128 prime, in MontgomeryDivisorData divisorData)
     {
         UInt128 phi = prime - UInt128.One;
         Dictionary<UInt128, int> counts = new(capacity: 8);
@@ -850,7 +859,7 @@ internal static partial class PrimeOrderCalculator
                 if ((order % primeFactor) != UInt128.Zero)
                 {
                     UInt128 candidate = order / primeFactor;
-                    if (Pow2ModWide(candidate, prime) == UInt128.One)
+                    if (Pow2ModWide(candidate, prime, divisorData) == UInt128.One)
                     {
                         order = candidate;
                     }
@@ -996,7 +1005,7 @@ internal static partial class PrimeOrderCalculator
         return true;
     }
 
-    private static UInt128 Pow2ModWide(UInt128 exponent, UInt128 modulus)
+    private static UInt128 Pow2ModWide(UInt128 exponent, in UInt128 modulus, in MontgomeryDivisorData divisorData)
     {
         if (modulus == UInt128.One)
         {
@@ -1009,7 +1018,7 @@ internal static partial class PrimeOrderCalculator
             {
                 ulong prime64 = (ulong)modulus;
                 ulong exponent64 = (ulong)exponent;
-                GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent64, prime64, out ulong remainder);
+                GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent64, prime64, out ulong remainder, divisorData);
                 if (status == GpuPow2ModStatus.Success)
                 {
                     return remainder;
