@@ -80,9 +80,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             return true;
         }
 
-        ulong processedCount = 0UL;
-        ulong lastProcessed = 0UL;
-        bool processedAll = false;
+        ulong processedCount;
+        ulong lastProcessed;
+        bool processedAll;
 
         bool composite = CheckDivisors(
             prime,
@@ -95,7 +95,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         {
             lock (_sync)
             {
-                UpdateStatusUnsafe(lastProcessed, processedCount);
+                UpdateStatusUnsafe(processedCount);
             }
         }
 
@@ -238,11 +238,20 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                     }
                 }
 
-                if (divisorCycle != 0UL && CheckDivisor(prime, divisorCycle, divisorData) != 0)
-                {
-                    processedAll = true;
-                    return true;
-                }
+				if (divisorCycle != 0 && divisorCycle == prime)
+				{
+					processedAll = true;
+					return true;
+				}
+				else if (divisorCycle == 0)
+				{
+					Console.WriteLine($"Divisor cycle wasn't calculated for ${prime}");
+				}				
+				// if (divisorCycle != 0UL && CheckDivisor(prime, divisorCycle, divisorData) != 0)
+				// {
+				// 	processedAll = true;
+				// 	return true;
+				// }
             }
 
             divisor += step;
@@ -275,7 +284,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         return (byte)sum;
     }
 
-    private void UpdateStatusUnsafe(ulong lastProcessed, ulong processedCount)
+    private void UpdateStatusUnsafe(ulong processedCount)
     {
         if (processedCount == 0UL)
         {
