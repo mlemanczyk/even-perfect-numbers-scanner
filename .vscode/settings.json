@@ -2,11 +2,12 @@
 	"dotnet.defaultSolution": "FlexiCoder.sln",
 	"chatgpt.openOnStartup": true,
 	"cSpell.words": [
-        "CCCCCCCDUL",
-        "cofactor",
-        "ILGPU",
-        "mers",
-        "primality",
-        "suff"
-    ]
+		"CCCCCCCDUL",
+		"cofactor",
+		"ILGPU",
+		"mers",
+		"Mersenne",
+		"primality",
+		"suff"
+	]
 }
