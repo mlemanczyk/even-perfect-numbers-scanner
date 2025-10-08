@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -50,8 +50,27 @@ public readonly struct MontgomeryDivisorData(ulong modulus, ulong nPrime, ulong 
 
 internal static class MontgomeryDivisorDataCache
 {
-    private static readonly ConcurrentDictionary<ulong, MontgomeryDivisorData> Cache = new();
+    [ThreadStatic]
+    private static bool s_hasCachedValue;
+
+    [ThreadStatic]
+    private static ulong s_cachedModulus;
+
+    [ThreadStatic]
+    private static MontgomeryDivisorData s_cachedData;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static MontgomeryDivisorData Get(ulong modulus) => Cache.GetOrAdd(modulus, static m => MontgomeryDivisorData.FromModulus(m));
+    public static MontgomeryDivisorData Get(ulong modulus)
+    {
+        if (s_hasCachedValue && s_cachedModulus == modulus)
+        {
+            return s_cachedData;
+        }
+
+        MontgomeryDivisorData computed = MontgomeryDivisorData.FromModulus(modulus);
+        s_cachedModulus = modulus;
+        s_cachedData = computed;
+        s_hasCachedValue = true;
+        return computed;
+    }
 }

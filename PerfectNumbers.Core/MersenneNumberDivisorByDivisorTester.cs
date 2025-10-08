@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
 using Open.Numeric.Primes;
+using System.Runtime.InteropServices;
 
 namespace PerfectNumbers.Core;
 
@@ -27,29 +28,97 @@ public static class MersenneNumberDivisorByDivisorTester
 
         _ = threadCount;
 
+        candidates.Sort();
+        Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
+        int candidateCount = candidateSpan.Length;
+
         bool applyStartPrime = startPrime > 0UL;
         int skippedByPreviousResults = 0;
-        List<ulong> primesToTest = new(candidates.Count);
+
+        if (previousResults is not null && previousResults.Count > 0)
+        {
+            int recordedCount = previousResults.Count;
+            ulong[] recordedCandidates = ArrayPool<ulong>.Shared.Rent(recordedCount);
+            try
+            {
+                Span<ulong> recordedSpan = recordedCandidates.AsSpan(0, recordedCount);
+                int recordedIndex = 0;
+                foreach (ulong value in previousResults.Keys)
+                {
+                    recordedSpan[recordedIndex++] = value;
+                }
+
+                recordedSpan.Sort();
+
+                int writeIndex = 0;
+                int skipIndex = 0;
+
+                for (int readIndex = 0; readIndex < candidateCount; readIndex++)
+                {
+                    ulong candidate = candidateSpan[readIndex];
+
+                    while (skipIndex < recordedCount && recordedSpan[skipIndex] < candidate)
+                    {
+                        skipIndex++;
+                    }
+
+                    if (skipIndex < recordedCount && recordedSpan[skipIndex] == candidate)
+                    {
+                        skippedByPreviousResults++;
+                        skipIndex++;
+                        continue;
+                    }
+
+                    candidateSpan[writeIndex++] = candidate;
+                }
+
+                if (writeIndex < candidateCount)
+                {
+                    candidates.RemoveRange(writeIndex, candidateCount - writeIndex);
+                    candidateSpan = CollectionsMarshal.AsSpan(candidates);
+                    candidateCount = candidateSpan.Length;
+                }
+            }
+            finally
+            {
+                ArrayPool<ulong>.Shared.Return(recordedCandidates, clearArray: true);
+            }
+        }
+
+        if (skippedByPreviousResults > 0)
+        {
+            Console.WriteLine($"Skipped {skippedByPreviousResults.ToString(CultureInfo.InvariantCulture)} candidates excluded by previous results.");
+        }
+
+        int startIndex = 0;
+        if (applyStartPrime)
+        {
+            startIndex = candidates.BinarySearch(startPrime);
+            if (startIndex < 0)
+            {
+                startIndex = ~startIndex;
+            }
+            else
+            {
+                while (startIndex > 0 && candidates[startIndex - 1] >= startPrime)
+                {
+                    startIndex--;
+                }
+            }
+        }
+
+        List<ulong> primesToTest = candidates;
+        Span<ulong> primesSpan = CollectionsMarshal.AsSpan(primesToTest);
         ulong maxPrime = 0UL;
+        int primeWriteIndex = 0;
 
         using IEnumerator<ulong> primeEnumerator = Prime.Numbers.GetEnumerator();
         bool hasPrime = primeEnumerator.MoveNext();
         ulong currentPrime = hasPrime ? primeEnumerator.Current : 0UL;
 
-        for (int index = 0; index < candidates.Count; index++)
+        for (int index = startIndex; index < candidateCount; index++)
         {
-            ulong candidate = candidates[index];
-
-            if (applyStartPrime && candidate < startPrime)
-            {
-                continue;
-            }
-
-            if (previousResults is not null && previousResults.ContainsKey(candidate))
-            {
-                skippedByPreviousResults++;
-                continue;
-            }
+            ulong candidate = primesSpan[index];
 
             if (candidate <= 1UL)
             {
@@ -76,17 +145,17 @@ public static class MersenneNumberDivisorByDivisorTester
                 continue;
             }
 
+            primesSpan[primeWriteIndex++] = candidate;
+
             if (candidate > maxPrime)
             {
                 maxPrime = candidate;
             }
-
-            primesToTest.Add(candidate);
         }
 
-        if (skippedByPreviousResults > 0)
+        if (primeWriteIndex < primesToTest.Count)
         {
-            Console.WriteLine($"Skipped {skippedByPreviousResults.ToString(CultureInfo.InvariantCulture)} candidates excluded by previous results.");
+            primesToTest.RemoveRange(primeWriteIndex, primesToTest.Count - primeWriteIndex);
         }
 
         if (primesToTest.Count == 0)

@@ -322,7 +322,7 @@ public class MersenneDivisorCycles
             factorCounts[2UL] = twoCount;
         }
 
-        if (!AccumulateFactors(exponent, factorCache, factorCounts) || !AccumulateFactors(k, factorCache, factorCounts))
+        if (!AccumulateFactors(exponent, factorCache, factorCounts, cacheResult: true) || !AccumulateFactors(k, factorCache, factorCounts, cacheResult: false))
         {
             return false;
         }
@@ -334,14 +334,15 @@ public class MersenneDivisorCycles
     private static bool AccumulateFactors(
         ulong value,
         Dictionary<ulong, FactorCacheEntry>? cache,
-        Dictionary<ulong, int> counts)
+        Dictionary<ulong, int> counts,
+        bool cacheResult)
     {
         if (value <= 1UL)
         {
             return true;
         }
 
-        if (!TryGetFactorization(value, cache, out FactorCacheEntry factorization))
+        if (!TryGetFactorization(value, cache, cacheResult, out FactorCacheEntry factorization))
         {
             return false;
         }
@@ -361,6 +362,7 @@ public class MersenneDivisorCycles
     private static bool TryGetFactorization(
         ulong value,
         Dictionary<ulong, FactorCacheEntry>? cache,
+        bool cacheResult,
         out FactorCacheEntry factorization)
     {
         if (cache is not null && cache.TryGetValue(value, out factorization))
@@ -389,7 +391,7 @@ public class MersenneDivisorCycles
         Array.Sort(primes, exponents);
         factorization = new FactorCacheEntry(primes, exponents, count);
 
-        if (cache is not null)
+        if (cache is not null && cacheResult)
         {
             cache[value] = factorization;
         }
