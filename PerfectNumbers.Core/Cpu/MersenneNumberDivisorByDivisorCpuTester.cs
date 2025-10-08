@@ -88,9 +88,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             return true;
         }
 
-        ulong processedCount = 0UL;
-        ulong lastProcessed = 0UL;
-        bool processedAll = false;
+        ulong processedCount;
+        ulong lastProcessed;
+        bool processedAll;
 
         bool composite = CheckDivisors(
             prime,
@@ -103,7 +103,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         {
             lock (_sync)
             {
-                UpdateStatusUnsafe(lastProcessed, processedCount);
+                UpdateStatusUnsafe(processedCount);
             }
         }
 
@@ -413,7 +413,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         return (byte)sum;
     }
 
-    private void UpdateStatusUnsafe(ulong lastProcessed, ulong processedCount)
+    private void UpdateStatusUnsafe(ulong processedCount)
     {
         if (processedCount == 0UL)
         {
