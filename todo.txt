@@ -1,2 +1,5 @@
+- implement full routing for CPU or GPU execution based on the (...)-device=cpu|gpu switches. The current --mersenne=bydivisor GPU flow appears to run every stage on the GPU and ignore switches such as --primes-device for the primality check.
+- investigate why the --mersenne=bydivisor GPU path runs out of host memory. Exceptions must remain visible.
 - Reimplement the GPU cycle heuristics for MersenneNumberIncrementalGpuTester and re-enable Scan_handles_various_prime_exponents once the device path is fixed.
 - Extend the GPU numeric type probe to cover proposed custom types such as GpuUInt256 and GpuUInt512 once their definitions are available so we can plan the wide-order heuristics on the device.
+- document the GPU by-divisor regressions introduced in commit cd1debe ("Various micro- and medium- optimizations"): the refactor dropped divisor-cycle caching, remainder stepper reuse, and honoring the cached cycle parameter so we can plan which pieces to restore.

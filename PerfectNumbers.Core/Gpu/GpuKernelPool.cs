@@ -247,6 +247,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         GpuUInt128 q = twoP;
         q.Mul64(k);
         q.Add(GpuUInt128.One);
+        ReadOnlyGpuUInt128 readOnlyQ = q.AsReadOnly();
 
         // Small-cycles in-kernel early rejection from device table
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
@@ -271,13 +272,13 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         ulong phi64 = phi.Low;
         // TODO: Replace these Pow2Mod calls with the ProcessEightBitWindows helper when the shared windowed
         // scalar implementation lands; benchmarks showed the windowed kernel trimming per-divisor runtime by ~2.4×.
-        if (GpuUInt128.Pow2Mod(phi64, q) != GpuUInt128.One)
+        if (GpuUInt128.Pow2Mod(phi64, in readOnlyQ) != GpuUInt128.One)
         {
             orders[index] = 0UL;
             return;
         }
 
-        GpuUInt128 halfPow = GpuUInt128.Pow2Mod(phi64 >> 1, q) - GpuUInt128.One;
+        GpuUInt128 halfPow = GpuUInt128.Pow2Mod(phi64 >> 1, in readOnlyQ) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(halfPow, q) != GpuUInt128.One)
         {
             orders[index] = 0UL;
@@ -285,7 +286,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         }
 
         ulong div = FastDiv64Gpu(phi64, exponent, divMul);
-        GpuUInt128 divPow = GpuUInt128.Pow2Mod(div, q) - GpuUInt128.One;
+        GpuUInt128 divPow = GpuUInt128.Pow2Mod(div, in readOnlyQ) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(divPow, q) != GpuUInt128.One)
         {
             orders[index] = 0UL;
@@ -298,6 +299,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
     private static void OrderKernelScan(Index1D index, ulong exponent, ulong divMul, ArrayView<GpuUInt128> qs, ArrayView<ulong> orders)
     {
         GpuUInt128 q = qs[index];
+        ReadOnlyGpuUInt128 readOnlyQ = q.AsReadOnly();
         GpuUInt128 phi = q - GpuUInt128.One;
         if (phi.High != 0UL)
         {
@@ -308,14 +310,14 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         ulong phi64 = phi.Low;
         // TODO: Once the ProcessEightBitWindows helper is available, switch this order kernel to that faster
         // Pow2Mod variant so cycle checks inherit the same gains observed in GpuPow2ModBenchmarks.
-        GpuUInt128 pow = GpuUInt128.Pow2Mod(phi64, q);
+        GpuUInt128 pow = GpuUInt128.Pow2Mod(phi64, in readOnlyQ);
         if (pow != GpuUInt128.One)
         {
             orders[index] = 0UL;
             return;
         }
 
-        GpuUInt128 halfPow = GpuUInt128.Pow2Mod(phi64 >> 1, q) - GpuUInt128.One;
+        GpuUInt128 halfPow = GpuUInt128.Pow2Mod(phi64 >> 1, in readOnlyQ) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(halfPow, q) != GpuUInt128.One)
         {
             orders[index] = 0UL;
@@ -323,7 +325,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         }
 
         ulong div = FastDiv64Gpu(phi64, exponent, divMul);
-        GpuUInt128 divPow = GpuUInt128.Pow2Mod(div, q) - GpuUInt128.One;
+        GpuUInt128 divPow = GpuUInt128.Pow2Mod(div, in readOnlyQ) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(divPow, q) != GpuUInt128.One)
         {
             orders[index] = 0UL;
@@ -410,6 +412,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         GpuUInt128 q = twoP;
         q.Mul64(kStart);
         q.Add(GpuUInt128.One);
+        ReadOnlyGpuUInt128 readOnlyQ = q.AsReadOnly();
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
         {
             ulong cycle = smallCycles[(int)q.Low];
@@ -422,7 +425,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         }
         // TODO: Swap Pow2Minus1Mod for the eight-bit window helper once the scalar version switches;
         // benchmarks show the windowed variant cuts large-divisor scans from ~51 µs to ~21 µs.
-        if (GpuUInt128.Pow2Minus1Mod(exponent, q) != GpuUInt128.Zero)
+        if (GpuUInt128.Pow2Minus1Mod(exponent, in readOnlyQ) != GpuUInt128.Zero)
         {
             orders[index] = 0UL;
             return;
@@ -559,6 +562,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         GpuUInt128 q = twoP;
         q.Mul64(k);
         q.Add(GpuUInt128.One);
+        ReadOnlyGpuUInt128 readOnlyQ = q.AsReadOnly();
 
         // Small-cycles in-kernel early rejection from device table
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
@@ -578,19 +582,19 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         ulong phi64 = phi.Low;
         // TODO: Upgrade this pow2mod order kernel to the ProcessEightBitWindows helper once available so GPU residue
         // scans avoid the single-bit ladder that benchmarks found to be 2.3× slower on large exponents.
-        if (GpuUInt128.Pow2Mod(phi64, q) != GpuUInt128.One)
+        if (GpuUInt128.Pow2Mod(phi64, in readOnlyQ) != GpuUInt128.One)
         {
             return;
         }
 
-        GpuUInt128 halfPow = GpuUInt128.Pow2Mod(phi64 >> 1, q) - GpuUInt128.One;
+        GpuUInt128 halfPow = GpuUInt128.Pow2Mod(phi64 >> 1, in readOnlyQ) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(halfPow, q) != GpuUInt128.One)
         {
             return;
         }
 
         ulong div = FastDiv64Gpu(phi64, exponent, divMul);
-        GpuUInt128 divPow = GpuUInt128.Pow2Mod(div, q) - GpuUInt128.One;
+        GpuUInt128 divPow = GpuUInt128.Pow2Mod(div, in readOnlyQ) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(divPow, q) != GpuUInt128.One)
         {
             return;
@@ -645,6 +649,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         GpuUInt128 q = twoP;
         q.Mul64(k);
         q.Add(GpuUInt128.One);
+        ReadOnlyGpuUInt128 readOnlyQ = q.AsReadOnly();
         // Small-cycles in-kernel early rejection from device table
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
         {
@@ -656,7 +661,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         }
         // TODO: Replace this Pow2Mod check with the ProcessEightBitWindows helper once Pow2Minus1Mod adopts it;
         // residue order scans will then benefit from the same 2× speedup the benchmarked windowed kernel delivered.
-        if (GpuUInt128.Pow2Mod(exponent, q) != GpuUInt128.One)
+        if (GpuUInt128.Pow2Mod(exponent, in readOnlyQ) != GpuUInt128.One)
         {
             return;
         }
