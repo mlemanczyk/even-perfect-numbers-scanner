@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using FluentAssertions;
 using PerfectNumbers.Core;
@@ -178,6 +179,112 @@ public class MersenneNumberDivisorGpuTesterTests
         session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes, hits);
 
         hits.Should().ContainInOrder(new byte[] { 0, 1, 0, 0, 0 });
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void ByDivisor_session_marks_mersenne_numbers_divisible_by_seven_as_composite()
+    {
+        var tester = new MersenneNumberDivisorByDivisorGpuTester
+        {
+            GpuBatchSize = 5,
+        };
+        tester.ConfigureFromMaxPrime(43UL);
+
+        using var session = tester.CreateDivisorSession();
+        ulong[] exponents = { 6UL, 7UL, 9UL, 10UL, 12UL };
+        byte[] hits = new byte[exponents.Length];
+
+        MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(7UL);
+        ulong cycle = MersenneDivisorCycles.CalculateCycleLength(7UL, divisorData);
+
+        session.CheckDivisor(7UL, divisorData, cycle, exponents, hits);
+
+        var hostBufferField = typeof(MersenneNumberDivisorByDivisorGpuTester.DivisorScanSession)
+            .GetField("_hostBuffer", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        ulong[] hostBuffer = (ulong[])hostBufferField.GetValue(session)!;
+        Span<ulong> residues = hostBuffer.AsSpan(0, exponents.Length);
+        byte[] computedHits = new byte[exponents.Length];
+        for (int i = 0; i < residues.Length; i++)
+        {
+            computedHits[i] = residues[i] == divisorData.MontgomeryOne ? (byte)1 : (byte)0;
+        }
+
+        computedHits.Should().Equal(new byte[] { 1, 0, 1, 0, 1 });
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void ByDivisor_session_marks_mersenne_numbers_divisible_by_eleven_as_composite()
+    {
+        var tester = new MersenneNumberDivisorByDivisorGpuTester
+        {
+            GpuBatchSize = 5,
+        };
+        tester.ConfigureFromMaxPrime(61UL);
+
+        using var session = tester.CreateDivisorSession();
+        ulong[] exponents = { 10UL, 11UL, 20UL, 21UL, 30UL };
+        byte[] hits = new byte[exponents.Length];
+
+        MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(11UL);
+        ulong cycle = MersenneDivisorCycles.CalculateCycleLength(11UL, divisorData);
+
+        session.CheckDivisor(11UL, divisorData, cycle, exponents, hits);
+
+        var hostBufferField = typeof(MersenneNumberDivisorByDivisorGpuTester.DivisorScanSession)
+            .GetField("_hostBuffer", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        ulong[] hostBuffer = (ulong[])hostBufferField.GetValue(session)!;
+        Span<ulong> residues = hostBuffer.AsSpan(0, exponents.Length);
+        byte[] computedHits = new byte[exponents.Length];
+        for (int i = 0; i < residues.Length; i++)
+        {
+            computedHits[i] = residues[i] == divisorData.MontgomeryOne ? (byte)1 : (byte)0;
+        }
+
+        computedHits.Should().Equal(new byte[] { 1, 0, 1, 0, 1 });
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void ByDivisor_gpu_tester_skips_divisors_excluded_by_small_cycle_generation()
+    {
+        var cycles = MersenneDivisorCycles.Shared;
+        var tableField = typeof(MersenneDivisorCycles).GetField("_table", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var smallCyclesField = typeof(MersenneDivisorCycles).GetField("_smallCycles", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+        var originalTable = (List<(ulong Divisor, ulong Cycle)>)tableField.GetValue(cycles)!;
+        var originalSmall = (ulong[]?)smallCyclesField.GetValue(cycles);
+
+        try
+        {
+            var patchedTable = new List<(ulong Divisor, ulong Cycle)>();
+            ulong[] patchedSmall = new ulong[PerfectNumberConstants.MaxQForDivisorCycles + 1];
+
+            MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(191UL);
+            patchedSmall[191] = MersenneDivisorCycles.CalculateCycleLength(191UL, divisorData);
+
+            tableField.SetValue(cycles, patchedTable);
+            smallCyclesField.SetValue(cycles, patchedSmall);
+            DivisorCycleCache.Shared.RefreshSnapshot();
+
+            var tester = new MersenneNumberDivisorByDivisorGpuTester();
+            tester.ConfigureFromMaxPrime(19UL);
+
+            typeof(MersenneNumberDivisorByDivisorGpuTester)
+                .GetField("_divisorLimit", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(tester, 200UL);
+
+            tester.IsPrime(19UL, out bool divisorsExhausted).Should().BeTrue();
+            divisorsExhausted.Should().BeTrue();
+        }
+        finally
+        {
+            tableField.SetValue(cycles, originalTable);
+            smallCyclesField.SetValue(cycles, originalSmall);
+            DivisorCycleCache.Shared.RefreshSnapshot();
+            GpuContextPool.DisposeAll();
+        }
     }
 
     [Fact]
