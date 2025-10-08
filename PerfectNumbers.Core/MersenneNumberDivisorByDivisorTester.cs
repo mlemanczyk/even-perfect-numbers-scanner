@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading.Tasks;
 using Open.Numeric.Primes;
 
 namespace PerfectNumbers.Core;
@@ -158,7 +159,13 @@ public static class MersenneNumberDivisorByDivisorTester
             return;
         }
 
-        foreach (ulong prime in filteredPrimes)
+        int workerCount = threadCount <= 0 ? Environment.ProcessorCount : threadCount;
+        if (workerCount < 1)
+        {
+            workerCount = 1;
+        }
+
+        void ProcessPrime(ulong prime)
         {
             bool isPrime = tester.IsPrime(prime, out bool divisorsExhausted);
 
@@ -166,11 +173,28 @@ public static class MersenneNumberDivisorByDivisorTester
             {
                 markComposite();
                 printResult(prime, true, true, false);
-                continue;
+                return;
             }
 
             clearComposite();
             printResult(prime, true, divisorsExhausted, true);
+        }
+
+        if (workerCount == 1)
+        {
+            foreach (ulong prime in filteredPrimes)
+            {
+                ProcessPrime(prime);
+            }
+        }
+        else
+        {
+            ParallelOptions options = new()
+            {
+                MaxDegreeOfParallelism = workerCount
+            };
+
+            Parallel.ForEach(filteredPrimes, options, ProcessPrime);
         }
     }
 }
