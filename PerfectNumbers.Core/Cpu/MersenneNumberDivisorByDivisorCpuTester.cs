@@ -196,12 +196,18 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         byte step8 = (byte)(step % 8UL);
         byte step5 = (byte)(step % 5UL);
         byte step3 = (byte)(step % 3UL);
+        byte step7 = (byte)(step % 7UL);
+        byte step11 = (byte)(step % 11UL);
 
         byte remainder10 = (byte)(divisor % 10UL);
         byte remainder8 = (byte)(divisor % 8UL);
         byte remainder5 = (byte)(divisor % 5UL);
         byte remainder3 = (byte)(divisor % 3UL);
+        byte remainder7 = (byte)(divisor % 7UL);
+        byte remainder11 = (byte)(divisor % 11UL);
 
+        // Keep the divisibility filters aligned with the divisor-cycle generator so the
+        // CPU path never requests cycles that were skipped during cache creation.
         bool lastIsSeven = (prime & 3UL) == 3UL;
 
         while (divisor <= limit)
@@ -214,7 +220,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 ? (remainder10 == 3 || remainder10 == 7 || remainder10 == 9)
                 : (remainder10 == 1 || remainder10 == 3 || remainder10 == 9);
 
-            if (admissible && (remainder8 == 1 || remainder8 == 7) && remainder3 != 0 && remainder5 != 0)
+            if (admissible && (remainder8 == 1 || remainder8 == 7) && remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0)
             {
                 MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(candidate);
                 ulong divisorCycle;
@@ -244,6 +250,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             remainder8 = AddMod(remainder8, step8, (byte)8);
             remainder5 = AddMod(remainder5, step5, (byte)5);
             remainder3 = AddMod(remainder3, step3, (byte)3);
+            remainder7 = AddMod(remainder7, step7, (byte)7);
+            remainder11 = AddMod(remainder11, step11, (byte)11);
         }
 
         processedAll = divisor > limit;
