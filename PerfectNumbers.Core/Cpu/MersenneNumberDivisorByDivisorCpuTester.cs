@@ -14,6 +14,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     private ulong _lastStatusDivisor;
     private bool _isConfigured;
     private int _batchSize = 1_024;
+    private const int PollardBrentMaxRestarts = 4;
+    private const int PollardBrentIterationBudget = 262_144;
 
 
     public int BatchSize
@@ -173,6 +175,31 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         {
             return false;
         }
+
+        ulong pollardIterationCount = 0UL;
+        if (prime > 3UL)
+        {
+            var pollardBrent = new MersennePollardBrent(prime, _batchSize);
+            if (pollardBrent.IsSupported)
+            {
+                bool pollardFound = pollardBrent.TryFindFactor(
+                    allowedMax,
+                    PollardBrentMaxRestarts,
+                    PollardBrentIterationBudget,
+                    out ulong pollardFactor,
+                    out pollardIterationCount);
+
+                if (pollardFound)
+                {
+                    processedCount = pollardIterationCount;
+                    lastProcessed = pollardFactor;
+                    processedAll = true;
+                    return true;
+                }
+            }
+        }
+
+        processedCount = pollardIterationCount;
 
         UInt128 step = (UInt128)prime << 1;
         if (step == UInt128.Zero)
