@@ -21,7 +21,8 @@ public class MersenneNumberDivisorGpuTesterTests
     public void IsDivisible_returns_expected(ulong exponent, ulong divisor, bool expected)
     {
         var tester = new MersenneNumberDivisorGpuTester();
-        tester.IsDivisible(exponent, divisor).Should().Be(expected);
+        ReadOnlyGpuUInt128 divisorValue = new ReadOnlyGpuUInt128(divisor);
+        tester.IsDivisible(exponent, in divisorValue).Should().Be(expected);
     }
 
     [Fact]
@@ -30,8 +31,10 @@ public class MersenneNumberDivisorGpuTesterTests
     {
         var tester = new MersenneNumberDivisorGpuTester();
         UInt128 divisor = (UInt128.One << 65) - UInt128.One;
-        tester.IsDivisible(65UL, divisor).Should().BeTrue();
-        tester.IsDivisible(65UL, divisor + 2).Should().BeFalse();
+        ReadOnlyGpuUInt128 divisorValue = new ReadOnlyGpuUInt128(divisor);
+        tester.IsDivisible(65UL, in divisorValue).Should().BeTrue();
+        divisorValue = new ReadOnlyGpuUInt128(divisor + 2); // Reusing divisorValue for the shifted candidate.
+        tester.IsDivisible(65UL, in divisorValue).Should().BeFalse();
     }
 
     [Fact]

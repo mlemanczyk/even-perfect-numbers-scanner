@@ -115,6 +115,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             resources.Exponents,
             resources.Hits,
             resources.DivisorData,
+            resources.CycleCandidates,
+            resources.CycleLengths,
+            resources.CycleCapacity,
             out lastProcessed,
             out coveredRange,
             out processedCount
@@ -178,6 +181,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         ulong[] exponents,
         byte[] hits,
         MontgomeryDivisorData[] divisorData,
+        ulong[] cycleCandidates,
+        ulong[] cycleLengths,
+        int cycleCapacity,
         out ulong lastProcessed,
         out bool coveredRange,
         out ulong processedCount)
@@ -196,13 +202,20 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         ArrayView1D<ulong, Stride1D.Dense> exponentView;
         ArrayView1D<byte, Stride1D.Dense> hitsView;
 
-        int chunkCapacity = Math.Min(batchCapacity, (int)accelerator.MaxNumThreadsPerGroup);
-        if (chunkCapacity <= 0)
+        cycleCapacity = Math.Max(1, cycleCapacity);
+
+        int chunkCapacity = Math.Min(batchCapacity, cycleCapacity);
+        int maxThreadsPerGroup = (int)accelerator.MaxNumThreadsPerGroup;
+        if (maxThreadsPerGroup > 0)
         {
-            chunkCapacity = batchCapacity;
+            chunkCapacity = Math.Min(chunkCapacity, maxThreadsPerGroup);
         }
 
-        ulong[] candidateDivisors = ArrayPool<ulong>.Shared.Rent(chunkCapacity);
+        if (chunkCapacity <= 0)
+        {
+            chunkCapacity = cycleCapacity;
+        }
+
         ulong[] filteredDivisors = ArrayPool<ulong>.Shared.Rent(chunkCapacity);
         ulong[] divisorGaps = ArrayPool<ulong>.Shared.Rent(chunkCapacity);
         byte[] remainder10Buffer = ArrayPool<byte>.Shared.Rent(chunkCapacity);
@@ -246,6 +259,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         byte remainder5 = (byte)((ulong)(currentDivisor128 % 5UL));
         byte remainder3 = (byte)((ulong)(currentDivisor128 % 3UL));
         bool lastIsSeven = (prime & 3UL) == 3UL;
+        DivisorCycleCache cycleCache = DivisorCycleCache.Shared;
 
         try
         {
@@ -263,7 +277,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                     break;
                 }
 
-                Span<ulong> candidateSpan = candidateDivisors.AsSpan(0, chunkCount);
+                Span<ulong> candidateSpan = cycleCandidates.AsSpan(0, chunkCount);
                 Span<ulong> gapSpan = divisorGaps.AsSpan(0, chunkCount);
                 Span<byte> rem10Span = remainder10Buffer.AsSpan(0, chunkCount);
                 Span<byte> rem8Span = remainder8Buffer.AsSpan(0, chunkCount);
@@ -350,40 +364,46 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                     continue;
                 }
 
-                int batchSize = 0;
+                Span<ulong> cycleSpan = cycleLengths.AsSpan(0, filteredCount);
+                cycleCache.GetCycleLengths(filteredDivisorsSpan[..filteredCount], cycleSpan);
+
+                int admissibleCount = 0;
                 for (int i = 0; i < filteredCount; i++)
                 {
-                    ulong divisorValue = filteredDivisorsSpan[i];
-                    divisors[batchSize] = divisorValue;
-                    exponents[batchSize] = prime;
-                    batchSize++;
+                    if (cycleSpan[i] == prime)
+                    {
+                        filteredDivisorsSpan[admissibleCount++] = filteredDivisorsSpan[i];
+                    }
                 }
 
-                if (batchSize == 0)
+                if (admissibleCount == 0)
                 {
                     processedAll = currentK > maxK;
                     continue;
                 }
 
-                divisorDataSpan = divisorData.AsSpan(0, batchSize);
-                divisorSpan = divisors.AsSpan(0, batchSize);
-                exponentSpan = exponents.AsSpan(0, batchSize);
-                hitsSpan = hits.AsSpan(0, batchSize);
-                divisorView = divisorsBuffer.View.SubView(0, batchSize);
-                exponentView = exponentBuffer.View.SubView(0, batchSize);
-                hitsView = hitsBuffer.View.SubView(0, batchSize);
+                divisorDataSpan = divisorData.AsSpan(0, admissibleCount);
+                divisorSpan = divisors.AsSpan(0, admissibleCount);
+                exponentSpan = exponents.AsSpan(0, admissibleCount);
+                hitsSpan = hits.AsSpan(0, admissibleCount);
+                divisorView = divisorsBuffer.View.SubView(0, admissibleCount);
+                exponentView = exponentBuffer.View.SubView(0, admissibleCount);
+                hitsView = hitsBuffer.View.SubView(0, admissibleCount);
 
-                for (int i = 0; i < batchSize; i++)
+                for (int i = 0; i < admissibleCount; i++)
                 {
-                    divisorDataSpan[i] = MontgomeryDivisorData.FromModulus(divisorSpan[i]);
+                    ulong divisorValue = filteredDivisorsSpan[i];
+                    divisorSpan[i] = divisorValue;
+                    exponentSpan[i] = prime;
+                    divisorDataSpan[i] = MontgomeryDivisorData.FromModulus(divisorValue);
                 }
 
-                divisorView.CopyFromCPU(ref MemoryMarshal.GetReference(divisorDataSpan), batchSize);
-                exponentView.CopyFromCPU(ref MemoryMarshal.GetReference(exponentSpan), batchSize);
-                kernel(batchSize, divisorView, exponentView, hitsView);
-                hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitsSpan), batchSize);
+                divisorView.CopyFromCPU(ref MemoryMarshal.GetReference(divisorDataSpan), admissibleCount);
+                exponentView.CopyFromCPU(ref MemoryMarshal.GetReference(exponentSpan), admissibleCount);
+                kernel(admissibleCount, divisorView, exponentView, hitsView);
+                hitsView.CopyToCPU(ref MemoryMarshal.GetReference(hitsSpan), admissibleCount);
 
-                for (int i = 0; i < batchSize; i++)
+                for (int i = 0; i < admissibleCount; i++)
                 {
                     if (hitsSpan[i] != 0)
                     {
@@ -395,7 +415,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
                 if (!composite)
                 {
-                    lastProcessed = divisorSpan[batchSize - 1];
+                    lastProcessed = divisorSpan[admissibleCount - 1];
                 }
 
                 if (composite)
@@ -408,7 +428,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         }
         finally
         {
-            ArrayPool<ulong>.Shared.Return(candidateDivisors, clearArray: false);
             ArrayPool<ulong>.Shared.Return(filteredDivisors, clearArray: false);
             ArrayPool<ulong>.Shared.Return(divisorGaps, clearArray: false);
             ArrayPool<byte>.Shared.Return(remainder10Buffer, clearArray: false);
@@ -712,19 +731,30 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     {
         internal BatchResources(MersenneNumberDivisorByDivisorGpuTester owner, Accelerator accelerator, int capacity)
         {
-            DivisorsBuffer = accelerator.Allocate1D<MontgomeryDivisorData>(capacity);
-            ExponentBuffer = accelerator.Allocate1D<ulong>(capacity);
-            HitsBuffer = accelerator.Allocate1D<byte>(capacity);
-            DivisorDeltaBuffer = accelerator.Allocate1D<ulong>(capacity);
-            RemainderDeltaBuffer = accelerator.Allocate1D<byte>(capacity);
-            RemainderBuffer = accelerator.Allocate1D<byte>(capacity);
-            Divisors = ArrayPool<ulong>.Shared.Rent(capacity);
-            Exponents = ArrayPool<ulong>.Shared.Rent(capacity);
-            Hits = ArrayPool<byte>.Shared.Rent(capacity);
-            DivisorData = ArrayPool<MontgomeryDivisorData>.Shared.Rent(capacity);
+            int cycleCapacity = DivisorCycleCache.Shared.PreferredBatchSize;
+            if (cycleCapacity <= 0)
+            {
+                cycleCapacity = 1;
+            }
+
+            int actualCapacity = Math.Max(capacity, cycleCapacity);
+
+            DivisorsBuffer = accelerator.Allocate1D<MontgomeryDivisorData>(actualCapacity);
+            ExponentBuffer = accelerator.Allocate1D<ulong>(actualCapacity);
+            HitsBuffer = accelerator.Allocate1D<byte>(actualCapacity);
+            DivisorDeltaBuffer = accelerator.Allocate1D<ulong>(actualCapacity);
+            RemainderDeltaBuffer = accelerator.Allocate1D<byte>(actualCapacity);
+            RemainderBuffer = accelerator.Allocate1D<byte>(actualCapacity);
+            Divisors = ArrayPool<ulong>.Shared.Rent(actualCapacity);
+            Exponents = ArrayPool<ulong>.Shared.Rent(actualCapacity);
+            Hits = ArrayPool<byte>.Shared.Rent(actualCapacity);
+            DivisorData = ArrayPool<MontgomeryDivisorData>.Shared.Rent(actualCapacity);
+            CycleCandidates = ArrayPool<ulong>.Shared.Rent(cycleCapacity);
+            CycleLengths = ArrayPool<ulong>.Shared.Rent(cycleCapacity);
             RemainderDeltaKernel = owner.GetRemainderDeltaKernel(accelerator);
             RemainderScanKernel = owner.GetRemainderScanKernel(accelerator);
-            Capacity = capacity;
+            Capacity = actualCapacity;
+            CycleCapacity = cycleCapacity;
         }
 
         internal readonly MemoryBuffer1D<MontgomeryDivisorData, Stride1D.Dense> DivisorsBuffer;
@@ -747,11 +777,17 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         internal readonly MontgomeryDivisorData[] DivisorData;
 
+        internal readonly ulong[] CycleCandidates;
+
+        internal readonly ulong[] CycleLengths;
+
         internal readonly Action<Index1D, ArrayView<ulong>, ArrayView<byte>, byte> RemainderDeltaKernel;
 
         internal readonly Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte> RemainderScanKernel;
 
         internal readonly int Capacity;
+
+        internal readonly int CycleCapacity;
 
         public void Dispose()
         {
@@ -765,6 +801,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             ArrayPool<ulong>.Shared.Return(Exponents, clearArray: false);
             ArrayPool<byte>.Shared.Return(Hits, clearArray: false);
             ArrayPool<MontgomeryDivisorData>.Shared.Return(DivisorData, clearArray: false);
+            ArrayPool<ulong>.Shared.Return(CycleCandidates, clearArray: false);
+            ArrayPool<ulong>.Shared.Return(CycleLengths, clearArray: false);
         }
     }
 
