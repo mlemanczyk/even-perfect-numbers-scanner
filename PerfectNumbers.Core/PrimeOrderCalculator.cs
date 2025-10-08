@@ -90,13 +90,13 @@ internal static partial class PrimeOrderCalculator
         private readonly bool _previousAllow;
         private readonly PrimeOrderHeuristicDevice _previousDevice;
 
-        public Pow2ModeScope(PrimeOrderHeuristicDevice device)
+        public Pow2ModeScope(PrimeOrderHeuristicDevice device, bool allowGpuPow2)
         {
             _previousInitialized = s_pow2ModeInitialized;
             _previousAllow = s_allowGpuPow2;
             _previousDevice = s_deviceMode;
             s_pow2ModeInitialized = true;
-            s_allowGpuPow2 = device == PrimeOrderHeuristicDevice.Gpu;
+            s_allowGpuPow2 = allowGpuPow2;
             s_deviceMode = device;
         }
 
@@ -124,7 +124,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static Pow2ModeScope UsePow2Mode(PrimeOrderHeuristicDevice device) => new(device);
+    private static Pow2ModeScope UsePow2Mode(PrimeOrderHeuristicDevice device, bool allowGpuPow2) => new(device, allowGpuPow2);
 
     private static DebugLoggingScope UseDebugLogging(bool enabled) => new(enabled);
 
@@ -154,9 +154,11 @@ internal static partial class PrimeOrderCalculator
         ulong? previousOrder,
         in MontgomeryDivisorData divisorData,
         PrimeOrderSearchConfig config,
-        PrimeOrderHeuristicDevice device)
+        PrimeOrderHeuristicDevice device,
+        bool allowGpuPow2 = false)
     {
-        using var scope = UsePow2Mode(device);
+        bool enableGpuPow2 = allowGpuPow2 || device == PrimeOrderHeuristicDevice.Gpu;
+        using var scope = UsePow2Mode(device, enableGpuPow2);
         return CalculateInternal(prime, previousOrder, divisorData, config);
     }
 
@@ -443,7 +445,6 @@ internal static partial class PrimeOrderCalculator
         int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
         int powUsed = 0;
         int candidateCount = candidates.Count;
-        bool allowGpuBatch = true;
         Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
 
         DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
@@ -467,9 +468,11 @@ internal static partial class PrimeOrderCalculator
             bool gpuSuccess = false;
             bool gpuStackRemainders = false;
             GpuPow2ModStatus status = GpuPow2ModStatus.Unavailable;
+            bool attemptedGpu = false;
 
-            if (allowGpuBatch && IsGpuPow2Allowed)
+            if (IsGpuPow2Allowed)
             {
+                attemptedGpu = true;
                 if (batchSize <= StackGpuBatchSize)
                 {
                     Span<ulong> localRemainders = stackGpuRemainders.Slice(0, batchSize);
@@ -496,11 +499,14 @@ internal static partial class PrimeOrderCalculator
                         gpuPool = null;
                     }
                 }
+            }
 
-                if (!gpuSuccess && (status == GpuPow2ModStatus.Overflow || status == GpuPow2ModStatus.Unavailable))
-                {
-                    allowGpuBatch = false;
-                }
+            if (attemptedGpu && !gpuSuccess)
+            {
+                PrimeOrderGpuHeuristics.ReportPow2Failure(
+                    "prime order candidate scan",
+                    prime,
+                    status);
             }
 
             for (int i = 0; i < batchSize && powUsed < powBudget; i++)
@@ -780,6 +786,11 @@ internal static partial class PrimeOrderCalculator
             {
                 return remainder == 1UL;
             }
+
+            PrimeOrderGpuHeuristics.ReportPow2Failure(
+                "prime order pow2 check",
+                prime,
+                status);
         }
 
         return exponent.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL;

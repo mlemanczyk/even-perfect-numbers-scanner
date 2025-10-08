@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core.Cpu;
 
@@ -10,11 +11,18 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 {
     private readonly object _sync = new();
     private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
+    private readonly bool _useGpuPow2Mod;
+    private readonly bool _useGpuCycleComputation;
     private ulong _divisorLimit;
     private ulong _lastStatusDivisor;
     private bool _isConfigured;
     private int _batchSize = 1_024;
 
+    public MersenneNumberDivisorByDivisorCpuTester(bool useGpuPow2Mod = false, bool useGpuCycleComputation = false)
+    {
+        _useGpuPow2Mod = useGpuPow2Mod;
+        _useGpuCycleComputation = useGpuCycleComputation;
+    }
 
     public int BatchSize
     {
@@ -190,6 +198,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         }
 
         Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? factorCache = null;
+        Dictionary<ulong, ulong>? cycleRemainderCache = null;
+        CycleHint cycleHint = default;
         DivisorCycleCache cycleCache = DivisorCycleCache.Shared;
 
         byte step10 = (byte)(step % 10UL);
@@ -223,35 +233,14 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             if (admissible && (remainder8 == 1 || remainder8 == 7) && remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0)
             {
                 MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(candidate);
-                ulong divisorCycle;
-
-                if (candidate <= PerfectNumberConstants.MaxQForDivisorCycles)
+                if (TryResolveDivisorCycle(candidate, prime, divisorData, cycleCache, ref factorCache, ref cycleHint, out ulong divisorCycle) && divisorCycle != 0UL)
                 {
-                    divisorCycle = cycleCache.GetCycleLength(candidate);
-                }
-                else
-                {
-                    factorCache ??= new Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>(8);
-                    if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(candidate, prime, divisorData, factorCache, out divisorCycle) || divisorCycle == 0UL)
+                    if (CheckDivisor(prime, candidate, divisorCycle, divisorData, ref cycleRemainderCache, ref cycleHint) != 0)
                     {
-                        divisorCycle = cycleCache.GetCycleLength(candidate);
+                        processedAll = true;
+                        return true;
                     }
                 }
-
-				if (divisorCycle != 0 && divisorCycle == prime)
-				{
-					processedAll = true;
-					return true;
-				}
-				else if (divisorCycle == 0)
-				{
-					Console.WriteLine($"Divisor cycle wasn't calculated for ${prime}");
-				}				
-				// if (divisorCycle != 0UL && CheckDivisor(prime, divisorCycle, divisorData) != 0)
-				// {
-				// 	processedAll = true;
-				// 	return true;
-				// }
             }
 
             divisor += step;
@@ -267,10 +256,150 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         return false;
     }
 
-    private static byte CheckDivisor(ulong prime, ulong divisorCycle, in MontgomeryDivisorData divisorData)
+    private byte CheckDivisor(
+        ulong prime,
+        ulong divisor,
+        ulong divisorCycle,
+        in MontgomeryDivisorData divisorData,
+        ref Dictionary<ulong, ulong>? cycleRemainders,
+        ref CycleHint cycleHint)
     {
-        ulong residue = prime.Pow2MontgomeryModWithCycle(divisorCycle, divisorData);
+        if (divisorCycle == 0UL)
+        {
+            throw new InvalidOperationException($"Cycle length resolution returned zero for divisor {divisor}.");
+        }
+
+        Dictionary<ulong, ulong>? remainderCache = cycleRemainders;
+        if (_useGpuPow2Mod && remainderCache is null)
+        {
+            remainderCache = new Dictionary<ulong, ulong>(8);
+            cycleRemainders = remainderCache;
+        }
+
+        ulong reducedExponent;
+        if (remainderCache is not null && remainderCache.TryGetValue(divisorCycle, out ulong cachedRemainder))
+        {
+            reducedExponent = cachedRemainder;
+        }
+        else if (cycleHint.HasCycle && cycleHint.LastCycleLength == divisorCycle)
+        {
+            reducedExponent = cycleHint.LastReducedExponent;
+        }
+        else
+        {
+            reducedExponent = prime % divisorCycle;
+            if (remainderCache is not null)
+            {
+                remainderCache[divisorCycle] = reducedExponent;
+            }
+        }
+
+        cycleHint.LastCycleLength = divisorCycle;
+        cycleHint.LastReducedExponent = reducedExponent;
+        cycleHint.HasCycle = true;
+
+        if (_useGpuPow2Mod && remainderCache is not null)
+        {
+            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(reducedExponent, divisor, out ulong remainder, divisorData);
+            if (status == GpuPow2ModStatus.Success)
+            {
+                return remainder == 1UL ? (byte)1 : (byte)0;
+            }
+
+            PrimeOrderGpuHeuristics.ReportPow2Failure(
+                "by-divisor residue scan",
+                divisor,
+                status);
+        }
+
+        ulong residue = reducedExponent.Pow2MontgomeryModFromCycleRemainder(divisorData);
         return residue == 1UL ? (byte)1 : (byte)0;
+    }
+
+    private bool TryResolveDivisorCycle(
+        ulong divisor,
+        ulong prime,
+        in MontgomeryDivisorData divisorData,
+        DivisorCycleCache cycleCache,
+        ref Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? factorCache,
+        ref CycleHint cycleHint,
+        out ulong cycleLength)
+    {
+        if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
+        {
+            cycleLength = cycleCache.GetCycleLength(divisor);
+            if (cycleLength == 0UL)
+            {
+                throw new InvalidOperationException($"Missing cached cycle length for divisor {divisor}.");
+            }
+
+            cycleHint.LastCycleLength = cycleLength;
+            cycleHint.HasCycle = true;
+            return true;
+        }
+
+        if (_useGpuCycleComputation && TryCalculateCycleLengthGpu(divisor, prime, divisorData, ref cycleHint, out cycleLength))
+        {
+            return cycleLength != 0UL;
+        }
+
+        factorCache ??= new Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>(8);
+        if (MersenneDivisorCycles.TryCalculateCycleLengthForExponent(
+                divisor,
+                prime,
+                divisorData,
+                factorCache,
+                out cycleLength,
+                allowGpuPow2: _useGpuPow2Mod) && cycleLength != 0UL)
+        {
+            cycleHint.LastCycleLength = cycleLength;
+            cycleHint.HasCycle = true;
+            return true;
+        }
+
+        cycleLength = cycleCache.GetCycleLength(divisor);
+        if (cycleLength == 0UL)
+        {
+            return false;
+        }
+
+        cycleHint.LastCycleLength = cycleLength;
+        cycleHint.HasCycle = true;
+        return true;
+    }
+
+    private bool TryCalculateCycleLengthGpu(
+        ulong divisor,
+        ulong prime,
+        in MontgomeryDivisorData divisorData,
+        ref CycleHint cycleHint,
+        out ulong cycleLength)
+    {
+        PrimeOrderCalculator.PrimeOrderSearchConfig config = PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault;
+        ulong? previousOrder = cycleHint.HasCycle ? cycleHint.LastCycleLength : null;
+
+        try
+        {
+            if (!PrimeOrderGpuHeuristics.TryCalculateOrder(divisor, previousOrder, config, divisorData, out PrimeOrderCalculator.PrimeOrderResult result))
+            {
+                throw new InvalidOperationException("GPU requested fallback.");
+            }
+
+            cycleLength = result.Order;
+            if (cycleLength == 0UL)
+            {
+                return false;
+            }
+
+            cycleHint.LastCycleLength = cycleLength;
+            cycleHint.HasCycle = true;
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.Error.WriteLine($"GPU cycle length computation failed for divisor {divisor}: {ex.Message}");
+            throw;
+        }
     }
 
     private static byte AddMod(byte value, byte delta, byte modulus)
@@ -317,6 +446,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         }
 
         return (1UL << (int)(maxPrime - 1UL)) - 1UL;
+    }
+
+    private struct CycleHint
+    {
+        public ulong LastCycleLength;
+        public ulong LastReducedExponent;
+        public bool HasCycle;
     }
 
     private static ulong ComputeAllowedMaxDivisor(ulong prime, ulong divisorLimit)

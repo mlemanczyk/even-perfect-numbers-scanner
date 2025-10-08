@@ -265,11 +265,12 @@ public class MersenneDivisorCycles
     }
 
     public static bool TryCalculateCycleLengthForExponent(
-        ulong divisor,        
+        ulong divisor,
         ulong exponent,
         in MontgomeryDivisorData divisorData,
         Dictionary<ulong, FactorCacheEntry>? factorCache,
-        out ulong cycleLength)
+        out ulong cycleLength,
+        bool allowGpuPow2 = false)
     {
         cycleLength = 0UL;
 
@@ -290,7 +291,8 @@ public class MersenneDivisorCycles
             previousOrder: null,
             divisorData,
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-            PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
+            PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu,
+            allowGpuPow2);
         if (orderResult.Order != 0UL)
         {
             cycleLength = orderResult.Order;
@@ -327,7 +329,7 @@ public class MersenneDivisorCycles
             return false;
         }
 
-        cycleLength = ReduceOrder(divisorData, phi, factorCounts);
+        cycleLength = ReduceOrder(divisorData, phi, factorCounts, allowGpuPow2);
         return true;
     }
 
@@ -471,7 +473,7 @@ public class MersenneDivisorCycles
         }
     }
 
-    private static ulong ReduceOrder(in MontgomeryDivisorData divisorData, ulong initialOrder, Dictionary<ulong, int> factorCounts)
+    private static ulong ReduceOrder(in MontgomeryDivisorData divisorData, ulong initialOrder, Dictionary<ulong, int> factorCounts, bool allowGpuPow2)
     {
         if (factorCounts.Count == 0)
         {
@@ -505,7 +507,7 @@ public class MersenneDivisorCycles
                     }
 
                     ulong candidate = order / prime;
-                    if (candidate.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL)
+                    if (Pow2EqualsOne(candidate, divisorData, allowGpuPow2))
                     {
                         order = candidate;
                         continue;
@@ -521,6 +523,26 @@ public class MersenneDivisorCycles
         {
             ArrayPool<ulong>.Shared.Return(primes, clearArray: false);
         }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool Pow2EqualsOne(ulong exponent, in MontgomeryDivisorData divisorData, bool allowGpuPow2)
+    {
+        if (allowGpuPow2)
+        {
+            GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, divisorData.Modulus, out ulong remainder, divisorData);
+            if (status == GpuPow2ModStatus.Success)
+            {
+                return remainder == 1UL;
+            }
+
+            PrimeOrderGpuHeuristics.ReportPow2Failure(
+                "divisor cycle reduction",
+                divisorData.Modulus,
+                status);
+        }
+
+        return exponent.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL;
     }
 
     private static ulong PollardRho64(ulong n)
@@ -924,7 +946,7 @@ public class MersenneDivisorCycles
         return CalculateCycleLengthFallback(divisor);
     }
 
-    internal static bool TryCalculateCycleLengthHeuristic(ulong divisor, in MontgomeryDivisorData divisorData, out ulong cycleLength)
+    internal static bool TryCalculateCycleLengthHeuristic(ulong divisor, in MontgomeryDivisorData divisorData, out ulong cycleLength, bool allowGpuPow2 = false)
     {
         if ((divisor & (divisor - 1UL)) == 0UL)
         {
@@ -945,7 +967,8 @@ public class MersenneDivisorCycles
                     previousOrder: null,
                     divisorData,
                     PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-                    PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
+                    PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu,
+                    allowGpuPow2);
             if (orderResult.Order != 0UL)
             {
                 cycleLength = orderResult.Order;

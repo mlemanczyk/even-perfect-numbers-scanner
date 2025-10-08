@@ -4,10 +4,12 @@ using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
 using System.Numerics;
+using System.Globalization;
 using PerfectNumbers.Core;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using ILGPU.Runtime.OpenCL;
+
 namespace PerfectNumbers.Core.Gpu;
 
 internal enum GpuPow2ModStatus
@@ -26,6 +28,25 @@ internal static partial class PrimeOrderGpuHeuristics
     private static readonly ConcurrentDictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>> PartialFactorKernelCache = new();
     private static readonly ConcurrentDictionary<Accelerator, OrderKernelLauncher> OrderKernelCache = new();
     private static readonly ConcurrentDictionary<Accelerator, SmallPrimeDeviceCache> SmallPrimeDeviceCaches = new();
+
+    private static void ReportPow2FailureCore(string context, string modulusDescription, GpuPow2ModStatus status)
+    {
+        string message = $"GPU pow2mod failed with status {status} for divisor {modulusDescription} during {context}.";
+        Console.Error.WriteLine(message);
+        throw new InvalidOperationException(message);
+    }
+
+    internal static void ReportPow2Failure(string context, ulong modulus, GpuPow2ModStatus status)
+    {
+        string modulusDescription = modulus.ToString(CultureInfo.InvariantCulture);
+        ReportPow2FailureCore(context, modulusDescription, status);
+    }
+
+    internal static void ReportPow2Failure(string context, UInt128 modulus, GpuPow2ModStatus status)
+    {
+        string modulusDescription = modulus.ToString(CultureInfo.InvariantCulture);
+        ReportPow2FailureCore(context, modulusDescription, status);
+    }
 
     public readonly struct OrderKernelConfig(ulong previousOrder, byte hasPreviousOrder, uint smallFactorLimit, int maxPowChecks, int mode)
     {
