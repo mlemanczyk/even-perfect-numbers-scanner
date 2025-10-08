@@ -212,12 +212,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
             bool admissible = lastIsSeven
                 ? (remainder10 == 3 || remainder10 == 7 || remainder10 == 9)
-                : (remainder10 == 1 || remainder10 == 3 || remainder10 == 7 || remainder10 == 9);
+                : (remainder10 == 1 || remainder10 == 3 || remainder10 == 9);
 
             if (admissible && (remainder8 == 1 || remainder8 == 7) && remainder3 != 0 && remainder5 != 0)
             {
                 MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(candidate);
-                ulong divisorCycle = 0UL;
+                ulong divisorCycle;
 
                 if (candidate <= PerfectNumberConstants.MaxQForDivisorCycles)
                 {
