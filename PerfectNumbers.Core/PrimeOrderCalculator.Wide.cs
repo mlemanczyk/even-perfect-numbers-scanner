@@ -31,7 +31,8 @@ internal static partial class PrimeOrderCalculator
         PrimeOrderSearchConfig config,
         PrimeOrderHeuristicDevice device)
     {
-        using var scope = UsePow2Mode(device);
+        bool enableGpuPow2 = device == PrimeOrderHeuristicDevice.Gpu;
+        using var scope = UsePow2Mode(device, enableGpuPow2);
         MontgomeryDivisorData divisorData;
         if (prime <= ulong.MaxValue)
         {
@@ -51,7 +52,7 @@ internal static partial class PrimeOrderCalculator
 
             ulong prime64 = (ulong)prime;
             divisorData = MontgomeryDivisorData.FromModulus(prime64);
-            PrimeOrderResult result = Calculate(prime64, previous, divisorData, config, device);
+            PrimeOrderResult result = Calculate(prime64, previous, divisorData, config, device, enableGpuPow2);
             return new PrimeOrderResultWide(result.Status, result.Order);
         }
         else
@@ -1030,6 +1031,11 @@ internal static partial class PrimeOrderCalculator
             {
                 return wideRemainder;
             }
+
+            PrimeOrderGpuHeuristics.ReportPow2Failure(
+                "wide prime order pow2 check",
+                modulus,
+                wideStatus);
         }
 
         return exponent.Pow2MontgomeryModWindowed(modulus);

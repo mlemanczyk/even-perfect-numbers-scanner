@@ -515,7 +515,9 @@ internal static class Program
         {
             _byDivisorTester = mersenneOnGpu
                     ? new MersenneNumberDivisorByDivisorGpuTester()
-                    : new MersenneNumberDivisorByDivisorCpuTester();
+                    : new MersenneNumberDivisorByDivisorCpuTester(
+                        useGpuPow2Mod: !GpuContextPool.ForceCpu,
+                        useGpuCycleComputation: orderOnGpu);
             _byDivisorTester.BatchSize = scanBatchSize;
         }
 
