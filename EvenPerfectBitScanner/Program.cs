@@ -458,7 +458,6 @@ internal static class Program
 
         if (useByDivisor)
         {
-            threadCount = 1;
             blockSize = 1;
         }
 
