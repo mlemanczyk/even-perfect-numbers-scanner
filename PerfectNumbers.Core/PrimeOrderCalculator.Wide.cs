@@ -79,7 +79,7 @@ internal static partial class PrimeOrderCalculator
         PartialFactorResult128 phiFactors = PartialFactorWide(phi, config);
         if (phiFactors.Factors is null)
         {
-            HeuristicFailureLog.Record(prime, null, HeuristicFailureReason.PhiPartialFactorizationFailed);
+            // HeuristicFailureLog.Record(prime, null, HeuristicFailureReason.PhiPartialFactorizationFailed);
             return FinishStrictlyWide(prime, divisorData, config.Mode);
         }
 
@@ -109,7 +109,7 @@ internal static partial class PrimeOrderCalculator
 
         if (config.Mode == PrimeOrderMode.Strict)
         {
-            HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.StrictModeRequested);
+            // HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.StrictModeRequested);
             return FinishStrictlyWide(prime, divisorData, PrimeOrderMode.Strict);
         }
 
@@ -118,7 +118,7 @@ internal static partial class PrimeOrderCalculator
             return new PrimeOrderResultWide(PrimeOrderStatus.Found, order);
         }
 
-        HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.HeuristicPipelineAssumedFullOrder);
+        // HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.HeuristicPipelineAssumedFullOrder);
         // The heuristic pipeline could not narrow the order any further; assume the current order is final.
         return new PrimeOrderResultWide(PrimeOrderStatus.Found, candidateOrder);
     }

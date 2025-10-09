@@ -194,7 +194,7 @@ internal static partial class PrimeOrderCalculator
         if (phiFactors.Factors is null)
         {
             // DebugLog("No factors found");
-            HeuristicFailureLog.Record(prime, null, HeuristicFailureReason.PhiPartialFactorizationFailed);
+            // HeuristicFailureLog.Record(prime, null, HeuristicFailureReason.PhiPartialFactorizationFailed);
             return FinishStrictly(prime, divisorData, config.Mode);
         }
 
@@ -227,7 +227,7 @@ internal static partial class PrimeOrderCalculator
 
         if (config.Mode == PrimeOrderMode.Strict)
         {
-            HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.StrictModeRequested);
+            // HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.StrictModeRequested);
             return FinishStrictly(prime, divisorData, PrimeOrderMode.Strict);
         }
 
@@ -237,7 +237,7 @@ internal static partial class PrimeOrderCalculator
         }
 
         // DebugLog("Heuristic unresolved, assuming current order");
-        HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.HeuristicPipelineAssumedFullOrder);
+        // HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.HeuristicPipelineAssumedFullOrder);
         // The heuristic pipeline could not rule out additional divisors; assume the current order is final.
         return new PrimeOrderResult(PrimeOrderStatus.Found, candidateOrder);
     }
