@@ -280,10 +280,11 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
         Console.WriteLine("Trying heuristic. Prime order calculation");
 #endif
         PrimeOrderCalculator.PrimeOrderResult orderResult = PrimeOrderCalculator.Calculate(
-            modulus,
-            _previousPrimeOrder,
-            divisorData,
-            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			modulus,
+			_previousPrimeOrder,
+			divisorData,
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
+			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
         if (orderResult.Order != 0UL)
         {

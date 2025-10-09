@@ -46,10 +46,11 @@ public class PrimeOrderCalculatorTests
         ulong expected = ComputeOrderByDoubling(prime);
 
         PrimeOrderCalculator.PrimeOrderResult result = PrimeOrderCalculator.Calculate(
-            prime,
-            previousOrder: null,
-            MontgomeryDivisorData.FromModulus(prime),
-            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			prime,
+			previousOrder: null,
+			MontgomeryDivisorData.FromModulus(prime),
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
+			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
         result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
         result.Order.Should().Be(expected);
@@ -63,16 +64,18 @@ public class PrimeOrderCalculatorTests
         ulong previousOrder = ComputeOrderByDoubling(previousPrime);
 
         PrimeOrderCalculator.PrimeOrderResult heuristic = PrimeOrderCalculator.Calculate(
-            prime,
-            previousOrder,
-            MontgomeryDivisorData.FromModulus(prime),
-            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			prime,
+			previousOrder,
+			MontgomeryDivisorData.FromModulus(prime),
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
+			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
         PrimeOrderCalculator.PrimeOrderResult strict = PrimeOrderCalculator.Calculate(
-            prime,
-            previousOrder: null,
-            MontgomeryDivisorData.FromModulus(prime),
-            PrimeOrderCalculator.PrimeOrderSearchConfig.StrictDefault);
+			prime,
+			previousOrder: null,
+			MontgomeryDivisorData.FromModulus(prime),
+			PrimeOrderCalculator.PrimeOrderSearchConfig.StrictDefault,
+			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
         heuristic.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
         strict.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
@@ -86,10 +89,11 @@ public class PrimeOrderCalculatorTests
     public void Calculate_handles_trivial_primes(ulong prime, ulong expectedOrder)
     {
         PrimeOrderCalculator.PrimeOrderResult result = PrimeOrderCalculator.Calculate(
-            prime,
-            previousOrder: null,
-            MontgomeryDivisorData.FromModulus(prime),
-            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			prime,
+			previousOrder: null,
+			MontgomeryDivisorData.FromModulus(prime),
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
+			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
         result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
         result.Order.Should().Be(expectedOrder);
@@ -106,10 +110,11 @@ public class PrimeOrderCalculatorTests
             mode: PrimeOrderCalculator.PrimeOrderMode.Heuristic);
 
         PrimeOrderCalculator.PrimeOrderResult result = PrimeOrderCalculator.Calculate(
-            prime: 13UL,
-            previousOrder: null,
-            MontgomeryDivisorData.FromModulus(13UL),
-            config);
+			prime: 13UL,
+			previousOrder: null,
+			MontgomeryDivisorData.FromModulus(13UL),
+			config,
+			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
         result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.HeuristicUnresolved);
         result.Order.Should().Be(ComputeOrderByDoubling(13UL));
@@ -127,10 +132,11 @@ public class PrimeOrderCalculatorTests
 
         MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(239UL);
         PrimeOrderCalculator.PrimeOrderResult heuristic = PrimeOrderCalculator.Calculate(
-            prime: 239UL,
-            previousOrder: null,
-            divisorData,
-            heuristicConfig);
+			prime: 239UL,
+			previousOrder: null,
+			divisorData,
+			heuristicConfig,
+			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
         heuristic.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.HeuristicUnresolved);
         heuristic.Order.Should().Be(ComputeOrderByDoubling(239UL));
@@ -142,10 +148,11 @@ public class PrimeOrderCalculatorTests
             mode: PrimeOrderCalculator.PrimeOrderMode.Strict);
 
         PrimeOrderCalculator.PrimeOrderResult strict = PrimeOrderCalculator.Calculate(
-            prime: 239UL,
-            previousOrder: null,
-            divisorData,
-            strictConfig);
+			prime: 239UL,
+			previousOrder: null,
+			divisorData,
+			strictConfig,
+			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
         strict.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
         strict.Order.Should().Be(heuristic.Order);

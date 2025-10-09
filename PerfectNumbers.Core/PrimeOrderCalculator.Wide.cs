@@ -31,7 +31,7 @@ internal static partial class PrimeOrderCalculator
         PrimeOrderSearchConfig config,
         PrimeOrderHeuristicDevice device)
     {
-        using var scope = UsePow2Mode(device);
+        var scope = UsePow2Mode(device);
         MontgomeryDivisorData divisorData;
         if (prime <= ulong.MaxValue)
         {
@@ -51,7 +51,8 @@ internal static partial class PrimeOrderCalculator
 
             ulong prime64 = (ulong)prime;
             divisorData = MontgomeryDivisorData.FromModulus(prime64);
-            PrimeOrderResult result = Calculate(prime64, previous, divisorData, config, device);
+			PrimeOrderResult result = Calculate(prime64, previous, divisorData, config, device);
+			scope.Dispose();
             return new PrimeOrderResultWide(result.Status, result.Order);
         }
         else
@@ -59,7 +60,9 @@ internal static partial class PrimeOrderCalculator
             divisorData = default;
         }
 
-        return CalculateWideInternal(prime, previousOrder, divisorData, config);
+		PrimeOrderResultWide resultWide = CalculateWideInternal(prime, previousOrder, divisorData, config);
+		scope.Dispose();
+		return resultWide;
     }
 
     private static PrimeOrderResultWide CalculateWideInternal(UInt128 prime, UInt128? previousOrder, in MontgomeryDivisorData divisorData, PrimeOrderSearchConfig config)
@@ -75,15 +78,20 @@ internal static partial class PrimeOrderCalculator
         }
 
         UInt128 phi = prime - UInt128.One;
-        using var debugScope = UseDebugLogging(!IsGpuHeuristicDevice);
-        PartialFactorResult128 phiFactors = PartialFactorWide(phi, config);
+        var debugScope = UseDebugLogging(!IsGpuHeuristicDevice);
+		PartialFactorResult128 phiFactors = PartialFactorWide(phi, config);
+		PrimeOrderResultWide result;
         if (phiFactors.Factors is null)
         {
-            // HeuristicFailureLog.Record(prime, null, HeuristicFailureReason.PhiPartialFactorizationFailed);
-            return FinishStrictlyWide(prime, divisorData, config.Mode);
+			// HeuristicFailureLog.Record(prime, null, HeuristicFailureReason.PhiPartialFactorizationFailed);
+			result = FinishStrictlyWide(prime, divisorData, config.Mode);
+			debugScope.Dispose();
+			return result;
         }
 
-        return RunHeuristicPipelineWide(prime, previousOrder, divisorData, config, phi, phiFactors);
+		result = RunHeuristicPipelineWide(prime, previousOrder, divisorData, config, phi, phiFactors);
+		debugScope.Dispose();
+		return result;
     }
 
     private static PrimeOrderResultWide RunHeuristicPipelineWide(
