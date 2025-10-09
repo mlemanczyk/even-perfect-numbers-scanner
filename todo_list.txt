@@ -123,7 +123,6 @@ PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:207:         
 PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:214:                // TODO: Remove this no-cycle branch and require on-demand cycle computation (without
 PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:240:            // TODO: Replace this linear increment with the batched divisor-cycle walker validated in the
 PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:262:                : prime.Pow2MontgomeryMod(divisorData); // TODO: Switch to the upcoming ProcessEightBitWindows helper once the
-PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:283:        // TODO: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI
 PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:356:                // TODO: Replace this guard with an on-demand CPU/GPU cycle computation path that skips
 PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:396:            // TODO: Remove this no-cycle fallback once divisor cycles are mandatory; the per-prime pow2 ladder here
 PerfectNumbers.Core\IMersenneNumberDivisorByDivisorTester.cs:7:    bool UseDivisorCycles { get; set; } // TODO: Remove the setter once divisor cycle usage becomes mandatory so all implementations always leverage the cached cycles.
@@ -267,7 +266,6 @@ todo_list.txt:122:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTeste
 todo_list.txt:123:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:214:                // TODO: Remove this no-cycle branch and require on-demand cycle computation (without
 todo_list.txt:124:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:240:            // TODO: Replace this linear increment with the batched divisor-cycle walker validated in the
 todo_list.txt:125:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:262:                : prime.Pow2MontgomeryMod(divisorData); // TODO: Switch to the upcoming ProcessEightBitWindows helper once the
-todo_list.txt:126:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:283:        // TODO: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI
 todo_list.txt:127:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:356:                // TODO: Replace this guard with an on-demand CPU/GPU cycle computation path that skips
 todo_list.txt:128:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:396:            // TODO: Remove this no-cycle fallback once divisor cycles are mandatory; the per-prime pow2 ladder here
 todo_list.txt:129:PerfectNumbers.Core\IMersenneNumberDivisorByDivisorTester.cs:7:    bool UseDivisorCycles { get; set; } // TODO: Remove the setter once divisor cycle usage becomes mandatory so all implementations always leverage the cached cycles.
