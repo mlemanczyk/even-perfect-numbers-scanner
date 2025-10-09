@@ -343,6 +343,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     private sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
     {
         private readonly MersenneNumberDivisorByDivisorCpuTester _owner;
+        private readonly Dictionary<ulong, PrimeDivisorState> _primeStates = new();
         private bool _disposed;
 
         internal DivisorScanSession(MersenneNumberDivisorByDivisorCpuTester owner)
@@ -353,6 +354,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         internal void Reset()
         {
             _disposed = false;
+            _primeStates.Clear();
         }
 
         public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
@@ -384,21 +386,50 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 }
             }
 
-            // Keep these remainder steppers in place so future updates continue reusing the previously computed residues.
-            // They are critical for avoiding repeated full Montgomery exponentiation work when scanning divisors.
-            var exponentStepper = new ExponentRemainderStepper(cachedData);
-            if (!exponentStepper.IsValidModulus)
+            var cycleStepper = new CycleRemainderStepper(divisorCycle);
+            ExponentRemainderStepper exponentStepper = default;
+            bool exponentStepperInitialized = false;
+            byte hitValue = 0; // Reused for every prime processed in this batch.
+
+            bool EnsureExponentStepper()
             {
-                hits.Clear();
-                return;
+                if (exponentStepperInitialized)
+                {
+                    return true;
+                }
+
+                exponentStepper = new ExponentRemainderStepper(cachedData);
+                if (!exponentStepper.IsValidModulus)
+                {
+                    hits.Clear();
+                    return false;
+                }
+
+                exponentStepperInitialized = true;
+                return true;
             }
 
-            var cycleStepper = new CycleRemainderStepper(divisorCycle);
-
             ulong remainder = cycleStepper.Initialize(primes[0]);
-            hits[0] = remainder == 0UL
-                ? (exponentStepper.ComputeNextIsUnity(primes[0]) ? (byte)1 : (byte)0)
-                : (byte)0;
+            if (remainder == 0UL)
+            {
+                if (TryComputeAnalyticHit(primes[0], divisor, cachedData, out hitValue))
+                {
+                    hits[0] = hitValue;
+                }
+                else
+                {
+                    if (!EnsureExponentStepper())
+                    {
+                        return;
+                    }
+
+                    hits[0] = exponentStepper.ComputeNextIsUnity(primes[0]) ? (byte)1 : (byte)0;
+                }
+            }
+            else
+            {
+                hits[0] = 0;
+            }
 
             for (int i = 1; i < length; i++)
             {
@@ -409,8 +440,195 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                     continue;
                 }
 
+                if (TryComputeAnalyticHit(primes[i], divisor, cachedData, out hitValue))
+                {
+                    hits[i] = hitValue;
+                    continue;
+                }
+
+                if (!EnsureExponentStepper())
+                {
+                    return;
+                }
+
                 hits[i] = exponentStepper.ComputeNextIsUnity(primes[i]) ? (byte)1 : (byte)0;
             }
+        }
+
+        private bool TryComputeAnalyticHit(ulong prime, ulong divisor, in MontgomeryDivisorData divisorData, out byte hit)
+        {
+            hit = 0;
+
+            if (!TryGetMersenneMinusOne(prime, out ulong mersenne))
+            {
+                return false;
+            }
+
+            if (divisor <= 1UL)
+            {
+                return false;
+            }
+
+            ulong step = prime << 1;
+            if (step == 0UL)
+            {
+                return false;
+            }
+
+            if (!_primeStates.TryGetValue(prime, out PrimeDivisorState state) || !state.HasState)
+            {
+                state = CreatePrimeState(step, divisor, mersenne, divisorData);
+                _primeStates[prime] = state;
+                hit = state.Remainder == 0UL ? (byte)1 : (byte)0;
+                return true;
+            }
+
+            if (state.Step != step || divisor <= state.LastDivisor)
+            {
+                state = CreatePrimeState(step, divisor, mersenne, divisorData);
+                _primeStates[prime] = state;
+                hit = state.Remainder == 0UL ? (byte)1 : (byte)0;
+                return true;
+            }
+
+            ulong difference = divisor - state.LastDivisor;
+            if (difference == 0UL)
+            {
+                hit = state.Remainder == 0UL ? (byte)1 : (byte)0;
+                return true;
+            }
+
+            if (difference % step != 0UL)
+            {
+                state = CreatePrimeState(step, divisor, mersenne, divisorData);
+                _primeStates[prime] = state;
+                hit = state.Remainder == 0UL ? (byte)1 : (byte)0;
+                return true;
+            }
+
+            ulong increments = difference / step;
+            ulong quotient = state.Quotient;
+            ulong remainder = state.Remainder;
+            ulong currentDivisor = state.LastDivisor;
+
+            for (ulong index = 0UL; index < increments; index++)
+            {
+                ulong nextDivisor = currentDivisor + step;
+                Int128 stepTimesQuotient = (Int128)step * (Int128)quotient;
+                Int128 numerator = stepTimesQuotient - (Int128)remainder;
+                Int128 divisorInt = (Int128)nextDivisor;
+                Int128 deltaInt = numerator >= 0
+                    ? (numerator + divisorInt - Int128.One) / divisorInt
+                    : numerator / divisorInt;
+
+                if (deltaInt < Int128.Zero)
+                {
+                    deltaInt = Int128.Zero;
+                }
+
+                ulong delta = (ulong)deltaInt;
+                if (delta > quotient)
+                {
+                    state = CreatePrimeState(step, divisor, mersenne, divisorData);
+                    _primeStates[prime] = state;
+                    hit = state.Remainder == 0UL ? (byte)1 : (byte)0;
+                    return true;
+                }
+
+                Int128 t = (Int128)remainder - stepTimesQuotient;
+                Int128 nextRemainder = t + deltaInt * divisorInt;
+                if (nextRemainder < Int128.Zero || nextRemainder >= divisorInt)
+                {
+                    state = CreatePrimeState(step, divisor, mersenne, divisorData);
+                    _primeStates[prime] = state;
+                    hit = state.Remainder == 0UL ? (byte)1 : (byte)0;
+                    return true;
+                }
+
+                quotient -= delta;
+                remainder = (ulong)nextRemainder;
+                currentDivisor = nextDivisor;
+            }
+
+            ulong residue = ComputeResidueFromRemainder(remainder, divisor);
+            state.LastDivisor = divisor;
+            state.Quotient = quotient;
+            state.Remainder = remainder;
+            state.MontgomeryResidue = ToMontgomeryResidue(residue, divisorData);
+            // Reuse state to persist the updated quotient and remainder tuple for the next divisor.
+            _primeStates[prime] = state;
+
+            hit = remainder == 0UL ? (byte)1 : (byte)0;
+            return true;
+        }
+
+        private static PrimeDivisorState CreatePrimeState(ulong step, ulong divisor, ulong mersenne, in MontgomeryDivisorData divisorData)
+        {
+            PrimeDivisorState state = new()
+            {
+                Step = step,
+                LastDivisor = divisor,
+                HasState = true,
+            };
+
+            ulong quotient = Math.DivRem(mersenne, divisor, out ulong remainder);
+            state.Quotient = quotient;
+            state.Remainder = remainder;
+            ulong residue = ComputeResidueFromRemainder(remainder, divisor);
+            state.MontgomeryResidue = ToMontgomeryResidue(residue, divisorData);
+            return state;
+        }
+
+        private static bool TryGetMersenneMinusOne(ulong exponent, out ulong mersenne)
+        {
+            if (exponent <= 63UL)
+            {
+                mersenne = (1UL << (int)exponent) - 1UL;
+                return true;
+            }
+
+            if (exponent == 64UL)
+            {
+                mersenne = ulong.MaxValue;
+                return true;
+            }
+
+            mersenne = 0UL;
+            return false;
+        }
+
+        private static ulong ComputeResidueFromRemainder(ulong remainder, ulong divisor)
+        {
+            ulong residue = remainder + 1UL;
+            if (residue >= divisor)
+            {
+                residue -= divisor;
+            }
+
+            return residue;
+        }
+
+        private static ulong ToMontgomeryResidue(ulong value, in MontgomeryDivisorData divisorData)
+        {
+            ulong modulus = divisorData.Modulus;
+            if (modulus <= 1UL)
+            {
+                return 0UL;
+            }
+
+            value %= modulus;
+            UInt128 shifted = (UInt128)value << 64;
+            return (ulong)(shifted % modulus);
+        }
+
+        private struct PrimeDivisorState
+        {
+            public ulong Step;
+            public ulong LastDivisor;
+            public ulong Quotient;
+            public ulong Remainder;
+            public ulong MontgomeryResidue;
+            public bool HasState;
         }
 
         public void Dispose()
