@@ -175,13 +175,13 @@ internal static partial class PrimeOrderCalculator
         }
 
         using var debugScope = UseDebugLogging(!IsGpuHeuristicDevice);
-        DebugLog("Partial factoring φ(p)");
+        // DebugLog("Partial factoring φ(p)");
 
         PartialFactorResult phiFactors = PartialFactor(phi, config);
 
         if (phiFactors.Factors is null)
         {
-            DebugLog("No factors found");
+            // DebugLog("No factors found");
             return FinishStrictly(prime, config.Mode);
         }
 
@@ -196,17 +196,17 @@ internal static partial class PrimeOrderCalculator
         ulong phi,
         PartialFactorResult phiFactors)
     {
-        DebugLog("Trying special max check");
+        // DebugLog("Trying special max check");
         if (phiFactors.FullyFactored && TrySpecialMax(phi, prime, phiFactors, divisorData))
         {
             return new PrimeOrderResult(PrimeOrderStatus.Found, phi);
         }
 
-        DebugLog("Initializing starting order");
+        // DebugLog("Initializing starting order");
         ulong candidateOrder = InitializeStartingOrder(prime, phi, divisorData);
         candidateOrder = ExponentLowering(candidateOrder, prime, phiFactors, divisorData);
 
-        DebugLog("Trying to confirm order");
+        // DebugLog("Trying to confirm order");
         if (TryConfirmOrder(prime, candidateOrder, divisorData, config))
         {
             return new PrimeOrderResult(PrimeOrderStatus.Found, candidateOrder);
@@ -222,7 +222,7 @@ internal static partial class PrimeOrderCalculator
             return new PrimeOrderResult(PrimeOrderStatus.Found, order);
         }
 
-        DebugLog("Heuristic unresolved, finishing strictly");
+        // DebugLog("Heuristic unresolved, finishing strictly");
         return FinishStrictly(prime, config.Mode);
     }
 
@@ -326,13 +326,13 @@ internal static partial class PrimeOrderCalculator
         }
 
         // Calculating `a^order ≡ 1 (mod p)` is a prerequisite for `order` being the actual order of 2 modulo `p`.
-        DebugLog("Verifying a^order ≡ 1 (mod p)");
+        // DebugLog("Verifying a^order ≡ 1 (mod p)");
         if (!Pow2EqualsOne(order, prime, divisorData))
         {
             return false;
         }
 
-        DebugLog("Partial factoring order");
+        // DebugLog("Partial factoring order");
 
         // TODO: Do we do partial factoring of order multiple times?
         PartialFactorResult factorization = PartialFactor(order, config);
@@ -345,12 +345,12 @@ internal static partial class PrimeOrderCalculator
         {
             if (factorization.Cofactor <= 1UL)
             {
-            DebugLog("Cofactor <= 1. No factors found");
+            // DebugLog("Cofactor <= 1. No factors found");
                 return false;
             }
 
             // TODO: Use Open.Numerics.Primality for this final check once it's available.
-            DebugLog("Cofactor > 1. Testing primality of cofactor");
+            // DebugLog("Cofactor > 1. Testing primality of cofactor");
             bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factorization.Cofactor);
             // bool isPrime = PrimeTester.IsPrimeInternal(factorization.Cofactor, CancellationToken.None);
             if (!isPrime)
@@ -358,12 +358,12 @@ internal static partial class PrimeOrderCalculator
                 return false;
             }
 
-            DebugLog("Adding cofactor as prime factor");
+            // DebugLog("Adding cofactor as prime factor");
             factorization = factorization.WithAdditionalPrime(factorization.Cofactor);
         }
 
         ReadOnlySpan<FactorEntry> span = factorization.Factors;
-        DebugLog("Verifying prime-power reductions");
+        // DebugLog("Verifying prime-power reductions");
         int length = factorization.Count;
         for (int i = 0; i < length; i++)
         {
@@ -403,7 +403,7 @@ internal static partial class PrimeOrderCalculator
         }
 
         // TODO: Do we do partial factoring of order multiple times?
-        DebugLog("Trying heuristic. Partial factoring order");
+        // DebugLog("Trying heuristic. Partial factoring order");
         PartialFactorResult orderFactors = PartialFactor(order, config);
         if (orderFactors.Factors is null)
         {
@@ -430,14 +430,14 @@ internal static partial class PrimeOrderCalculator
         int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks * 4;
         List<ulong> candidates = new(capacity);
         FactorEntry[] factorArray = orderFactors.Factors!;
-        DebugLog("Building candidates list");
+        // DebugLog("Building candidates list");
         BuildCandidates(order, factorArray, orderFactors.Count, candidates, capacity);
         if (candidates.Count == 0)
         {
             return false;
         }
 
-        DebugLog("Sorting candidates");
+        // DebugLog("Sorting candidates");
         SortCandidates(prime, previousOrder, candidates);
 
         int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
@@ -446,7 +446,7 @@ internal static partial class PrimeOrderCalculator
         bool allowGpuBatch = true;
         Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
 
-        DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
+        // DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
         int index = 0;
         const int MaxGpuBatchSize = 1024;
         const int StackGpuBatchSize = 1024;
@@ -545,7 +545,7 @@ internal static partial class PrimeOrderCalculator
             index += batchSize;
         }
 
-        DebugLog("No candidate confirmed");
+        // DebugLog("No candidate confirmed");
         return false;
     }
 
@@ -835,7 +835,7 @@ internal static partial class PrimeOrderCalculator
 
         if (config.PollardRhoMilliseconds > 0 && pending.Count > 0)
         {
-            DebugLog("Processing pending composites with Pollard's Rho");
+            // DebugLog("Processing pending composites with Pollard's Rho");
             Stopwatch stopwatch = Stopwatch.StartNew();
             long budgetTicks = TimeSpan.FromMilliseconds(config.PollardRhoMilliseconds).Ticks;
             Stack<ulong> stack = new();
@@ -895,7 +895,7 @@ internal static partial class PrimeOrderCalculator
         {
             if ((counts is null || counts.Count == 0) && cofactor == value)
             {
-                DebugLog("cofactor is the same as value, no factors found");
+                // DebugLog("cofactor is the same as value, no factors found");
                 return new PartialFactorResult(null, value, false, 0);
             }
 
@@ -906,7 +906,7 @@ internal static partial class PrimeOrderCalculator
 
             FactorEntry[] factors = ArrayPool<FactorEntry>.Shared.Rent(counts.Count);
             int index = 0;
-            DebugLog(() => $"Collecting {counts.Count} prime factors");
+            // DebugLog(() => $"Collecting {counts.Count} prime factors");
             foreach (KeyValuePair<ulong, int> entry in counts)
             {
                 factors[index] = new FactorEntry(entry.Key, entry.Value);
@@ -937,7 +937,7 @@ internal static partial class PrimeOrderCalculator
         {
             if (cofactor == value)
             {
-                DebugLog("cofactor is the same as value, no factors found");
+                // DebugLog("cofactor is the same as value, no factors found");
                 return new PartialFactorResult(null, value, false, 0);
             }
 
@@ -946,7 +946,7 @@ internal static partial class PrimeOrderCalculator
 
         FactorEntry[] array = new FactorEntry[actualCount];
         int arrayIndex = 0;
-        DebugLog(() => $"Collecting {actualCount} prime factors");
+        // DebugLog(() => $"Collecting {actualCount} prime factors");
         for (int i = 0; i < factorCount; i++)
         {
             ulong primeValue = primeSlots[i];
