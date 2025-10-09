@@ -38,34 +38,65 @@ public static class MersenneNumberDivisorByDivisorTester
         if (previousResults is not null && previousResults.Count > 0)
         {
             int recordedCount = previousResults.Count;
-            ulong[] recordedCandidates = ArrayPool<ulong>.Shared.Rent(recordedCount);
-            try
+            bool preferSortedMerge = recordedCount <= 4096 || (recordedCount * 4L) <= candidateCount;
+            if (preferSortedMerge)
             {
-                Span<ulong> recordedSpan = recordedCandidates.AsSpan(0, recordedCount);
-                int recordedIndex = 0;
-                foreach (ulong value in previousResults.Keys)
+                ulong[] recordedCandidates = ArrayPool<ulong>.Shared.Rent(recordedCount);
+                try
                 {
-                    recordedSpan[recordedIndex++] = value;
+                    Span<ulong> recordedSpan = recordedCandidates.AsSpan(0, recordedCount);
+                    int recordedIndex = 0;
+                    foreach (ulong value in previousResults.Keys)
+                    {
+                        recordedSpan[recordedIndex++] = value;
+                    }
+
+                    recordedSpan.Sort();
+
+                    int writeIndex = 0;
+                    int skipIndex = 0;
+
+                    for (int readIndex = 0; readIndex < candidateCount; readIndex++)
+                    {
+                        ulong candidate = candidateSpan[readIndex];
+
+                        while (skipIndex < recordedCount && recordedSpan[skipIndex] < candidate)
+                        {
+                            skipIndex++;
+                        }
+
+                        if (skipIndex < recordedCount && recordedSpan[skipIndex] == candidate)
+                        {
+                            skippedByPreviousResults++;
+                            skipIndex++;
+                            continue;
+                        }
+
+                        candidateSpan[writeIndex++] = candidate;
+                    }
+
+                    if (writeIndex < candidateCount)
+                    {
+                        candidates.RemoveRange(writeIndex, candidateCount - writeIndex);
+                        candidateSpan = CollectionsMarshal.AsSpan(candidates); // candidateSpan now tracks the reduced list.
+                        candidateCount = candidateSpan.Length;
+                    }
                 }
-
-                recordedSpan.Sort();
-
+                finally
+                {
+                    ArrayPool<ulong>.Shared.Return(recordedCandidates, clearArray: true);
+                }
+            }
+            else
+            {
                 int writeIndex = 0;
-                int skipIndex = 0;
-
                 for (int readIndex = 0; readIndex < candidateCount; readIndex++)
                 {
                     ulong candidate = candidateSpan[readIndex];
 
-                    while (skipIndex < recordedCount && recordedSpan[skipIndex] < candidate)
-                    {
-                        skipIndex++;
-                    }
-
-                    if (skipIndex < recordedCount && recordedSpan[skipIndex] == candidate)
+                    if (previousResults.ContainsKey(candidate))
                     {
                         skippedByPreviousResults++;
-                        skipIndex++;
                         continue;
                     }
 
@@ -75,13 +106,9 @@ public static class MersenneNumberDivisorByDivisorTester
                 if (writeIndex < candidateCount)
                 {
                     candidates.RemoveRange(writeIndex, candidateCount - writeIndex);
-                    candidateSpan = CollectionsMarshal.AsSpan(candidates);
+                    candidateSpan = CollectionsMarshal.AsSpan(candidates); // candidateSpan now tracks the reduced list.
                     candidateCount = candidateSpan.Length;
                 }
-            }
-            finally
-            {
-                ArrayPool<ulong>.Shared.Return(recordedCandidates, clearArray: true);
             }
         }
 
