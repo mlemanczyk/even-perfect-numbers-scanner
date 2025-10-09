@@ -391,7 +391,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             bool exponentStepperInitialized = false;
             byte hitValue = 0; // Reused for every prime processed in this batch.
 
-            bool EnsureExponentStepper()
+            bool EnsureExponentStepperInitialized()
             {
                 if (exponentStepperInitialized)
                 {
@@ -401,7 +401,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 exponentStepper = new ExponentRemainderStepper(cachedData);
                 if (!exponentStepper.IsValidModulus)
                 {
-                    hits.Clear();
                     return false;
                 }
 
@@ -418,8 +417,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 }
                 else
                 {
-                    if (!EnsureExponentStepper())
+                    if (!EnsureExponentStepperInitialized())
                     {
+                        hits.Clear();
                         return;
                     }
 
@@ -446,8 +446,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                     continue;
                 }
 
-                if (!EnsureExponentStepper())
+                if (!EnsureExponentStepperInitialized())
                 {
+                    hits.Clear();
                     return;
                 }
 
@@ -571,7 +572,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 HasState = true,
             };
 
-            ulong quotient = Math.DivRem(mersenne, divisor, out ulong remainder);
+            ulong quotient = mersenne / divisor;
+            ulong remainder = mersenne % divisor;
             state.Quotient = quotient;
             state.Remainder = remainder;
             ulong residue = ComputeResidueFromRemainder(remainder, divisor);
