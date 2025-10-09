@@ -364,7 +364,6 @@ internal static partial class PrimeOrderCalculator
                 return false;
             }
 
-            // TODO: Use Open.Numerics.Primality for this final check once it's available.
             // DebugLog("Cofactor > 1. Testing primality of cofactor");
             bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factorization.Cofactor);
             // bool isPrime = PrimeTester.IsPrimeInternal(factorization.Cofactor, CancellationToken.None);
