@@ -129,7 +129,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private readonly struct DebugLoggingScope : IDisposable
+    private readonly struct DebugLoggingScope
     {
         private readonly bool _previous;
 
@@ -194,7 +194,7 @@ internal static partial class PrimeOrderCalculator
             return gpuResult;
         }
 
-        using var debugScope = UseDebugLogging(!IsGpuHeuristicDevice);
+        // using var debugScope = UseDebugLogging(!IsGpuHeuristicDevice);
         // DebugLog("Partial factoring φ(p)");
 
         using PartialFactorResult phiFactors = PartialFactor(phi, config);
@@ -212,7 +212,7 @@ internal static partial class PrimeOrderCalculator
     private static PrimeOrderResult RunHeuristicPipeline(
         ulong prime,
         ulong? previousOrder,
-        PrimeOrderSearchConfig config,
+        in PrimeOrderSearchConfig config,
         in MontgomeryDivisorData divisorData,
         ulong phi,
         PartialFactorResult phiFactors)
@@ -343,7 +343,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static bool TryConfirmOrder(ulong prime, ulong order, in MontgomeryDivisorData divisorData, PrimeOrderSearchConfig config)
+    private static bool TryConfirmOrder(ulong prime, ulong order, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
     {
         if (order == 0UL)
         {
@@ -424,7 +424,7 @@ internal static partial class PrimeOrderCalculator
         ulong order,
         ulong? previousOrder,
         in MontgomeryDivisorData divisorData,
-        PrimeOrderSearchConfig config,
+        in PrimeOrderSearchConfig config,
         PartialFactorResult phiFactors,
         out ulong result)
     {
@@ -757,7 +757,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static bool TryConfirmCandidate(ulong prime, ulong candidate, in MontgomeryDivisorData divisorData, PrimeOrderSearchConfig config, ref int powUsed, int powBudget)
+    private static bool TryConfirmCandidate(ulong prime, ulong candidate, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config, ref int powUsed, int powBudget)
     {
         PartialFactorResult factorization = PartialFactor(candidate, config);
         try
@@ -989,7 +989,7 @@ internal static partial class PrimeOrderCalculator
         return dictionary;
     }
 
-    private static PartialFactorResult PartialFactor(ulong value, PrimeOrderSearchConfig config)
+    private static PartialFactorResult PartialFactor(ulong value, in PrimeOrderSearchConfig config)
     {
         if (value <= 1UL)
         {
