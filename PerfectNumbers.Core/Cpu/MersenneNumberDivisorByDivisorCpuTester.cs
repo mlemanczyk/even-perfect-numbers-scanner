@@ -80,9 +80,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             return true;
         }
 
-        ulong processedCount;
-        ulong lastProcessed;
-        bool processedAll;
+        ulong processedCount = 0UL;
+        ulong lastProcessed = 0UL;
+        bool processedAll = false;
 
         bool composite = CheckDivisors(
             prime,
@@ -238,20 +238,19 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                     }
                 }
 
-				if (divisorCycle != 0 && divisorCycle == prime)
-				{
-					processedAll = true;
-					return true;
-				}
-				else if (divisorCycle == 0)
-				{
-					Console.WriteLine($"Divisor cycle wasn't calculated for ${prime}");
-				}				
-				// if (divisorCycle != 0UL && CheckDivisor(prime, divisorCycle, divisorData) != 0)
-				// {
-				// 	processedAll = true;
-				// 	return true;
-				// }
+                if (divisorCycle == prime)
+                {
+                    // A cycle equal to the tested exponent (which is prime in this path)
+                    // guarantees that the candidate divides the corresponding Mersenne
+                    // number because the order of 2 modulo the divisor is exactly p.
+                    processedAll = true;
+                    return true;
+                }
+
+                if (divisorCycle == 0UL)
+                {
+                    Console.WriteLine($"Divisor cycle was not calculated for {prime}");
+                }
             }
 
             divisor += step;
@@ -299,9 +298,16 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         }
 
         ulong total = _lastStatusDivisor + processedCount;
-        // TODO: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI
-        // status benchmarks so we avoid `%` in this hot loop while still wrapping progress correctly.
-        _lastStatusDivisor = total % interval;
+        if (total >= interval)
+        {
+            do
+            {
+                total -= interval;
+            }
+            while (total >= interval);
+        }
+
+        _lastStatusDivisor = total;
     }
 
     private static ulong ComputeDivisorLimitFromMaxPrime(ulong maxPrime)
