@@ -48,6 +48,7 @@ internal static partial class PrimeOrderCalculator
         PhiPartialFactorizationFailed,
         StrictModeRequested,
         HeuristicPipelineUnresolved,
+        HeuristicPipelineAssumedFullOrder,
     }
 
     internal readonly struct PrimeOrderSearchConfig
@@ -235,9 +236,10 @@ internal static partial class PrimeOrderCalculator
             return new PrimeOrderResult(PrimeOrderStatus.Found, order);
         }
 
-        // DebugLog("Heuristic unresolved, finishing strictly");
-        HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.HeuristicPipelineUnresolved);
-        return FinishStrictly(prime, divisorData, config.Mode);
+        // DebugLog("Heuristic unresolved, assuming current order");
+        HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.HeuristicPipelineAssumedFullOrder);
+        // The heuristic pipeline could not rule out additional divisors; assume the current order is final.
+        return new PrimeOrderResult(PrimeOrderStatus.Found, candidateOrder);
     }
 
     private static PrimeOrderResult FinishStrictly(ulong prime, in MontgomeryDivisorData divisorData, PrimeOrderMode mode)

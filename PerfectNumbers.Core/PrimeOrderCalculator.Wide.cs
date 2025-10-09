@@ -118,8 +118,9 @@ internal static partial class PrimeOrderCalculator
             return new PrimeOrderResultWide(PrimeOrderStatus.Found, order);
         }
 
-        HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.HeuristicPipelineUnresolved);
-        return FinishStrictlyWide(prime, divisorData, config.Mode);
+        HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.HeuristicPipelineAssumedFullOrder);
+        // The heuristic pipeline could not narrow the order any further; assume the current order is final.
+        return new PrimeOrderResultWide(PrimeOrderStatus.Found, candidateOrder);
     }
 
     private static PrimeOrderResultWide FinishStrictlyWide(UInt128 prime, in MontgomeryDivisorData divisorData, PrimeOrderMode mode)
