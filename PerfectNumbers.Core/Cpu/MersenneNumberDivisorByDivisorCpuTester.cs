@@ -209,6 +209,23 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         // Keep the divisibility filters aligned with the divisor-cycle generator so the
         // CPU path never requests cycles that were skipped during cache creation.
         bool lastIsSeven = (prime & 3UL) == 3UL;
+        bool hasExactMersenne;
+        ulong mersenne;
+        if (prime <= 63UL)
+        {
+            mersenne = (1UL << (int)prime) - 1UL;
+            hasExactMersenne = true;
+        }
+        else if (prime == 64UL)
+        {
+            mersenne = ulong.MaxValue;
+            hasExactMersenne = true;
+        }
+        else
+        {
+            mersenne = 0UL;
+            hasExactMersenne = false;
+        }
 
         while (divisor <= limit)
         {
@@ -253,13 +270,29 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 }
             }
 
-            divisor += step;
-            remainder10 = AddMod(remainder10, step10, (byte)10);
-            remainder8 = AddMod(remainder8, step8, (byte)8);
-            remainder5 = AddMod(remainder5, step5, (byte)5);
-            remainder3 = AddMod(remainder3, step3, (byte)3);
-            remainder7 = AddMod(remainder7, step7, (byte)7);
-            remainder11 = AddMod(remainder11, step11, (byte)11);
+            ulong increments = 1UL;
+            if (divisor > UInt128.One)
+            {
+                ulong skip = ComputeBitSkipIncrements(
+                    step,
+                    divisor,
+                    limit,
+                    hasExactMersenne,
+                    mersenne);
+                if (skip > 1UL)
+                {
+                    increments = skip;
+                }
+            }
+
+            UInt128 incrementAmount = step * increments;
+            divisor += incrementAmount;
+            remainder10 = AdvanceRemainder(remainder10, step10, (byte)10, increments);
+            remainder8 = AdvanceRemainder(remainder8, step8, (byte)8, increments);
+            remainder5 = AdvanceRemainder(remainder5, step5, (byte)5, increments);
+            remainder3 = AdvanceRemainder(remainder3, step3, (byte)3, increments);
+            remainder7 = AdvanceRemainder(remainder7, step7, (byte)7, increments);
+            remainder11 = AdvanceRemainder(remainder11, step11, (byte)11, increments);
         }
 
         processedAll = divisor > limit;
@@ -281,6 +314,248 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         }
 
         return (byte)sum;
+    }
+
+    private static byte AdvanceRemainder(byte remainder, byte delta, byte modulus, ulong increments)
+    {
+        if (increments == 0UL || modulus == 0)
+        {
+            return remainder;
+        }
+
+        ulong modulusValue = (ulong)modulus;
+        ulong scaledDelta = ((ulong)delta * (increments % modulusValue)) % modulusValue;
+        byte reducedDelta = (byte)scaledDelta;
+        int sum = remainder + reducedDelta;
+        if (sum >= modulus)
+        {
+            sum -= modulus;
+        }
+
+        return (byte)sum;
+    }
+
+    private static ulong ComputeBitSkipIncrements(
+        UInt128 step,
+        UInt128 divisor,
+        UInt128 limit,
+        bool hasExactMersenne,
+        ulong mersenne)
+    {
+        if (step == UInt128.Zero || divisor <= UInt128.One || limit <= divisor || limit <= UInt128.One)
+        {
+            return 1UL;
+        }
+
+        UInt128 maxK = (limit - UInt128.One) / step;
+        if (maxK == UInt128.Zero)
+        {
+            return 1UL;
+        }
+
+        UInt128 currentK = (divisor - UInt128.One) / step;
+        if (currentK >= maxK)
+        {
+            return 1UL;
+        }
+
+        if (hasExactMersenne && divisor <= (UInt128)ulong.MaxValue && step <= (UInt128)ulong.MaxValue)
+        {
+            ulong divisor64 = (ulong)divisor;
+            ulong step64 = (ulong)step;
+            if (step64 == 0UL)
+            {
+                return 1UL;
+            }
+
+            ulong quotient = mersenne / divisor64;
+            if (quotient <= 1UL)
+            {
+                return 1UL;
+            }
+
+            int bitLength = BitOperations.Log2(quotient) + 1;
+            if (bitLength <= 1)
+            {
+                return 1UL;
+            }
+
+            int shift = bitLength - 1;
+            if (shift >= 64)
+            {
+                return 1UL;
+            }
+
+            ulong denominator = 1UL << shift;
+            if (denominator == 0UL)
+            {
+                return 1UL;
+            }
+
+            ulong baseBound = mersenne / denominator;
+            UInt128 minDivisor = (UInt128)baseBound + UInt128.One;
+            if (minDivisor <= divisor)
+            {
+                return 1UL;
+            }
+
+            UInt128 minNumerator = minDivisor - UInt128.One;
+            UInt128 targetK = DivideRoundUp128(minNumerator, step);
+            if (targetK <= currentK + UInt128.One || targetK > maxK)
+            {
+                return 1UL;
+            }
+
+            UInt128 increments128 = targetK - currentK;
+            if (increments128 <= UInt128.One || increments128 > (UInt128)ulong.MaxValue)
+            {
+                return 1UL;
+            }
+
+            return (ulong)increments128;
+        }
+
+        int divisorLog = GetLog2(divisor);
+        int nextBitIndex = divisorLog + 1;
+        if (nextBitIndex >= 128)
+        {
+            return 1UL;
+        }
+
+        UInt128 nextPower = UInt128.One << nextBitIndex;
+        if (nextPower <= divisor)
+        {
+            return 1UL;
+        }
+
+        UInt128 delta = nextPower - divisor;
+        UInt128 incrementsCandidate = DivideRoundUp128(delta, step);
+        if (incrementsCandidate <= UInt128.One)
+        {
+            return 1UL;
+        }
+
+        UInt128 remainingK = maxK - currentK;
+        if (incrementsCandidate > remainingK)
+        {
+            return 1UL;
+        }
+
+        UInt128 projectedDivisor = divisor + step * incrementsCandidate;
+        if (projectedDivisor > limit)
+        {
+            return 1UL;
+        }
+
+        if (incrementsCandidate > (UInt128)ulong.MaxValue)
+        {
+            return 1UL;
+        }
+
+        return (ulong)incrementsCandidate;
+    }
+
+    private static int GetLog2(UInt128 value)
+    {
+        if (value <= (UInt128)ulong.MaxValue)
+        {
+            return BitOperations.Log2((ulong)value);
+        }
+
+        ulong upper = (ulong)(value >> 64);
+        if (upper == 0UL)
+        {
+            return BitOperations.Log2((ulong)value);
+        }
+
+        return 64 + BitOperations.Log2(upper);
+    }
+
+    private static UInt128 DivideRoundUp128(UInt128 numerator, UInt128 divisor)
+    {
+        if (divisor == UInt128.Zero)
+        {
+            return UInt128.MaxValue;
+        }
+
+        if (numerator == UInt128.Zero)
+        {
+            return UInt128.Zero;
+        }
+
+        UInt128 quotient = numerator / divisor;
+        UInt128 remainder = numerator % divisor;
+        if (remainder == UInt128.Zero)
+        {
+            return quotient;
+        }
+
+        if (quotient == UInt128.MaxValue)
+        {
+            return UInt128.MaxValue;
+        }
+
+        return quotient + UInt128.One;
+    }
+
+    private static ulong DivideRoundUp128(UInt128 numerator, ulong divisor)
+    {
+        if (numerator == UInt128.Zero)
+        {
+            return 0UL;
+        }
+
+        if (divisor <= 1UL)
+        {
+            if (divisor == 1UL)
+            {
+                if (numerator > (UInt128)ulong.MaxValue)
+                {
+                    return ulong.MaxValue;
+                }
+
+                return (ulong)numerator;
+            }
+
+            return ulong.MaxValue;
+        }
+
+        UInt128 quotient = numerator / divisor;
+        UInt128 remainder = numerator % divisor;
+
+        if (quotient > (UInt128)ulong.MaxValue)
+        {
+            return ulong.MaxValue;
+        }
+
+        ulong result = (ulong)quotient;
+        if (remainder != UInt128.Zero)
+        {
+            if (result == ulong.MaxValue)
+            {
+                return ulong.MaxValue;
+            }
+
+            result++;
+        }
+
+        return result;
+    }
+
+    private static ulong DivideRoundUp(ulong value, ulong divisor)
+    {
+        if (divisor == 0UL)
+        {
+            return ulong.MaxValue;
+        }
+
+        ulong quotient = value / divisor;
+        if (value % divisor != 0UL)
+        {
+            quotient++;
+        }
+
+        return quotient;
     }
 
     private void UpdateStatusUnsafe(ulong processedCount)
@@ -373,7 +648,37 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             MontgomeryDivisorData cachedData = divisorData;
             if (cachedData.Modulus != divisor)
             {
-                cachedData = MontgomeryDivisorDataCache.Get(divisor);
+                bool reusedDivisorData = false;
+                if (length != 0)
+                {
+                    for (int stateIndex = 0; stateIndex < length; stateIndex++)
+                    {
+                        ulong statePrime = primes[stateIndex];
+                        if (!_primeStates.TryGetValue(statePrime, out PrimeDivisorState cachedState) || !cachedState.HasState)
+                        {
+                            continue;
+                        }
+
+                        if (cachedState.LastDivisor != divisor)
+                        {
+                            continue;
+                        }
+
+                        cachedData = new MontgomeryDivisorData(
+                            divisor,
+                            cachedState.NPrime,
+                            cachedState.MontgomeryOne,
+                            cachedState.MontgomeryTwo,
+                            cachedState.MontgomeryTwoSquared);
+                        reusedDivisorData = true;
+                        break;
+                    }
+                }
+
+                if (!reusedDivisorData)
+                {
+                    cachedData = MontgomeryDivisorDataCache.Get(divisor);
+                }
             }
 
             if (divisorCycle == 0UL)
@@ -391,14 +696,29 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             bool exponentStepperInitialized = false;
             byte hitValue = 0; // Reused for every prime processed in this batch.
 
-            bool EnsureExponentStepperInitialized()
+            bool EnsureExponentStepperInitialized(ulong currentDivisor, PrimeDivisorState? stateOverride)
             {
                 if (exponentStepperInitialized)
                 {
                     return true;
                 }
 
-                exponentStepper = new ExponentRemainderStepper(cachedData);
+                if (stateOverride.HasValue && stateOverride.Value.HasState && stateOverride.Value.LastDivisor == currentDivisor)
+                {
+                    PrimeDivisorState stateValue = stateOverride.Value;
+                    var stateData = new MontgomeryDivisorData(
+                        currentDivisor,
+                        stateValue.NPrime,
+                        stateValue.MontgomeryOne,
+                        stateValue.MontgomeryTwo,
+                        stateValue.MontgomeryTwoSquared);
+                    exponentStepper = new ExponentRemainderStepper(stateData);
+                }
+                else
+                {
+                    exponentStepper = new ExponentRemainderStepper(cachedData);
+                }
+
                 if (!exponentStepper.IsValidModulus)
                 {
                     return false;
@@ -408,22 +728,54 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 return true;
             }
 
+            bool TrySynchronizeExponentStepper(ulong exponent, ulong currentDivisor, ref PrimeDivisorState state, out byte hitFromState)
+            {
+                hitFromState = 0;
+                if (!state.HasState || state.LastDivisor != currentDivisor)
+                {
+                    return false;
+                }
+
+                EnsureMontgomeryResidue(exponent, currentDivisor, ref state);
+
+                if (!EnsureExponentStepperInitialized(currentDivisor, state))
+                {
+                    return false;
+                }
+
+                if (!exponentStepper.TryInitializeFromMontgomeryResult(exponent, state.MontgomeryResidue, out bool isUnity))
+                {
+                    return false;
+                }
+
+                hitFromState = isUnity ? (byte)1 : (byte)0;
+                return true;
+            }
+
             ulong remainder = cycleStepper.Initialize(primes[0]);
             if (remainder == 0UL)
             {
-                if (TryComputeAnalyticHit(primes[0], divisor, cachedData, out hitValue))
+                if (TryComputeAnalyticHit(primes[0], divisor, cachedData, out hitValue, out PrimeDivisorState analyticState))
                 {
                     hits[0] = hitValue;
                 }
                 else
                 {
-                    if (!EnsureExponentStepperInitialized())
+                    if (!analyticState.HasState && _primeStates.TryGetValue(primes[0], out analyticState))
                     {
-                        hits.Clear();
-                        return;
+                        // Reusing analyticState to reflect the cached snapshot for seeding the exponent stepper.
                     }
 
-                    hits[0] = exponentStepper.ComputeNextIsUnity(primes[0]) ? (byte)1 : (byte)0;
+                    if (TrySynchronizeExponentStepper(primes[0], divisor, ref analyticState, out byte synchronizedHit))
+                    {
+                        hits[0] = synchronizedHit;
+                    }
+                    else
+                    {
+                        // Rely on the zero cycle remainder to mark the divisor as a factor and drop any cached snapshot.
+                        hits[0] = 1;
+                        _primeStates.Remove(primes[0]);
+                    }
                 }
             }
             else
@@ -440,114 +792,305 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                     continue;
                 }
 
-                if (TryComputeAnalyticHit(primes[i], divisor, cachedData, out hitValue))
+                if (TryComputeAnalyticHit(primes[i], divisor, cachedData, out hitValue, out PrimeDivisorState analyticState))
                 {
                     hits[i] = hitValue;
                     continue;
                 }
 
-                if (!EnsureExponentStepperInitialized())
+                if (!analyticState.HasState && _primeStates.TryGetValue(primes[i], out analyticState))
                 {
-                    hits.Clear();
-                    return;
+                    // Reusing analyticState to hydrate the cached snapshot before invoking the exponent stepper.
                 }
 
-                hits[i] = exponentStepper.ComputeNextIsUnity(primes[i]) ? (byte)1 : (byte)0;
+                if (TrySynchronizeExponentStepper(primes[i], divisor, ref analyticState, out byte synchronizedHit))
+                {
+                    hits[i] = synchronizedHit;
+                    continue;
+                }
+
+                // Zero cycle remainder implies the divisor's order matches the exponent, so record the hit and discard stale state.
+                hits[i] = 1;
+                _primeStates.Remove(primes[i]);
             }
         }
 
-        private bool TryComputeAnalyticHit(ulong prime, ulong divisor, in MontgomeryDivisorData divisorData, out byte hit)
+
+        
+        private bool TryComputeAnalyticHit(ulong prime, ulong divisor, in MontgomeryDivisorData divisorData, out byte hit, out PrimeDivisorState updatedState)
         {
             hit = 0;
-
+            updatedState = default;
+        
             if (!TryGetMersenneMinusOne(prime, out ulong mersenne))
             {
                 return false;
             }
-
+        
             if (divisor <= 1UL)
             {
                 return false;
             }
-
+        
             ulong step = prime << 1;
             if (step == 0UL)
             {
                 return false;
             }
-
+        
             if (!_primeStates.TryGetValue(prime, out PrimeDivisorState state) || !state.HasState)
             {
                 state = CreatePrimeState(step, divisor, mersenne, divisorData);
+                // Reusing state to store the freshly initialized snapshot for this prime.
                 _primeStates[prime] = state;
+                updatedState = state;
                 hit = state.Remainder == 0UL ? (byte)1 : (byte)0;
                 return true;
             }
-
+        
             if (state.Step != step || divisor <= state.LastDivisor)
             {
                 state = CreatePrimeState(step, divisor, mersenne, divisorData);
+                // Reusing state to replace the stale snapshot because the divisor progression reset.
                 _primeStates[prime] = state;
+                updatedState = state;
                 hit = state.Remainder == 0UL ? (byte)1 : (byte)0;
                 return true;
             }
-
+        
             ulong difference = divisor - state.LastDivisor;
             if (difference == 0UL)
             {
+                updatedState = state;
                 hit = state.Remainder == 0UL ? (byte)1 : (byte)0;
                 return true;
             }
-
+        
             if (difference % step != 0UL)
             {
                 state = CreatePrimeState(step, divisor, mersenne, divisorData);
+                // Reusing state again to recover from a non-uniform divisor increment.
                 _primeStates[prime] = state;
+                updatedState = state;
                 hit = state.Remainder == 0UL ? (byte)1 : (byte)0;
                 return true;
             }
-
+        
             ulong increments = difference / step;
             ulong quotient = state.Quotient;
             ulong remainder = state.Remainder;
             ulong currentDivisor = state.LastDivisor;
+            ulong reciprocal = state.Reciprocal;
+            MontgomeryDivisorData divisorDataCopy = divisorData;
+            PrimeDivisorState localUpdatedState = default;
+            byte localHit = 0;
+
+            bool ResetState()
+            {
+                state = CreatePrimeState(step, divisor, mersenne, divisorDataCopy);
+                // Reusing state to rebuild the analytic snapshot after the fast path failed.
+                _primeStates[prime] = state;
+                localUpdatedState = state;
+                localHit = state.Remainder == 0UL ? (byte)1 : (byte)0;
+                return true;
+            }
+
+            bool TryComputeDelta(
+                UInt128 numeratorValue,
+                ulong divisorValue,
+                ref ulong reciprocalValue,
+                bool allowExactFallback,
+                out ulong deltaValue,
+                out UInt128 compensatedProductValue)
+            {
+                deltaValue = 0UL;
+                compensatedProductValue = UInt128.Zero;
+
+                if (numeratorValue == UInt128.Zero)
+                {
+                    return true;
+                }
+
+                ulong workingReciprocal = reciprocalValue;
+                UInt128 workingProduct = UInt128.Zero;
+                ulong candidateDelta = DivideRoundUpUsingReciprocal(numeratorValue, divisorValue, workingReciprocal);
+                if (candidateDelta == ulong.MaxValue)
+                {
+                    workingReciprocal = ComputeReciprocalEstimate(divisorValue);
+                    candidateDelta = DivideRoundUpUsingReciprocal(numeratorValue, divisorValue, workingReciprocal);
+
+                    if (candidateDelta == ulong.MaxValue)
+                    {
+                        ulong refinedReciprocal = RefineReciprocalEstimate(workingReciprocal, divisorValue);
+                        if (refinedReciprocal != 0UL && refinedReciprocal != ulong.MaxValue)
+                        {
+                            workingReciprocal = refinedReciprocal;
+                            candidateDelta = DivideRoundUpUsingReciprocal(numeratorValue, divisorValue, workingReciprocal);
+                        }
+                    }
+                }
+
+                if (candidateDelta == ulong.MaxValue)
+                {
+                    if (!allowExactFallback
+                        || !TryComputeDeltaExact(numeratorValue, divisorValue, ref workingReciprocal, out candidateDelta, out workingProduct))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    workingProduct = (UInt128)candidateDelta * divisorValue;
+                }
+
+                reciprocalValue = workingReciprocal;
+                compensatedProductValue = workingProduct;
+                deltaValue = candidateDelta;
+                return true;
+            }
+
+            bool TryComputeDeltaExact(
+                UInt128 numeratorValue,
+                ulong divisorValue,
+                ref ulong reciprocalValue,
+                out ulong deltaValue,
+                out UInt128 compensatedProductValue)
+            {
+                deltaValue = DivideRoundUp128(numeratorValue, divisorValue);
+                compensatedProductValue = UInt128.Zero;
+                if (deltaValue == ulong.MaxValue)
+                {
+                    return false;
+                }
+
+                compensatedProductValue = (UInt128)deltaValue * divisorValue;
+
+                ulong refreshedReciprocal = ComputeReciprocalEstimate(divisorValue);
+                if (refreshedReciprocal != 0UL && refreshedReciprocal != ulong.MaxValue)
+                {
+                    ulong refinedReciprocal = RefineReciprocalEstimate(refreshedReciprocal, divisorValue);
+                    if (refinedReciprocal != 0UL && refinedReciprocal != ulong.MaxValue)
+                    {
+                        reciprocalValue = refinedReciprocal;
+                    }
+                    else
+                    {
+                        reciprocalValue = refreshedReciprocal;
+                    }
+                }
+
+                return true;
+            }
 
             for (ulong index = 0UL; index < increments; index++)
             {
                 ulong nextDivisor = currentDivisor + step;
-                Int128 stepTimesQuotient = (Int128)step * (Int128)quotient;
-                Int128 numerator = stepTimesQuotient - (Int128)remainder;
-                Int128 divisorInt = (Int128)nextDivisor;
-                Int128 deltaInt = numerator >= 0
-                    ? (numerator + divisorInt - Int128.One) / divisorInt
-                    : numerator / divisorInt;
+                reciprocal = RefineReciprocalEstimate(reciprocal, nextDivisor);
 
-                if (deltaInt < Int128.Zero)
+                UInt128 stepTimesQuotient = (UInt128)step * quotient;
+                ulong previousRemainder = remainder;
+                ulong delta = 0UL;
+                UInt128 compensatedProduct = UInt128.Zero;
+                if (stepTimesQuotient > remainder)
                 {
-                    deltaInt = Int128.Zero;
+                    UInt128 numerator = stepTimesQuotient - previousRemainder;
+                    if (!TryComputeDelta(numerator, nextDivisor, ref reciprocal, true, out delta, out compensatedProduct))
+                    {
+                        // Reusing state to rebuild the analytic snapshot after the fast path failed to produce a delta.
+                        ResetState();
+                        updatedState = localUpdatedState;
+                        hit = localHit;
+                        return true;
+                    }
+
+                    if (delta > quotient)
+                    {
+                        if (!TryComputeDeltaExact(numerator, nextDivisor, ref reciprocal, out delta, out compensatedProduct)
+                            || delta > quotient)
+                        {
+                            // Rebuilding the analytic snapshot after the analytic delta exceeded the cached quotient.
+                            ResetState();
+                            updatedState = localUpdatedState;
+                            hit = localHit;
+                            return true;
+                        }
+                    }
+
+                    UInt128 reducedRemainder = compensatedProduct - numerator;
+                    if (reducedRemainder >= nextDivisor)
+                    {
+                        if (!TryComputeDeltaExact(numerator, nextDivisor, ref reciprocal, out delta, out compensatedProduct))
+                        {
+                            // Reusing state to rebuild the analytic snapshot after the remainder correction failed.
+                            ResetState();
+                            updatedState = localUpdatedState;
+                            hit = localHit;
+                            return true;
+                        }
+
+                        if (delta > quotient)
+                        {
+                            // Rebuilding the analytic snapshot after the corrected delta exceeded the cached quotient.
+                            ResetState();
+                            updatedState = localUpdatedState;
+                            hit = localHit;
+                            return true;
+                        }
+
+                        reducedRemainder = compensatedProduct - numerator;
+                        if (reducedRemainder >= nextDivisor)
+                        {
+                            // Reusing state to rebuild the analytic snapshot after the compensated remainder escaped twice.
+                            ResetState();
+                            updatedState = localUpdatedState;
+                            hit = localHit;
+                            return true;
+                        }
+                    }
+
+                    remainder = (ulong)reducedRemainder;
                 }
 
-                ulong delta = (ulong)deltaInt;
                 if (delta > quotient)
                 {
-                    state = CreatePrimeState(step, divisor, mersenne, divisorData);
-                    _primeStates[prime] = state;
-                    hit = state.Remainder == 0UL ? (byte)1 : (byte)0;
-                    return true;
-                }
+                    UInt128 numeratorForCorrection = UInt128.Zero;
+                    if (stepTimesQuotient > previousRemainder)
+                    {
+                        numeratorForCorrection = stepTimesQuotient - previousRemainder;
+                    }
 
-                Int128 t = (Int128)remainder - stepTimesQuotient;
-                Int128 nextRemainder = t + deltaInt * divisorInt;
-                if (nextRemainder < Int128.Zero || nextRemainder >= divisorInt)
-                {
-                    state = CreatePrimeState(step, divisor, mersenne, divisorData);
-                    _primeStates[prime] = state;
-                    hit = state.Remainder == 0UL ? (byte)1 : (byte)0;
-                    return true;
+                    if (numeratorForCorrection != UInt128.Zero
+                        && TryComputeDeltaExact(numeratorForCorrection, nextDivisor, ref reciprocal, out ulong correctedDelta, out UInt128 correctedProduct)
+                        && correctedDelta <= quotient)
+                    {
+                        delta = correctedDelta;
+                        UInt128 correctedRemainder = correctedProduct - numeratorForCorrection;
+                        if (correctedRemainder >= nextDivisor)
+                        {
+                            correctedRemainder -= nextDivisor;
+                            if (correctedRemainder >= nextDivisor)
+                            {
+                                // Reusing state to rebuild the analytic snapshot after the corrected remainder escaped twice.
+                                ResetState();
+                                updatedState = localUpdatedState;
+                                hit = localHit;
+                                return true;
+                            }
+                        }
+
+                        remainder = (ulong)correctedRemainder;
+                    }
+                    else
+                    {
+                        // Rebuilding the analytic snapshot after the analytic delta exhausted the quotient.
+                        ResetState();
+                        updatedState = localUpdatedState;
+                        hit = localHit;
+                        return true;
+                    }
                 }
 
                 quotient -= delta;
-                remainder = (ulong)nextRemainder;
                 currentDivisor = nextDivisor;
             }
 
@@ -555,12 +1098,152 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             state.LastDivisor = divisor;
             state.Quotient = quotient;
             state.Remainder = remainder;
-            state.MontgomeryResidue = ToMontgomeryResidue(residue, divisorData);
-            // Reuse state to persist the updated quotient and remainder tuple for the next divisor.
+            state.Reciprocal = reciprocal;
+            state.NPrime = divisorData.NPrime;
+            state.MontgomeryOne = divisorData.MontgomeryOne;
+            state.MontgomeryTwo = divisorData.MontgomeryTwo;
+            state.MontgomeryTwoSquared = divisorData.MontgomeryTwoSquared;
+            UpdateMontgomeryResidueSnapshot(ref state, residue, divisorData);
+            updatedState = state;
             _primeStates[prime] = state;
-
+        
             hit = remainder == 0UL ? (byte)1 : (byte)0;
             return true;
+        }
+        
+        private static ulong ComputeReciprocalEstimate(ulong divisor)
+        {
+            if (divisor <= 1UL)
+            {
+                return ulong.MaxValue;
+            }
+
+            UInt128 scaledOne = UInt128.One << 64;
+            UInt128 estimate = scaledOne / divisor;
+            if (scaledOne % divisor != UInt128.Zero)
+            {
+                estimate += UInt128.One;
+            }
+
+            if (estimate == UInt128.Zero)
+            {
+                return 1UL;
+            }
+
+            if (estimate > ulong.MaxValue)
+            {
+                return ulong.MaxValue;
+            }
+
+            return (ulong)estimate;
+        }
+
+        private static ulong RefineReciprocalEstimate(ulong reciprocal, ulong divisor)
+        {
+            if (divisor <= 1UL)
+            {
+                return ulong.MaxValue;
+            }
+
+            if (reciprocal == 0UL)
+            {
+                return ComputeReciprocalEstimate(divisor);
+            }
+
+            UInt128 reciprocal128 = reciprocal;
+            UInt128 divisor128 = divisor;
+            UInt128 product = divisor128 * reciprocal128;
+            UInt128 scaled = product >> 64;
+            UInt128 twoScaled = (UInt128)2 << 64;
+            if (scaled >= twoScaled)
+            {
+                return ComputeReciprocalEstimate(divisor);
+            }
+
+            UInt128 correction = twoScaled - scaled;
+            UInt128 refined = (reciprocal128 * correction) >> 64;
+            if (refined == UInt128.Zero)
+            {
+                return 1UL;
+            }
+
+            if (refined > ulong.MaxValue)
+            {
+                return ulong.MaxValue;
+            }
+
+            return (ulong)refined;
+        }
+
+        private static ulong DivideRoundUpUsingReciprocal(UInt128 numerator, ulong divisor, ulong reciprocal)
+        {
+            if (numerator == UInt128.Zero)
+            {
+                return 0UL;
+            }
+
+            if (divisor <= 1UL)
+            {
+                return ulong.MaxValue;
+            }
+
+            if (reciprocal == 0UL)
+            {
+                return ulong.MaxValue;
+            }
+
+            ulong high = (ulong)(numerator >> 64);
+            ulong low = (ulong)numerator;
+            if (high >= divisor)
+            {
+                return ulong.MaxValue;
+            }
+
+            UInt128 highProduct = (UInt128)high * reciprocal;
+            UInt128 lowProduct = (UInt128)low * reciprocal;
+            UInt128 estimateValue = highProduct + (lowProduct >> 64);
+
+            if (estimateValue > (UInt128)ulong.MaxValue)
+            {
+                return ulong.MaxValue;
+            }
+
+            ulong estimate = (ulong)estimateValue;
+            UInt128 product = (UInt128)estimate * divisor;
+
+            while (product > numerator)
+            {
+                if (estimate == 0UL)
+                {
+                    return 0UL;
+                }
+
+                estimate--;
+                product -= divisor;
+            }
+
+            UInt128 remainder = numerator - product;
+            while (remainder >= divisor)
+            {
+                remainder -= divisor;
+                estimate++;
+                if (estimate == ulong.MaxValue)
+                {
+                    return ulong.MaxValue;
+                }
+            }
+
+            if (remainder == UInt128.Zero)
+            {
+                return estimate;
+            }
+
+            if (estimate == ulong.MaxValue)
+            {
+                return ulong.MaxValue;
+            }
+
+            return estimate + 1UL;
         }
 
         private static PrimeDivisorState CreatePrimeState(ulong step, ulong divisor, ulong mersenne, in MontgomeryDivisorData divisorData)
@@ -569,6 +1252,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             {
                 Step = step,
                 LastDivisor = divisor,
+                Reciprocal = ComputeReciprocalEstimate(divisor),
+                NPrime = divisorData.NPrime,
+                MontgomeryOne = divisorData.MontgomeryOne,
+                MontgomeryTwo = divisorData.MontgomeryTwo,
+                MontgomeryTwoSquared = divisorData.MontgomeryTwoSquared,
                 HasState = true,
             };
 
@@ -577,7 +1265,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             state.Quotient = quotient;
             state.Remainder = remainder;
             ulong residue = ComputeResidueFromRemainder(remainder, divisor);
-            state.MontgomeryResidue = ToMontgomeryResidue(residue, divisorData);
+            UpdateMontgomeryResidueSnapshot(ref state, residue, divisorData);
             return state;
         }
 
@@ -610,7 +1298,40 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             return residue;
         }
 
-        private static ulong ToMontgomeryResidue(ulong value, in MontgomeryDivisorData divisorData)
+        private static void UpdateMontgomeryResidueSnapshot(ref PrimeDivisorState state, ulong residue, in MontgomeryDivisorData divisorData)
+        {
+            state.MontgomeryResidueValid = true;
+            if (residue == 0UL)
+            {
+                state.MontgomeryResidue = 0UL;
+                return;
+            }
+
+            if (residue == 1UL)
+            {
+                state.MontgomeryResidue = divisorData.MontgomeryOne;
+                return;
+            }
+
+            if (residue == 2UL)
+            {
+                state.MontgomeryResidue = divisorData.MontgomeryTwo;
+                return;
+            }
+
+            ulong modulus = divisorData.Modulus;
+            if (residue >= modulus)
+            {
+                // Reusing residue to hold the normalized value before entering Montgomery space.
+                residue -= modulus;
+            }
+
+            // Reusing residue again to capture the Montgomery representation for the cached snapshot.
+            residue = residue.MontgomeryMultiply(divisorData.MontgomeryTwoSquared, modulus, divisorData.NPrime);
+            state.MontgomeryResidue = residue;
+        }
+
+        private static ulong ConvertResidueToMontgomery(ulong residue, in MontgomeryDivisorData divisorData)
         {
             ulong modulus = divisorData.Modulus;
             if (modulus <= 1UL)
@@ -618,9 +1339,49 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 return 0UL;
             }
 
-            value %= modulus;
-            UInt128 shifted = (UInt128)value << 64;
-            return (ulong)(shifted % modulus);
+            if (residue >= modulus)
+            {
+                residue -= modulus;
+            }
+
+            if (residue == 0UL)
+            {
+                return 0UL;
+            }
+
+            if (residue == 1UL)
+            {
+                return divisorData.MontgomeryOne;
+            }
+
+            if (residue == 2UL)
+            {
+                return divisorData.MontgomeryTwo;
+            }
+
+            ulong montgomeryTwoSquared = divisorData.MontgomeryTwoSquared;
+            ulong nPrime = divisorData.NPrime;
+            return residue.MontgomeryMultiply(montgomeryTwoSquared, modulus, nPrime);
+        }
+
+        private void EnsureMontgomeryResidue(ulong exponent, ulong currentDivisor, ref PrimeDivisorState state)
+        {
+            if (state.MontgomeryResidueValid)
+            {
+                return;
+            }
+
+            var divisorData = new MontgomeryDivisorData(
+                currentDivisor,
+                state.NPrime,
+                state.MontgomeryOne,
+                state.MontgomeryTwo,
+                state.MontgomeryTwoSquared);
+
+            ulong residue = ComputeResidueFromRemainder(state.Remainder, currentDivisor);
+            state.MontgomeryResidue = ConvertResidueToMontgomery(residue, divisorData);
+            state.MontgomeryResidueValid = true;
+            _primeStates[exponent] = state;
         }
 
         private struct PrimeDivisorState
@@ -629,7 +1390,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             public ulong LastDivisor;
             public ulong Quotient;
             public ulong Remainder;
+            public ulong Reciprocal;
             public ulong MontgomeryResidue;
+            public ulong NPrime;
+            public ulong MontgomeryOne;
+            public ulong MontgomeryTwo;
+            public ulong MontgomeryTwoSquared;
+            public bool MontgomeryResidueValid;
             public bool HasState;
         }
 
