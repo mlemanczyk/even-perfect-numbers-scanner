@@ -290,7 +290,32 @@ public static class MersenneNumberDivisorByDivisorTester
                 MaxDegreeOfParallelism = workerCount
             };
 
-            Parallel.ForEach(filteredPrimes, options, ProcessPrime);
+            primeCount = filteredPrimes.Count; // Reusing primeCount to track the filtered count.
+            int primesPerWorker = (primeCount + workerCount - 1) / workerCount;
+
+            Parallel.For(
+                    0,
+                    workerCount,
+                    options,
+                    workerIndex =>
+                    {
+                        int start = workerIndex * primesPerWorker;
+                        if (start >= primeCount)
+                        {
+                            return;
+                        }
+
+                        int end = start + primesPerWorker;
+                        if (end > primeCount)
+                        {
+                            end = primeCount;
+                        }
+
+                        for (int i = start; i < end; i++)
+                        {
+                            ProcessPrime(filteredPrimes[i]);
+                        }
+                    });
         }
     }
 }
