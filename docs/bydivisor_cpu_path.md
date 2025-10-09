@@ -113,7 +113,28 @@ fits naturally.
    together with the `(Q_k, r_k)` tuple lets us skip redundant cache reads when
    the divisor stays within the hot range. (`MersenneNumberDivisorByDivisorCpuTester.cs`,
    lines 223-256.)
+4. **Reciprocal-based delta evaluation.** `DivisorScanSession.TryComputeAnalyticHit` already keeps the `(Q_k, r_k)` tuple
+   per exponent, but the current update loop advances one step at a time and divides by `nextDivisor` through `Int128`
+   arithmetic. (`MersenneNumberDivisorByDivisorCpuTester.cs`, lines 531-594.) We can remove the per-iteration division by
+   storing a 64-bit reciprocal of `d_k` alongside the state and updating it with a single Newton step when the divisor grows
+   by `2p`. Once the reciprocal is known, `Δ_k` follows from a multiply-high of `2p·Q_k - r_k`. This turns the loop into a
+   straight-line sequence of multiplies and subtractions and makes the state update viable even when we unroll multiple
+   increments at once.
+5. **Carry the Montgomery residue forward.** `PrimeDivisorState` already tracks `MontgomeryResidue`, yet the analytic path
+   currently recomputes it after the quotient update by calling `ToMontgomeryResidue`. (`MersenneNumberDivisorByDivisorCpuTester.cs`,
+   lines 602-618.) We can instead reuse the residue by multiplying it with the precomputed `R^2 mod d_k` factor that the
+   cache returns for every divisor. Because the divisor grows deterministically, we only need to fetch the updated Montgomery
+   constants when `d_k` crosses a cache boundary, letting the fast path avoid modular reductions entirely.
 
 These adjustments directly leverage the quotient progression we analysed and
 align with the existing TODO list, giving us a clear path to reduce the number of
 modular exponentiations and cache lookups in the CPU by-divisor path.
+
+## Implementation status
+
+* **Delta-driven Montgomery updates:** Implemented. The CPU session now keeps per-prime quotients, remainders, and last divisors so it can advance the analytic state across consecutive candidates, the reciprocal-corrected loop avoids per-step `UInt128` division, and zero cycle remainders short-circuit to direct Montgomery hits without invoking powmods.
+* **Bit-range skipping:** Implemented. The CPU divisor sweep now predicts when the quotient loses a bit across both 64-bit and wider strides by deriving the next jump with `UInt128` arithmetic,
+  and it only falls back to single-step increments when a projected jump would overshoot the configured limit or exceed `ulong.MaxValue`.
+* **Reuse Montgomery metadata:** Implemented. Each prime state now persists the divisor's `n'`, `R`, and `R^2` factors so resynchronization seeds the exponent stepper directly, and divisor sessions rebuild the Montgomery tuple from the cached state before touching the shared cache, meaning cache lookups only occur when no stored snapshot matches the new divisor.
+* **Reciprocal-based delta evaluation:** Implemented. The analytic updater now retries with a direct 128-bit division when the reciprocal corrections exhaust their tolerance, refreshes the cached reciprocal from that exact quotient, and keeps the progression on the analytic path without rebuilding the state.
+* **Carry the Montgomery residue forward:** Implemented. Each analytic update now normalizes the refreshed remainder and multiplies it by the cached `R^2 mod d` factor immediately, so the exponent stepper always has a Montgomery residue ready without recomputing modular reductions.
