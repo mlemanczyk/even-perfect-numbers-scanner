@@ -95,7 +95,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         {
             lock (_sync)
             {
-                UpdateStatusUnsafe(lastProcessed, processedCount);
+                UpdateStatusUnsafe(processedCount);
             }
         }
 
@@ -283,7 +283,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         return (byte)sum;
     }
 
-    private void UpdateStatusUnsafe(ulong lastProcessed, ulong processedCount)
+    private void UpdateStatusUnsafe(ulong processedCount)
     {
         if (processedCount == 0UL)
         {
@@ -298,9 +298,16 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         }
 
         ulong total = _lastStatusDivisor + processedCount;
-        // TODO: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI
-        // status benchmarks so we avoid `%` in this hot loop while still wrapping progress correctly.
-        _lastStatusDivisor = total % interval;
+        if (total >= interval)
+        {
+            do
+            {
+                total -= interval;
+            }
+            while (total >= interval);
+        }
+
+        _lastStatusDivisor = total;
     }
 
     private static ulong ComputeDivisorLimitFromMaxPrime(ulong maxPrime)
