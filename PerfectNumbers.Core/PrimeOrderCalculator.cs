@@ -1,12 +1,16 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
+using System.IO;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text;
 using PerfectNumbers.Core.Gpu;
 using System.Threading;
 
@@ -37,6 +41,13 @@ internal static partial class PrimeOrderCalculator
     {
         Heuristic,
         Strict,
+    }
+
+    private enum HeuristicFailureReason
+    {
+        PhiPartialFactorizationFailed,
+        StrictModeRequested,
+        HeuristicPipelineUnresolved,
     }
 
     internal readonly struct PrimeOrderSearchConfig
@@ -182,7 +193,8 @@ internal static partial class PrimeOrderCalculator
         if (phiFactors.Factors is null)
         {
             // DebugLog("No factors found");
-            return FinishStrictly(prime, config.Mode);
+            HeuristicFailureLog.Record(prime, null, HeuristicFailureReason.PhiPartialFactorizationFailed);
+            return FinishStrictly(prime, divisorData, config.Mode);
         }
 
         return RunHeuristicPipeline(prime, previousOrder, config, divisorData, phi, phiFactors);
@@ -214,7 +226,8 @@ internal static partial class PrimeOrderCalculator
 
         if (config.Mode == PrimeOrderMode.Strict)
         {
-            return FinishStrictly(prime, PrimeOrderMode.Strict);
+            HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.StrictModeRequested);
+            return FinishStrictly(prime, divisorData, PrimeOrderMode.Strict);
         }
 
         if (TryHeuristicFinish(prime, candidateOrder, previousOrder, divisorData, config, phiFactors, out ulong order))
@@ -223,13 +236,15 @@ internal static partial class PrimeOrderCalculator
         }
 
         // DebugLog("Heuristic unresolved, finishing strictly");
-        return FinishStrictly(prime, config.Mode);
+        HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.HeuristicPipelineUnresolved);
+        return FinishStrictly(prime, divisorData, config.Mode);
     }
 
-    private static PrimeOrderResult FinishStrictly(ulong prime, PrimeOrderMode mode)
+    private static PrimeOrderResult FinishStrictly(ulong prime, in MontgomeryDivisorData divisorData, PrimeOrderMode mode)
     {
-        ulong strictOrder = CalculateByDoubling(prime);
-        return new PrimeOrderResult(mode == PrimeOrderMode.Strict ? PrimeOrderStatus.Found : PrimeOrderStatus.HeuristicUnresolved, strictOrder);
+        ulong strictOrder = CalculateByFactorization(prime, divisorData);
+        PrimeOrderStatus status = mode == PrimeOrderMode.Strict ? PrimeOrderStatus.Found : PrimeOrderStatus.HeuristicUnresolved;
+        return new PrimeOrderResult(status, strictOrder);
     }
 
     private static bool TrySpecialMax(ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
@@ -785,6 +800,110 @@ internal static partial class PrimeOrderCalculator
         return exponent.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL;
     }
 
+    private static class HeuristicFailureLog
+    {
+        private const string LogFileName = "prime-order-heuristic-fallbacks.log";
+        private const int FlushThreshold = 4096;
+        private const int MaxBufferedEntries = 16;
+        private static readonly ConcurrentQueue<StringBuilder> s_builderPool = new();
+        private static readonly ThreadLocal<StringBuilder?> s_threadBuilder = new(() => AcquireBuilder(), trackAllValues: true);
+        private static readonly ThreadLocal<int> s_threadEntryCount = new(() => 0, trackAllValues: true);
+        private static readonly object s_fileLock = new();
+        private static readonly string s_logPath = Path.Combine(AppContext.BaseDirectory, LogFileName);
+        private static readonly UTF8Encoding s_utf8NoBom = new(false);
+
+        static HeuristicFailureLog()
+        {
+            AppDomain.CurrentDomain.ProcessExit += static (_, _) => FlushAll(force: true);
+        }
+
+        public static void Record(ulong prime, ulong? candidateOrder, HeuristicFailureReason reason)
+        {
+            string primeText = prime.ToString(CultureInfo.InvariantCulture);
+            string? candidateText = candidateOrder.HasValue ? candidateOrder.Value.ToString(CultureInfo.InvariantCulture) : null;
+            RecordInternal(primeText, candidateText, reason);
+        }
+
+        public static void Record(UInt128 prime, UInt128? candidateOrder, HeuristicFailureReason reason)
+        {
+            string primeText = prime.ToString(CultureInfo.InvariantCulture);
+            string? candidateText = candidateOrder.HasValue ? candidateOrder.Value.ToString(CultureInfo.InvariantCulture) : null;
+            RecordInternal(primeText, candidateText, reason);
+        }
+
+        private static void RecordInternal(string primeText, string? candidateText, HeuristicFailureReason reason)
+        {
+            StringBuilder? existing = s_threadBuilder.Value;
+            StringBuilder builder = existing ?? AcquireBuilder();
+            int count = s_threadEntryCount.Value + 1;
+            bool forceFlush = count >= MaxBufferedEntries;
+            builder.Append(DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
+            builder.Append(" | prime=");
+            builder.Append(primeText);
+            builder.Append(" | reason=");
+            builder.Append(reason);
+            if (candidateText is not null)
+            {
+                builder.Append(" | candidateOrder=");
+                builder.Append(candidateText);
+            }
+
+            builder.AppendLine();
+            FlushBuilderIfNeeded(builder, forceFlush);
+            if (builder.Length == 0)
+            {
+                count = 0;
+            }
+
+            s_threadEntryCount.Value = count;
+            s_threadBuilder.Value = builder;
+        }
+
+        private static void FlushAll(bool force)
+        {
+            foreach (StringBuilder? builder in s_threadBuilder.Values)
+            {
+                if (builder is not null)
+                {
+                    FlushBuilderIfNeeded(builder, force);
+                }
+            }
+        }
+
+        private static void FlushBuilderIfNeeded(StringBuilder builder, bool force)
+        {
+            if (builder.Length == 0)
+            {
+                return;
+            }
+
+            if (!force && builder.Length < FlushThreshold)
+            {
+                return;
+            }
+
+            string text = builder.ToString();
+            builder.Clear();
+            lock (s_fileLock)
+            {
+                using FileStream stream = new FileStream(s_logPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                using StreamWriter writer = new StreamWriter(stream, s_utf8NoBom);
+                writer.Write(text);
+            }
+        }
+
+        private static StringBuilder AcquireBuilder()
+        {
+            if (s_builderPool.TryDequeue(out StringBuilder? builder))
+            {
+                builder.Clear();
+                return builder;
+            }
+
+            return new StringBuilder(FlushThreshold);
+        }
+    }
+
     private static PartialFactorResult PartialFactor(ulong value, PrimeOrderSearchConfig config)
     {
         if (value <= 1UL)
@@ -1280,23 +1399,96 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static ulong CalculateByDoubling(ulong prime)
+    private static ulong CalculateByFactorization(ulong prime, in MontgomeryDivisorData divisorData)
     {
-        ulong order = 1UL;
-        ulong pow = 2UL;
-
-        while (pow != 1UL)
+        ulong phi = prime - 1UL;
+        Dictionary<ulong, int> counts = new(capacity: 8);
+        FactorCompletely(phi, counts);
+        if (counts.Count == 0)
         {
-            pow <<= 1;
-            if (pow >= prime)
-            {
-                pow -= prime;
-            }
+            return phi;
+        }
 
-            order++;
+        List<KeyValuePair<ulong, int>> entries = new(counts);
+        entries.Sort(static (a, b) => a.Key.CompareTo(b.Key));
+
+        ulong order = phi;
+        int entryCount = entries.Count;
+        for (int i = 0; i < entryCount; i++)
+        {
+            ulong primeFactor = entries[i].Key;
+            int exponent = entries[i].Value;
+            for (int iteration = 0; iteration < exponent; iteration++)
+            {
+                if ((order % primeFactor) != 0UL)
+                {
+                    break;
+                }
+
+                ulong candidate = order / primeFactor;
+                if (Pow2EqualsOne(candidate, prime, divisorData))
+                {
+                    order = candidate;
+                    continue;
+                }
+
+                break;
+            }
         }
 
         return order;
+    }
+
+    private static void FactorCompletely(ulong value, Dictionary<ulong, int> counts)
+    {
+        if (value <= 1UL)
+        {
+            return;
+        }
+
+        if (Open.Numeric.Primes.Prime.Numbers.IsPrime(value))
+        {
+            AddFactor(counts, value, 1);
+            return;
+        }
+
+        ulong factor = PollardRhoStrict(value);
+        FactorCompletely(factor, counts);
+        FactorCompletely(value / factor, counts);
+    }
+
+    private static ulong PollardRhoStrict(ulong n)
+    {
+        if ((n & 1UL) == 0UL)
+        {
+            return 2UL;
+        }
+
+        Span<byte> buffer = stackalloc byte[8];
+        while (true)
+        {
+            RandomNumberGenerator.Fill(buffer);
+            ulong c = (BinaryPrimitives.ReadUInt64LittleEndian(buffer) % (n - 1UL)) + 1UL;
+
+            RandomNumberGenerator.Fill(buffer);
+            ulong x = (BinaryPrimitives.ReadUInt64LittleEndian(buffer) % (n - 2UL)) + 2UL;
+            ulong y = x;
+            ulong d = 1UL;
+
+            while (d == 1UL)
+            {
+                x = AdvancePolynomial(x, c, n);
+                y = AdvancePolynomial(y, c, n);
+                y = AdvancePolynomial(y, c, n);
+                ulong diff = x > y ? x - y : y - x;
+                d = BinaryGcd(diff, n);
+            }
+
+            if (d != n)
+            {
+                return d;
+            }
+        }
     }
 
     private readonly struct CandidateKey(int primary, long secondary, long tertiary)
