@@ -69,9 +69,9 @@ internal static partial class PrimeOrderCalculator
 
         public PrimeOrderMode Mode { get; }
 
-        public static PrimeOrderSearchConfig HeuristicDefault => new(100_000, 128, 24, PrimeOrderMode.Heuristic);
+        public static PrimeOrderSearchConfig HeuristicDefault => new(smallFactorLimit: 100_000, pollardRhoMilliseconds: 128, maxPowChecks: 24, PrimeOrderMode.Heuristic);
 
-        public static PrimeOrderSearchConfig StrictDefault => new(1_000_000, 0, 0, PrimeOrderMode.Strict);
+        public static PrimeOrderSearchConfig StrictDefault => new(smallFactorLimit: 1_000_000, pollardRhoMilliseconds: 0, maxPowChecks: 0, PrimeOrderMode.Strict);
     }
 
     internal enum PrimeOrderHeuristicDevice
@@ -105,7 +105,7 @@ internal static partial class PrimeOrderCalculator
     private static Dictionary<ulong, int>? s_partialFactorCounts;
 
     private static bool IsGpuHeuristicDevice => s_pow2ModeInitialized && s_deviceMode == PrimeOrderHeuristicDevice.Gpu;
-    private readonly struct Pow2ModeScope : IDisposable
+    private readonly struct Pow2ModeScope
     {
         private readonly bool _previousInitialized;
         private readonly bool _previousAllow;
@@ -167,21 +167,20 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    public static PrimeOrderResult Calculate(ulong prime, ulong? previousOrder, in MontgomeryDivisorData divisorData, PrimeOrderSearchConfig config)
-        => Calculate(prime, previousOrder, divisorData, config, PrimeOrderHeuristicDevice.Gpu);
-
     public static PrimeOrderResult Calculate(
         ulong prime,
         ulong? previousOrder,
         in MontgomeryDivisorData divisorData,
-        PrimeOrderSearchConfig config,
+        in PrimeOrderSearchConfig config,
         PrimeOrderHeuristicDevice device)
     {
-        using var scope = UsePow2Mode(device);
-        return CalculateInternal(prime, previousOrder, divisorData, config);
+        var scope = UsePow2Mode(device);
+		PrimeOrderResult result = CalculateInternal(prime, previousOrder, divisorData, config);
+		scope.Dispose();
+		return result;
     }
 
-    private static PrimeOrderResult CalculateInternal(ulong prime, ulong? previousOrder, MontgomeryDivisorData divisorData, PrimeOrderSearchConfig config)
+    private static PrimeOrderResult CalculateInternal(ulong prime, ulong? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
     {
         if (prime <= 3UL)
         {
