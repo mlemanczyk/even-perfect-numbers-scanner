@@ -37,6 +37,7 @@ public sealed class KernelContainer
             ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>? IncrementalOrder;
     public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
         ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2ModOrder;
+    public Action<AcceleratorStream, Index1D, ArrayView1D<MontgomeryDivisorData, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int>? MontgomeryOddPowers;
 
     // Optional device buffer with small divisor cycles (<= 4M). Index = divisor, value = cycle length.
     public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallCycles;
@@ -186,6 +187,57 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                     return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
                 });
             }
+        }
+    }
+
+    public readonly Action<AcceleratorStream, Index1D, ArrayView1D<MontgomeryDivisorData, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int> MontgomeryOddPowerKernel
+    {
+        get
+        {
+            var accel = Accelerator;
+            lock (_gpu!.Value.KernelInitLock)
+            {
+                return KernelContainer.InitOnce(ref _kernels.MontgomeryOddPowers, () =>
+                {
+                    var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<MontgomeryDivisorData, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int>(MontgomeryOddPowerKernelScan);
+                    var kernel = KernelUtil.GetKernel(loaded);
+                    return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<MontgomeryDivisorData, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int>>();
+                });
+            }
+        }
+    }
+
+    private static void MontgomeryOddPowerKernelScan(
+        Index1D index,
+        ArrayView1D<MontgomeryDivisorData, Stride1D.Dense> divisors,
+        ArrayView1D<int, Stride1D.Dense> counts,
+        ArrayView1D<ulong, Stride1D.Dense> results,
+        int stride)
+    {
+        int tableIndex = index.X;
+        int baseOffset = tableIndex * stride;
+        MontgomeryDivisorData divisor = divisors[tableIndex];
+        int oddPowerCount = counts[tableIndex];
+        if (oddPowerCount <= 0)
+        {
+            return;
+        }
+
+        ulong montgomeryTwo = divisor.MontgomeryTwo;
+        results[baseOffset] = montgomeryTwo;
+        if (oddPowerCount == 1)
+        {
+            return;
+        }
+
+        ulong modulus = divisor.Modulus;
+        ulong nPrime = divisor.NPrime;
+        ulong square = divisor.MontgomeryTwoSquared;
+        ulong current = montgomeryTwo;
+        for (int i = 1; i < oddPowerCount; i++)
+        {
+            current = ULongExtensions.MontgomeryMultiply(current, square, modulus, nPrime);
+            results[baseOffset + i] = current;
         }
     }
 

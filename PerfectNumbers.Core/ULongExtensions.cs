@@ -535,21 +535,35 @@ public static class ULongExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong[] InitializeMontgomeryOddPowersCpu(in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime, int oddPowerCount)
     {
-		ulong[] oddPowers = oddPowerCount < PerfectNumberConstants.PooledArrayThreshold ? new ulong[oddPowerCount] : ArrayPool<ulong>.Shared.Rent(oddPowerCount);
-		
-        oddPowers[0] = divisor.MontgomeryTwo;
+        ulong[] oddPowers = oddPowerCount < PerfectNumberConstants.PooledArrayThreshold
+            ? new ulong[oddPowerCount]
+            : ArrayPool<ulong>.Shared.Rent(oddPowerCount);
+
+        if (oddPowerCount == 0)
+        {
+            return oddPowers;
+        }
+
+        Span<ulong> destination = oddPowers.AsSpan(0, oddPowerCount);
+        bool computedOnGpu = oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount
+            && MontgomeryOddPowerGpu.TryCompute(divisor, oddPowerCount, destination);
+        if (computedOnGpu)
+        {
+            return oddPowers;
+        }
+
+        destination[0] = divisor.MontgomeryTwo;
         if (oddPowerCount == 1)
         {
             return oddPowers;
         }
 
-        ulong previous,
-			  square = divisor.MontgomeryTwoSquared;
-
+        ulong square = divisor.MontgomeryTwoSquared;
+        ulong current = destination[0];
         for (int i = 1; i < oddPowerCount; i++)
         {
-            previous = oddPowers[i - 1];
-            oddPowers[i] = previous.MontgomeryMultiply(square, modulus, nPrime);
+            current = current.MontgomeryMultiply(square, modulus, nPrime);
+            destination[i] = current;
         }
 
         return oddPowers;
