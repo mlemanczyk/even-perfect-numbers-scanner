@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Threading;
 using PerfectNumbers.Core.Gpu;
 using ILGPU;
 using ILGPU.Runtime;
@@ -15,11 +14,6 @@ public class MersenneDivisorCycles
     private List<(ulong divisor, ulong cycleLength)> _table = [];
     // Lightweight read-mostly cache for small divisors (<= 4,000,000). 0 => unknown
     private ulong[]? _smallCycles;
-
-    [ThreadStatic]
-    private static ulong _threadRandomState;
-
-    private static long _randomSeedCounter;
 
     public static MersenneDivisorCycles Shared { get; } = new MersenneDivisorCycles();
 
@@ -535,8 +529,8 @@ public class MersenneDivisorCycles
 
         while (true)
         {
-            ulong c = (NextRandomUInt64() % (n - 1UL)) + 1UL;
-            ulong x = (NextRandomUInt64() % (n - 2UL)) + 2UL;
+            ulong c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
+            ulong x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
             ulong y = x;
             ulong d = 1UL;
 
@@ -593,36 +587,6 @@ public class MersenneDivisorCycles
                 return a << shift;
             }
         }
-    }
-
-    private static ulong NextRandomUInt64()
-    {
-        ulong state = _threadRandomState;
-        if (state == 0UL)
-        {
-            state = InitializeThreadRandomState();
-        }
-
-        state ^= state >> 12;
-        state ^= state << 25;
-        state ^= state >> 27;
-        _threadRandomState = state;
-        return state * 2685821657736338717UL;
-    }
-
-    private static ulong InitializeThreadRandomState()
-    {
-        ulong seed = (ulong)Interlocked.Increment(ref _randomSeedCounter);
-        seed += 0x9E3779B97F4A7C15UL;
-        seed = (seed ^ (seed >> 30)) * 0xBF58476D1CE4E5B9UL;
-        seed = (seed ^ (seed >> 27)) * 0x94D049BB133111EBUL;
-        seed ^= seed >> 31;
-        if (seed == 0UL)
-        {
-            seed = 0x9E3779B97F4A7C15UL;
-        }
-
-        return seed;
     }
 
     public readonly struct FactorCacheEntry
