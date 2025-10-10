@@ -18,24 +18,7 @@ namespace PerfectNumbers.Core;
 
 internal static partial class PrimeOrderCalculator
 {
-    internal enum PrimeOrderStatus
-    {
-        Found,
-        HeuristicUnresolved,
-    }
 
-    internal readonly struct PrimeOrderResult
-    {
-        public PrimeOrderResult(PrimeOrderStatus status, ulong order)
-        {
-            Status = status;
-            Order = order;
-        }
-
-        public PrimeOrderStatus Status { get; }
-
-        public ulong Order { get; }
-    }
 
     internal enum PrimeOrderMode
     {
@@ -167,7 +150,14 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    public static PrimeOrderResult Calculate(
+    public static ulong Calculate(
+        ulong prime,
+        ulong? previousOrder,
+        in MontgomeryDivisorData divisorData,
+        in PrimeOrderSearchConfig config)
+        => Calculate(prime, previousOrder, divisorData, config, PrimeOrderHeuristicDevice.Cpu);
+
+    public static ulong Calculate(
         ulong prime,
         ulong? previousOrder,
         in MontgomeryDivisorData divisorData,
@@ -175,41 +165,36 @@ internal static partial class PrimeOrderCalculator
         PrimeOrderHeuristicDevice device)
     {
         var scope = UsePow2Mode(device);
-		PrimeOrderResult result = CalculateInternal(prime, previousOrder, divisorData, config);
-		scope.Dispose();
-		return result;
+        ulong order = CalculateInternal(prime, previousOrder, divisorData, config);
+        scope.Dispose();
+        return order;
     }
 
-    private static PrimeOrderResult CalculateInternal(ulong prime, ulong? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
+    private static ulong CalculateInternal(ulong prime, ulong? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
     {
         if (prime <= 3UL)
         {
-            return new PrimeOrderResult(PrimeOrderStatus.Found, prime == 3UL ? 2UL : 1UL);
+            return prime == 3UL ? 2UL : 1UL;
         }
 
         ulong phi = prime - 1UL;
 
-        if (IsGpuHeuristicDevice && PrimeOrderGpuHeuristics.TryCalculateOrder(prime, previousOrder, config, divisorData, out PrimeOrderResult gpuResult))
+        if (IsGpuHeuristicDevice && PrimeOrderGpuHeuristics.TryCalculateOrder(prime, previousOrder, config, divisorData, out ulong gpuOrder))
         {
-            return gpuResult;
+            return gpuOrder;
         }
-
-        // using var debugScope = UseDebugLogging(!IsGpuHeuristicDevice);
-        // DebugLog("Partial factoring φ(p)");
 
         using PartialFactorResult phiFactors = PartialFactor(phi, config);
 
         if (phiFactors.Factors is null)
         {
-            // DebugLog("No factors found");
-            // HeuristicFailureLog.Record(prime, null, HeuristicFailureReason.PhiPartialFactorizationFailed);
-            return FinishStrictly(prime, divisorData, config.Mode);
+            return FinishStrictly(prime, divisorData);
         }
 
         return RunHeuristicPipeline(prime, previousOrder, config, divisorData, phi, phiFactors);
     }
 
-    private static PrimeOrderResult RunHeuristicPipeline(
+    private static ulong RunHeuristicPipeline(
         ulong prime,
         ulong? previousOrder,
         in PrimeOrderSearchConfig config,
@@ -217,44 +202,35 @@ internal static partial class PrimeOrderCalculator
         ulong phi,
         PartialFactorResult phiFactors)
     {
-        // DebugLog("Trying special max check");
         if (phiFactors.FullyFactored && TrySpecialMax(phi, prime, phiFactors, divisorData))
         {
-            return new PrimeOrderResult(PrimeOrderStatus.Found, phi);
+            return phi;
         }
 
-        // DebugLog("Initializing starting order");
         ulong candidateOrder = InitializeStartingOrder(prime, phi, divisorData);
         candidateOrder = ExponentLowering(candidateOrder, prime, phiFactors, divisorData);
 
-        // DebugLog("Trying to confirm order");
         if (TryConfirmOrder(prime, candidateOrder, divisorData, config))
         {
-            return new PrimeOrderResult(PrimeOrderStatus.Found, candidateOrder);
+            return candidateOrder;
         }
 
         if (config.Mode == PrimeOrderMode.Strict)
         {
-            // HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.StrictModeRequested);
-            return FinishStrictly(prime, divisorData, PrimeOrderMode.Strict);
+            return FinishStrictly(prime, divisorData);
         }
 
         if (TryHeuristicFinish(prime, candidateOrder, previousOrder, divisorData, config, phiFactors, out ulong order))
         {
-            return new PrimeOrderResult(PrimeOrderStatus.Found, order);
+            return order;
         }
 
-        // DebugLog("Heuristic unresolved, assuming current order");
-        // HeuristicFailureLog.Record(prime, candidateOrder, HeuristicFailureReason.HeuristicPipelineAssumedFullOrder);
-        // The heuristic pipeline could not rule out additional divisors; assume the current order is final.
-        return new PrimeOrderResult(PrimeOrderStatus.Found, candidateOrder);
+        return candidateOrder;
     }
 
-    private static PrimeOrderResult FinishStrictly(ulong prime, in MontgomeryDivisorData divisorData, PrimeOrderMode mode)
+    private static ulong FinishStrictly(ulong prime, in MontgomeryDivisorData divisorData)
     {
-        ulong strictOrder = CalculateByFactorization(prime, divisorData);
-        PrimeOrderStatus status = mode == PrimeOrderMode.Strict ? PrimeOrderStatus.Found : PrimeOrderStatus.HeuristicUnresolved;
-        return new PrimeOrderResult(status, strictOrder);
+        return CalculateByFactorization(prime, divisorData);
     }
 
     private static bool TrySpecialMax(ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
@@ -993,7 +969,7 @@ internal static partial class PrimeOrderCalculator
     {
         if (value <= 1UL)
         {
-            return PartialFactorResult.Empty;
+            return PartialFactorResult.RentEmpty();
         }
 
         const int FactorSlotCount = GpuSmallPrimeFactorSlots;
@@ -1098,12 +1074,12 @@ internal static partial class PrimeOrderCalculator
             {
                 if ((counts is null || counts.Count == 0) && cofactor == value)
                 {
-                    return new PartialFactorResult(null, value, false, 0);
+                    return PartialFactorResult.Rent(null, value, false, 0);
                 }
 
                 if (counts is null || counts.Count == 0)
                 {
-                    return new PartialFactorResult(null, cofactor, cofactor == 1UL, 0);
+                    return PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0);
                 }
 
                 FactorEntry[] factors = ArrayPool<FactorEntry>.Shared.Rent(counts.Count);
@@ -1118,7 +1094,7 @@ internal static partial class PrimeOrderCalculator
                 span.Sort(static (a, b) => a.Value.CompareTo(b.Value));
 
                 bool fullyFactored = cofactor == 1UL;
-                return new PartialFactorResult(factors, cofactor, fullyFactored, index, pooled: true);
+                return PartialFactorResult.Rent(factors, cofactor, fullyFactored, index);
             }
 
             int actualCount = 0;
@@ -1134,10 +1110,10 @@ internal static partial class PrimeOrderCalculator
             {
                 if (cofactor == value)
                 {
-                    return new PartialFactorResult(null, value, false, 0);
+                    return PartialFactorResult.Rent(null, value, false, 0);
                 }
 
-                return new PartialFactorResult(null, cofactor, cofactor == 1UL, 0);
+                return PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0);
             }
 
             FactorEntry[] array = ArrayPool<FactorEntry>.Shared.Rent(actualCount);
@@ -1158,7 +1134,7 @@ internal static partial class PrimeOrderCalculator
             Span<FactorEntry> arraySpan = array.AsSpan(0, arrayIndex);
             arraySpan.Sort(static (a, b) => a.Value.CompareTo(b.Value));
             bool fullyFactoredArray = cofactor == 1UL;
-            return new PartialFactorResult(array, cofactor, fullyFactoredArray, arrayIndex, pooled: true);
+            return PartialFactorResult.Rent(array, cofactor, fullyFactoredArray, arrayIndex);
         }
         finally
         {
@@ -1588,58 +1564,89 @@ internal static partial class PrimeOrderCalculator
         public readonly int Exponent = exponent;
     }
 
-    private struct PartialFactorResult : IDisposable
+    private sealed class PartialFactorResult : IDisposable
     {
-        private FactorEntry[]? _factors;
-        private readonly bool _pooled;
+        [ThreadStatic]
+        private static PartialFactorResult? s_poolHead;
 
-        public PartialFactorResult(FactorEntry[]? factors, ulong cofactor, bool fullyFactored, int count, bool pooled = false)
+        private PartialFactorResult? _next;
+        private bool _returned;
+
+        public FactorEntry[]? Factors;
+        public ulong Cofactor;
+        public bool FullyFactored;
+        public int Count;
+
+        private PartialFactorResult()
         {
-            _factors = factors;
-            Cofactor = cofactor;
-            FullyFactored = fullyFactored;
-            Count = count;
-            _pooled = pooled && factors is not null;
         }
 
-        public FactorEntry[]? Factors => _factors;
-
-        public ulong Cofactor { get; }
-
-        public bool FullyFactored { get; }
-
-        public int Count { get; }
-
-        public static PartialFactorResult Empty => new(null, 1UL, true, 0);
-
-        public void Dispose()
+        public static PartialFactorResult Rent(FactorEntry[]? factors, ulong cofactor, bool fullyFactored, int count)
         {
-            FactorEntry[]? factors = _factors;
-            if (factors is null || !_pooled)
+            PartialFactorResult? instance = s_poolHead;
+            if (instance is null)
             {
-                return;
+                instance = new PartialFactorResult();
+            }
+            else
+            {
+                s_poolHead = instance._next;
             }
 
-            _factors = null;
-            ArrayPool<FactorEntry>.Shared.Return(factors, clearArray: false);
+            instance._next = null;
+            instance._returned = false;
+            instance.Factors = factors;
+            instance.Cofactor = cofactor;
+            instance.FullyFactored = fullyFactored;
+            instance.Count = count;
+            return instance;
+        }
+
+        public static PartialFactorResult RentEmpty()
+        {
+            return Rent(null, 1UL, true, 0);
         }
 
         public PartialFactorResult WithAdditionalPrime(ulong prime)
         {
-            if (_factors is null || Count == 0)
+            FactorEntry[]? source = Factors;
+            if (source is null || Count == 0)
             {
                 FactorEntry[] local = ArrayPool<FactorEntry>.Shared.Rent(1);
                 local[0] = new FactorEntry(prime, 1);
-                return new PartialFactorResult(local, 1UL, true, 1, pooled: true);
+                return Rent(local, 1UL, true, 1);
             }
 
             FactorEntry[] extended = ArrayPool<FactorEntry>.Shared.Rent(Count + 1);
-            Array.Copy(_factors, 0, extended, 0, Count);
+            Array.Copy(source, 0, extended, 0, Count);
             extended[Count] = new FactorEntry(prime, 1);
             Span<FactorEntry> span = extended.AsSpan(0, Count + 1);
             span.Sort(static (a, b) => a.Value.CompareTo(b.Value));
-            return new PartialFactorResult(extended, 1UL, true, Count + 1, pooled: true);
+            return Rent(extended, 1UL, true, Count + 1);
+        }
+
+        public void Dispose()
+        {
+            if (_returned)
+            {
+                return;
+            }
+
+            _returned = true;
+
+            FactorEntry[]? factors = Factors;
+            if (factors is not null)
+            {
+                Factors = null;
+                ArrayPool<FactorEntry>.Shared.Return(factors, clearArray: false);
+            }
+
+            Cofactor = 0UL;
+            FullyFactored = false;
+            Count = 0;
+
+            _next = s_poolHead;
+            s_poolHead = this;
         }
     }
 }
-

@@ -45,14 +45,13 @@ public class PrimeOrderCalculatorTests
     {
         ulong expected = ComputeOrderByDoubling(prime);
 
-        PrimeOrderCalculator.PrimeOrderResult result = PrimeOrderCalculator.Calculate(
+        ulong result = PrimeOrderCalculator.Calculate(
             prime,
             previousOrder: null,
             MontgomeryDivisorData.FromModulus(prime),
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
-        result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
-        result.Order.Should().Be(expected);
+        result.Should().Be(expected);
     }
 
     [Theory]
@@ -62,21 +61,19 @@ public class PrimeOrderCalculatorTests
     {
         ulong previousOrder = ComputeOrderByDoubling(previousPrime);
 
-        PrimeOrderCalculator.PrimeOrderResult heuristic = PrimeOrderCalculator.Calculate(
+        ulong heuristic = PrimeOrderCalculator.Calculate(
             prime,
             previousOrder,
             MontgomeryDivisorData.FromModulus(prime),
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
-        PrimeOrderCalculator.PrimeOrderResult strict = PrimeOrderCalculator.Calculate(
+        ulong strict = PrimeOrderCalculator.Calculate(
             prime,
             previousOrder: null,
             MontgomeryDivisorData.FromModulus(prime),
             PrimeOrderCalculator.PrimeOrderSearchConfig.StrictDefault);
 
-        heuristic.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
-        strict.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
-        heuristic.Order.Should().Be(strict.Order);
+        heuristic.Should().Be(strict);
     }
 
     [Theory]
@@ -85,14 +82,13 @@ public class PrimeOrderCalculatorTests
     [InlineData(3UL, 2UL)]
     public void Calculate_handles_trivial_primes(ulong prime, ulong expectedOrder)
     {
-        PrimeOrderCalculator.PrimeOrderResult result = PrimeOrderCalculator.Calculate(
+        ulong result = PrimeOrderCalculator.Calculate(
             prime,
             previousOrder: null,
             MontgomeryDivisorData.FromModulus(prime),
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
-        result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
-        result.Order.Should().Be(expectedOrder);
+        result.Should().Be(expectedOrder);
     }
 
     [Fact]
@@ -105,14 +101,13 @@ public class PrimeOrderCalculatorTests
             maxPowChecks: 8,
             mode: PrimeOrderCalculator.PrimeOrderMode.Heuristic);
 
-        PrimeOrderCalculator.PrimeOrderResult result = PrimeOrderCalculator.Calculate(
+        ulong result = PrimeOrderCalculator.Calculate(
             prime: 13UL,
             previousOrder: null,
             MontgomeryDivisorData.FromModulus(13UL),
             config);
 
-        result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.HeuristicUnresolved);
-        result.Order.Should().Be(ComputeOrderByDoubling(13UL));
+        result.Should().Be(ComputeOrderByDoubling(13UL));
     }
 
     [Fact]
@@ -126,14 +121,13 @@ public class PrimeOrderCalculatorTests
             mode: PrimeOrderCalculator.PrimeOrderMode.Heuristic);
 
         MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(239UL);
-        PrimeOrderCalculator.PrimeOrderResult heuristic = PrimeOrderCalculator.Calculate(
+        ulong heuristic = PrimeOrderCalculator.Calculate(
             prime: 239UL,
             previousOrder: null,
             divisorData,
             heuristicConfig);
 
-        heuristic.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.HeuristicUnresolved);
-        heuristic.Order.Should().Be(ComputeOrderByDoubling(239UL));
+        heuristic.Should().Be(ComputeOrderByDoubling(239UL));
 
         var strictConfig = new PrimeOrderCalculator.PrimeOrderSearchConfig(
             smallFactorLimit: 2,
@@ -141,14 +135,13 @@ public class PrimeOrderCalculatorTests
             maxPowChecks: 1,
             mode: PrimeOrderCalculator.PrimeOrderMode.Strict);
 
-        PrimeOrderCalculator.PrimeOrderResult strict = PrimeOrderCalculator.Calculate(
+        ulong strict = PrimeOrderCalculator.Calculate(
             prime: 239UL,
             previousOrder: null,
             divisorData,
             strictConfig);
 
-        strict.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
-        strict.Order.Should().Be(heuristic.Order);
+        strict.Should().Be(heuristic);
     }
 
     [Fact]
@@ -157,13 +150,12 @@ public class PrimeOrderCalculatorTests
     {
         UInt128 prime = UInt128.Parse("18446744073709641691");
 
-        PrimeOrderCalculator.PrimeOrderResultWide result = PrimeOrderCalculator.Calculate(
+        UInt128 result = PrimeOrderCalculator.Calculate(
             prime,
             previousOrder: null,
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
-        result.Status.Should().Be(PrimeOrderCalculator.PrimeOrderStatus.Found);
-        result.Order.Should().Be((UInt128)1229782938247309446UL);
+        result.Should().Be((UInt128)1229782938247309446UL);
     }
 
     [Fact]

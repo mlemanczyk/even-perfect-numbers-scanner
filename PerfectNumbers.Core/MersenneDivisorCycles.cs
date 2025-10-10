@@ -234,14 +234,14 @@ public class MersenneDivisorCycles
             return (UInt128)cycle;
         }
 
-        PrimeOrderCalculator.PrimeOrderResultWide wideResult = PrimeOrderCalculator.Calculate(
+        UInt128 wideOrder = PrimeOrderCalculator.Calculate(
             divisor,
             previousOrder: null,
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
             PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
-        if (wideResult.Order != UInt128.Zero)
+        if (wideOrder != UInt128.Zero)
         {
-            return wideResult.Order;
+            return wideOrder;
         }
 
         // Otherwise, find order of 2 mod divisor
@@ -285,15 +285,15 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        PrimeOrderCalculator.PrimeOrderResult orderResult = PrimeOrderCalculator.Calculate(
+        ulong order = PrimeOrderCalculator.Calculate(
             divisor,
             previousOrder: null,
             divisorData,
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
             PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
-        if (orderResult.Order != 0UL)
+        if (order != 0UL)
         {
-            cycleLength = orderResult.Order;
+            cycleLength = order;
             return true;
         }
 
@@ -940,15 +940,15 @@ public class MersenneDivisorCycles
 
         if (PrimeTester.IsPrimeInternal(divisor, CancellationToken.None))
         {
-            PrimeOrderCalculator.PrimeOrderResult orderResult = PrimeOrderCalculator.Calculate(
+            ulong order = PrimeOrderCalculator.Calculate(
                     divisor,
                     previousOrder: null,
                     divisorData,
                     PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
                     PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
-            if (orderResult.Order != 0UL)
+            if (order != 0UL)
             {
-                cycleLength = orderResult.Order;
+                cycleLength = order;
                 return true;
             }
         }
