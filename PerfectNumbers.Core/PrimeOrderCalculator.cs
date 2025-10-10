@@ -1164,11 +1164,9 @@ internal static partial class PrimeOrderCalculator
             return true;
         }
 
-        ulong c;
-        ulong x;
-        ulong y;
-        ulong d;
+        PollardRhoMontgomeryReducer reducer = PollardRhoMontgomeryReducer.Create(n);
         ulong diff = 0UL;
+        ulong d = 0UL;
 
         while (true)
         {
@@ -1177,9 +1175,12 @@ internal static partial class PrimeOrderCalculator
                 return false;
             }
 
-            c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
-            x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
-            y = x;
+            ulong c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
+            ulong xStandard = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
+            ulong yStandard = xStandard;
+            ulong cMontgomery = reducer.ConvertToMontgomery(c);
+            ulong xMontgomery = reducer.ConvertToMontgomery(xStandard);
+            ulong yMontgomery = xMontgomery;
             d = 1UL;
 
             while (d == 1UL)
@@ -1189,10 +1190,15 @@ internal static partial class PrimeOrderCalculator
                     return false;
                 }
 
-                x = AdvancePolynomial(x, c, n);
-                y = AdvancePolynomial(y, c, n);
-                y = AdvancePolynomial(y, c, n);
-                diff = x > y ? x - y : y - x;
+                xMontgomery = reducer.Advance(xMontgomery, cMontgomery);
+                xStandard = reducer.AdvanceStandard(xStandard, c);
+
+                yMontgomery = reducer.Advance(yMontgomery, cMontgomery);
+                yStandard = reducer.AdvanceStandard(yStandard, c);
+                yMontgomery = reducer.Advance(yMontgomery, cMontgomery);
+                yStandard = reducer.AdvanceStandard(yStandard, c);
+
+                diff = xStandard > yStandard ? xStandard - yStandard : yStandard - xStandard;
                 d = BinaryGcd(diff, n);
             }
 
@@ -1202,13 +1208,6 @@ internal static partial class PrimeOrderCalculator
                 return true;
             }
         }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong AdvancePolynomial(ulong x, ulong c, ulong modulus)
-    {
-        UInt128 value = (UInt128)x * x + c;
-        return (ulong)(value % modulus);
     }
 
     private static ulong BinaryGcd(ulong a, ulong b)
@@ -1397,25 +1396,31 @@ internal static partial class PrimeOrderCalculator
             return 2UL;
         }
 
-        ulong c;
-        ulong x;
-        ulong y;
-        ulong d;
+        PollardRhoMontgomeryReducer reducer = PollardRhoMontgomeryReducer.Create(n);
         ulong diff = 0UL;
+        ulong d = 0UL;
 
         while (true)
         {
-            c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
-            x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
-            y = x;
+            ulong c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
+            ulong xStandard = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
+            ulong yStandard = xStandard;
+            ulong cMontgomery = reducer.ConvertToMontgomery(c);
+            ulong xMontgomery = reducer.ConvertToMontgomery(xStandard);
+            ulong yMontgomery = xMontgomery;
             d = 1UL;
 
             while (d == 1UL)
             {
-                x = AdvancePolynomial(x, c, n);
-                y = AdvancePolynomial(y, c, n);
-                y = AdvancePolynomial(y, c, n);
-                diff = x > y ? x - y : y - x;
+                xMontgomery = reducer.Advance(xMontgomery, cMontgomery);
+                xStandard = reducer.AdvanceStandard(xStandard, c);
+
+                yMontgomery = reducer.Advance(yMontgomery, cMontgomery);
+                yStandard = reducer.AdvanceStandard(yStandard, c);
+                yMontgomery = reducer.Advance(yMontgomery, cMontgomery);
+                yStandard = reducer.AdvanceStandard(yStandard, c);
+
+                diff = xStandard > yStandard ? xStandard - yStandard : yStandard - xStandard;
                 d = BinaryGcd(diff, n);
             }
 

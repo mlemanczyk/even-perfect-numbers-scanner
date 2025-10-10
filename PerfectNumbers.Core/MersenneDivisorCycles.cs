@@ -527,20 +527,31 @@ public class MersenneDivisorCycles
             return 2UL;
         }
 
+        PollardRhoMontgomeryReducer reducer = PollardRhoMontgomeryReducer.Create(n);
+        ulong diff = 0UL;
+        ulong d = 0UL;
+
         while (true)
         {
             ulong c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
-            ulong x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
-            ulong y = x;
-            ulong d = 1UL;
+            ulong xStandard = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
+            ulong yStandard = xStandard;
+            ulong cMontgomery = reducer.ConvertToMontgomery(c);
+            ulong xMontgomery = reducer.ConvertToMontgomery(xStandard);
+            ulong yMontgomery = xMontgomery;
+            d = 1UL;
 
             while (d == 1UL)
             {
-                x = AdvancePolynomial(x, c, n);
-                y = AdvancePolynomial(y, c, n);
-                y = AdvancePolynomial(y, c, n);
+                xMontgomery = reducer.Advance(xMontgomery, cMontgomery);
+                xStandard = reducer.AdvanceStandard(xStandard, c);
 
-                ulong diff = x > y ? x - y : y - x;
+                yMontgomery = reducer.Advance(yMontgomery, cMontgomery);
+                yStandard = reducer.AdvanceStandard(yStandard, c);
+                yMontgomery = reducer.Advance(yMontgomery, cMontgomery);
+                yStandard = reducer.AdvanceStandard(yStandard, c);
+
+                diff = xStandard > yStandard ? xStandard - yStandard : yStandard - xStandard;
                 d = BinaryGcd(diff, n);
             }
 
@@ -549,13 +560,6 @@ public class MersenneDivisorCycles
                 return d;
             }
         }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong AdvancePolynomial(ulong x, ulong c, ulong modulus)
-    {
-        UInt128 value = (UInt128)x * x + c;
-        return (ulong)(value % modulus);
     }
 
     private static ulong BinaryGcd(ulong a, ulong b)
