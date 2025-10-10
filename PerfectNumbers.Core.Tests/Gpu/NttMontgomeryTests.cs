@@ -33,16 +33,23 @@ public class NttMontgomeryTests
         NttGpuMath.Square(cpu, modulus, primitiveRoot);
 
         // Device execution
-        using var context = GpuContextPool.Rent();
-        var accelerator = context.Accelerator;
-        using var buffer = accelerator.Allocate1D<GpuUInt128>(gpu.Length);
-        buffer.View.CopyFromCPU(ref gpu[0], gpu.Length);
-        NttGpuMath.SquareDevice(accelerator, buffer.View, modulus, primitiveRoot);
-        buffer.View.CopyToCPU(ref gpu[0], gpu.Length);
-
-        for (int i = 0; i < cpu.Length; i++)
+        GpuContextPool.GpuContextLease context = GpuContextPool.Rent();
+        try
         {
-            gpu[i].Should().Be(cpu[i]);
+            var accelerator = context.Accelerator;
+            using var buffer = accelerator.Allocate1D<GpuUInt128>(gpu.Length);
+            buffer.View.CopyFromCPU(ref gpu[0], gpu.Length);
+            NttGpuMath.SquareDevice(accelerator, buffer.View, modulus, primitiveRoot);
+            buffer.View.CopyToCPU(ref gpu[0], gpu.Length);
+
+            for (int i = 0; i < cpu.Length; i++)
+            {
+                gpu[i].Should().Be(cpu[i]);
+            }
+        }
+        finally
+        {
+            context.Dispose();
         }
     }
 

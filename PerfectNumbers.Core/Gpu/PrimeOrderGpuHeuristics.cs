@@ -415,9 +415,9 @@ internal static partial class PrimeOrderGpuHeuristics
         ulong? previousOrder,
         PrimeOrderCalculator.PrimeOrderSearchConfig config,
         in MontgomeryDivisorData divisorData,
-        out PrimeOrderCalculator.PrimeOrderResult result)
+        out ulong order)
     {
-        result = default;
+        order = 0UL;
 
         var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
         var execution = lease.EnterExecutionScope();
@@ -497,18 +497,17 @@ internal static partial class PrimeOrderGpuHeuristics
             throw new InvalidOperationException("GPU Pollard Rho stack overflow; increase HeuristicStackCapacity.");
         }
 
-        ulong order = 0UL;
         resultBuffer.View.CopyToCPU(ref order, 1);
 
-        PrimeOrderCalculator.PrimeOrderStatus finalStatus = kernelStatus == PrimeOrderKernelStatus.Found
-            ? PrimeOrderCalculator.PrimeOrderStatus.Found
-            : PrimeOrderCalculator.PrimeOrderStatus.HeuristicUnresolved;
+        if (kernelStatus == PrimeOrderKernelStatus.FactoringFailure)
+        {
+            order = 0UL;
+        }
 
-        result = new PrimeOrderCalculator.PrimeOrderResult(finalStatus, order);
         DisposeResources();
         lease.Dispose();
 
-        return true;
+        return order != 0UL;
 
         void DisposeResources()
         {
@@ -812,7 +811,7 @@ internal static partial class PrimeOrderGpuHeuristics
             }
 
             ulong reduced = phi / factor;
-            if (reduced.Pow2MontgomeryModWindowed(divisor, keepMontgomery: false) == 1UL)
+            if (reduced.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: false) == 1UL)
             {
                 return false;
             }
@@ -1596,7 +1595,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
     private static bool Pow2EqualsOneKernel(ulong exponent, in MontgomeryDivisorData divisor)
     {
-        return exponent.Pow2MontgomeryModWindowed(divisor, keepMontgomery: false) == 1UL;
+        return exponent.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: false) == 1UL;
     }
 
     private static ulong CalculateByDoublingKernel(ulong prime)
@@ -1796,7 +1795,7 @@ internal static partial class PrimeOrderGpuHeuristics
             return 0UL;
         }
 
-        return exponent.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false);
+        return exponent.Pow2MontgomeryModWindowedGpu(divisorData, keepMontgomery: false);
     }
 
     private static Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> GetPow2ModKernel(Accelerator accelerator)
@@ -1812,7 +1811,7 @@ internal static partial class PrimeOrderGpuHeuristics
     private static void Pow2ModKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> exponents, MontgomeryDivisorData divisor, ArrayView1D<ulong, Stride1D.Dense> remainders)
     {
         ulong exponent = exponents[index];
-        remainders[index] = exponent.Pow2MontgomeryModWindowed(divisor, keepMontgomery: false);
+        remainders[index] = exponent.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: false);
     }
 
     private static Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>> GetPow2ModWideKernel(Accelerator accelerator)

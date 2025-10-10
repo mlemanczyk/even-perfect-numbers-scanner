@@ -50,7 +50,7 @@ public class GpuPow2ModBenchmarks
         return Pow2ModSingleBit(Input.Exponent, Input.Modulus);
     }
 
-    private static GpuUInt128 Pow2ModSingleBit(ulong exponent, in GpuUInt128 modulus)
+    private static GpuUInt128 Pow2ModSingleBit(ulong exponent, GpuUInt128 modulus)
     {
         if (modulus.IsZero || modulus == GpuUInt128.One)
         {
