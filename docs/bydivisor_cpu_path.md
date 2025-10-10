@@ -138,3 +138,59 @@ modular exponentiations and cache lookups in the CPU by-divisor path.
 * **Reuse Montgomery metadata:** Implemented. Each prime state now persists the divisor's `n'`, `R`, and `R^2` factors so resynchronization seeds the exponent stepper directly, and divisor sessions rebuild the Montgomery tuple from the cached state before touching the shared cache, meaning cache lookups only occur when no stored snapshot matches the new divisor.
 * **Reciprocal-based delta evaluation:** Implemented. The analytic updater now retries with a direct 128-bit division when the reciprocal corrections exhaust their tolerance, refreshes the cached reciprocal from that exact quotient, and keeps the progression on the analytic path without rebuilding the state.
 * **Carry the Montgomery residue forward:** Implemented. Each analytic update now normalizes the refreshed remainder and multiplies it by the cached `R^2 mod d` factor immediately, so the exponent stepper always has a Montgomery residue ready without recomputing modular reductions.
+
+
+## Prime-order factoring bottleneck and planned fixes
+
+The Pollard rho fallback in `PrimeOrderCalculator` still performs every quadratic
+polynomial advance by issuing a full-width division. The tight loop in
+`AdvancePolynomial` squares the iterate and takes a `% modulus`, which triggers
+hardware division for each step and dominates the runtime once we test large
+Mersenne divisors.【F:PerfectNumbers.Core/PrimeOrderCalculator.cs†L1180-L1211】
+The by-divisor CPU path consequently spends a measurable portion of its wall
+clock time inside the factorization helper whenever it needs to refresh a cycle
+or validate that a divisor candidate is prime.
+
+To bring this code in line with the Montgomery-first approach we use elsewhere
+we should:
+
+* **Introduce a Montgomery-backed polynomial step.** `PrimeDivisorState` already
+  carries the full set of Montgomery constants (`n'`, `R`, `R^2`) for each
+  divisor we touch in the by-divisor scan, and `DivisorScanSession` rebuilds a
+  `MontgomeryDivisorData` snapshot whenever it seeds the analytic stepper or the
+  exponent synchronizer.【F:PerfectNumbers.Core/Cpu/MersenneNumberDivisorByDivisorCpuTester.cs†L645-L779】【F:PerfectNumbers.Core/Cpu/MersenneNumberDivisorByDivisorCpuTester.cs†L1246-L1398】
+  We can surface the same data to the Pollard rho helper and rewrite
+  `AdvancePolynomial` so it accepts a precomputed reducer `(modulus, n', R^2)`.
+  The update then becomes `x = MontgomerySquareAdd(x, cMontgomery)`—a multiply
+  followed by one Montgomery reduction instead of a general-purpose remainder.
+  This eliminates the `% modulus` call entirely and lets the CPU factorizer reuse
+  the same fast path as the analytic delta updates.
+* **Reuse reciprocal estimates between neighbouring divisors.** The analytic path
+  already stores a reciprocal for each divisor and refines it with Newton steps
+  to divide by `d_k` without hitting the 128-bit fallback.【F:PerfectNumbers.Core/Cpu/MersenneNumberDivisorByDivisorCpuTester.cs†L876-L939】
+  Pollard rho can share the very same multiplier. We can stash the `FastDiv64`
+  multiplier inside the Pollard rho state and update it when `q` grows by `2p`
+  using a single Newton refinement, mirroring `DivideRoundUpUsingReciprocal`.
+  Once the reciprocal is in place, the `(x * x + c) mod q` step reduces to a
+  pair of `UInt128` products and one multiply-high to estimate the quotient—a
+  drop-in use of `ULongExtensions.FastDiv64`.【F:PerfectNumbers.Core/ULongExtensions.cs†L69-L101】
+* **Warm-start the Montgomery context from the monotone `q` stream.** Each scan
+  step increments the divisor by the fixed stride `2p`, so the cached Montgomery
+  tuple only changes slowly. We can therefore hand the next divisor’s
+  `MontgomeryDivisorData` directly to the Pollard rho routine instead of forcing
+  it to recompute the reducer. This is already how `DivisorScanSession` avoids
+  redundant cache lookups; exporting the cached tuple keeps the factorizer in
+  lock-step with the rest of the pipeline.【F:PerfectNumbers.Core/Cpu/MersenneNumberDivisorByDivisorCpuTester.cs†L645-L779】
+
+With these changes the divisor-refresh path would no longer spend most of its
+cycles on integer divisions, and the monotone growth of `q = 2kp + 1` for
+`p ≥ 138,000,000` would guarantee that the reciprocal refinements stay stable
+across thousands of consecutive candidates.
+
+### Pollard rho factoring implementation status
+
+* **Montgomery-backed polynomial step:** Completed. `PollardRhoMontgomeryReducer` now squares and adds in Montgomery space,
+  and the Pollard rho loops in `PrimeOrderCalculator` and `MersenneDivisorCycles` reuse the shared reducer instead of issuing `%` operations.
+* **Reciprocal reuse:** Completed. The reducer tracks a cached FastDiv64 reciprocal, refines it for each monotone modulus, and exposes `AdvanceStandard` so the standard-domain iterates reuse the cached multiplier without `%` or `UInt128` division.
+* **Warm-started Montgomery context:** Completed. The reducer accepts precomputed `MontgomeryDivisorData` snapshots, letting callers seed Pollard rho directly from the cached divisor state when the by-divisor pipeline advances to the next `q`.
+
