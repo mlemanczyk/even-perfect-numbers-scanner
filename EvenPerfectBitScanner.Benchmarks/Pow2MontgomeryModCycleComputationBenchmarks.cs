@@ -283,7 +283,8 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
             modulus,
             _previousPrimeOrder,
             divisorData,
-            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
+			      PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
         if (order != 0UL)
         {

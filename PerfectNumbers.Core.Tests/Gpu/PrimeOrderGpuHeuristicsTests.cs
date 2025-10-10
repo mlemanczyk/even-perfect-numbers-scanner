@@ -359,7 +359,7 @@ public class PrimeOrderGpuHeuristicsTests
             PrimeOrderGpuHeuristics.OverflowRegistry[prime] = 0;
 
             MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(prime);
-            ulong result = PrimeOrderCalculator.Calculate(prime, null, divisorData, PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+            ulong result = PrimeOrderCalculator.Calculate(prime, null, divisorData, PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault, PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
             result.Should().Be(3UL);
         }
