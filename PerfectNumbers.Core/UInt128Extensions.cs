@@ -218,7 +218,7 @@ public static class UInt128Extensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsBitSet(in GpuUInt128 value, int bitIndex)
+    private static bool IsBitSet(GpuUInt128 value, int bitIndex)
     {
         if (bitIndex >= 64)
         {
@@ -229,18 +229,16 @@ public static class UInt128Extensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ExtractWindowValue(in GpuUInt128 exponent, int windowStart, int windowBitCount)
+    private static ulong ExtractWindowValue(GpuUInt128 exponent, int windowStart, int windowBitCount)
     {
+		ulong mask = (1UL << windowBitCount) - 1UL;
         if (windowStart != 0)
         {
-            GpuUInt128 shifted = exponent;
-            shifted.ShiftRight(windowStart);
-            ulong mask = (1UL << windowBitCount) - 1UL;
-            return shifted.Low & mask;
+            exponent.ShiftRight(windowStart);
+            return exponent.Low & mask;
         }
 
-        ulong directMask = (1UL << windowBitCount) - 1UL;
-        return exponent.Low & directMask;
+        return exponent.Low & mask;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

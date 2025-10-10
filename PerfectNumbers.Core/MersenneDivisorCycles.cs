@@ -102,7 +102,7 @@ public class MersenneDivisorCycles
             return cycleLength == exponent;
         }
 
-        return exponent.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL;
+        return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
     }
 
     public static bool CycleEqualsExponentForMersenneCandidate(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
@@ -126,7 +126,7 @@ public class MersenneDivisorCycles
             }
         }
 
-        return exponent.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL;
+        return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
     }
 
     private static bool IsValidMersenneDivisorCandidate(ulong divisor, ulong exponent)
@@ -234,14 +234,14 @@ public class MersenneDivisorCycles
             return (UInt128)cycle;
         }
 
-        PrimeOrderCalculator.PrimeOrderResultWide wideResult = PrimeOrderCalculator.Calculate(
+        UInt128 wideOrder = PrimeOrderCalculator.Calculate(
             divisor,
             previousOrder: null,
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
             PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
-        if (wideResult.Order != UInt128.Zero)
+        if (wideOrder != UInt128.Zero)
         {
-            return wideResult.Order;
+            return wideOrder;
         }
 
         // Otherwise, find order of 2 mod divisor
@@ -285,15 +285,15 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        PrimeOrderCalculator.PrimeOrderResult orderResult = PrimeOrderCalculator.Calculate(
+        ulong computedOrder = PrimeOrderCalculator.Calculate(
             divisor,
             previousOrder: null,
             divisorData,
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
             PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
-        if (orderResult.Order != 0UL)
+        if (computedOrder != 0UL)
         {
-            cycleLength = orderResult.Order;
+            cycleLength = computedOrder;
             return true;
         }
 
@@ -505,7 +505,7 @@ public class MersenneDivisorCycles
                     }
 
                     ulong candidate = order / prime;
-                    if (candidate.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL)
+                    if (candidate.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL)
                     {
                         order = candidate;
                         continue;
@@ -940,15 +940,15 @@ public class MersenneDivisorCycles
 
         if (PrimeTester.IsPrimeInternal(divisor, CancellationToken.None))
         {
-            PrimeOrderCalculator.PrimeOrderResult orderResult = PrimeOrderCalculator.Calculate(
+            ulong computedOrder = PrimeOrderCalculator.Calculate(
                     divisor,
                     previousOrder: null,
                     divisorData,
                     PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
                     PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
-            if (orderResult.Order != 0UL)
+            if (computedOrder != 0UL)
             {
-                cycleLength = orderResult.Order;
+                cycleLength = computedOrder;
                 return true;
             }
         }

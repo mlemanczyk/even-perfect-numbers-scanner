@@ -267,7 +267,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public void Add(in ReadOnlyGpuUInt128 other) => AddInternal(other.High, other.Low);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Add(in GpuUInt128 other) => AddInternal(other.High, other.Low);
+    public void Add(GpuUInt128 other) => AddInternal(other.High, other.Low);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AddInternal(ulong otherHigh, ulong otherLow)
@@ -294,17 +294,17 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public void AddMod(in ReadOnlyGpuUInt128 value, in ReadOnlyGpuUInt128 modulus) => AddModInternal(value.High, value.Low, in modulus);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void AddMod(in GpuUInt128 value, in ReadOnlyGpuUInt128 modulus) => AddModInternal(value.High, value.Low, in modulus);
+    public void AddMod(GpuUInt128 value, in ReadOnlyGpuUInt128 modulus) => AddModInternal(value.High, value.Low, in modulus);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void AddMod(in ReadOnlyGpuUInt128 value, in GpuUInt128 modulus)
+    public void AddMod(in ReadOnlyGpuUInt128 value, GpuUInt128 modulus)
     {
         ReadOnlyGpuUInt128 readOnlyMod = modulus.AsReadOnly();
         AddModInternal(value.High, value.Low, in readOnlyMod);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void AddMod(in GpuUInt128 value, in GpuUInt128 modulus)
+    public void AddMod(GpuUInt128 value, GpuUInt128 modulus)
     {
         ReadOnlyGpuUInt128 readOnlyMod = modulus.AsReadOnly();
         AddModInternal(value.High, value.Low, in readOnlyMod);
@@ -390,7 +390,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void AddMod(in GpuUInt128 value, ulong modulus) => AddMod(value.Low, modulus);
+    public void AddMod(GpuUInt128 value, ulong modulus) => AddMod(value.Low, modulus);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void AddMod(ulong value, ulong modulus)
@@ -414,7 +414,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public void Sub(in ReadOnlyGpuUInt128 other) => SubInternal(other.High, other.Low);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Sub(in GpuUInt128 other) => SubInternal(other.High, other.Low);
+    public void Sub(GpuUInt128 other) => SubInternal(other.High, other.Low);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void SubInternal(ulong otherHigh, ulong otherLow)
@@ -461,7 +461,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public void Mul64(in ReadOnlyGpuUInt128 other) => Mul64Internal(other.High, other.Low);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Mul64(in GpuUInt128 other) => Mul64Internal(other.High, other.Low);
+    public void Mul64(GpuUInt128 other) => Mul64Internal(other.High, other.Low);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Mul64Internal(ulong otherHigh, ulong otherLow)
@@ -588,7 +588,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int TrailingZeroCount(in GpuUInt128 value)
+    public static int TrailingZeroCount(GpuUInt128 value)
     {
         if (value.Low != 0UL)
         {
@@ -646,17 +646,17 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public void SubMod(in ReadOnlyGpuUInt128 value, in ReadOnlyGpuUInt128 modulus) => SubModInternal(value.High, value.Low, in modulus);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SubMod(in GpuUInt128 value, in ReadOnlyGpuUInt128 modulus) => SubModInternal(value.High, value.Low, in modulus);
+    public void SubMod(GpuUInt128 value, in ReadOnlyGpuUInt128 modulus) => SubModInternal(value.High, value.Low, in modulus);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SubMod(in ReadOnlyGpuUInt128 value, in GpuUInt128 modulus)
+    public void SubMod(in ReadOnlyGpuUInt128 value, GpuUInt128 modulus)
     {
         ReadOnlyGpuUInt128 readOnlyMod = modulus.AsReadOnly();
         SubModInternal(value.High, value.Low, in readOnlyMod);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SubMod(in GpuUInt128 value, in GpuUInt128 modulus)
+    public void SubMod(GpuUInt128 value, GpuUInt128 modulus)
     {
         ReadOnlyGpuUInt128 readOnlyMod = modulus.AsReadOnly();
         SubModInternal(value.High, value.Low, in readOnlyMod);
@@ -727,7 +727,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Mul(in GpuUInt128 other)
+    public void Mul(GpuUInt128 other)
     {
         ReadOnlyGpuUInt128 readOnlyThis = AsReadOnly();
         ReadOnlyGpuUInt128 readOnlyOther = other.AsReadOnly();

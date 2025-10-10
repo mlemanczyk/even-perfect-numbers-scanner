@@ -15,9 +15,15 @@ public class GpuContextPoolTests
     {
         GpuContextPool.DisposeAll();
 
-        using var lease = GpuContextPool.RentPreferred(preferCpu: true);
-
-        lease.Accelerator.AcceleratorType.Should().Be(AcceleratorType.CPU);
+        GpuContextPool.GpuContextLease lease = GpuContextPool.RentPreferred(preferCpu: true);
+        try
+        {
+            lease.Accelerator.AcceleratorType.Should().Be(AcceleratorType.CPU);
+        }
+        finally
+        {
+            lease.Dispose();
+        }
 
         GpuContextPool.DisposeAll();
     }
@@ -30,16 +36,26 @@ public class GpuContextPoolTests
 
         Context firstContext;
         Accelerator firstAccelerator;
-        using (var lease = GpuContextPool.RentPreferred(preferCpu: true))
+        GpuContextPool.GpuContextLease lease = GpuContextPool.RentPreferred(preferCpu: true);
+        try
         {
             firstContext = lease.Context;
             firstAccelerator = lease.Accelerator;
         }
+        finally
+        {
+            lease.Dispose();
+        }
 
-        using (var lease = GpuContextPool.RentPreferred(preferCpu: true))
+        lease = GpuContextPool.RentPreferred(preferCpu: true);
+        try
         {
             lease.Context.Should().BeSameAs(firstContext);
             lease.Accelerator.Should().BeSameAs(firstAccelerator);
+        }
+        finally
+        {
+            lease.Dispose();
         }
 
         GpuContextPool.DisposeAll();
@@ -52,16 +68,26 @@ public class GpuContextPoolTests
         GpuContextPool.DisposeAll();
 
         Context firstContext;
-        using (var lease = GpuContextPool.RentPreferred(preferCpu: true))
+        GpuContextPool.GpuContextLease lease = GpuContextPool.RentPreferred(preferCpu: true);
+        try
         {
             firstContext = lease.Context;
+        }
+        finally
+        {
+            lease.Dispose();
         }
 
         GpuContextPool.DisposeAll();
 
-        using (var lease = GpuContextPool.RentPreferred(preferCpu: true))
+        lease = GpuContextPool.RentPreferred(preferCpu: true);
+        try
         {
             lease.Context.Should().NotBeSameAs(firstContext);
+        }
+        finally
+        {
+            lease.Dispose();
         }
 
         GpuContextPool.DisposeAll();

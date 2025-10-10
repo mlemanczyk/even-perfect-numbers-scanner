@@ -371,10 +371,6 @@ public static class MersennePrimeFactorTester
             return 2UL;
         }
 
-        var rng = new Random(1234567); // TODO: Replace this RNG with the deterministic span-based
-                                       // sequence measured faster in PollardRhoBenchmarks so we avoid
-                                       // per-call Random allocations.
-
         ulong c, d, x, y, diff;
         while (true)
         {
@@ -383,8 +379,8 @@ public static class MersennePrimeFactorTester
                 return 0UL;
             }
 
-            c = (ulong)rng.Next(2, int.MaxValue);
-            x = (ulong)rng.Next(2, int.MaxValue);
+            c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
+            x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
             y = x;
             d = 1UL;
 
@@ -523,9 +519,6 @@ public static class MersennePrimeFactorTester
             return 2;
         }
 
-        var rng = new Random(1234567); // TODO: Replace with the deterministic UInt128 sequence from
-                                       // PollardRho128Benchmarks so we eliminate Random allocations.
-
         UInt128 c, d, x, y, diff;
         while (true)
         {
@@ -534,8 +527,8 @@ public static class MersennePrimeFactorTester
                 return 0;
             }
 
-            c = (UInt128)rng.NextInt64(2, long.MaxValue);
-            x = (UInt128)rng.NextInt64(2, long.MaxValue);
+            c = (DeterministicRandom.NextUInt128() % (n - 1)) + 1;
+            x = (DeterministicRandom.NextUInt128() % (n - 2)) + 2;
             y = x;
             d = 1;
 

@@ -11,14 +11,21 @@ public class GpuKernelPoolTests
     [Trait("Category", "Fast")]
     public void EnsureSmallCyclesOnDevice_returns_same_view_on_subsequent_calls()
     {
-        using var lease = GpuContextPool.RentPreferred(preferCpu: true);
-        var accelerator = lease.Accelerator;
+        GpuContextPool.GpuContextLease lease = GpuContextPool.RentPreferred(preferCpu: true);
+        try
+        {
+            var accelerator = lease.Accelerator;
 
-        var first = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
-        var second = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
+            var first = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
+            var second = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
 
-        second.Equals(first).Should().BeTrue();
-        second.Length.Should().Be(MersenneDivisorCycles.SmallDivisorsMax + 1);
+            second.Equals(first).Should().BeTrue();
+            second.Length.Should().Be(MersenneDivisorCycles.SmallDivisorsMax + 1);
+        }
+        finally
+        {
+            lease.Dispose();
+        }
     }
 
     [Fact]

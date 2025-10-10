@@ -677,7 +677,7 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         // GC.SuppressFinalize(this);
     }
 
-    public readonly struct ExecutionScope : IDisposable
+    public readonly struct ExecutionScope
     {
         private readonly object? _lock;
 

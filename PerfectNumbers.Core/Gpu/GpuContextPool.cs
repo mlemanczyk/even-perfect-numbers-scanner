@@ -126,7 +126,7 @@ public static class GpuContextPool
                 }
         }
 
-    public struct GpuContextLease : IDisposable
+    public struct GpuContextLease
     {
         private readonly PooledContext _ctx;
                 private bool disposed;

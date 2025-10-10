@@ -199,10 +199,17 @@ public class GpuKernelCompilationTests
     [MemberData(nameof(KernelLoaders))]
     public void Kernel_compiles_without_internal_compiler_errors(string name, Action<Accelerator> compile)
     {
-        using var lease = GpuContextPool.RentPreferred(preferCpu: true);
-        var accelerator = lease.Accelerator;
-        Action action = () => compile(accelerator);
-        action.Should().NotThrow($"kernel {name} should compile");
+        GpuContextPool.GpuContextLease lease = GpuContextPool.RentPreferred(preferCpu: true);
+        try
+        {
+            var accelerator = lease.Accelerator;
+            Action action = () => compile(accelerator);
+            action.Should().NotThrow($"kernel {name} should compile");
+        }
+        finally
+        {
+            lease.Dispose();
+        }
     }
 
     private static void CompileDivisorCycleCacheKernel(Accelerator accelerator)

@@ -238,20 +238,19 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                     }
                 }
 
-				if (divisorCycle != 0 && divisorCycle == prime)
-				{
-					processedAll = true;
-					return true;
-				}
-				else if (divisorCycle == 0)
-				{
-					Console.WriteLine($"Divisor cycle wasn't calculated for ${prime}");
-				}				
-				// if (divisorCycle != 0UL && CheckDivisor(prime, divisorCycle, divisorData) != 0)
-				// {
-				// 	processedAll = true;
-				// 	return true;
-				// }
+                if (divisorCycle == prime)
+                {
+                    // A cycle equal to the tested exponent (which is prime in this path)
+                    // guarantees that the candidate divides the corresponding Mersenne
+                    // number because the order of 2 modulo the divisor is exactly p.
+                    processedAll = true;
+                    return true;
+                }
+
+                if (divisorCycle == 0UL)
+                {
+                    Console.WriteLine($"Divisor cycle was not calculated for {prime}");
+                }
             }
 
             divisor += step;
@@ -269,7 +268,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     private static byte CheckDivisor(ulong prime, ulong divisorCycle, in MontgomeryDivisorData divisorData)
     {
-        ulong residue = prime.Pow2MontgomeryModWithCycle(divisorCycle, divisorData);
+        ulong residue = prime.Pow2MontgomeryModWithCycleCpu(divisorCycle, divisorData);
         return residue == 1UL ? (byte)1 : (byte)0;
     }
 

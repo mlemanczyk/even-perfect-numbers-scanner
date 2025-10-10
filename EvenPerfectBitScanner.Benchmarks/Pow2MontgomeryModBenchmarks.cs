@@ -52,14 +52,31 @@ public class Pow2MontgomeryModBenchmarks
     /// Baseline right-to-left Montgomery ladder; measured 36.36 μs on the small sample set and 117.32 μs on the large one.
     /// </summary>
     [Benchmark(Baseline = true)]
-    public ulong Baseline()
+    public ulong BaselineCpu()
     {
         GetData(out var exponents, out var divisors, out _);
         ulong checksum = 0UL;
 
         for (int i = 0; i < SampleCount; i++)
         {
-            checksum ^= exponents[i].Pow2MontgomeryModWindowed(divisors[i], keepMontgomery: false);
+            checksum ^= exponents[i].Pow2MontgomeryModWindowedCpu(divisors[i], keepMontgomery: false);
+        }
+
+        return checksum;
+    }
+
+    /// <summary>
+    /// Baseline right-to-left Montgomery ladder; measured ??.?? μs on the small sample set and ??.?? μs on the large one.
+    /// </summary>
+    [Benchmark]
+    public ulong BaselineGpu()
+    {
+        GetData(out var exponents, out var divisors, out _);
+        ulong checksum = 0UL;
+
+        for (int i = 0; i < SampleCount; i++)
+        {
+            checksum ^= exponents[i].Pow2MontgomeryModWindowedGpu(divisors[i], keepMontgomery: false);
         }
 
         return checksum;
@@ -69,14 +86,31 @@ public class Pow2MontgomeryModBenchmarks
     /// Uses a known divisor cycle to fold the exponent first, dropping runtimes to 26.04 μs on small inputs (0.72× baseline) and 9.53 μs on large inputs (0.08× baseline).
     /// </summary>
     [Benchmark]
-    public ulong BaselineWithKnownCycle()
+    public ulong BaselineWithKnownCycleCpu()
     {
         GetData(out var exponents, out var divisors, out var cycles);
         ulong checksum = 0UL;
 
         for (int i = 0; i < SampleCount; i++)
         {
-            checksum ^= exponents[i].Pow2MontgomeryModWithCycle(cycles[i], divisors[i]);
+            checksum ^= exponents[i].Pow2MontgomeryModWithCycleCpu(cycles[i], divisors[i]);
+        }
+
+        return checksum;
+    }
+
+    /// <summary>
+    /// Uses a known divisor cycle to fold the exponent first, dropping runtimes to 26.04 μs on small inputs (0.72× baseline) and 9.53 μs on large inputs (0.08× baseline).
+    /// </summary>
+    [Benchmark]
+    public ulong BaselineWithKnownCycleGpu()
+    {
+        GetData(out var exponents, out var divisors, out var cycles);
+        ulong checksum = 0UL;
+
+        for (int i = 0; i < SampleCount; i++)
+        {
+            checksum ^= exponents[i].Pow2MontgomeryModWithCycleGpu(cycles[i], divisors[i]);
         }
 
         return checksum;
