@@ -1,15 +1,12 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Numerics;
-using PerfectNumbers.Core;
 
 namespace PerfectNumbers.Core.Cpu;
 
 public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDivisorByDivisorTester
 {
     private readonly object _sync = new();
-    private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
+    private readonly ConcurrentBag<DivisorScanSession> _sessionPool = [];
     private ulong _divisorLimit;
     private ulong _lastStatusDivisor;
     private bool _isConfigured;
@@ -213,7 +210,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         ulong mersenne;
         if (prime <= 63UL)
         {
-            mersenne = (1UL << (int)prime) - 1UL;
+			mersenne = (1UL << (int)prime) - 1UL;
             hasExactMersenne = true;
         }
         else if (prime == 64UL)
@@ -249,7 +246,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 else
                 {
                     factorCache ??= new Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>(8);
-                    if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(candidate, prime, divisorData, factorCache, out divisorCycle) || divisorCycle == 0UL)
+                    if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(candidate, prime, divisorData, factorCache, out divisorCycle) || divisorCycle == 0UL)
                     {
                         divisorCycle = cycleCache.GetCycleLength(candidate);
                     }
@@ -287,12 +284,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
             UInt128 incrementAmount = step * increments;
             divisor += incrementAmount;
-            remainder10 = AdvanceRemainder(remainder10, step10, (byte)10, increments);
-            remainder8 = AdvanceRemainder(remainder8, step8, (byte)8, increments);
-            remainder5 = AdvanceRemainder(remainder5, step5, (byte)5, increments);
-            remainder3 = AdvanceRemainder(remainder3, step3, (byte)3, increments);
-            remainder7 = AdvanceRemainder(remainder7, step7, (byte)7, increments);
-            remainder11 = AdvanceRemainder(remainder11, step11, (byte)11, increments);
+            remainder10 = AdvanceRemainder(remainder10, step10, 10, increments);
+            remainder8 = AdvanceRemainder(remainder8, step8, 8, increments);
+            remainder5 = AdvanceRemainder(remainder5, step5, 5, increments);
+            remainder3 = AdvanceRemainder(remainder3, step3, 3, increments);
+            remainder7 = AdvanceRemainder(remainder7, step7, 7, increments);
+            remainder11 = AdvanceRemainder(remainder11, step11, 11, increments);
         }
 
         processedAll = divisor > limit;
@@ -301,7 +298,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     private static byte CheckDivisor(ulong prime, ulong divisorCycle, in MontgomeryDivisorData divisorData)
     {
-        ulong residue = prime.Pow2MontgomeryModWithCycle(divisorCycle, divisorData);
+        ulong residue = prime.Pow2MontgomeryModWithCycleCpu(divisorCycle, divisorData);
         return residue == 1UL ? (byte)1 : (byte)0;
     }
 
@@ -323,8 +320,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             return remainder;
         }
 
-        ulong modulusValue = (ulong)modulus;
-        ulong scaledDelta = ((ulong)delta * (increments % modulusValue)) % modulusValue;
+        ulong modulusValue = modulus;
+        ulong scaledDelta = (delta * (increments % modulusValue)) % modulusValue;
         byte reducedDelta = (byte)scaledDelta;
         int sum = remainder + reducedDelta;
         if (sum >= modulus)

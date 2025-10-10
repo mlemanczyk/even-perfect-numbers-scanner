@@ -89,14 +89,32 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 	/// large set.
 	/// </summary>
 	// [Benchmark(Baseline = true)]
-	public ulong MontgomeryWithoutCycle()
+	public ulong MontgomeryWithoutCycleCpu()
 	{
 		GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out _);
 		ulong checksum = 0UL;
 
 		for (int i = 0; i < SampleCount; i++)
 		{
-			checksum ^= exponents[i].Pow2MontgomeryModWindowed(divisors[i], keepMontgomery: false);
+			checksum ^= exponents[i].Pow2MontgomeryModWindowedCpu(divisors[i], keepMontgomery: false);
+		}
+
+		return checksum;
+	}
+
+	/// <summary>
+	/// Baseline Montgomery reduction without precomputed cycle data; measured 35.41 μs on the small sample and 117.33 μs on the
+	/// large set.
+	/// </summary>
+	// [Benchmark(Baseline = true)]
+	public ulong MontgomeryWithoutCycleGpu()
+	{
+		GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out _);
+		ulong checksum = 0UL;
+
+		for (int i = 0; i < SampleCount; i++)
+		{
+			checksum ^= exponents[i].Pow2MontgomeryModWindowedGpu(divisors[i], keepMontgomery: false);
 		}
 
 		return checksum;
@@ -107,14 +125,32 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 	/// on the large one (0.08×).
 	/// </summary>
 	[Benchmark]
-	public ulong MontgomeryWithPrecomputedCycle()
+	public ulong MontgomeryWithPrecomputedCycleCpu()
 	{
 		GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out ulong[] cycles);
 		ulong checksum = 0UL;
 
 		for (int i = 0; i < SampleCount; i++)
 		{
-			checksum ^= exponents[i].Pow2MontgomeryModWithCycle(cycles[i], divisors[i]);
+			checksum ^= exponents[i].Pow2MontgomeryModWithCycleCpu(cycles[i], divisors[i]);
+		}
+
+		return checksum;
+	}
+
+	/// <summary>
+	/// Montgomery reduction with a known cycle length (cycle lookup only); 25.81 μs on the small set (0.73× baseline) and 9.12 μs
+	/// on the large one (0.08×).
+	/// </summary>
+	[Benchmark]
+	public ulong MontgomeryWithPrecomputedCycleGpu()
+	{
+		GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out ulong[] cycles);
+		ulong checksum = 0UL;
+
+		for (int i = 0; i < SampleCount; i++)
+		{
+			checksum ^= exponents[i].Pow2MontgomeryModWithCycleGpu(cycles[i], divisors[i]);
 		}
 
 		return checksum;
@@ -125,7 +161,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 	/// cycle discovery, but drops to 12.91 μs on the large set (0.11× baseline).
 	/// </summary>
 	// [Benchmark]
-	public ulong MontgomeryWithGpuCycleComputation()
+	public ulong MontgomeryWithGpuCycleComputationCpu()
 	{
 		GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out _);
 		ulong checksum = 0UL;
@@ -133,15 +169,33 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 		for (int i = 0; i < SampleCount; i++)
 		{
 			ulong cycle = MersenneDivisorCycles.CalculateCycleLengthGpu(divisors[i].Modulus);
-			checksum ^= exponents[i].Pow2MontgomeryModWithCycle(cycle, divisors[i]);
+			checksum ^= exponents[i].Pow2MontgomeryModWithCycleCpu(cycle, divisors[i]);
 		}
 
 		return checksum;
 	}
 
+	/// <summary>
+	/// Montgomery reduction with the cycle computed on the fly using the GPU helper; costs 54.09 ms on the small benchmark due to
+	/// cycle discovery, but drops to 12.91 μs on the large set (0.11× baseline).
+	/// </summary>
+	// [Benchmark]
+	public ulong MontgomeryWithGpuCycleComputationGpu()
+	{
+		GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out _);
+		ulong checksum = 0UL;
+
+		for (int i = 0; i < SampleCount; i++)
+		{
+			ulong cycle = MersenneDivisorCycles.CalculateCycleLengthGpu(divisors[i].Modulus);
+			checksum ^= exponents[i].Pow2MontgomeryModWithCycleGpu(cycle, divisors[i]);
+		}
+
+		return checksum;
+	}
 
 	[Benchmark]
-	public ulong MontgomeryWithHeuristicCycleComputation()
+	public ulong MontgomeryWithHeuristicCycleComputationCpu()
 	{
 		GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out _);
 		ulong checksum = 0UL;
@@ -149,7 +203,22 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 		for (int i = 0; i < SampleCount; i++)
 		{
 			ulong cycle = CalculateCycleLengthWithHeuristics(divisors[i].Modulus);
-			checksum ^= exponents[i].Pow2MontgomeryModWithCycle(cycle, divisors[i]);
+			checksum ^= exponents[i].Pow2MontgomeryModWithCycleCpu(cycle, divisors[i]);
+		}
+
+		return checksum;
+	}
+
+	[Benchmark]
+	public ulong MontgomeryWithHeuristicCycleComputationGpu()
+	{
+		GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out _);
+		ulong checksum = 0UL;
+
+		for (int i = 0; i < SampleCount; i++)
+		{
+			ulong cycle = CalculateCycleLengthWithHeuristics(divisors[i].Modulus);
+			checksum ^= exponents[i].Pow2MontgomeryModWithCycleGpu(cycle, divisors[i]);
 		}
 
 		return checksum;

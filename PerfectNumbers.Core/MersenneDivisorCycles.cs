@@ -54,15 +54,15 @@ public class MersenneDivisorCycles
         return snapshot;
     }
 
-    public static bool CycleEqualsExponent(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
+    public static bool CycleEqualsExponentCpu(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
     {
         Dictionary<ulong, FactorCacheEntry>? cache = null;
-        return CycleEqualsExponent(divisor, exponent, divisorData, ref cache);
+        return CycleEqualsExponentCpu(divisor, exponent, divisorData, ref cache);
     }
 
-    public static bool CycleEqualsExponent(ulong divisor, ulong exponent, in MontgomeryDivisorData divisorData, ref Dictionary<ulong, FactorCacheEntry>? factorCache)
+    public static bool CycleEqualsExponentCpu(ulong divisor, ulong exponent, in MontgomeryDivisorData divisorData, ref Dictionary<ulong, FactorCacheEntry>? factorCache)
     {
-        if (CycleEqualsExponentForMersenneCandidate(divisor, divisorData, exponent))
+        if (CycleEqualsExponentForMersenneCandidateCpu(divisor, divisorData, exponent))
         {
             return true;
         }
@@ -97,15 +97,15 @@ public class MersenneDivisorCycles
             factorCache = cache;
         }
 
-        if (TryCalculateCycleLengthForExponent(divisor, exponent, divisorData, cache, out ulong cycleLength) && cycleLength != 0UL)
+        if (TryCalculateCycleLengthForExponentCpu(divisor, exponent, divisorData, cache, out ulong cycleLength) && cycleLength != 0UL)
         {
             return cycleLength == exponent;
         }
 
-        return exponent.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL;
+        return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
     }
 
-    public static bool CycleEqualsExponentForMersenneCandidate(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
+    public static bool CycleEqualsExponentForMersenneCandidateCpu(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
     {
         if (!IsValidMersenneDivisorCandidate(divisor, exponent))
         {
@@ -126,7 +126,7 @@ public class MersenneDivisorCycles
             }
         }
 
-        return exponent.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL;
+        return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
     }
 
     private static bool IsValidMersenneDivisorCandidate(ulong divisor, ulong exponent)
@@ -264,7 +264,7 @@ public class MersenneDivisorCycles
         return order;
     }
 
-    public static bool TryCalculateCycleLengthForExponent(
+    public static bool TryCalculateCycleLengthForExponentCpu(
         ulong divisor,        
         ulong exponent,
         in MontgomeryDivisorData divisorData,
@@ -327,7 +327,7 @@ public class MersenneDivisorCycles
             return false;
         }
 
-        cycleLength = ReduceOrder(divisorData, phi, factorCounts);
+        cycleLength = ReduceOrderCpu(divisorData, phi, factorCounts);
         return true;
     }
 
@@ -471,7 +471,7 @@ public class MersenneDivisorCycles
         }
     }
 
-    private static ulong ReduceOrder(in MontgomeryDivisorData divisorData, ulong initialOrder, Dictionary<ulong, int> factorCounts)
+    private static ulong ReduceOrderCpu(in MontgomeryDivisorData divisorData, ulong initialOrder, Dictionary<ulong, int> factorCounts)
     {
         if (factorCounts.Count == 0)
         {
@@ -505,7 +505,7 @@ public class MersenneDivisorCycles
                     }
 
                     ulong candidate = order / prime;
-                    if (candidate.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL)
+                    if (candidate.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL)
                     {
                         order = candidate;
                         continue;

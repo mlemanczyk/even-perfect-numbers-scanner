@@ -1,60 +1,31 @@
-using System;
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
-using System.IO;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using System.Text;
 using PerfectNumbers.Core.Gpu;
-using System.Threading;
 
 namespace PerfectNumbers.Core;
 
 internal static partial class PrimeOrderCalculator
 {
-
-
     internal enum PrimeOrderMode
     {
         Heuristic,
         Strict,
     }
 
-    private enum HeuristicFailureReason
-    {
-        PhiPartialFactorizationFailed,
-        StrictModeRequested,
-        HeuristicPipelineUnresolved,
-        HeuristicPipelineAssumedFullOrder,
-    }
-
-    internal readonly struct PrimeOrderSearchConfig
-    {
-        public PrimeOrderSearchConfig(uint smallFactorLimit, int pollardRhoMilliseconds, int maxPowChecks, PrimeOrderMode mode)
-        {
-            SmallFactorLimit = smallFactorLimit;
-            PollardRhoMilliseconds = pollardRhoMilliseconds;
-            MaxPowChecks = maxPowChecks;
-            Mode = mode;
-        }
-
-        public uint SmallFactorLimit { get; }
-
-        public int PollardRhoMilliseconds { get; }
-
-        public int MaxPowChecks { get; }
-
-        public PrimeOrderMode Mode { get; }
-
-        public static PrimeOrderSearchConfig HeuristicDefault => new(smallFactorLimit: 100_000, pollardRhoMilliseconds: 128, maxPowChecks: 24, PrimeOrderMode.Heuristic);
-
+    internal readonly struct PrimeOrderSearchConfig(uint smallFactorLimit, int pollardRhoMilliseconds, int maxPowChecks, PrimeOrderMode mode)
+	{
+		public static PrimeOrderSearchConfig HeuristicDefault => new(smallFactorLimit: 100_000, pollardRhoMilliseconds: 128, maxPowChecks: 24, PrimeOrderMode.Heuristic);
         public static PrimeOrderSearchConfig StrictDefault => new(smallFactorLimit: 1_000_000, pollardRhoMilliseconds: 0, maxPowChecks: 0, PrimeOrderMode.Strict);
+
+		public readonly uint SmallFactorLimit = smallFactorLimit;
+		public readonly int PollardRhoMilliseconds = pollardRhoMilliseconds;
+		public readonly int MaxPowChecks = maxPowChecks;
+		public readonly PrimeOrderMode Mode = mode;		
     }
 
     internal enum PrimeOrderHeuristicDevice
@@ -88,29 +59,30 @@ internal static partial class PrimeOrderCalculator
     private static Dictionary<ulong, int>? s_partialFactorCounts;
 
     private static bool IsGpuHeuristicDevice => s_pow2ModeInitialized && s_deviceMode == PrimeOrderHeuristicDevice.Gpu;
-    private readonly struct Pow2ModeScope
-    {
-        private readonly bool _previousInitialized;
-        private readonly bool _previousAllow;
-        private readonly PrimeOrderHeuristicDevice _previousDevice;
 
-        public Pow2ModeScope(PrimeOrderHeuristicDevice device)
-        {
-            _previousInitialized = s_pow2ModeInitialized;
-            _previousAllow = s_allowGpuPow2;
-            _previousDevice = s_deviceMode;
-            s_pow2ModeInitialized = true;
-            s_allowGpuPow2 = device == PrimeOrderHeuristicDevice.Gpu;
-            s_deviceMode = device;
-        }
+	private readonly struct Pow2ModeScope
+	{
+		private readonly bool _previousInitialized;
+		private readonly bool _previousAllow;
+		private readonly PrimeOrderHeuristicDevice _previousDevice;
 
-        public void Dispose()
-        {
-            s_allowGpuPow2 = _previousAllow;
-            s_pow2ModeInitialized = _previousInitialized;
-            s_deviceMode = _previousDevice;
-        }
-    }
+		public Pow2ModeScope(PrimeOrderHeuristicDevice device)
+		{
+			_previousInitialized = s_pow2ModeInitialized;
+			_previousAllow = s_allowGpuPow2;
+			_previousDevice = s_deviceMode;
+			s_pow2ModeInitialized = true;
+			s_allowGpuPow2 = device == PrimeOrderHeuristicDevice.Gpu;
+			s_deviceMode = device;
+		}
+
+		public void Dispose()
+		{
+			s_allowGpuPow2 = _previousAllow;
+			s_pow2ModeInitialized = _previousInitialized;
+			s_deviceMode = _previousDevice;
+		}
+	}
 
     private readonly struct DebugLoggingScope
     {
@@ -184,17 +156,22 @@ internal static partial class PrimeOrderCalculator
             return gpuOrder;
         }
 
-        using PartialFactorResult phiFactors = PartialFactor(phi, config);
+        PartialFactorResult phiFactors = PartialFactor(phi, config);
 
-        if (phiFactors.Factors is null)
-        {
-            return FinishStrictly(prime, divisorData);
-        }
+		ulong result;
+		if (phiFactors.Factors is null)
+		{
+			result = FinishStrictlyCpu(prime, divisorData);
+			phiFactors.Dispose();
+			return result;
+		}
 
-        return RunHeuristicPipeline(prime, previousOrder, config, divisorData, phi, phiFactors);
+		result = RunHeuristicPipelineCpu(prime, previousOrder, config, divisorData, phi, phiFactors);
+		phiFactors.Dispose();
+		return result;
     }
 
-    private static ulong RunHeuristicPipeline(
+    private static ulong RunHeuristicPipelineCpu(
         ulong prime,
         ulong? previousOrder,
         in PrimeOrderSearchConfig config,
@@ -202,25 +179,25 @@ internal static partial class PrimeOrderCalculator
         ulong phi,
         PartialFactorResult phiFactors)
     {
-        if (phiFactors.FullyFactored && TrySpecialMax(phi, prime, phiFactors, divisorData))
+        if (phiFactors.FullyFactored && TrySpecialMaxCpu(phi, prime, phiFactors, divisorData))
         {
             return phi;
         }
 
-        ulong candidateOrder = InitializeStartingOrder(prime, phi, divisorData);
-        candidateOrder = ExponentLowering(candidateOrder, prime, phiFactors, divisorData);
+        ulong candidateOrder = InitializeStartingOrderCpu(prime, phi, divisorData);
+        candidateOrder = ExponentLoweringCpu(candidateOrder, prime, phiFactors, divisorData);
 
-        if (TryConfirmOrder(prime, candidateOrder, divisorData, config))
+        if (TryConfirmOrderCpu(prime, candidateOrder, divisorData, config))
         {
             return candidateOrder;
         }
 
         if (config.Mode == PrimeOrderMode.Strict)
         {
-            return FinishStrictly(prime, divisorData);
+            return FinishStrictlyCpu(prime, divisorData);
         }
 
-        if (TryHeuristicFinish(prime, candidateOrder, previousOrder, divisorData, config, phiFactors, out ulong order))
+        if (TryHeuristicFinishCpu(prime, candidateOrder, previousOrder, divisorData, config, phiFactors, out ulong order))
         {
             return order;
         }
@@ -228,12 +205,12 @@ internal static partial class PrimeOrderCalculator
         return candidateOrder;
     }
 
-    private static ulong FinishStrictly(ulong prime, in MontgomeryDivisorData divisorData)
+    private static ulong FinishStrictlyCpu(ulong prime, in MontgomeryDivisorData divisorData)
     {
-        return CalculateByFactorization(prime, divisorData);
+        return CalculateByFactorizationCpu(prime, divisorData);
     }
 
-    private static bool TrySpecialMax(ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
+    private static bool TrySpecialMaxCpu(ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
     {
         ReadOnlySpan<FactorEntry> factorSpan = factors.Factors;
         int length = factors.Count;
@@ -241,7 +218,7 @@ internal static partial class PrimeOrderCalculator
         {
             ulong factor = factorSpan[i].Value;
             ulong reduced = phi / factor;
-            if (Pow2EqualsOne(reduced, prime, divisorData))
+            if (Pow2EqualsOneCpu(reduced, prime, divisorData))
             {
                 return false;
             }
@@ -250,13 +227,13 @@ internal static partial class PrimeOrderCalculator
         return true;
     }
 
-    private static ulong InitializeStartingOrder(ulong prime, ulong phi, in MontgomeryDivisorData divisorData)
+    private static ulong InitializeStartingOrderCpu(ulong prime, ulong phi, in MontgomeryDivisorData divisorData)
     {
         ulong order = phi;
         if ((prime & 7UL) == 1UL || (prime & 7UL) == 7UL)
         {
             ulong half = phi >> 1;
-            if (Pow2EqualsOne(half, prime, divisorData))
+            if (Pow2EqualsOneCpu(half, prime, divisorData))
             {
                 order = half;
             }
@@ -265,7 +242,7 @@ internal static partial class PrimeOrderCalculator
         return order;
     }
 
-    private static ulong ExponentLowering(ulong order, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
+    private static ulong ExponentLoweringCpu(ulong order, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
     {
         FactorEntry[]? tempArray = null;
         try
@@ -298,7 +275,7 @@ internal static partial class PrimeOrderCalculator
                     }
 
                     ulong reduced = order / primeFactor;
-                    if (Pow2EqualsOne(reduced, prime, divisorData))
+                    if (Pow2EqualsOneCpu(reduced, prime, divisorData))
                     {
                         order = reduced;
                         continue;
@@ -319,7 +296,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static bool TryConfirmOrder(ulong prime, ulong order, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
+    private static bool TryConfirmOrderCpu(ulong prime, ulong order, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
     {
         if (order == 0UL)
         {
@@ -328,7 +305,7 @@ internal static partial class PrimeOrderCalculator
 
         // Calculating `a^order ≡ 1 (mod p)` is a prerequisite for `order` being the actual order of 2 modulo `p`.
         // DebugLog("Verifying a^order ≡ 1 (mod p)");
-        if (!Pow2EqualsOne(order, prime, divisorData))
+        if (!Pow2EqualsOneCpu(order, prime, divisorData))
         {
             return false;
         }
@@ -380,7 +357,7 @@ internal static partial class PrimeOrderCalculator
                     }
 
                     reduced /= primeFactor;
-                    if (Pow2EqualsOne(reduced, prime, divisorData))
+                    if (Pow2EqualsOneCpu(reduced, prime, divisorData))
                     {
                         return false;
                     }
@@ -395,7 +372,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static bool TryHeuristicFinish(
+    private static bool TryHeuristicFinishCpu(
         ulong prime,
         ulong order,
         ulong? previousOrder,
@@ -528,14 +505,14 @@ internal static partial class PrimeOrderCalculator
                     }
                     else
                     {
-                        equalsOne = Pow2EqualsOne(candidate, prime, divisorData);
+                        equalsOne = Pow2EqualsOneCpu(candidate, prime, divisorData);
                     }
                     if (!equalsOne)
                     {
                         continue;
                     }
 
-                    if (!TryConfirmCandidate(prime, candidate, divisorData, config, ref powUsed, powBudget))
+                    if (!TryConfirmCandidateCpu(prime, candidate, divisorData, config, ref powUsed, powBudget))
                     {
                         continue;
                     }
@@ -733,7 +710,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static bool TryConfirmCandidate(ulong prime, ulong candidate, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config, ref int powUsed, int powBudget)
+    private static bool TryConfirmCandidateCpu(ulong prime, ulong candidate, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config, ref int powUsed, int powBudget)
     {
         PartialFactorResult factorization = PartialFactor(candidate, config);
         try
@@ -782,7 +759,7 @@ internal static partial class PrimeOrderCalculator
                     }
 
                     powUsed++;
-                    if (Pow2EqualsOne(reduced, prime, divisorData))
+                    if (Pow2EqualsOneCpu(reduced, prime, divisorData))
                     {
                         return false;
                     }
@@ -797,7 +774,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static bool Pow2EqualsOne(ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
+    private static bool Pow2EqualsOneCpu(ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
     {
         if (IsGpuPow2Allowed)
         {
@@ -808,111 +785,7 @@ internal static partial class PrimeOrderCalculator
             }
         }
 
-        return exponent.Pow2MontgomeryModWindowed(divisorData, keepMontgomery: false) == 1UL;
-    }
-
-    private static class HeuristicFailureLog
-    {
-        private const string LogFileName = "prime-order-heuristic-fallbacks.log";
-        private const int FlushThreshold = 4096;
-        private const int MaxBufferedEntries = 16;
-        private static readonly ConcurrentQueue<StringBuilder> s_builderPool = new();
-        private static readonly ThreadLocal<StringBuilder?> s_threadBuilder = new(() => AcquireBuilder(), trackAllValues: true);
-        private static readonly ThreadLocal<int> s_threadEntryCount = new(() => 0, trackAllValues: true);
-        private static readonly object s_fileLock = new();
-        private static readonly string s_logPath = Path.Combine(AppContext.BaseDirectory, LogFileName);
-        private static readonly UTF8Encoding s_utf8NoBom = new(false);
-
-        static HeuristicFailureLog()
-        {
-            AppDomain.CurrentDomain.ProcessExit += static (_, _) => FlushAll(force: true);
-        }
-
-        public static void Record(ulong prime, ulong? candidateOrder, HeuristicFailureReason reason)
-        {
-            string primeText = prime.ToString(CultureInfo.InvariantCulture);
-            string? candidateText = candidateOrder.HasValue ? candidateOrder.Value.ToString(CultureInfo.InvariantCulture) : null;
-            RecordInternal(primeText, candidateText, reason);
-        }
-
-        public static void Record(UInt128 prime, UInt128? candidateOrder, HeuristicFailureReason reason)
-        {
-            string primeText = prime.ToString(CultureInfo.InvariantCulture);
-            string? candidateText = candidateOrder.HasValue ? candidateOrder.Value.ToString(CultureInfo.InvariantCulture) : null;
-            RecordInternal(primeText, candidateText, reason);
-        }
-
-        private static void RecordInternal(string primeText, string? candidateText, HeuristicFailureReason reason)
-        {
-            StringBuilder? existing = s_threadBuilder.Value;
-            StringBuilder builder = existing ?? AcquireBuilder();
-            int count = s_threadEntryCount.Value + 1;
-            bool forceFlush = count >= MaxBufferedEntries;
-            builder.Append(DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
-            builder.Append(" | prime=");
-            builder.Append(primeText);
-            builder.Append(" | reason=");
-            builder.Append(reason);
-            if (candidateText is not null)
-            {
-                builder.Append(" | candidateOrder=");
-                builder.Append(candidateText);
-            }
-
-            builder.AppendLine();
-            FlushBuilderIfNeeded(builder, forceFlush);
-            if (builder.Length == 0)
-            {
-                count = 0;
-            }
-
-            s_threadEntryCount.Value = count;
-            s_threadBuilder.Value = builder;
-        }
-
-        private static void FlushAll(bool force)
-        {
-            foreach (StringBuilder? builder in s_threadBuilder.Values)
-            {
-                if (builder is not null)
-                {
-                    FlushBuilderIfNeeded(builder, force);
-                }
-            }
-        }
-
-        private static void FlushBuilderIfNeeded(StringBuilder builder, bool force)
-        {
-            if (builder.Length == 0)
-            {
-                return;
-            }
-
-            if (!force && builder.Length < FlushThreshold)
-            {
-                return;
-            }
-
-            string text = builder.ToString();
-            builder.Clear();
-            lock (s_fileLock)
-            {
-                using FileStream stream = new FileStream(s_logPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-                using StreamWriter writer = new StreamWriter(stream, s_utf8NoBom);
-                writer.Write(text);
-            }
-        }
-
-        private static StringBuilder AcquireBuilder()
-        {
-            if (s_builderPool.TryDequeue(out StringBuilder? builder))
-            {
-                builder.Clear();
-                return builder;
-            }
-
-            return new StringBuilder(FlushThreshold);
-        }
+        return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
     }
 
     private static List<ulong> AcquirePendingCompositeList(int capacityHint)
@@ -952,16 +825,15 @@ internal static partial class PrimeOrderCalculator
     private static Dictionary<ulong, int> AcquireFactorCountDictionary(int capacityHint)
     {
         Dictionary<ulong, int>? dictionary = s_partialFactorCounts;
-        int adjustedCapacity = Math.Max(capacityHint, 8);
         if (dictionary is null)
         {
-            dictionary = new Dictionary<ulong, int>(adjustedCapacity);
+            dictionary = new Dictionary<ulong, int>(capacityHint);
             s_partialFactorCounts = dictionary;
             return dictionary;
         }
 
         dictionary.Clear();
-        dictionary.EnsureCapacity(adjustedCapacity);
+        dictionary.EnsureCapacity(capacityHint);
         return dictionary;
     }
 
@@ -969,7 +841,7 @@ internal static partial class PrimeOrderCalculator
     {
         if (value <= 1UL)
         {
-            return PartialFactorResult.RentEmpty();
+            return PartialFactorResult.Empty;
         }
 
         const int FactorSlotCount = GpuSmallPrimeFactorSlots;
@@ -1459,7 +1331,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static ulong CalculateByFactorization(ulong prime, in MontgomeryDivisorData divisorData)
+    private static ulong CalculateByFactorizationCpu(ulong prime, in MontgomeryDivisorData divisorData)
     {
         ulong phi = prime - 1UL;
         Dictionary<ulong, int> counts = new(capacity: 8);
@@ -1486,7 +1358,7 @@ internal static partial class PrimeOrderCalculator
                 }
 
                 ulong candidate = order / primeFactor;
-                if (Pow2EqualsOne(candidate, prime, divisorData))
+                if (Pow2EqualsOneCpu(candidate, prime, divisorData))
                 {
                     order = candidate;
                     continue;
@@ -1556,97 +1428,5 @@ internal static partial class PrimeOrderCalculator
         public readonly int Primary = primary;
         public readonly long Secondary = secondary;
         public readonly long Tertiary = tertiary;
-    }
-
-    private readonly struct FactorEntry(ulong value, int exponent)
-    {
-        public readonly ulong Value = value;
-        public readonly int Exponent = exponent;
-    }
-
-    private sealed class PartialFactorResult : IDisposable
-    {
-        [ThreadStatic]
-        private static PartialFactorResult? s_poolHead;
-
-        private PartialFactorResult? _next;
-        private bool _returned;
-
-        public FactorEntry[]? Factors;
-        public ulong Cofactor;
-        public bool FullyFactored;
-        public int Count;
-
-        private PartialFactorResult()
-        {
-        }
-
-        public static PartialFactorResult Rent(FactorEntry[]? factors, ulong cofactor, bool fullyFactored, int count)
-        {
-            PartialFactorResult? instance = s_poolHead;
-            if (instance is null)
-            {
-                instance = new PartialFactorResult();
-            }
-            else
-            {
-                s_poolHead = instance._next;
-            }
-
-            instance._next = null;
-            instance._returned = false;
-            instance.Factors = factors;
-            instance.Cofactor = cofactor;
-            instance.FullyFactored = fullyFactored;
-            instance.Count = count;
-            return instance;
-        }
-
-        public static PartialFactorResult RentEmpty()
-        {
-            return Rent(null, 1UL, true, 0);
-        }
-
-        public PartialFactorResult WithAdditionalPrime(ulong prime)
-        {
-            FactorEntry[]? source = Factors;
-            if (source is null || Count == 0)
-            {
-                FactorEntry[] local = ArrayPool<FactorEntry>.Shared.Rent(1);
-                local[0] = new FactorEntry(prime, 1);
-                return Rent(local, 1UL, true, 1);
-            }
-
-            FactorEntry[] extended = ArrayPool<FactorEntry>.Shared.Rent(Count + 1);
-            Array.Copy(source, 0, extended, 0, Count);
-            extended[Count] = new FactorEntry(prime, 1);
-            Span<FactorEntry> span = extended.AsSpan(0, Count + 1);
-            span.Sort(static (a, b) => a.Value.CompareTo(b.Value));
-            return Rent(extended, 1UL, true, Count + 1);
-        }
-
-        public void Dispose()
-        {
-            if (_returned)
-            {
-                return;
-            }
-
-            _returned = true;
-
-            FactorEntry[]? factors = Factors;
-            if (factors is not null)
-            {
-                Factors = null;
-                ArrayPool<FactorEntry>.Shared.Return(factors, clearArray: false);
-            }
-
-            Cofactor = 0UL;
-            FullyFactored = false;
-            Count = 0;
-
-            _next = s_poolHead;
-            s_poolHead = this;
-        }
     }
 }

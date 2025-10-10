@@ -176,7 +176,7 @@ public class Pow2MontgomeryModUInt128Benchmarks
         return (UInt128)result;
     }
 
-    private static bool ShouldUseSingleBit(in GpuUInt128 exponent)
+    private static bool ShouldUseSingleBit(GpuUInt128 exponent)
     {
         if (exponent.High == 0UL && exponent.Low <= Pow2WindowFallbackThreshold)
         {
@@ -257,7 +257,7 @@ public class Pow2MontgomeryModUInt128Benchmarks
         return result;
     }
 
-    private static bool IsBitSet(in GpuUInt128 value, int bitIndex)
+    private static bool IsBitSet(GpuUInt128 value, int bitIndex)
     {
         if (bitIndex >= 64)
         {
@@ -267,7 +267,7 @@ public class Pow2MontgomeryModUInt128Benchmarks
         return ((value.Low >> bitIndex) & 1UL) != 0UL;
     }
 
-    private static ulong ExtractWindowValue(in GpuUInt128 exponent, int windowStart, int windowBitCount)
+    private static ulong ExtractWindowValue(GpuUInt128 exponent, int windowStart, int windowBitCount)
     {
         if (windowStart != 0)
         {
