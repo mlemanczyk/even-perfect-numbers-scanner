@@ -415,9 +415,9 @@ internal static partial class PrimeOrderGpuHeuristics
         ulong? previousOrder,
         PrimeOrderCalculator.PrimeOrderSearchConfig config,
         in MontgomeryDivisorData divisorData,
-        out PrimeOrderCalculator.PrimeOrderResult result)
+        out ulong order)
     {
-        result = default;
+        order = 0UL;
 
         var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
         var execution = lease.EnterExecutionScope();
@@ -497,18 +497,17 @@ internal static partial class PrimeOrderGpuHeuristics
             throw new InvalidOperationException("GPU Pollard Rho stack overflow; increase HeuristicStackCapacity.");
         }
 
-        ulong order = 0UL;
         resultBuffer.View.CopyToCPU(ref order, 1);
 
-        PrimeOrderCalculator.PrimeOrderStatus finalStatus = kernelStatus == PrimeOrderKernelStatus.Found
-            ? PrimeOrderCalculator.PrimeOrderStatus.Found
-            : PrimeOrderCalculator.PrimeOrderStatus.HeuristicUnresolved;
+        if (kernelStatus == PrimeOrderKernelStatus.FactoringFailure)
+        {
+            order = 0UL;
+        }
 
-        result = new PrimeOrderCalculator.PrimeOrderResult(finalStatus, order);
         DisposeResources();
         lease.Dispose();
 
-        return true;
+        return order != 0UL;
 
         void DisposeResources()
         {

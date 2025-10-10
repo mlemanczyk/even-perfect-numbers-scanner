@@ -279,17 +279,17 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 #if DEBUG
         Console.WriteLine("Trying heuristic. Prime order calculation");
 #endif
-        PrimeOrderCalculator.PrimeOrderResult orderResult = PrimeOrderCalculator.Calculate(
-			modulus,
-			_previousPrimeOrder,
-			divisorData,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
+        ulong order = PrimeOrderCalculator.Calculate(
+            modulus,
+            _previousPrimeOrder,
+            divisorData,
+            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
+			      PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
-        if (orderResult.Order != 0UL)
+        if (order != 0UL)
         {
-            _previousPrimeOrder = orderResult.Order;
-            return orderResult.Order;
+            _previousPrimeOrder = order;
+            return order;
         }
 
         _previousPrimeOrder = null;
@@ -308,15 +308,15 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 #if DEBUG
         Console.WriteLine("Trying heuristic. Wide prime order calculation");
 #endif
-        PrimeOrderCalculator.PrimeOrderResultWide orderResult = PrimeOrderCalculator.Calculate(
+        UInt128 order = PrimeOrderCalculator.Calculate(
             modulus,
             _previousWidePrimeOrder,
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
-        if (orderResult.Order != UInt128.Zero)
+        if (order != UInt128.Zero)
         {
-            _previousWidePrimeOrder = orderResult.Order;
-            return orderResult.Order;
+            _previousWidePrimeOrder = order;
+            return order;
         }
 
         _previousWidePrimeOrder = null;
