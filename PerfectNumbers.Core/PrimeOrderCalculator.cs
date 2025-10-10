@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
@@ -1165,7 +1164,11 @@ internal static partial class PrimeOrderCalculator
             return true;
         }
 
-        Span<byte> buffer = stackalloc byte[8];
+        ulong c;
+        ulong x;
+        ulong y;
+        ulong d;
+        ulong diff = 0UL;
 
         while (true)
         {
@@ -1174,12 +1177,10 @@ internal static partial class PrimeOrderCalculator
                 return false;
             }
 
-            RandomNumberGenerator.Fill(buffer);
-            ulong c = (BinaryPrimitives.ReadUInt64LittleEndian(buffer) % (n - 1UL)) + 1UL;
-            RandomNumberGenerator.Fill(buffer);
-            ulong x = (BinaryPrimitives.ReadUInt64LittleEndian(buffer) % (n - 2UL)) + 2UL;
-            ulong y = x;
-            ulong d = 1UL;
+            c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
+            x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
+            y = x;
+            d = 1UL;
 
             while (d == 1UL)
             {
@@ -1191,7 +1192,7 @@ internal static partial class PrimeOrderCalculator
                 x = AdvancePolynomial(x, c, n);
                 y = AdvancePolynomial(y, c, n);
                 y = AdvancePolynomial(y, c, n);
-                ulong diff = x > y ? x - y : y - x;
+                diff = x > y ? x - y : y - x;
                 d = BinaryGcd(diff, n);
             }
 
@@ -1396,23 +1397,25 @@ internal static partial class PrimeOrderCalculator
             return 2UL;
         }
 
-        Span<byte> buffer = stackalloc byte[8];
+        ulong c;
+        ulong x;
+        ulong y;
+        ulong d;
+        ulong diff = 0UL;
+
         while (true)
         {
-            RandomNumberGenerator.Fill(buffer);
-            ulong c = (BinaryPrimitives.ReadUInt64LittleEndian(buffer) % (n - 1UL)) + 1UL;
-
-            RandomNumberGenerator.Fill(buffer);
-            ulong x = (BinaryPrimitives.ReadUInt64LittleEndian(buffer) % (n - 2UL)) + 2UL;
-            ulong y = x;
-            ulong d = 1UL;
+            c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
+            x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
+            y = x;
+            d = 1UL;
 
             while (d == 1UL)
             {
                 x = AdvancePolynomial(x, c, n);
                 y = AdvancePolynomial(y, c, n);
                 y = AdvancePolynomial(y, c, n);
-                ulong diff = x > y ? x - y : y - x;
+                diff = x > y ? x - y : y - x;
                 d = BinaryGcd(diff, n);
             }
 
