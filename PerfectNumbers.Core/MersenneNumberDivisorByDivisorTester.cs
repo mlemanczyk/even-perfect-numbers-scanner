@@ -112,9 +112,12 @@ public static class MersenneNumberDivisorByDivisorTester
         ulong maxPrime = 0UL;
         int primeWriteIndex = 0;
 
-        using IEnumerator<ulong> primeEnumerator = Prime.Numbers.GetEnumerator();
-        bool hasPrime = primeEnumerator.MoveNext();
-        ulong currentPrime = hasPrime ? primeEnumerator.Current : 0UL;
+		// This implementation is terribly slow, while this method expect prime p given as --filter-p input already.
+		// We don't need to additionally check it.
+
+        // using IEnumerator<ulong> primeEnumerator = Prime.Numbers.GetEnumerator();
+        // bool hasPrime = primeEnumerator.MoveNext();
+        // ulong currentPrime = hasPrime ? primeEnumerator.Current : 0UL;
 
         for (int index = startIndex; index < candidateCount; index++)
         {
@@ -127,25 +130,29 @@ public static class MersenneNumberDivisorByDivisorTester
                 continue;
             }
 
-            while (hasPrime && currentPrime < candidate)
-            {
-                hasPrime = primeEnumerator.MoveNext();
-                if (!hasPrime)
-                {
-                    break;
-                }
+			// This implementation is terribly slow, while this method expect prime p given as --filter-p input already.
+			// We don't need to additionally check it.
+			
+			// while (hasPrime && currentPrime < candidate)
+			// {
+			//     hasPrime = primeEnumerator.MoveNext();
+			//     if (!hasPrime)
+			//     {
+			//         break;
+			//     }
 
-                currentPrime = primeEnumerator.Current;
-            }
+			//     currentPrime = primeEnumerator.Current;
+			// }
 
-            if (!hasPrime || currentPrime != candidate)
-            {
-                markComposite();
-                printResult(candidate, false, false, false);
-                continue;
-            }
+			// if (!hasPrime || currentPrime != candidate)
+			// if (!Number.IsPrime(candidate))
+			// {
+			//     markComposite();
+			//     printResult(candidate, false, false, false);
+			//     continue;
+			// }
 
-            primesSpan[primeWriteIndex++] = candidate;
+			primesSpan[primeWriteIndex++] = candidate;
 
             if (candidate > maxPrime)
             {
