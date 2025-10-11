@@ -61,6 +61,18 @@ internal static partial class PrimeOrderCalculator
     [ThreadStatic]
     private static Dictionary<ulong, int>? s_partialFactorCounts;
 
+    [ThreadStatic]
+    private static ulong s_cachedDivisorCycleModulus;
+
+    [ThreadStatic]
+    private static ulong s_cachedDivisorCycleLength;
+
+    [ThreadStatic]
+    private static bool s_hasCachedDivisorCycle;
+
+    [ThreadStatic]
+    private static int s_divisorCycleSuppressionDepth;
+
     private static bool IsGpuHeuristicDevice => s_pow2ModeInitialized && s_deviceMode == PrimeOrderHeuristicDevice.Gpu;
 
     private readonly struct Pow2ModeScope
@@ -110,9 +122,44 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
+    private static bool IsDivisorCycleSuppressed => s_divisorCycleSuppressionDepth > 0;
+
+    private readonly struct DivisorCycleSuppressionScope
+    {
+        private readonly bool _suppress;
+
+        private DivisorCycleSuppressionScope(bool suppress)
+        {
+            _suppress = suppress;
+        }
+
+        public static readonly DivisorCycleSuppressionScope Suppressed = new(true);
+
+        public static readonly DivisorCycleSuppressionScope Unsuppressed = new(false);
+
+        public void Enter()
+        {
+            if (_suppress)
+            {
+                s_divisorCycleSuppressionDepth++;
+            }
+        }
+
+        public void Exit()
+        {
+            if (_suppress)
+            {
+                s_divisorCycleSuppressionDepth--;
+            }
+        }
+    }
+
     private static Pow2ModeScope UsePow2Mode(PrimeOrderHeuristicDevice device) => new(device);
 
     private static DebugLoggingScope UseDebugLogging(bool enabled) => new(enabled);
+
+    private static DivisorCycleSuppressionScope SuppressDivisorCycleUsage(bool suppress) =>
+        suppress ? DivisorCycleSuppressionScope.Suppressed : DivisorCycleSuppressionScope.Unsuppressed;
 
     [Conditional("DEBUG")]
     private static void DebugLog(string message)
@@ -187,43 +234,52 @@ internal static partial class PrimeOrderCalculator
         ulong phi,
         PartialFactorResult phiFactors)
     {
-        if (phiFactors.FullyFactored && TrySpecialMaxCpu(phi, prime, phiFactors, divisorData))
+        var cycleScope = SuppressDivisorCycleUsage(config.Mode == PrimeOrderMode.Heuristic && !IsGpuHeuristicDevice);
+        cycleScope.Enter();
+        try
         {
-            return phi;
-        }
+            if (phiFactors.FullyFactored && TrySpecialMaxCpu(phi, prime, phiFactors, divisorData))
+            {
+                return phi;
+            }
 
-        ulong candidateOrder = InitializeStartingOrderCpu(prime, phi, divisorData);
-        candidateOrder = ExponentLoweringCpu(candidateOrder, prime, phiFactors, divisorData);
+            ulong candidateOrder = InitializeStartingOrderCpu(prime, phi, divisorData);
+            candidateOrder = ExponentLoweringCpu(candidateOrder, prime, phiFactors, divisorData);
 
-        PartialFactorResult orderFactors = PartialFactor(candidateOrder, config);
-        if (orderFactors.Factors is null)
-        {
+            PartialFactorResult orderFactors = PartialFactor(candidateOrder, config);
+            if (orderFactors.Factors is null)
+            {
+                orderFactors.Dispose();
+                return candidateOrder;
+            }
+
+            // Reuse the computed factorization for both the confirmation check and the heuristic pass
+            // to avoid factoring the same order twice on the by-divisor CPU pipeline.
+            if (TryConfirmOrderCpu(prime, candidateOrder, divisorData, ref orderFactors))
+            {
+                orderFactors.Dispose();
+                return candidateOrder;
+            }
+
+            if (config.Mode == PrimeOrderMode.Strict)
+            {
+                orderFactors.Dispose();
+                return CalculateByFactorizationCpu(prime, divisorData, config);
+            }
+
+            if (TryHeuristicFinishCpu(prime, candidateOrder, previousOrder, divisorData, config, ref orderFactors, phiFactors, out ulong order))
+            {
+                orderFactors.Dispose();
+                return order;
+            }
+
             orderFactors.Dispose();
             return candidateOrder;
         }
-
-        // Reuse the computed factorization for both the confirmation check and the heuristic pass
-        // to avoid factoring the same order twice on the by-divisor CPU pipeline.
-        if (TryConfirmOrderCpu(prime, candidateOrder, divisorData, ref orderFactors))
+        finally
         {
-            orderFactors.Dispose();
-            return candidateOrder;
+            cycleScope.Exit();
         }
-
-        if (config.Mode == PrimeOrderMode.Strict)
-        {
-            orderFactors.Dispose();
-            return CalculateByFactorizationCpu(prime, divisorData, config);
-        }
-
-        if (TryHeuristicFinishCpu(prime, candidateOrder, previousOrder, divisorData, config, ref orderFactors, phiFactors, out ulong order))
-        {
-            orderFactors.Dispose();
-            return order;
-        }
-
-        orderFactors.Dispose();
-        return candidateOrder;
     }
 
     private static bool TrySpecialMaxCpu(ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
@@ -787,6 +843,36 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
+    private static bool TryGetDivisorCycle(ulong prime, in MontgomeryDivisorData divisorData, out ulong cycleLength)
+    {
+        if (prime <= 1UL || IsDivisorCycleSuppressed)
+        {
+            cycleLength = 0UL;
+            return false;
+        }
+
+        if (s_hasCachedDivisorCycle && s_cachedDivisorCycleModulus == prime)
+        {
+            cycleLength = s_cachedDivisorCycleLength;
+            return cycleLength != 0UL;
+        }
+
+        var suppression = SuppressDivisorCycleUsage(true);
+        suppression.Enter();
+        try
+        {
+            cycleLength = MersenneDivisorCycles.CalculateCycleLength(prime, divisorData);
+            s_cachedDivisorCycleModulus = prime;
+            s_cachedDivisorCycleLength = cycleLength;
+            s_hasCachedDivisorCycle = true;
+            return cycleLength != 0UL;
+        }
+        finally
+        {
+            suppression.Exit();
+        }
+    }
+
     private static bool Pow2EqualsOneCpu(ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
     {
         if (IsGpuPow2Allowed)
@@ -796,6 +882,11 @@ internal static partial class PrimeOrderCalculator
             {
                 return remainder == 1UL;
             }
+        }
+
+        if (TryGetDivisorCycle(prime, divisorData, out ulong cycleLength) && cycleLength != 0UL)
+        {
+            return exponent.Pow2MontgomeryModWithCycleCpu(cycleLength, divisorData) == 1UL;
         }
 
         return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
