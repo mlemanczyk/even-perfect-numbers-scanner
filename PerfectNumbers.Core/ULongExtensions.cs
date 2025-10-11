@@ -346,48 +346,67 @@ public static class ULongExtensions
 
         ulong result = divisor.MontgomeryOne;
         ulong nPrime = divisor.NPrime;
-        ulong[] oddPowers = InitializeMontgomeryOddPowersCpu(divisor, modulus, nPrime, oddPowerCount);
+
+        Span<ulong> oddPowerStorage;
+        ulong[]? pooledOddPowers = null;
+
+        if (oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount)
+        {
+            oddPowerStorage = stackalloc ulong[PerfectNumberConstants.MaxOddPowersCount];
+        }
+        else if (oddPowerCount < PerfectNumberConstants.PooledArrayThreshold)
+        {
+            oddPowerStorage = new ulong[oddPowerCount];
+        }
+        else
+        {
+            pooledOddPowers = ArrayPool<ulong>.Shared.Rent(oddPowerCount);
+            oddPowerStorage = pooledOddPowers;
+        }
+
+        Span<ulong> oddPowers = oddPowerStorage[..oddPowerCount];
+        InitializeMontgomeryOddPowersCpu(divisor, modulus, nPrime, oddPowers);
 
         int index = bitLength - 1;
-		while (index >= 0)
-		{
-			if (((exponent >> index) & 1UL) == 0UL)
-			{
-				result = result.MontgomeryMultiply(result, modulus, nPrime);
-				index--;
-				continue;
-			}
+        while (index >= 0)
+        {
+            if (((exponent >> index) & 1UL) == 0UL)
+            {
+                result = result.MontgomeryMultiply(result, modulus, nPrime);
+                index--;
+                continue;
+            }
 
-			int windowStart = index - windowSize + 1;
-			if (windowStart < 0)
-			{
-				windowStart = 0;
-			}
+            int windowStart = index - windowSize + 1;
+            if (windowStart < 0)
+            {
+                windowStart = 0;
+            }
 
-			while (((exponent >> windowStart) & 1UL) == 0UL)
-			{
-				windowStart++;
-			}
+            while (((exponent >> windowStart) & 1UL) == 0UL)
+            {
+                windowStart++;
+            }
 
-			int windowLength = index - windowStart + 1;
-			for (int square = 0; square < windowLength; square++)
-			{
-				result = result.MontgomeryMultiply(result, modulus, nPrime);
-			}
+            int windowLength = index - windowStart + 1;
+            for (int square = 0; square < windowLength; square++)
+            {
+                result = result.MontgomeryMultiply(result, modulus, nPrime);
+            }
 
-			ulong mask = (1UL << windowLength) - 1UL;
-			ulong windowValue = (exponent >> windowStart) & mask;
-			int tableIndex = (int)((windowValue - 1UL) >> 1);
-			ulong multiplier = oddPowers[tableIndex];
-			result = result.MontgomeryMultiply(multiplier, modulus, nPrime);
+            ulong mask = (1UL << windowLength) - 1UL;
+            ulong windowValue = (exponent >> windowStart) & mask;
+            int tableIndex = (int)((windowValue - 1UL) >> 1);
+            ulong multiplier = oddPowers[tableIndex];
+            result = result.MontgomeryMultiply(multiplier, modulus, nPrime);
 
-			index = windowStart - 1;
-		}
-		
-		if (oddPowerCount >= PerfectNumberConstants.PooledArrayThreshold)
-		{
-			ArrayPool<ulong>.Shared.Return(oddPowers);
-		}
+            index = windowStart - 1;
+        }
+
+        if (pooledOddPowers is not null)
+        {
+            ArrayPool<ulong>.Shared.Return(pooledOddPowers);
+        }
 
         if (keepMontgomery)
         {
@@ -533,29 +552,25 @@ public static class ULongExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong[] InitializeMontgomeryOddPowersCpu(in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime, int oddPowerCount)
+    private static void InitializeMontgomeryOddPowersCpu(in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime, Span<ulong> destination)
     {
-        ulong[] oddPowers = oddPowerCount < PerfectNumberConstants.PooledArrayThreshold
-            ? new ulong[oddPowerCount]
-            : ArrayPool<ulong>.Shared.Rent(oddPowerCount);
-
+        int oddPowerCount = destination.Length;
         if (oddPowerCount == 0)
         {
-            return oddPowers;
+            return;
         }
 
-        Span<ulong> destination = oddPowers.AsSpan(0, oddPowerCount);
         bool computedOnGpu = oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount
             && MontgomeryOddPowerGpu.TryCompute(divisor, oddPowerCount, destination);
         if (computedOnGpu)
         {
-            return oddPowers;
+            return;
         }
 
         destination[0] = divisor.MontgomeryTwo;
         if (oddPowerCount == 1)
         {
-            return oddPowers;
+            return;
         }
 
         ulong square = divisor.MontgomeryTwoSquared;
@@ -565,8 +580,6 @@ public static class ULongExtensions
             current = current.MontgomeryMultiply(square, modulus, nPrime);
             destination[i] = current;
         }
-
-        return oddPowers;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
