@@ -39,7 +39,12 @@ internal static partial class PrimeOrderCalculator
     [ThreadStatic]
     private static bool s_allowGpuPow2;
 
+    [ThreadStatic]
+    private static bool s_allowGpuCycle;
+
     private static bool IsGpuPow2Allowed => s_pow2ModeInitialized && s_allowGpuPow2;
+
+    private static bool IsGpuCycleAllowed => s_pow2ModeInitialized && s_allowGpuCycle;
 
     [ThreadStatic]
     private static PrimeOrderHeuristicDevice s_deviceMode;
@@ -61,22 +66,29 @@ internal static partial class PrimeOrderCalculator
     private readonly struct Pow2ModeScope
     {
         private readonly bool _previousInitialized;
-        private readonly bool _previousAllow;
+        private readonly bool _previousAllowPow2;
+        private readonly bool _previousAllowCycle;
         private readonly PrimeOrderHeuristicDevice _previousDevice;
 
         public Pow2ModeScope(PrimeOrderHeuristicDevice device)
         {
             _previousInitialized = s_pow2ModeInitialized;
-            _previousAllow = s_allowGpuPow2;
+            _previousAllowPow2 = s_allowGpuPow2;
+            _previousAllowCycle = s_allowGpuCycle;
             _previousDevice = s_deviceMode;
             s_pow2ModeInitialized = true;
-            s_allowGpuPow2 = device == PrimeOrderHeuristicDevice.Gpu;
+            bool gpuAvailable = !GpuContextPool.ForceCpu;
+            bool allowCpuPow2 = gpuAvailable && device == PrimeOrderHeuristicDevice.Cpu;
+            bool allowCpuCycle = gpuAvailable && device == PrimeOrderHeuristicDevice.Cpu && GpuKernelPool.CpuCycleUsesGpu;
+            s_allowGpuPow2 = device == PrimeOrderHeuristicDevice.Gpu || allowCpuPow2;
+            s_allowGpuCycle = device == PrimeOrderHeuristicDevice.Gpu || allowCpuCycle;
             s_deviceMode = device;
         }
 
         public void Dispose()
         {
-            s_allowGpuPow2 = _previousAllow;
+            s_allowGpuPow2 = _previousAllowPow2;
+            s_allowGpuCycle = _previousAllowCycle;
             s_pow2ModeInitialized = _previousInitialized;
             s_deviceMode = _previousDevice;
         }
@@ -157,7 +169,7 @@ internal static partial class PrimeOrderCalculator
         // so PartialFactor never returns a null factor list on this call path.
         // if (phiFactors.Factors is null)
         // {
-        //     result = CalculateByFactorizationCpu(prime, divisorData);
+        //     result = CalculateByFactorizationCpu(prime, divisorData, config);
         //     phiFactors.Dispose();
         //     return result;
         // }
@@ -201,7 +213,7 @@ internal static partial class PrimeOrderCalculator
         if (config.Mode == PrimeOrderMode.Strict)
         {
             orderFactors.Dispose();
-            return CalculateByFactorizationCpu(prime, divisorData);
+            return CalculateByFactorizationCpu(prime, divisorData, config);
         }
 
         if (TryHeuristicFinishCpu(prime, candidateOrder, previousOrder, divisorData, config, ref orderFactors, phiFactors, out ulong order))
@@ -1328,8 +1340,19 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static ulong CalculateByFactorizationCpu(ulong prime, in MontgomeryDivisorData divisorData)
+    private static ulong CalculateByFactorizationCpu(ulong prime, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
     {
+        if (!IsGpuHeuristicDevice && IsGpuCycleAllowed)
+        {
+            PrimeOrderSearchConfig strictConfig = config.Mode == PrimeOrderMode.Strict
+                ? config
+                : new PrimeOrderSearchConfig(config.SmallFactorLimit, config.PollardRhoMilliseconds, config.MaxPowChecks, PrimeOrderMode.Strict);
+            if (PrimeOrderGpuHeuristics.TryCalculateOrder(prime, previousOrder: null, strictConfig, divisorData, out ulong gpuOrder))
+            {
+                return gpuOrder;
+            }
+        }
+
         ulong phi = prime - 1UL;
         Dictionary<ulong, int> counts = new(capacity: 8);
         FactorCompletely(phi, counts);
