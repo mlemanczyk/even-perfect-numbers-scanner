@@ -248,7 +248,7 @@ internal static partial class PrimeOrderCalculator
             // bool isPrime = PrimeTester.IsPrimeInternal(factors.Cofactor, CancellationToken.None);
             if (!factors.FullyFactored && factors.Cofactor > 1UL && isPrime)
             {
-                buffer[length] = new FactorEntry(factors.Cofactor, 1);
+                buffer[length] = new FactorEntry(factors.Cofactor);
                 length++;
             }
 

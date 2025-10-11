@@ -1062,15 +1062,20 @@ internal static partial class PrimeOrderCalculator
 
     private readonly struct FactorEntry128
     {
-        public FactorEntry128(UInt128 value, int exponent)
-        {
-            Value = value;
-            Exponent = exponent;
-        }
+		public FactorEntry128(UInt128 value)
+		{
+			Value = value;
+		}
 
-        public UInt128 Value { get; }
+		public FactorEntry128(UInt128 value, int exponent)
+		{
+			Value = value;
+			Exponent = exponent;
+		}
 
-        public int Exponent { get; }
+        public readonly UInt128 Value;
+
+		public readonly int Exponent = 1;
     }
 
     private readonly struct PartialFactorResult128
@@ -1083,13 +1088,13 @@ internal static partial class PrimeOrderCalculator
             Count = count;
         }
 
-        public FactorEntry128[]? Factors { get; }
+		public readonly FactorEntry128[]? Factors;
 
-        public UInt128 Cofactor { get; }
+		public readonly UInt128 Cofactor;
 
-        public bool FullyFactored { get; }
+		public readonly bool FullyFactored;
 
-        public int Count { get; }
+		public readonly int Count;
 
         public static PartialFactorResult128 Empty => new(null, UInt128.One, true, 0);
 
@@ -1097,14 +1102,13 @@ internal static partial class PrimeOrderCalculator
         {
             if (Factors is null)
             {
-                FactorEntry128[] local = new FactorEntry128[1];
-                local[0] = new FactorEntry128(prime, 1);
-                return new PartialFactorResult128(local, UInt128.One, true, 1);
+                FactorEntry128[] local = [new FactorEntry128(prime)];
+				return new PartialFactorResult128(local, UInt128.One, true, 1);
             }
 
             FactorEntry128[] extended = new FactorEntry128[Count + 1];
             Array.Copy(Factors, extended, Count);
-            extended[Count] = new FactorEntry128(prime, 1);
+            extended[Count] = new FactorEntry128(prime);
             return new PartialFactorResult128(extended, UInt128.One, true, Count + 1);
         }
     }

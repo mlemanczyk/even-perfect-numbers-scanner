@@ -5,11 +5,11 @@ namespace PerfectNumbers.Core
 {
     public sealed class PartialFactorResult
     {
-        [ThreadStatic]
-        private static PartialFactorResult? s_poolHead;
+		[ThreadStatic]
+		private static PartialFactorResult? s_poolHead;
 
         public FactorEntry[]? Factors;
-        private PartialFactorResult? _next;
+		private PartialFactorResult? _next;
         public ulong Cofactor;
         public bool FullyFactored;
         public int Count;
@@ -38,8 +38,8 @@ namespace PerfectNumbers.Core
             return instance;
         }
 
-        public static readonly PartialFactorResult Empty = new PartialFactorResult
-        {
+        public static readonly PartialFactorResult Empty = new()
+		{
             Cofactor = 1UL,
             FullyFactored = true,
         };
@@ -50,13 +50,13 @@ namespace PerfectNumbers.Core
             if (source is null || Count == 0)
             {
                 FactorEntry[] local = ArrayPool<FactorEntry>.Shared.Rent(1);
-                local[0] = new FactorEntry(prime, 1);
+                local[0] = new FactorEntry(prime);
                 return Rent(local, 1UL, true, 1);
             }
 
             FactorEntry[] extended = ArrayPool<FactorEntry>.Shared.Rent(Count + 1);
             Array.Copy(source, 0, extended, 0, Count);
-            extended[Count] = new FactorEntry(prime, 1);
+            extended[Count] = new FactorEntry(prime);
             Span<FactorEntry> span = extended.AsSpan(0, Count + 1);
             span.Sort(static (a, b) => a.Value.CompareTo(b.Value));
             return Rent(extended, 1UL, true, Count + 1);
