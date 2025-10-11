@@ -272,7 +272,7 @@ public static class MersenneNumberDivisorByDivisorTester
             return;
         }
 
-        Task[] workers = new Task[workerCount];
+        (int Start, int End)[] workerRanges = new (int, int)[workerCount];
         int totalPrimeCount = filteredPrimes.Count;
         int baseGroupSize = totalPrimeCount / workerCount;
         int remaining = totalPrimeCount % workerCount;
@@ -288,17 +288,21 @@ public static class MersenneNumberDivisorByDivisorTester
 
             int startIndex = groupStartIndex;
             int endIndex = startIndex + groupSize;
+            workerRanges[workerIndex] = (startIndex, endIndex);
             groupStartIndex = endIndex;
-
-            workers[workerIndex] = Task.Run(() =>
-            {
-                for (int candidateIndex = startIndex; candidateIndex < endIndex; candidateIndex++)
-                {
-                    ProcessPrime(filteredPrimes[candidateIndex]);
-                }
-            });
         }
 
-        Task.WaitAll(workers);
+        ParallelOptions parallelOptions = new()
+        {
+            MaxDegreeOfParallelism = workerCount
+        };
+
+        Parallel.ForEach(workerRanges, parallelOptions, range =>
+        {
+            for (int candidateIndex = range.Start; candidateIndex < range.End; candidateIndex++)
+            {
+                ProcessPrime(filteredPrimes[candidateIndex]);
+            }
+        });
     }
 }
