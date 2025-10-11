@@ -232,6 +232,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 else
                 {
                     factorCache ??= new Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>(8);
+                    // EvenPerfectBitScanner reaches this path only for divisors above the precomputed cycle snapshot.
+                    // Those candidates follow q = 2 * prime * k + 1 with prime >= 5, so the downstream order calculator
+                    // can rely on an odd divisor and a prime exponent when deriving the cycle length.
                     if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(candidate, prime, divisorData, factorCache, out divisorCycle) || divisorCycle == 0UL)
                     {
                         divisorCycle = cycleCache.GetCycleLength(candidate);
