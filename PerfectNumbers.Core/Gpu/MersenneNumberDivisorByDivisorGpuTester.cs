@@ -71,7 +71,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         }
     }
 
-    public bool IsPrime(ulong prime, out bool divisorsExhausted)
+    public bool IsPrime(ulong prime, out bool divisorsExhausted, TimeSpan? timeLimit = null)
     {
         ulong allowedMax;
         int batchCapacity;
@@ -108,6 +108,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             composite = CheckDivisors(
             prime,
             allowedMax,
+            timeLimit,
             accelerator,
             kernel,
             resources.DivisorsBuffer,
@@ -175,6 +176,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     private static bool CheckDivisors(
         ulong prime,
         ulong allowedMax,
+        TimeSpan? timeLimit,
         Accelerator accelerator,
         Action<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>> kernel,
         MemoryBuffer1D<MontgomeryDivisorData, Stride1D.Dense> divisorsBuffer,
@@ -202,6 +204,15 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         bool processedAll = false;
         processedCount = 0UL;
         lastProcessed = 0UL;
+        coveredRange = false;
+
+        PrimeTestTimeLimit limitGuard;
+        if (!PrimeTestTimeLimit.TryCreate(timeLimit, out limitGuard))
+        {
+            return false;
+        }
+
+        bool enforceLimit = limitGuard.IsActive;
 
         Span<MontgomeryDivisorData> divisorDataSpan;
         Span<ulong> divisorSpan;
@@ -277,6 +288,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         {
             while (currentK <= maxK)
             {
+                if (enforceLimit && limitGuard.HasExpired())
+                {
+                    processedAll = false;
+                    return false;
+                }
+
                 int chunkCount = Math.Min(chunkCapacity, batchCapacity);
                 ulong remainingK = maxK - currentK + 1UL;
                 if ((ulong)chunkCount > remainingK)
