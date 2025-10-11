@@ -257,21 +257,48 @@ public static class MersenneNumberDivisorByDivisorTester
             printResult(prime, true, divisorsExhausted, true);
         }
 
-        if (workerCount == 1)
+        if (workerCount > filteredPrimes.Count)
+        {
+            workerCount = filteredPrimes.Count;
+        }
+
+        if (workerCount <= 1)
         {
             foreach (ulong prime in filteredPrimes)
             {
                 ProcessPrime(prime);
             }
-        }
-        else
-        {
-            ParallelOptions options = new()
-            {
-                MaxDegreeOfParallelism = workerCount
-            };
 
-            Parallel.ForEach(filteredPrimes, options, ProcessPrime);
+            return;
         }
+
+        Task[] workers = new Task[workerCount];
+        int totalPrimeCount = filteredPrimes.Count;
+        int baseGroupSize = totalPrimeCount / workerCount;
+        int remaining = totalPrimeCount % workerCount;
+        int groupStartIndex = 0;
+
+        for (int workerIndex = 0; workerIndex < workerCount; workerIndex++)
+        {
+            int groupSize = baseGroupSize;
+            if (workerIndex < remaining)
+            {
+                groupSize++;
+            }
+
+            int startIndex = groupStartIndex;
+            int endIndex = startIndex + groupSize;
+            groupStartIndex = endIndex;
+
+            workers[workerIndex] = Task.Run(() =>
+            {
+                for (int candidateIndex = startIndex; candidateIndex < endIndex; candidateIndex++)
+                {
+                    ProcessPrime(filteredPrimes[candidateIndex]);
+                }
+            });
+        }
+
+        Task.WaitAll(workers);
     }
 }
