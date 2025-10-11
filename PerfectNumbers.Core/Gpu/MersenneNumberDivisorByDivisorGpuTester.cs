@@ -7,7 +7,6 @@ using System.Numerics;
 using ILGPU;
 using ILGPU.Runtime;
 using MontgomeryDivisorData = PerfectNumbers.Core.MontgomeryDivisorData;
-using MontgomeryDivisorDataCache = PerfectNumbers.Core.MontgomeryDivisorDataCache;
 using CycleRemainderStepper = PerfectNumbers.Core.CycleRemainderStepper;
 
 namespace PerfectNumbers.Core.Gpu;

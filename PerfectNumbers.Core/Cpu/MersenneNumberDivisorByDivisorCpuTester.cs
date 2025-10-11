@@ -192,6 +192,10 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? factorCache = null;
         DivisorCycleCache cycleCache = DivisorCycleCache.Shared;
 
+        ulong cachedModulus = 0UL;
+        MontgomeryDivisorData cachedDivisorData = default;
+        bool hasCachedDivisorData = false;
+
         byte step10 = (byte)(step % 10UL);
         byte step8 = (byte)(step % 8UL);
         byte step5 = (byte)(step % 5UL);
@@ -222,7 +226,14 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
             if (admissible && (remainder8 == 1 || remainder8 == 7) && remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0)
             {
-                MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(candidate);
+                if (!hasCachedDivisorData || cachedModulus != candidate)
+                {
+                    cachedDivisorData = MontgomeryDivisorData.FromModulus(candidate);
+                    cachedModulus = candidate;
+                    hasCachedDivisorData = true;
+                }
+
+                MontgomeryDivisorData divisorData = cachedDivisorData;
                 ulong divisorCycle;
 
                 if (candidate <= PerfectNumberConstants.MaxQForDivisorCycles)
@@ -340,6 +351,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     {
         private readonly MersenneNumberDivisorByDivisorCpuTester _owner;
         private bool _disposed;
+        private bool _hasCachedDivisorData;
+        private ulong _cachedDivisor;
+        private MontgomeryDivisorData _cachedDivisorData;
 
         internal DivisorScanSession(MersenneNumberDivisorByDivisorCpuTester owner)
         {
@@ -349,6 +363,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         internal void Reset()
         {
             _disposed = false;
+            _hasCachedDivisorData = false;
+            _cachedDivisor = 0UL;
+            _cachedDivisorData = default;
         }
 
         public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
@@ -367,7 +384,14 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             MontgomeryDivisorData cachedData = divisorData;
             if (cachedData.Modulus != divisor)
             {
-                cachedData = MontgomeryDivisorDataCache.Get(divisor);
+                if (!_hasCachedDivisorData || _cachedDivisor != divisor)
+                {
+                    _cachedDivisorData = MontgomeryDivisorData.FromModulus(divisor);
+                    _cachedDivisor = divisor;
+                    _hasCachedDivisorData = true;
+                }
+
+                cachedData = _cachedDivisorData;
             }
 
             if (divisorCycle == 0UL)
