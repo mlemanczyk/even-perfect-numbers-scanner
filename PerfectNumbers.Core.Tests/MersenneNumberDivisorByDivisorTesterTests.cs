@@ -26,7 +26,8 @@ public class MersenneNumberDivisorByDivisorTesterTests
             markComposite: () => compositeMarks++,
             clearComposite: () => clearedMarks++,
             printResult: (prime, searched, detailed, passed) => results.Add((prime, searched, detailed, passed)),
-            threadCount: 1);
+            threadCount: 1,
+            primeTestLimit: null);
 
         tester.ConfiguredMaxPrime.Should().Be(13UL);
         compositeMarks.Should().Be(2);
@@ -59,7 +60,7 @@ public class MersenneNumberDivisorByDivisorTesterTests
             return DivisorLimit;
         }
 
-        public bool IsPrime(ulong prime, out bool divisorsExhausted)
+        public bool IsPrime(ulong prime, out bool divisorsExhausted, TimeSpan? timeLimit = null)
         {
             divisorsExhausted = true;
             return prime % 7UL != 0UL && prime % 11UL != 0UL;

@@ -44,6 +44,7 @@ internal static class Program
     private static string? _resultsPrefix;
     private static readonly Optimized PrimeIterator = new();
     private static ulong _byDivisorStartPrime;
+    private static TimeSpan? _primeTestLimit;
 
     [ThreadStatic]
     private static bool _lastCompositeP;
@@ -180,6 +181,17 @@ internal static class Program
             else if (arg.StartsWith("--mersenne-device=", StringComparison.OrdinalIgnoreCase))
             {
                 mersenneOnGpu = !arg.AsSpan(arg.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+            }
+            else if (arg.StartsWith("--prime-test-limit=", StringComparison.OrdinalIgnoreCase))
+            {
+                ReadOnlySpan<char> value = arg.AsSpan(arg.IndexOf('=') + 1);
+                if (!TryParsePrimeTestLimit(value, out TimeSpan parsedLimitValue))
+                {
+                    Console.WriteLine("Failed to parse --prime-test-limit value.");
+                    return;
+                }
+
+                _primeTestLimit = parsedLimitValue;
             }
             else if (arg.Equals("--workaround-mod", StringComparison.OrdinalIgnoreCase))
             {
@@ -667,7 +679,7 @@ internal static class Program
 
         if (_useByDivisorMode)
         {
-            RunByDivisorMode(byDivisorCandidates, threadCount);
+            RunByDivisorMode(byDivisorCandidates, threadCount, _primeTestLimit);
             FlushBuffer();
             StringBuilderPool.Return(_outputBuilder!);
             return;
@@ -808,7 +820,7 @@ internal static class Program
         return candidates;
     }
 
-    private static void RunByDivisorMode(List<ulong> candidates, int threadCount)
+    private static void RunByDivisorMode(List<ulong> candidates, int threadCount, TimeSpan? primeTestLimit)
     {
         if (_byDivisorTester is null)
         {
@@ -825,7 +837,8 @@ internal static class Program
                 static () => _lastCompositeP = true,
                 static () => _lastCompositeP = false,
                 PrintResult,
-                threadCount);
+                threadCount,
+                primeTestLimit);
     }
 
     private static unsafe void LoadResultsFile(string resultsFileName, Action<ulong, bool, bool> lineProcessorAction)
@@ -892,6 +905,51 @@ internal static class Program
         }
     }
 
+    private static bool TryParsePrimeTestLimit(ReadOnlySpan<char> value, out TimeSpan result)
+    {
+        result = TimeSpan.Zero;
+        if (value.IsEmpty)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<char> magnitudeSpan = value;
+        double magnitude;
+
+        if (value.Length >= 2 && value.EndsWith("ms", StringComparison.OrdinalIgnoreCase))
+        {
+            magnitudeSpan = value[..^2];
+            if (!double.TryParse(magnitudeSpan, NumberStyles.Float, CultureInfo.InvariantCulture, out magnitude))
+            {
+                return false;
+            }
+
+            result = TimeSpan.FromMilliseconds(magnitude);
+            return true;
+        }
+
+        char suffix = char.ToLowerInvariant(value[^1]);
+        if (suffix == 's' || suffix == 'm')
+        {
+            magnitudeSpan = value[..^1];
+            if (!double.TryParse(magnitudeSpan, NumberStyles.Float, CultureInfo.InvariantCulture, out magnitude))
+            {
+                return false;
+            }
+
+            result = suffix == 's' ? TimeSpan.FromSeconds(magnitude) : TimeSpan.FromMinutes(magnitude);
+            return true;
+        }
+
+        if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out magnitude))
+        {
+            return false;
+        }
+
+        result = TimeSpan.FromMilliseconds(magnitude);
+        return true;
+    }
+
     private static void PrintHelp()
     {
         Console.WriteLine("Usage: EvenPerfectBitScanner [options]");
@@ -925,6 +983,7 @@ internal static class Program
         Console.WriteLine("  --divisor-cycles-batch=<value> batch size for cycles generation (default 512)");
         Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
         Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor");
+        Console.WriteLine("  --prime-test-limit=<value>   Time limit for --mersenne=bydivisor prime checks (e.g. 5s, 500ms)");
         Console.WriteLine("  --use-order            test primality via q order");
         Console.WriteLine("  --workaround-mod       avoid '%' operator on the GPU");
         // mod-automaton removed

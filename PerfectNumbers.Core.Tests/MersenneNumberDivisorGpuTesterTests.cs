@@ -88,6 +88,17 @@ public class MersenneNumberDivisorGpuTesterTests
 
     [Fact]
     [Trait("Category", "Fast")]
+    public void ByDivisor_gpu_prime_test_limit_stops_scan_immediately()
+    {
+        var tester = new MersenneNumberDivisorByDivisorGpuTester();
+        tester.ConfigureFromMaxPrime(43UL);
+
+        tester.IsPrime(31UL, out bool divisorsExhausted, TimeSpan.Zero).Should().BeTrue();
+        divisorsExhausted.Should().BeFalse();
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
     public void ByDivisor_tester_requires_configuration()
     {
         var tester = new MersenneNumberDivisorByDivisorGpuTester();

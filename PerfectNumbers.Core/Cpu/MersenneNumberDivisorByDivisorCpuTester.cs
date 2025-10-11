@@ -61,7 +61,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         }
     }
 
-    public bool IsPrime(ulong prime, out bool divisorsExhausted)
+    public bool IsPrime(ulong prime, out bool divisorsExhausted, TimeSpan? timeLimit = null)
     {
         ulong allowedMax;
         lock (_sync)
@@ -89,7 +89,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             allowedMax,
             out lastProcessed,
             out processedAll,
-            out processedCount);
+            out processedCount,
+            timeLimit);
 
         if (processedCount > 0UL)
         {
@@ -163,11 +164,21 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         ulong allowedMax,
         out ulong lastProcessed,
         out bool processedAll,
-        out ulong processedCount)
+        out ulong processedCount,
+        TimeSpan? timeLimit)
     {
         lastProcessed = 0UL;
         processedCount = 0UL;
         processedAll = false;
+
+        PrimeTestTimeLimit limitGuard;
+        if (!PrimeTestTimeLimit.TryCreate(timeLimit, out limitGuard))
+        {
+            return false;
+        }
+
+        bool enforceLimit = limitGuard.IsActive;
+        ulong iterationCounter = 0UL;
 
         if (allowedMax < 3UL)
         {
@@ -216,6 +227,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         while (divisor <= limit)
         {
+            if (enforceLimit && (iterationCounter == 0UL || (iterationCounter & 63UL) == 0UL) && limitGuard.HasExpired())
+            {
+                processedAll = false;
+                return false;
+            }
+
+            iterationCounter++;
             ulong candidate = (ulong)divisor;
             processedCount++;
             lastProcessed = candidate;

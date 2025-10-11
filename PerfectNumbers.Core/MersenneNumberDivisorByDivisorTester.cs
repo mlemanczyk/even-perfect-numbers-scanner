@@ -18,7 +18,8 @@ public static class MersenneNumberDivisorByDivisorTester
             Action markComposite,
             Action clearComposite,
             Action<ulong, bool, bool, bool> printResult,
-            int threadCount)
+            int threadCount,
+            TimeSpan? primeTestLimit)
     {
         if (candidates.Count == 0)
         {
@@ -243,7 +244,7 @@ public static class MersenneNumberDivisorByDivisorTester
 
         void ProcessPrime(ulong prime)
         {
-            bool isPrime = tester.IsPrime(prime, out bool divisorsExhausted);
+            bool isPrime = tester.IsPrime(prime, out bool divisorsExhausted, primeTestLimit);
 
             if (!isPrime)
             {
