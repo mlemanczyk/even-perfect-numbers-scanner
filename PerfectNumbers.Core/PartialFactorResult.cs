@@ -49,12 +49,12 @@ namespace PerfectNumbers.Core
             FactorEntry[]? source = Factors;
             if (source is null || Count == 0)
             {
-                FactorEntry[] local = ArrayPool<FactorEntry>.Shared.Rent(1);
+                FactorEntry[] local = ThreadLocalArrayPool<FactorEntry>.Shared.Rent(1);
                 local[0] = new FactorEntry(prime);
                 return Rent(local, 1UL, true, 1);
             }
 
-            FactorEntry[] extended = ArrayPool<FactorEntry>.Shared.Rent(Count + 1);
+            FactorEntry[] extended = ThreadLocalArrayPool<FactorEntry>.Shared.Rent(Count + 1);
             Array.Copy(source, 0, extended, 0, Count);
             extended[Count] = new FactorEntry(prime);
             Span<FactorEntry> span = extended.AsSpan(0, Count + 1);
@@ -70,7 +70,7 @@ namespace PerfectNumbers.Core
                 if (factors is not null)
                 {
                     Factors = null;
-                    ArrayPool<FactorEntry>.Shared.Return(factors, clearArray: false);
+                    ThreadLocalArrayPool<FactorEntry>.Shared.Return(factors, clearArray: false);
                 }
 
                 _next = s_poolHead;

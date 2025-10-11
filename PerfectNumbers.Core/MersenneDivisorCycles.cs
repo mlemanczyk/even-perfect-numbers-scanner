@@ -567,7 +567,7 @@ public class MersenneDivisorCycles
         }
 
         int count = factorCounts.Count;
-        ulong[] primes = ArrayPool<ulong>.Shared.Rent(count);
+        ulong[] primes = ThreadLocalArrayPool<ulong>.Shared.Rent(count);
         try
         {
             int index = 0;
@@ -607,7 +607,7 @@ public class MersenneDivisorCycles
         }
         finally
         {
-            ArrayPool<ulong>.Shared.Return(primes, clearArray: false);
+            ThreadLocalArrayPool<ulong>.Shared.Return(primes, clearArray: false);
         }
     }
 
@@ -793,7 +793,7 @@ public class MersenneDivisorCycles
             tasks[taskIndex] = Task.Run(() =>
             {
                 ulong rangeLength = localEnd - localStart + 1UL;
-                (ulong divisor, ulong cycle)[] localCycles = ArrayPool<(ulong, ulong)>.Shared.Rent(checked((int)rangeLength));
+                (ulong divisor, ulong cycle)[] localCycles = ThreadLocalArrayPool<(ulong, ulong)>.Shared.Rent(checked((int)rangeLength));
                 int localCycleIndex = 0;
 
                 try
@@ -841,7 +841,7 @@ public class MersenneDivisorCycles
                 }
                 finally
                 {
-                    ArrayPool<(ulong, ulong)>.Shared.Return(localCycles, clearArray: false);
+                    ThreadLocalArrayPool<(ulong, ulong)>.Shared.Return(localCycles, clearArray: false);
                 }
             });
         }
@@ -856,7 +856,7 @@ public class MersenneDivisorCycles
         ulong start = 3UL;
         var locker = new object();
 
-        var pool = ArrayPool<ulong>.Shared;
+        var pool = ThreadLocalArrayPool<ulong>.Shared;
         ulong batchSizeUL = (ulong)batchSize, d, end;
         int count = (int)Math.Min(batchSizeUL, maxDivisor), i, idx;
         ulong[] divisors, outCycles, validDivisors;
