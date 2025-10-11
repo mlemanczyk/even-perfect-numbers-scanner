@@ -377,6 +377,8 @@ internal static class Program
             }
         }
 
+        GpuKernelPool.CpuCycleUsesGpu = orderOnGpu;
+
         if (useByDivisor)
         {
             _byDivisorStartPrime = startPrimeProvided ? currentP : 0UL;

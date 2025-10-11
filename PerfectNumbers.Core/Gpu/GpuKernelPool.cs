@@ -756,6 +756,8 @@ public class GpuKernelPool
 {
     private static readonly ConcurrentDictionary<Accelerator, KernelContainer> KernelCache = new(); // TODO: Replace this concurrent map with a simple accelerator-indexed lookup once kernel launchers are prewarmed during startup so we can drop the thread-safe wrapper entirely.
 
+    public static bool CpuCycleUsesGpu { get; set; }
+
     private static KernelContainer GetKernels(Accelerator accelerator)
     {
         return KernelCache.GetOrAdd(accelerator, _ => new KernelContainer());
