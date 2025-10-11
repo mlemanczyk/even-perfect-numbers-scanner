@@ -1,3 +1,4 @@
+using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -17,6 +18,12 @@ public class MersenneDivisorCycles
     private List<(ulong divisor, ulong cycleLength)> _table = [];
     // Lightweight read-mostly cache for small divisors (<= 4,000,000). 0 => unknown
     private ulong[]? _smallCycles;
+
+    [ThreadStatic]
+    private static Dictionary<ulong, int>? s_factorCountsPool;
+
+    [ThreadStatic]
+    private static Dictionary<ulong, int>? s_factorScratchPool;
 
     public static MersenneDivisorCycles Shared { get; } = new MersenneDivisorCycles();
 
@@ -330,21 +337,28 @@ public class MersenneDivisorCycles
         //     return false;
         // }
 
-        Dictionary<ulong, int> factorCounts = new(8);
-        // The divisor candidates are odd, so phi is even and this branch always records at least one factor of two.
-        // if (twoCount > 0)
-        // {
-        //     factorCounts[2UL] = twoCount;
-        // }
-        factorCounts[2UL] = twoCount;
-
-        if (!AccumulateFactors(exponent, factorCache, factorCounts, cacheResult: true) || !AccumulateFactors(k, factorCache, factorCounts, cacheResult: false))
+        Dictionary<ulong, int> factorCounts = AcquireFactorCountDictionary(8);
+        try
         {
-            return false;
-        }
+            // The divisor candidates are odd, so phi is even and this branch always records at least one factor of two.
+            // if (twoCount > 0)
+            // {
+            //     factorCounts[2UL] = twoCount;
+            // }
+            factorCounts[2UL] = twoCount;
 
-        cycleLength = ReduceOrder(divisorData, phi, factorCounts);
-        return true;
+            if (!AccumulateFactors(exponent, factorCache, factorCounts, cacheResult: true) || !AccumulateFactors(k, factorCache, factorCounts, cacheResult: false))
+            {
+                return false;
+            }
+
+            cycleLength = ReduceOrder(divisorData, phi, factorCounts);
+            return true;
+        }
+        finally
+        {
+            ReleaseFactorCountDictionary(factorCounts);
+        }
     }
 
     private static bool AccumulateFactors(
@@ -358,61 +372,119 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        if (!TryGetFactorization(value, cache, cacheResult, out FactorCacheEntry factorization))
+        FactorCacheEntry cachedFactorization;
+        PrimeFactorPartialResult? lease = null;
+        bool fromCache;
+
+        try
         {
-            return false;
+            if (!TryGetFactorization(value, cache, cacheResult, out cachedFactorization, out lease, out fromCache))
+            {
+                return false;
+            }
+
+            if (fromCache)
+            {
+                ulong[] primes = cachedFactorization.Primes;
+                byte[] exponents = cachedFactorization.Exponents;
+                int length = cachedFactorization.Count;
+
+                for (int i = 0; i < length; i++)
+                {
+                    AddFactor(counts, primes[i], exponents[i]);
+                }
+
+                return true;
+            }
+
+            if (lease is null || lease.Count == 0)
+            {
+                return true;
+            }
+
+            ReadOnlySpan<ulong> primesSpan = lease.Primes;
+            ReadOnlySpan<byte> exponentsSpan = lease.Exponents;
+            int spanLength = lease.Count;
+
+            for (int i = 0; i < spanLength; i++)
+            {
+                AddFactor(counts, primesSpan[i], exponentsSpan[i]);
+            }
+
+            return true;
         }
-
-        ulong[] primes = factorization.Primes;
-        byte[] exponents = factorization.Exponents;
-        int length = factorization.Count;
-
-        for (int i = 0; i < length; i++)
+        finally
         {
-            AddFactor(counts, primes[i], exponents[i]);
+            lease?.Dispose();
         }
-
-        return true;
     }
 
     private static bool TryGetFactorization(
         ulong value,
         Dictionary<ulong, FactorCacheEntry>? cache,
         bool cacheResult,
-        out FactorCacheEntry factorization)
+        out FactorCacheEntry factorization,
+        out PrimeFactorPartialResult? lease,
+        out bool fromCache)
     {
-        if (cache is not null && cache.TryGetValue(value, out factorization))
+        factorization = default;
+        lease = null;
+        fromCache = false;
+
+        if (value <= 1UL)
         {
             return true;
         }
 
-        Dictionary<ulong, int> scratch = new(8);
-        if (!TryFactorIntoCountsInternal(value, scratch))
+        if (cache is not null && cache.TryGetValue(value, out factorization))
         {
-            factorization = default!;
-            return false;
+            fromCache = true;
+            return true;
         }
 
-        int count = scratch.Count;
-        ulong[] primes = new ulong[count];
-        byte[] exponents = new byte[count];
-        int index = 0;
-        foreach (KeyValuePair<ulong, int> entry in scratch)
+        Dictionary<ulong, int> scratch = AcquireFactorScratchDictionary(8);
+        try
         {
-            primes[index] = entry.Key;
-            exponents[index] = checked((byte)entry.Value);
-            index++;
+            if (!TryFactorIntoCountsInternal(value, scratch))
+            {
+                factorization = default;
+                return false;
+            }
+
+            int count = scratch.Count;
+            if (count == 0)
+            {
+                return true;
+            }
+
+            PrimeFactorPartialResult result = PrimeFactorPartialResult.Rent(count);
+            lease = result;
+
+            Span<ulong> primes = result.PrimeWriteSpan;
+            Span<byte> exponents = result.ExponentWriteSpan;
+            int index = 0;
+            foreach (KeyValuePair<ulong, int> entry in scratch)
+            {
+                primes[index] = entry.Key;
+                exponents[index] = checked((byte)entry.Value);
+                index++;
+            }
+
+            result.CommitCount(index);
+            result.Sort();
+
+            if (cache is not null && cacheResult)
+            {
+                FactorCacheEntry cacheEntry = result.ToCacheEntry();
+                cache[value] = cacheEntry;
+            }
+
+            return true;
         }
-
-        Array.Sort(primes, exponents);
-        factorization = new FactorCacheEntry(primes, exponents, count);
-
-        if (cache is not null && cacheResult)
+        finally
         {
-            cache[value] = factorization;
+            ReleaseFactorScratchDictionary(scratch);
         }
-
-        return true;
     }
 
     private static bool TryFactorIntoCountsInternal(ulong value, Dictionary<ulong, int> counts)
@@ -605,6 +677,53 @@ public class MersenneDivisorCycles
             {
                 return a << shift;
             }
+        }
+    }
+
+    // Thread-local dictionary pools keep the factoring helpers reusable so the GC stays out of the by-divisor CPU loop.
+    private static Dictionary<ulong, int> AcquireFactorCountDictionary(int capacityHint)
+    {
+        Dictionary<ulong, int>? dictionary = s_factorCountsPool;
+        if (dictionary is null)
+        {
+            return new Dictionary<ulong, int>(capacityHint);
+        }
+
+        s_factorCountsPool = null;
+        dictionary.Clear();
+        dictionary.EnsureCapacity(capacityHint);
+        return dictionary;
+    }
+
+    private static void ReleaseFactorCountDictionary(Dictionary<ulong, int> dictionary)
+    {
+        dictionary.Clear();
+        if (s_factorCountsPool is null)
+        {
+            s_factorCountsPool = dictionary;
+        }
+    }
+
+    private static Dictionary<ulong, int> AcquireFactorScratchDictionary(int capacityHint)
+    {
+        Dictionary<ulong, int>? dictionary = s_factorScratchPool;
+        if (dictionary is null)
+        {
+            return new Dictionary<ulong, int>(capacityHint);
+        }
+
+        s_factorScratchPool = null;
+        dictionary.Clear();
+        dictionary.EnsureCapacity(capacityHint);
+        return dictionary;
+    }
+
+    private static void ReleaseFactorScratchDictionary(Dictionary<ulong, int> dictionary)
+    {
+        dictionary.Clear();
+        if (s_factorScratchPool is null)
+        {
+            s_factorScratchPool = dictionary;
         }
     }
 
