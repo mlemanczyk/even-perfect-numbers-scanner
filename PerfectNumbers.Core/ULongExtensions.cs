@@ -347,14 +347,10 @@ public static class ULongExtensions
         ulong result = divisor.MontgomeryOne;
         ulong nPrime = divisor.NPrime;
 
-        Span<ulong> oddPowerStorage;
+        Span<ulong> oddPowerStorage = oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount ? stackalloc ulong[PerfectNumberConstants.MaxOddPowersCount] : default;
         ulong[]? pooledOddPowers = null;
 
-        if (oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount)
-        {
-            oddPowerStorage = stackalloc ulong[PerfectNumberConstants.MaxOddPowersCount];
-        }
-        else if (oddPowerCount < PerfectNumberConstants.PooledArrayThreshold)
+		if (oddPowerCount < PerfectNumberConstants.PooledArrayThreshold)
         {
             oddPowerStorage = new ulong[oddPowerCount];
         }

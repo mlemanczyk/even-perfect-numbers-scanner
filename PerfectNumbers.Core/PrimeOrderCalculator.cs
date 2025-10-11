@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using PerfectNumbers.Core.Gpu;
@@ -331,23 +332,19 @@ internal static partial class PrimeOrderCalculator
         ArrayPool<FactorEntry> factorPool = FactorPool;
 
         FactorEntry[]? tempArray = null;
+		ReadOnlySpan<FactorEntry> factorSpan = factors.Factors;
+		int length = factors.Count;
+		int capacity = length + 1;
+
+		Span<FactorEntry> buffer = capacity <= FactorEntryStackThreshold ? stackalloc FactorEntry[capacity] : default;
+		if (capacity > FactorEntryStackThreshold)
+		{
+			tempArray = factorPool.Rent(capacity);
+			buffer = tempArray.AsSpan(0, capacity);
+		}
+
         try
         {
-            ReadOnlySpan<FactorEntry> factorSpan = factors.Factors;
-            int length = factors.Count;
-            int capacity = length + 1;
-
-            Span<FactorEntry> buffer;
-            if (capacity <= FactorEntryStackThreshold)
-            {
-                buffer = stackalloc FactorEntry[capacity];
-            }
-            else
-            {
-                tempArray = factorPool.Rent(capacity);
-                buffer = tempArray.AsSpan(0, capacity);
-            }
-
             factorSpan.CopyTo(buffer);
 
             bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factors.Cofactor);
