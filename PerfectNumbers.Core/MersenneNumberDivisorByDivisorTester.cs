@@ -286,7 +286,7 @@ public static class MersenneNumberDivisorByDivisorTester
                 groupSize++;
             }
 
-            int startIndex = groupStartIndex;
+            startIndex = groupStartIndex;
             int endIndex = startIndex + groupSize;
             workerRanges[workerIndex] = (startIndex, endIndex);
             groupStartIndex = endIndex;
