@@ -1,7 +1,6 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using PerfectNumbers.Core.Gpu;
@@ -72,6 +71,9 @@ internal static partial class PrimeOrderCalculator
 
     [ThreadStatic]
     private static int s_divisorCycleSuppressionDepth;
+
+    [ThreadStatic]
+    private static MutableUInt128 s_pollardRhoPolynomialBuffer;
 
     private static bool IsGpuHeuristicDevice => s_pow2ModeInitialized && s_deviceMode == PrimeOrderHeuristicDevice.Gpu;
 
@@ -1326,8 +1328,11 @@ internal static partial class PrimeOrderCalculator
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong AdvancePolynomial(ulong x, ulong c, ulong modulus)
     {
-        UInt128 value = (UInt128)x * x + c;
-        return (ulong)(value % modulus);
+        ref MutableUInt128 polynomial = ref s_pollardRhoPolynomialBuffer;
+        polynomial.Set(x);
+        polynomial.Multiply(x);
+        polynomial.Add(c);
+        return polynomial.Mod(modulus);
     }
 
     private static ulong BinaryGcd(ulong a, ulong b)
