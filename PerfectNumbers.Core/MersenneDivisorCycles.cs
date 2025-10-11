@@ -352,7 +352,7 @@ public class MersenneDivisorCycles
                 return false;
             }
 
-            cycleLength = ReduceOrder(divisorData, phi, factorCounts);
+            cycleLength = ReduceOrder(divisorData, phi, factorCounts, exponent);
             return true;
         }
         finally
@@ -559,9 +559,13 @@ public class MersenneDivisorCycles
         }
     }
 
-    private static ulong ReduceOrder(in MontgomeryDivisorData divisorData, ulong initialOrder, Dictionary<ulong, int> factorCounts)
+    private static ulong ReduceOrder(
+        in MontgomeryDivisorData divisorData,
+        ulong initialOrder,
+        Dictionary<ulong, int> factorCounts,
+        ulong targetOrder)
     {
-        if (factorCounts.Count == 0)
+        if (factorCounts.Count == 0 || initialOrder == targetOrder)
         {
             return initialOrder;
         }
@@ -599,6 +603,13 @@ public class MersenneDivisorCycles
                     if (candidate.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL)
                     {
                         order = candidate;
+                        if (order == targetOrder)
+                        {
+                            // Early-exit once the order matches the tested exponent;
+                            // further factor processing would not change the outcome for the by-divisor scan.
+                            return order;
+                        }
+
                         continue;
                     }
 
