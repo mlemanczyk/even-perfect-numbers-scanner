@@ -567,7 +567,10 @@ public class MersenneDivisorCycles
         }
 
         int count = factorCounts.Count;
-        ulong[] primes = ThreadLocalArrayPool<ulong>.Shared.Rent(count);
+        bool rentFromPool = count >= PerfectNumberConstants.PooledArrayThreshold;
+        ulong[] primes = rentFromPool
+            ? ThreadLocalArrayPool<ulong>.Shared.Rent(count)
+            : new ulong[count];
         try
         {
             int index = 0;
@@ -607,7 +610,10 @@ public class MersenneDivisorCycles
         }
         finally
         {
-            ThreadLocalArrayPool<ulong>.Shared.Return(primes, clearArray: false);
+            if (rentFromPool)
+            {
+                ThreadLocalArrayPool<ulong>.Shared.Return(primes, clearArray: false);
+            }
         }
     }
 
@@ -793,7 +799,11 @@ public class MersenneDivisorCycles
             tasks[taskIndex] = Task.Run(() =>
             {
                 ulong rangeLength = localEnd - localStart + 1UL;
-                (ulong divisor, ulong cycle)[] localCycles = ThreadLocalArrayPool<(ulong, ulong)>.Shared.Rent(checked((int)rangeLength));
+                int localLength = checked((int)rangeLength);
+                bool rentLocalCycles = localLength >= PerfectNumberConstants.PooledArrayThreshold;
+                (ulong divisor, ulong cycle)[] localCycles = rentLocalCycles
+                    ? ThreadLocalArrayPool<(ulong, ulong)>.Shared.Rent(localLength)
+                    : new (ulong divisor, ulong cycle)[localLength];
                 int localCycleIndex = 0;
 
                 try
@@ -841,7 +851,10 @@ public class MersenneDivisorCycles
                 }
                 finally
                 {
-                    ThreadLocalArrayPool<(ulong, ulong)>.Shared.Return(localCycles, clearArray: false);
+                    if (rentLocalCycles)
+                    {
+                        ThreadLocalArrayPool<(ulong, ulong)>.Shared.Return(localCycles, clearArray: false);
+                    }
                 }
             });
         }
