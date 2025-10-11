@@ -396,7 +396,10 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
                 _stream?.Dispose();
                 _stream = null;
 
-                _gpu?.Dispose();
+                if (_gpu.HasValue)
+                {
+                    _gpu.Value.ReturnToPool();
+                }
                 _gpu = null;
 
                 _executionLock = null;
