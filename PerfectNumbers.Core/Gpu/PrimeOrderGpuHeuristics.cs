@@ -1715,10 +1715,10 @@ internal static partial class PrimeOrderGpuHeuristics
         GpuUInt128[]? rentedExponents = null;
         GpuUInt128[]? rentedResults = null;
         var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+        var execution = lease.EnterExecutionScope();
 
         try
         {
-            var execution = lease.EnterExecutionScope();
             Accelerator accelerator = lease.Accelerator;
             AcceleratorStream stream = lease.Stream;
             var kernel = GetPow2ModWideKernel(accelerator);
@@ -1755,7 +1755,6 @@ internal static partial class PrimeOrderGpuHeuristics
 
             exponentBuffer.Dispose();
             remainderBuffer.Dispose();
-            execution.Dispose();
             return true;
         }
         catch (Exception)
@@ -1775,6 +1774,7 @@ internal static partial class PrimeOrderGpuHeuristics
                 ArrayPool<GpuUInt128>.Shared.Return(rentedResults, clearArray: false);
             }
 
+            execution.Dispose();
             lease.Dispose();
         }
     }
