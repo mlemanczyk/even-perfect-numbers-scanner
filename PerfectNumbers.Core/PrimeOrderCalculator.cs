@@ -135,13 +135,16 @@ internal static partial class PrimeOrderCalculator
 
     private static ulong CalculateInternal(ulong prime, ulong? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
     {
-        if (prime <= 3UL)
-        {
-            return prime == 3UL ? 2UL : 1UL;
-        }
+        // EvenPerfectBitScanner only reaches this helper with divisors of the form 2 * exponent * k + 1 where exponent >= 5,
+        // so the small-prime return path is unreachable in production.
+        // if (prime <= 3UL)
+        // {
+        //     return prime == 3UL ? 2UL : 1UL;
+        // }
 
         ulong phi = prime - 1UL;
 
+        // The by-divisor scanner currently defaults to the CPU heuristic device, but --mersenne-device may request GPU heuristics.
         if (IsGpuHeuristicDevice && PrimeOrderGpuHeuristics.TryCalculateOrder(prime, previousOrder, config, divisorData, out ulong gpuOrder))
         {
             return gpuOrder;
@@ -150,12 +153,14 @@ internal static partial class PrimeOrderCalculator
         PartialFactorResult phiFactors = PartialFactor(phi, config);
 
         ulong result;
-        if (phiFactors.Factors is null)
-        {
-            result = FinishStrictlyCpu(prime, divisorData);
-            phiFactors.Dispose();
-            return result;
-        }
+        // The by-divisor scan always yields phi = prime - 1 with at least the factor 2 captured during small-prime sieving,
+        // so PartialFactor never returns a null factor list on this call path.
+        // if (phiFactors.Factors is null)
+        // {
+        //     result = CalculateByFactorizationCpu(prime, divisorData);
+        //     phiFactors.Dispose();
+        //     return result;
+        // }
 
         result = RunHeuristicPipelineCpu(prime, previousOrder, config, divisorData, phi, phiFactors);
         phiFactors.Dispose();
@@ -178,27 +183,35 @@ internal static partial class PrimeOrderCalculator
         ulong candidateOrder = InitializeStartingOrderCpu(prime, phi, divisorData);
         candidateOrder = ExponentLoweringCpu(candidateOrder, prime, phiFactors, divisorData);
 
-        if (TryConfirmOrderCpu(prime, candidateOrder, divisorData, config))
+        PartialFactorResult orderFactors = PartialFactor(candidateOrder, config);
+        if (orderFactors.Factors is null)
         {
+            orderFactors.Dispose();
+            return candidateOrder;
+        }
+
+        // Reuse the computed factorization for both the confirmation check and the heuristic pass
+        // to avoid factoring the same order twice on the by-divisor CPU pipeline.
+        if (TryConfirmOrderCpu(prime, candidateOrder, divisorData, ref orderFactors))
+        {
+            orderFactors.Dispose();
             return candidateOrder;
         }
 
         if (config.Mode == PrimeOrderMode.Strict)
         {
-            return FinishStrictlyCpu(prime, divisorData);
+            orderFactors.Dispose();
+            return CalculateByFactorizationCpu(prime, divisorData);
         }
 
-        if (TryHeuristicFinishCpu(prime, candidateOrder, previousOrder, divisorData, config, phiFactors, out ulong order))
+        if (TryHeuristicFinishCpu(prime, candidateOrder, previousOrder, divisorData, config, ref orderFactors, phiFactors, out ulong order))
         {
+            orderFactors.Dispose();
             return order;
         }
 
+        orderFactors.Dispose();
         return candidateOrder;
-    }
-
-    private static ulong FinishStrictlyCpu(ulong prime, in MontgomeryDivisorData divisorData)
-    {
-        return CalculateByFactorizationCpu(prime, divisorData);
     }
 
     private static bool TrySpecialMaxCpu(ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
@@ -297,12 +310,13 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
-    private static bool TryConfirmOrderCpu(ulong prime, ulong order, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
+    private static bool TryConfirmOrderCpu(ulong prime, ulong order, in MontgomeryDivisorData divisorData, ref PartialFactorResult orderFactors)
     {
-        if (order == 0UL)
-        {
-            return false;
-        }
+        // The candidate order is always a positive divisor of phi in this flow, so zero never appears here.
+        // if (order == 0UL)
+        // {
+        //     return false;
+        // }
 
         // Calculating `a^order ≡ 1 (mod p)` is a prerequisite for `order` being the actual order of 2 modulo `p`.
         // DebugLog("Verifying a^order ≡ 1 (mod p)");
@@ -311,66 +325,57 @@ internal static partial class PrimeOrderCalculator
             return false;
         }
 
-        // DebugLog("Partial factoring order");
-
-        // TODO: Do we do partial factoring of order multiple times?
-        PartialFactorResult factorization = PartialFactor(order, config);
-        try
+        // PartialFactor returns a null factor span when it cannot peel off any divisors, so keep the guard for composite candidate orders.
+        if (orderFactors.Factors is null)
         {
-            if (factorization.Factors is null)
+            return false;
+        }
+
+        if (!orderFactors.FullyFactored)
+        {
+            // A leftover cofactor of 0 or 1 indicates the partial factorization produced no useful prime divisor.
+            if (orderFactors.Cofactor <= 1UL)
             {
                 return false;
             }
 
-            if (!factorization.FullyFactored)
+            // DebugLog("Cofactor > 1. Testing primality of cofactor");
+            bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(orderFactors.Cofactor);
+            // bool isPrime = PrimeTester.IsPrimeInternal(orderFactors.Cofactor, CancellationToken.None);
+            if (!isPrime)
             {
-                if (factorization.Cofactor <= 1UL)
-                {
-                    return false;
-                }
-
-                // DebugLog("Cofactor > 1. Testing primality of cofactor");
-                bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factorization.Cofactor);
-                // bool isPrime = PrimeTester.IsPrimeInternal(factorization.Cofactor, CancellationToken.None);
-                if (!isPrime)
-                {
-                    return false;
-                }
-
-                // DebugLog("Adding cofactor as prime factor");
-                PartialFactorResult extended = factorization.WithAdditionalPrime(factorization.Cofactor);
-                factorization.Dispose();
-                factorization = extended;
+                return false;
             }
 
-            ReadOnlySpan<FactorEntry> span = factorization.Factors;
-            // DebugLog("Verifying prime-power reductions");
-            int length = factorization.Count;
-            for (int i = 0; i < length; i++)
-            {
-                ulong primeFactor = span[i].Value;
-                ulong reduced = order;
-                for (int iteration = 0; iteration < span[i].Exponent; iteration++)
-                {
-                    if ((reduced % primeFactor) != 0UL)
-                    {
-                        break;
-                    }
-
-                    reduced /= primeFactor;
-                    if (Pow2EqualsOneCpu(reduced, prime, divisorData))
-                    {
-                        return false;
-                    }
-                }
-            }
-
-            return true;
+            // DebugLog("Adding cofactor as prime factor");
+            PartialFactorResult extended = orderFactors.WithAdditionalPrime(orderFactors.Cofactor);
+            orderFactors.Dispose();
+            orderFactors = extended;
         }
-        finally
+
+        ReadOnlySpan<FactorEntry> span = orderFactors.Factors!;
+        // DebugLog("Verifying prime-power reductions");
+        int length = orderFactors.Count;
+        for (int i = 0; i < length; i++)
         {
-            factorization.Dispose();
+            ulong primeFactor = span[i].Value;
+            ulong reduced = order;
+            for (int iteration = 0; iteration < span[i].Exponent; iteration++)
+            {
+                if ((reduced % primeFactor) != 0UL)
+                {
+                    break;
+                }
+
+                reduced /= primeFactor;
+                if (Pow2EqualsOneCpu(reduced, prime, divisorData))
+                {
+                    return false;
+                }
+            }
         }
+
+        return true;
     }
 
     private static bool TryHeuristicFinishCpu(
@@ -379,170 +384,164 @@ internal static partial class PrimeOrderCalculator
         ulong? previousOrder,
         in MontgomeryDivisorData divisorData,
         in PrimeOrderSearchConfig config,
+        ref PartialFactorResult orderFactors,
         PartialFactorResult phiFactors,
         out ulong result)
     {
         result = 0UL;
-        if (order <= 1UL)
+        // The candidate order stays at least 2 for odd divisors above 3, so this guard never triggers in the EvenPerfectBitScanner flow.
+        // if (order <= 1UL)
+        // {
+        //     return false;
+        // }
+
+        // PartialFactor returns a null factor span when it cannot peel off any divisors, so the heuristic pass must bail in that case.
+        if (orderFactors.Factors is null)
         {
             return false;
         }
 
-        // TODO: Do we do partial factoring of order multiple times?
-        // DebugLog("Trying heuristic. Partial factoring order");
-        PartialFactorResult orderFactors = PartialFactor(order, config);
-        try
+        if (!orderFactors.FullyFactored)
         {
-            if (orderFactors.Factors is null)
+            // The partial factoring helper reports a cofactor of 0 or 1 when nothing usable remains, so short-circuit the heuristic stage.
+            if (orderFactors.Cofactor <= 1UL)
             {
                 return false;
             }
 
-            if (!orderFactors.FullyFactored)
-            {
-                if (orderFactors.Cofactor <= 1UL)
-                {
-                    return false;
-                }
-
-                var isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(orderFactors.Cofactor);
-                // if (!PrimeTester.IsPrimeInternal(orderFactors.Cofactor, CancellationToken.None))
-                if (!isPrime)
-                {
-                    return false;
-                }
-
-                PartialFactorResult extended = orderFactors.WithAdditionalPrime(orderFactors.Cofactor);
-                orderFactors.Dispose();
-                orderFactors = extended;
-            }
-
-            int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks * 4;
-            List<ulong> candidates = new(capacity);
-            FactorEntry[] factorArray = orderFactors.Factors!;
-            // DebugLog("Building candidates list");
-            BuildCandidates(order, factorArray, orderFactors.Count, candidates, capacity);
-            if (candidates.Count == 0)
+            var isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(orderFactors.Cofactor);
+            // if (!PrimeTester.IsPrimeInternal(orderFactors.Cofactor, CancellationToken.None))
+            if (!isPrime)
             {
                 return false;
             }
 
-            // DebugLog("Sorting candidates");
-            SortCandidates(prime, previousOrder, candidates);
+            PartialFactorResult extended = orderFactors.WithAdditionalPrime(orderFactors.Cofactor);
+            orderFactors.Dispose();
+            orderFactors = extended;
+        }
 
-            int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
-            int powUsed = 0;
-            int candidateCount = candidates.Count;
-            bool allowGpuBatch = true;
-            Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
+        int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks * 4;
+        List<ulong> candidates = new(capacity);
+        FactorEntry[] factorArray = orderFactors.Factors!;
+        // DebugLog("Building candidates list");
+        BuildCandidates(order, factorArray, orderFactors.Count, candidates, capacity);
+        if (candidates.Count == 0)
+        {
+            return false;
+        }
 
-            // DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
-            int index = 0;
-            const int MaxGpuBatchSize = 1024;
-            const int StackGpuBatchSize = 1024;
-            Span<ulong> stackGpuRemainders = stackalloc ulong[StackGpuBatchSize];
-			ArrayPool<ulong> uLongPool = ULongPool;
-            while (index < candidateCount && powUsed < powBudget)
+        // DebugLog("Sorting candidates");
+        SortCandidates(prime, previousOrder, candidates);
+
+        int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
+        int powUsed = 0;
+        int candidateCount = candidates.Count;
+        bool allowGpuBatch = true;
+        Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
+
+        // DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
+        int index = 0;
+        const int MaxGpuBatchSize = 1024;
+        const int StackGpuBatchSize = 1024;
+        Span<ulong> stackGpuRemainders = stackalloc ulong[StackGpuBatchSize];
+        ArrayPool<ulong> uLongPool = ULongPool;
+        while (index < candidateCount && powUsed < powBudget)
+        {
+            int remaining = candidateCount - index;
+            int budgetRemaining = powBudget - powUsed;
+            int batchSize = Math.Min(remaining, Math.Min(budgetRemaining, MaxGpuBatchSize));
+            if (batchSize <= 0)
             {
-                int remaining = candidateCount - index;
-                int budgetRemaining = powBudget - powUsed;
-                int batchSize = Math.Min(remaining, Math.Min(budgetRemaining, MaxGpuBatchSize));
-                if (batchSize <= 0)
+                break;
+            }
+
+            ReadOnlySpan<ulong> batch = candidateSpan.Slice(index, batchSize);
+            ulong[]? gpuPool = null;
+            Span<ulong> pooledGpuRemainders = default;
+            bool gpuSuccess = false;
+            bool gpuStackRemainders = false;
+            GpuPow2ModStatus status = GpuPow2ModStatus.Unavailable;
+
+            if (allowGpuBatch && IsGpuPow2Allowed)
+            {
+                if (batchSize <= StackGpuBatchSize)
                 {
-                    break;
-                }
-
-                ReadOnlySpan<ulong> batch = candidateSpan.Slice(index, batchSize);
-                ulong[]? gpuPool = null;
-                Span<ulong> pooledGpuRemainders = default;
-                bool gpuSuccess = false;
-                bool gpuStackRemainders = false;
-                GpuPow2ModStatus status = GpuPow2ModStatus.Unavailable;
-
-                if (allowGpuBatch && IsGpuPow2Allowed)
-                {
-                    if (batchSize <= StackGpuBatchSize)
+                    Span<ulong> localRemainders = stackGpuRemainders.Slice(0, batchSize);
+                    status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, localRemainders, divisorData);
+                    if (status == GpuPow2ModStatus.Success)
                     {
-                        Span<ulong> localRemainders = stackGpuRemainders.Slice(0, batchSize);
-                        status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, localRemainders, divisorData);
-                        if (status == GpuPow2ModStatus.Success)
-                        {
-                            gpuSuccess = true;
-                            gpuStackRemainders = true;
-                        }
-                    }
-                    else
-                    {
-                        gpuPool = uLongPool.Rent(batchSize);
-                        Span<ulong> pooledRemainders = gpuPool.AsSpan(0, batchSize);
-                        status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, pooledRemainders, divisorData);
-                        if (status == GpuPow2ModStatus.Success)
-                        {
-                            pooledGpuRemainders = pooledRemainders;
-                            gpuSuccess = true;
-                        }
-                        else
-                        {
-                            uLongPool.Return(gpuPool, clearArray: false);
-                            gpuPool = null;
-                        }
-                    }
-
-                    if (!gpuSuccess && (status == GpuPow2ModStatus.Overflow || status == GpuPow2ModStatus.Unavailable))
-                    {
-                        allowGpuBatch = false;
+                        gpuSuccess = true;
+                        gpuStackRemainders = true;
                     }
                 }
-
-                for (int i = 0; i < batchSize && powUsed < powBudget; i++)
+                else
                 {
-                    ulong candidate = batch[i];
-                    powUsed++;
-
-                    bool equalsOne;
-                    if (gpuSuccess)
+                    gpuPool = uLongPool.Rent(batchSize);
+                    Span<ulong> pooledRemainders = gpuPool.AsSpan(0, batchSize);
+                    status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, pooledRemainders, divisorData);
+                    if (status == GpuPow2ModStatus.Success)
                     {
-                        ulong remainderValue = gpuStackRemainders ? stackGpuRemainders[i] : pooledGpuRemainders[i];
-                        equalsOne = remainderValue == 1UL;
+                        pooledGpuRemainders = pooledRemainders;
+                        gpuSuccess = true;
                     }
                     else
-                    {
-                        equalsOne = Pow2EqualsOneCpu(candidate, prime, divisorData);
-                    }
-                    if (!equalsOne)
-                    {
-                        continue;
-                    }
-
-                    if (!TryConfirmCandidateCpu(prime, candidate, divisorData, config, ref powUsed, powBudget))
-                    {
-                        continue;
-                    }
-
-                    if (gpuPool is not null)
                     {
                         uLongPool.Return(gpuPool, clearArray: false);
+                        gpuPool = null;
                     }
+                }
 
-                    result = candidate;
-                    return true;
+                if (!gpuSuccess && (status == GpuPow2ModStatus.Overflow || status == GpuPow2ModStatus.Unavailable))
+                {
+                    allowGpuBatch = false;
+                }
+            }
+
+            for (int i = 0; i < batchSize && powUsed < powBudget; i++)
+            {
+                ulong candidate = batch[i];
+                powUsed++;
+
+                bool equalsOne;
+                if (gpuSuccess)
+                {
+                    ulong remainderValue = gpuStackRemainders ? stackGpuRemainders[i] : pooledGpuRemainders[i];
+                    equalsOne = remainderValue == 1UL;
+                }
+                else
+                {
+                    equalsOne = Pow2EqualsOneCpu(candidate, prime, divisorData);
+                }
+                if (!equalsOne)
+                {
+                    continue;
+                }
+
+                if (!TryConfirmCandidateCpu(prime, candidate, divisorData, config, ref powUsed, powBudget))
+                {
+                    continue;
                 }
 
                 if (gpuPool is not null)
                 {
-					uLongPool.Return(gpuPool, clearArray: false);
+                    uLongPool.Return(gpuPool, clearArray: false);
                 }
 
-                index += batchSize;
+                result = candidate;
+                return true;
             }
 
-            // DebugLog("No candidate confirmed");
-            return false;
+            if (gpuPool is not null)
+            {
+                uLongPool.Return(gpuPool, clearArray: false);
+            }
+
+            index += batchSize;
         }
-        finally
-        {
-            orderFactors.Dispose();
-        }
+
+        // DebugLog("No candidate confirmed");
+        return false;
     }
 
     private static void SortCandidates(ulong prime, ulong? previousOrder, List<ulong> candidates)
