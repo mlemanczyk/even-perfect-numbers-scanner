@@ -8,4 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="../../PerfectNumbers.Core/PerfectNumbers.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Remove=".temp.cs" />
+  </ItemGroup>
 </Project>

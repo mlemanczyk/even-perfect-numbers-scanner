@@ -22,4 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="../EvenPerfectBitScanner/EvenPerfectBitScanner.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Remove=".temp.cs" />
+  </ItemGroup>
 </Project>
