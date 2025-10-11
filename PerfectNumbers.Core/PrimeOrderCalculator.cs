@@ -1,7 +1,6 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using PerfectNumbers.Core.Gpu;
@@ -72,6 +71,9 @@ internal static partial class PrimeOrderCalculator
 
     [ThreadStatic]
     private static int s_divisorCycleSuppressionDepth;
+
+    [ThreadStatic]
+    private static MutableUInt128 s_pollardRhoPolynomialBuffer;
 
     private static bool IsGpuHeuristicDevice => s_pow2ModeInitialized && s_deviceMode == PrimeOrderHeuristicDevice.Gpu;
 
@@ -314,69 +316,84 @@ internal static partial class PrimeOrderCalculator
         return order;
     }
 
-	[ThreadStatic]
-	private static ArrayPool<FactorEntry>? _factorPool;
-	private static ArrayPool<FactorEntry> FactorPool => _factorPool ??= ArrayPool<FactorEntry>.Create();
+    [ThreadStatic]
+    private static ArrayPool<FactorEntry>? _factorPool;
+    private static ArrayPool<FactorEntry> FactorPool => _factorPool ??= ArrayPool<FactorEntry>.Create();
 
-	[ThreadStatic]
-	private static ArrayPool<ulong>? _ulongPool;
-	private static ArrayPool<ulong> ULongPool => _ulongPool ??= ArrayPool<ulong>.Create();
+    private const int FactorEntryStackThreshold = 32;
 
-	private static ulong ExponentLoweringCpu(ulong order, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
-	{
-		ArrayPool<FactorEntry> factorPool = FactorPool;
+    [ThreadStatic]
+    private static ArrayPool<ulong>? _ulongPool;
+    private static ArrayPool<ulong> ULongPool => _ulongPool ??= ArrayPool<ulong>.Create();
 
-		FactorEntry[]? tempArray = null;
-		try
-		{
-			ReadOnlySpan<FactorEntry> factorSpan = factors.Factors;
-			int length = factors.Count;
-			tempArray = factorPool.Rent(length + 1);
-			Span<FactorEntry> buffer = tempArray;
-			factorSpan.CopyTo(buffer);
+    private static ulong ExponentLoweringCpu(ulong order, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
+    {
+        ArrayPool<FactorEntry> factorPool = FactorPool;
 
-			bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factors.Cofactor);
-			// bool isPrime = PrimeTester.IsPrimeInternal(factors.Cofactor, CancellationToken.None);
-			if (!factors.FullyFactored && factors.Cofactor > 1UL && isPrime)
-			{
-				buffer[length] = new FactorEntry(factors.Cofactor);
-				length++;
-			}
+        FactorEntry[]? tempArray = null;
+        try
+        {
+            ReadOnlySpan<FactorEntry> factorSpan = factors.Factors;
+            int length = factors.Count;
+            int capacity = length + 1;
 
-			buffer.Slice(0, length).Sort(static (a, b) => a.Value.CompareTo(b.Value));
+            Span<FactorEntry> buffer;
+            if (capacity <= FactorEntryStackThreshold)
+            {
+                buffer = stackalloc FactorEntry[capacity];
+            }
+            else
+            {
+                tempArray = factorPool.Rent(capacity);
+                buffer = tempArray.AsSpan(0, capacity);
+            }
 
-			for (int i = 0; i < length; i++)
-			{
-				ulong primeFactor = buffer[i].Value;
-				int exponent = buffer[i].Exponent;
-				for (int iteration = 0; iteration < exponent; iteration++)
-				{
-					if ((order % primeFactor) != 0UL)
-					{
-						break;
-					}
+            factorSpan.CopyTo(buffer);
 
-					ulong reduced = order / primeFactor;
-					if (Pow2EqualsOneCpu(reduced, prime, divisorData))
-					{
-						order = reduced;
-						continue;
-					}
+            bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factors.Cofactor);
+            // bool isPrime = PrimeTester.IsPrimeInternal(factors.Cofactor, CancellationToken.None);
+            if (!factors.FullyFactored && factors.Cofactor > 1UL && isPrime)
+            {
+                buffer[length] = new FactorEntry(factors.Cofactor);
+                length++;
+            }
 
-					break;
-				}
-			}
+            buffer = buffer.Slice(0, length); // Reuse the same span restricted to populated entries.
+            buffer.Sort(static (a, b) => a.Value.CompareTo(b.Value));
 
-			return order;
-		}
-		finally
-		{
-			if (tempArray is not null)
-			{
-				factorPool.Return(tempArray, clearArray: false);
-			}
-		}
-	}
+            for (int i = 0; i < buffer.Length; i++)
+            {
+                FactorEntry entry = buffer[i];
+                ulong primeFactor = entry.Value;
+                int exponent = entry.Exponent;
+                for (int iteration = 0; iteration < exponent; iteration++)
+                {
+                    if ((order % primeFactor) != 0UL)
+                    {
+                        break;
+                    }
+
+                    ulong reduced = order / primeFactor;
+                    if (Pow2EqualsOneCpu(reduced, prime, divisorData))
+                    {
+                        order = reduced;
+                        continue;
+                    }
+
+                    break;
+                }
+            }
+
+            return order;
+        }
+        finally
+        {
+            if (tempArray is not null)
+            {
+                factorPool.Return(tempArray, clearArray: false);
+            }
+        }
+    }
 
     private static bool TryConfirmOrderCpu(ulong prime, ulong order, in MontgomeryDivisorData divisorData, ref PartialFactorResult orderFactors)
     {
@@ -1311,8 +1328,11 @@ internal static partial class PrimeOrderCalculator
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong AdvancePolynomial(ulong x, ulong c, ulong modulus)
     {
-        UInt128 value = (UInt128)x * x + c;
-        return (ulong)(value % modulus);
+        ref MutableUInt128 polynomial = ref s_pollardRhoPolynomialBuffer;
+        polynomial.Set(x);
+        polynomial.Multiply(x);
+        polynomial.Add(c);
+        return polynomial.Mod(modulus);
     }
 
     private static ulong BinaryGcd(ulong a, ulong b)
