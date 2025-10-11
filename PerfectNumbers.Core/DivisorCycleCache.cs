@@ -63,7 +63,9 @@ public sealed class DivisorCycleCache
         int[]? rentedMissing = null;
         Span<int> missingBuffer = length <= StackBufferThreshold
             ? stackalloc int[length]
-            : new Span<int>(rentedMissing = ArrayPool<int>.Shared.Rent(length), 0, length);
+            : length < PerfectNumberConstants.PooledArrayThreshold
+                ? new Span<int>(new int[length])
+                : new Span<int>(rentedMissing = ThreadLocalArrayPool<int>.Shared.Rent(length), 0, length);
 
         int missingCount = 0;
 
@@ -106,7 +108,7 @@ public sealed class DivisorCycleCache
 
         if (rentedMissing is not null)
         {
-            ArrayPool<int>.Shared.Return(rentedMissing, clearArray: false);
+            ThreadLocalArrayPool<int>.Shared.Return(rentedMissing, clearArray: false);
         }
     }
 
@@ -128,12 +130,16 @@ public sealed class DivisorCycleCache
         ulong[]? rentedDivisors = null;
         Span<ulong> workDivisors = count <= StackBufferThreshold
             ? stackalloc ulong[count]
-            : new Span<ulong>(rentedDivisors = ArrayPool<ulong>.Shared.Rent(count), 0, count);
+            : count < PerfectNumberConstants.PooledArrayThreshold
+                ? new Span<ulong>(new ulong[count])
+                : new Span<ulong>(rentedDivisors = ThreadLocalArrayPool<ulong>.Shared.Rent(count), 0, count);
 
         ulong[]? rentedResults = null;
         Span<ulong> workResults = count <= StackBufferThreshold
             ? stackalloc ulong[count]
-            : new Span<ulong>(rentedResults = ArrayPool<ulong>.Shared.Rent(count), 0, count);
+            : count < PerfectNumberConstants.PooledArrayThreshold
+                ? new Span<ulong>(new ulong[count])
+                : new Span<ulong>(rentedResults = ThreadLocalArrayPool<ulong>.Shared.Rent(count), 0, count);
 
         for (int i = 0; i < count; i++)
         {
@@ -149,8 +155,12 @@ public sealed class DivisorCycleCache
 
         if (rentedDivisors is not null)
         {
-            ArrayPool<ulong>.Shared.Return(rentedDivisors, clearArray: false);
-            ArrayPool<ulong>.Shared.Return(rentedResults!, clearArray: false);
+            ThreadLocalArrayPool<ulong>.Shared.Return(rentedDivisors, clearArray: false);
+        }
+
+        if (rentedResults is not null)
+        {
+            ThreadLocalArrayPool<ulong>.Shared.Return(rentedResults, clearArray: false);
         }
     }
 
@@ -172,22 +182,30 @@ public sealed class DivisorCycleCache
         ulong[]? rentedPow = null;
         Span<ulong> powSpan = length <= StackBufferThreshold
             ? stackalloc ulong[length]
-            : new Span<ulong>(rentedPow = ArrayPool<ulong>.Shared.Rent(length), 0, length);
+            : length < PerfectNumberConstants.PooledArrayThreshold
+                ? new Span<ulong>(new ulong[length])
+                : new Span<ulong>(rentedPow = ThreadLocalArrayPool<ulong>.Shared.Rent(length), 0, length);
 
         ulong[]? rentedOrder = null;
         Span<ulong> orderSpan = length <= StackBufferThreshold
             ? stackalloc ulong[length]
-            : new Span<ulong>(rentedOrder = ArrayPool<ulong>.Shared.Rent(length), 0, length);
+            : length < PerfectNumberConstants.PooledArrayThreshold
+                ? new Span<ulong>(new ulong[length])
+                : new Span<ulong>(rentedOrder = ThreadLocalArrayPool<ulong>.Shared.Rent(length), 0, length);
 
         ulong[]? rentedResult = null;
         Span<ulong> resultSpan = length <= StackBufferThreshold
             ? stackalloc ulong[length]
-            : new Span<ulong>(rentedResult = ArrayPool<ulong>.Shared.Rent(length), 0, length);
+            : length < PerfectNumberConstants.PooledArrayThreshold
+                ? new Span<ulong>(new ulong[length])
+                : new Span<ulong>(rentedResult = ThreadLocalArrayPool<ulong>.Shared.Rent(length), 0, length);
 
         byte[]? rentedStatus = null;
         Span<byte> statusSpan = length <= StackBufferThreshold
             ? stackalloc byte[length]
-            : new Span<byte>(rentedStatus = ArrayPool<byte>.Shared.Rent(length), 0, length);
+            : length < PerfectNumberConstants.PooledArrayThreshold
+                ? new Span<byte>(new byte[length])
+                : new Span<byte>(rentedStatus = ThreadLocalArrayPool<byte>.Shared.Rent(length), 0, length);
 
         ref ulong divisorRef = ref MemoryMarshal.GetReference(divisors);
         divisorBuffer.View.CopyFromCPU(ref divisorRef, length);
@@ -234,10 +252,22 @@ public sealed class DivisorCycleCache
         resultSpan.CopyTo(destination);
         if (rentedPow is not null)
         {
-            ArrayPool<ulong>.Shared.Return(rentedPow, clearArray: false);
-            ArrayPool<ulong>.Shared.Return(rentedOrder!, clearArray: false);
-            ArrayPool<ulong>.Shared.Return(rentedResult!, clearArray: false);
-            ArrayPool<byte>.Shared.Return(rentedStatus!, clearArray: false);
+            ThreadLocalArrayPool<ulong>.Shared.Return(rentedPow, clearArray: false);
+        }
+
+        if (rentedOrder is not null)
+        {
+            ThreadLocalArrayPool<ulong>.Shared.Return(rentedOrder, clearArray: false);
+        }
+
+        if (rentedResult is not null)
+        {
+            ThreadLocalArrayPool<ulong>.Shared.Return(rentedResult, clearArray: false);
+        }
+
+        if (rentedStatus is not null)
+        {
+            ThreadLocalArrayPool<byte>.Shared.Return(rentedStatus, clearArray: false);
         }
 
         execution.Dispose();

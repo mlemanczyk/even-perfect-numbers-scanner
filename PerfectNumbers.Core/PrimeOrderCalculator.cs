@@ -1058,7 +1058,10 @@ internal static partial class PrimeOrderCalculator
                     return PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0);
                 }
 
-                FactorEntry[] factors = ArrayPool<FactorEntry>.Shared.Rent(counts.Count);
+                int dictionaryCount = counts.Count;
+                FactorEntry[] factors = dictionaryCount >= PerfectNumberConstants.PooledArrayThreshold
+                    ? ThreadLocalArrayPool<FactorEntry>.Shared.Rent(dictionaryCount)
+                    : new FactorEntry[dictionaryCount];
                 int index = 0;
                 foreach (KeyValuePair<ulong, int> entry in counts)
                 {
@@ -1092,7 +1095,9 @@ internal static partial class PrimeOrderCalculator
                 return PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0);
             }
 
-            FactorEntry[] array = ArrayPool<FactorEntry>.Shared.Rent(actualCount);
+            FactorEntry[] array = actualCount >= PerfectNumberConstants.PooledArrayThreshold
+                ? ThreadLocalArrayPool<FactorEntry>.Shared.Rent(actualCount)
+                : new FactorEntry[actualCount];
             int arrayIndex = 0;
             for (int i = 0; i < factorCount; i++)
             {

@@ -162,7 +162,7 @@ internal static partial class PrimeOrderCalculator
                 return order;
             }
 
-            tempArray = ArrayPool<FactorEntry128>.Shared.Rent(length + 1);
+            tempArray = ThreadLocalArrayPool<FactorEntry128>.Shared.Rent(length + 1);
             Span<FactorEntry128> buffer = tempArray.AsSpan(0, length);
             factorSpan.CopyTo(buffer);
 
@@ -200,7 +200,7 @@ internal static partial class PrimeOrderCalculator
         {
             if (tempArray is not null)
             {
-                ArrayPool<FactorEntry128>.Shared.Return(tempArray, clearArray: false);
+                ThreadLocalArrayPool<FactorEntry128>.Shared.Return(tempArray, clearArray: false);
             }
         }
     }
@@ -664,7 +664,7 @@ internal static partial class PrimeOrderCalculator
             return new PartialFactorResult128(null, value, false, 0);
         }
 
-        FactorEntry128[]? rented = counts.Count > 0 ? ArrayPool<FactorEntry128>.Shared.Rent(counts.Count) : null;
+        FactorEntry128[]? rented = counts.Count > 0 ? ThreadLocalArrayPool<FactorEntry128>.Shared.Rent(counts.Count) : null;
         int index = 0;
         if (rented is not null)
         {
@@ -682,7 +682,7 @@ internal static partial class PrimeOrderCalculator
             span.Sort(static (a, b) => a.Value.CompareTo(b.Value));
             resultArray = new FactorEntry128[index];
             span.CopyTo(resultArray);
-            ArrayPool<FactorEntry128>.Shared.Return(rented, clearArray: false);
+            ThreadLocalArrayPool<FactorEntry128>.Shared.Return(rented, clearArray: false);
         }
 
         bool fullyFactored = cofactor == UInt128.One;

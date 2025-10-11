@@ -81,12 +81,12 @@ namespace PerfectNumbers.Core
             {
                 if (_primes is not null)
                 {
-                    ArrayPool<ulong>.Shared.Return(_primes, clearArray: false);
+                    ThreadLocalArrayPool<ulong>.Shared.Return(_primes, clearArray: false);
                 }
 
                 if (_exponents is not null)
                 {
-                    ArrayPool<byte>.Shared.Return(_exponents, clearArray: false);
+                    ThreadLocalArrayPool<byte>.Shared.Return(_exponents, clearArray: false);
                 }
 
                 _arraysFromPool = false;
@@ -119,12 +119,12 @@ namespace PerfectNumbers.Core
             {
                 if (_primes is not null)
                 {
-                    ArrayPool<ulong>.Shared.Return(_primes, clearArray: false);
+                    ThreadLocalArrayPool<ulong>.Shared.Return(_primes, clearArray: false);
                 }
 
                 if (_exponents is not null)
                 {
-                    ArrayPool<byte>.Shared.Return(_exponents, clearArray: false);
+                    ThreadLocalArrayPool<byte>.Shared.Return(_exponents, clearArray: false);
                 }
 
                 _arraysFromPool = false;
@@ -134,8 +134,8 @@ namespace PerfectNumbers.Core
 
             if (capacity >= PerfectNumberConstants.PooledArrayThreshold)
             {
-                _primes = ArrayPool<ulong>.Shared.Rent(capacity);
-                _exponents = ArrayPool<byte>.Shared.Rent(capacity);
+                _primes = ThreadLocalArrayPool<ulong>.Shared.Rent(capacity);
+                _exponents = ThreadLocalArrayPool<byte>.Shared.Rent(capacity);
                 _arraysFromPool = true;
             }
             else
