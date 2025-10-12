@@ -419,15 +419,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         byte[] stepBuffer = ArrayPool<byte>.Shared.Rent(RemainderTableSize);
         Span<byte> remainderSpan = remainderBuffer.AsSpan(0, RemainderTableSize);
         Span<byte> stepSpan = stepBuffer.AsSpan(0, RemainderTableSize);
-        Span<byte> modulusSpan = stackalloc byte[RemainderTableSize]
-        {
-            10,
-            8,
-            5,
-            3,
-            7,
-            11,
-        };
+        // The remainder and step tables follow the fixed modulus order: 10, 8, 5, 3, 7, 11.
 
         ulong startDivisor64 = divisor128.Low;
         remainderSpan[0] = (byte)(startDivisor64 % 10UL);
@@ -446,7 +438,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         bool lastIsSeven = (prime & 3UL) == 3UL;
 
-        MersenneNumberDivisorRemainderGpuStepper remainderStepper = new(stepSpan, modulusSpan);
+        MersenneNumberDivisorRemainderGpuStepper remainderStepper = new(stepSpan);
         MersenneNumberDivisorMontgomeryGpuBuilder? montgomeryBuilder = _montgomeryDevice == ByDivisorMontgomeryDevice.Gpu
             ? new MersenneNumberDivisorMontgomeryGpuBuilder(batchCapacity)
             : null;
@@ -481,18 +473,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                     currentDivisor,
                     step,
                     limit64,
-                    remainderSpan[0],
-                    remainderSpan[1],
-                    remainderSpan[2],
-                    remainderSpan[3],
-                    remainderSpan[4],
-                    remainderSpan[5],
-                    stepSpan[0],
-                    stepSpan[1],
-                    stepSpan[2],
-                    stepSpan[3],
-                    stepSpan[4],
-                    stepSpan[5],
+                    remainderSpan,
+                    stepSpan,
                     lastIsSeven,
                     candidateSpan,
                     maskSpan);

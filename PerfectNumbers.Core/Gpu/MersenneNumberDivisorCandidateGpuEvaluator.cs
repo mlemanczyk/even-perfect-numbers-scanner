@@ -8,6 +8,8 @@ namespace PerfectNumbers.Core.Gpu;
 
 internal sealed class MersenneNumberDivisorCandidateGpuEvaluator : IDisposable
 {
+    private const int RemainderCount = 6;
+
     private readonly GpuContextPool.GpuContextLease _lease;
     private readonly Accelerator _accelerator;
     private readonly Action<Index1D, CandidateFilterArgs, ArrayView<ulong>, ArrayView<byte>> _kernel;
@@ -49,18 +51,8 @@ internal sealed class MersenneNumberDivisorCandidateGpuEvaluator : IDisposable
         ulong startDivisor,
         ulong step,
         ulong limit,
-        byte remainder10,
-        byte remainder8,
-        byte remainder5,
-        byte remainder3,
-        byte remainder7,
-        byte remainder11,
-        byte step10,
-        byte step8,
-        byte step5,
-        byte step3,
-        byte step7,
-        byte step11,
+        ReadOnlySpan<byte> remainders,
+        ReadOnlySpan<byte> steps,
         bool lastIsSeven,
         Span<ulong> candidates,
         Span<byte> mask)
@@ -68,6 +60,11 @@ internal sealed class MersenneNumberDivisorCandidateGpuEvaluator : IDisposable
         if (_disposed)
         {
             throw new ObjectDisposedException(nameof(MersenneNumberDivisorCandidateGpuEvaluator));
+        }
+
+        if (remainders.Length != RemainderCount || steps.Length != RemainderCount)
+        {
+            throw new ArgumentException("Remainder and step tables must contain exactly six entries.");
         }
 
         int count = candidates.Length;
@@ -88,18 +85,18 @@ internal sealed class MersenneNumberDivisorCandidateGpuEvaluator : IDisposable
             startDivisor,
             step,
             limit,
-            remainder10,
-            remainder8,
-            remainder5,
-            remainder3,
-            remainder7,
-            remainder11,
-            step10,
-            step8,
-            step5,
-            step3,
-            step7,
-            step11,
+            remainders[0],
+            remainders[1],
+            remainders[2],
+            remainders[3],
+            remainders[4],
+            remainders[5],
+            steps[0],
+            steps[1],
+            steps[2],
+            steps[3],
+            steps[4],
+            steps[5],
             lastIsSeven ? (byte)1 : (byte)0);
 
         _kernel(count, args, candidateView, maskView);
