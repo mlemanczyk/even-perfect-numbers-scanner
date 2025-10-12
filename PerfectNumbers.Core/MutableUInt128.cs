@@ -15,7 +15,6 @@ internal struct MutableUInt128
 
     public MutableUInt128(ulong value)
     {
-        High = 0UL;
         Low = value;
     }
 
@@ -53,7 +52,7 @@ internal struct MutableUInt128
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public UInt128 ToUInt128() => ((UInt128)High << 64) | Low;
+    public readonly UInt128 ToUInt128() => ((UInt128)High << 64) | Low;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Add(ulong value)
@@ -71,10 +70,10 @@ internal struct MutableUInt128
     public void Add(in MutableUInt128 value)
     {
         ulong low = Low + value.Low;
+        Low = low;
         ulong carry = low < Low ? 1UL : 0UL;
         ulong high = High + value.High + carry;
 
-        Low = low;
         High = high;
     }
 
