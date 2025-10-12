@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using PerfectNumbers.Core;
@@ -27,6 +28,7 @@ public class MutableUInt128MultiplyAddBenchmarks
         return ((UInt128)high << 64) | low;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void MultiplyAdd(ref MutableUInt128 source, ulong multiplier, ulong addend)
 	{
 		source.Mul(multiplier);

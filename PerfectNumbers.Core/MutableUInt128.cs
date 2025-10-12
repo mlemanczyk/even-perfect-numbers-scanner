@@ -67,7 +67,7 @@ public struct MutableUInt128
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Add(in MutableUInt128 value)
+    public void Add(MutableUInt128 value)
     {
         ulong temp = Low + value.Low;
         Low = temp;
@@ -89,7 +89,7 @@ public struct MutableUInt128
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Sub(in MutableUInt128 value)
+    public void Sub(MutableUInt128 value)
     {
         ulong low = Low;
         ulong result = low - value.Low;
