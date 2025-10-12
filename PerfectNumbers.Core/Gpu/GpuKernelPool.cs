@@ -110,15 +110,15 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         get
         {
             var accel = Accelerator; // avoid capturing 'this' in lambda
-            lock (_gpu!.Value.KernelInitLock)
-            {
+            // lock (_gpu!.Value.KernelInitLock)
+            // {
                 return KernelContainer.InitOnce(ref _kernels.Order, () =>
                 {
                     var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>(OrderKernelScan);
                     var kernel = KernelUtil.GetKernel(loaded);
                     return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>>();
                 });
-            }
+            // }
         }
     }
 
@@ -127,15 +127,15 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         get
         {
             var accel = Accelerator;
-            lock (_gpu!.Value.KernelInitLock)
-            {
+            // lock (_gpu!.Value.KernelInitLock)
+            // {
                 return KernelContainer.InitOnce(ref _kernels.Pow2Mod, () =>
                 {
                     var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernelScan);
                     var kernel = KernelUtil.GetKernel(loaded);
                     return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
                 });
-            }
+            // }
         }
     }
 
@@ -144,15 +144,15 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         get
         {
             var accel = Accelerator;
-            lock (_gpu!.Value.KernelInitLock)
-            {
+            // lock (_gpu!.Value.KernelInitLock)
+            // {
                 return KernelContainer.InitOnce(ref _kernels.Incremental, () =>
                 {
                     var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>>(IncrementalKernelScan);
                     var kernel = KernelUtil.GetKernel(loaded);
                     return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>>>();
                 });
-            }
+            // }
         }
     }
 
@@ -161,15 +161,15 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         get
         {
             var accel = Accelerator;
-            lock (_gpu!.Value.KernelInitLock)
-            {
+            // lock (_gpu!.Value.KernelInitLock)
+            // {
                 return KernelContainer.InitOnce(ref _kernels.IncrementalOrder, () =>
                 {
                     var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>(IncrementalOrderKernelScan);
                     var kernel = KernelUtil.GetKernel(loaded);
                     return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
                 });
-            }
+            // }
         }
     }
 
@@ -178,15 +178,15 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         get
         {
             var accel = Accelerator;
-            lock (_gpu!.Value.KernelInitLock)
-            {
+            // lock (_gpu!.Value.KernelInitLock)
+            // {
                 return KernelContainer.InitOnce(ref _kernels.Pow2ModOrder, () =>
                 {
                     var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModOrderKernelScan);
                     var kernel = KernelUtil.GetKernel(loaded);
                     return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
                 });
-            }
+            // }
         }
     }
 
@@ -195,15 +195,15 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         get
         {
             var accel = Accelerator;
-            lock (_gpu!.Value.KernelInitLock)
-            {
+            // lock (_gpu!.Value.KernelInitLock)
+            // {
                 return KernelContainer.InitOnce(ref _kernels.MontgomeryOddPowers, () =>
                 {
                     var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<MontgomeryDivisorData, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int>(MontgomeryOddPowerKernelScan);
                     var kernel = KernelUtil.GetKernel(loaded);
                     return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<MontgomeryDivisorData, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int>>();
                 });
-            }
+            // }
         }
     }
 
@@ -739,18 +739,18 @@ public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, Kerne
         public ExecutionScope(object? sync)
         {
             _lock = sync;
-            if (_lock is not null)
-            {
-                Monitor.Enter(_lock);
-            }
+            // if (_lock is not null)
+            // {
+            //     Monitor.Enter(_lock);
+            // }
         }
 
         public void Dispose()
         {
-            if (_lock is not null)
-            {
-                Monitor.Exit(_lock);
-            }
+            // if (_lock is not null)
+            // {
+            //     Monitor.Exit(_lock);
+            // }
         }
     }
 }
@@ -777,8 +777,8 @@ public class GpuKernelPool
         }
 
         // Ensure single upload per accelerator even if multiple threads race here.
-        lock (kernels) // TODO: Remove this lock by pre-uploading the immutable small-cycle snapshot during initialization; once no mutation happens at runtime, the pool must expose a simple reference without synchronization.
-        {
+        // lock (kernels) // TODO: Remove this lock by pre-uploading the immutable small-cycle snapshot during initialization; once no mutation happens at runtime, the pool must expose a simple reference without synchronization.
+        // {
             if (kernels.SmallCycles is { } existing)
             {
                 return existing.View;
@@ -789,7 +789,7 @@ public class GpuKernelPool
             device.View.CopyFromCPU(host);
             kernels.SmallCycles = device;
             return device.View;
-        }
+        // }
     }
 
     public static ResiduePrimeViews EnsureSmallPrimesOnDevice(Accelerator accelerator)
@@ -803,8 +803,8 @@ public class GpuKernelPool
             return new ResiduePrimeViews(lastOne.View, lastSeven.View, lastOnePow2.View, lastSevenPow2.View);
         }
 
-        lock (kernels) // TODO: Inline these small-prime uploads into startup initialization alongside the small-cycle snapshot so we can drop runtime locking and keep the GPU pool free of synchronization.
-        {
+        // lock (kernels) // TODO: Inline these small-prime uploads into startup initialization alongside the small-cycle snapshot so we can drop runtime locking and keep the GPU pool free of synchronization.
+        // {
             if (kernels.SmallPrimesLastOne is { } existingLastOne &&
                 kernels.SmallPrimesLastSeven is { } existingLastSeven &&
                 kernels.SmallPrimesPow2LastOne is { } existingLastOnePow2 &&
@@ -833,7 +833,7 @@ public class GpuKernelPool
             kernels.SmallPrimesPow2LastSeven = deviceLastSevenPow2;
 
             return new ResiduePrimeViews(deviceLastOne.View, deviceLastSeven.View, deviceLastOnePow2.View, deviceLastSevenPow2.View);
-        }
+        // }
     }
 
     public static GpuKernelLease GetKernel(bool useGpuOrder)
