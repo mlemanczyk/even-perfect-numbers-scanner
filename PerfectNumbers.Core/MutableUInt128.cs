@@ -144,6 +144,49 @@ internal struct MutableUInt128
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void MultiplyAddInline(ulong multiplier, ulong addend)
+    {
+        const ulong Mask32 = 0xFFFF_FFFFUL;
+
+        ulong multiplierLow = multiplier & Mask32;
+        ulong multiplierHigh = multiplier >> 32;
+
+        ulong low = Low;
+        ulong lowLow = low & Mask32;
+        ulong lowHigh = low >> 32;
+
+        ulong product00 = lowLow * multiplierLow;
+        ulong product01 = lowLow * multiplierHigh;
+        ulong product10 = lowHigh * multiplierLow;
+        ulong product11 = lowHigh * multiplierHigh;
+
+        ulong carry = (product00 >> 32) + (product01 & Mask32) + (product10 & Mask32);
+        ulong lowResult = ((carry & Mask32) << 32) | (product00 & Mask32);
+        ulong highContribution = product11 + (product01 >> 32) + (product10 >> 32) + (carry >> 32);
+
+        ulong high = High;
+        ulong highLow = high & Mask32;
+        ulong highHigh = high >> 32;
+
+        ulong product20 = highLow * multiplierLow;
+        ulong product21 = highLow * multiplierHigh;
+        ulong product30 = highHigh * multiplierLow;
+
+        ulong highCarry = (product20 >> 32) + (product21 & Mask32) + (product30 & Mask32);
+        ulong shiftedHighLow = ((highCarry & Mask32) << 32) | (product20 & Mask32);
+
+        ulong newLow = lowResult + addend;
+        ulong addCarry = newLow < addend ? 1UL : 0UL;
+
+        ulong newHigh = highContribution + shiftedHighLow;
+        // Discard overflow above 128 bits to match Multiply's truncation semantics.
+        newHigh += addCarry;
+
+        Low = newLow;
+        High = newHigh;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ulong Mod(ulong modulus)
     {
         if (modulus == 0UL)
