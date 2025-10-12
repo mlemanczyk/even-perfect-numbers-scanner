@@ -69,12 +69,12 @@ public struct MutableUInt128
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Add(in MutableUInt128 value)
     {
-        ulong low = Low + value.Low;
-        Low = low;
-        ulong carry = low < Low ? 1UL : 0UL;
-        ulong high = High + value.High + carry;
-
-        High = high;
+        ulong temp = Low + value.Low;
+        Low = temp;
+        temp = temp < Low ? 1UL : 0UL;
+		temp += High;
+		temp += value.High;
+        High = temp;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
