@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Numerics;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
@@ -181,6 +182,162 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     }
 
     private bool CheckDivisors(
+        ulong prime,
+        ulong allowedMax,
+        out ulong lastProcessed,
+        out bool processedAll,
+        out ulong processedCount,
+        TimeSpan? timeLimit)
+    {
+        if (_deltasDevice == ByDivisorDeltasDevice.Cpu)
+        {
+            return CheckDivisorsCpu(prime, allowedMax, out lastProcessed, out processedAll, out processedCount, timeLimit);
+        }
+
+        return CheckDivisorsGpu(prime, allowedMax, out lastProcessed, out processedAll, out processedCount, timeLimit);
+    }
+
+    private bool CheckDivisorsCpu(
+        ulong prime,
+        ulong allowedMax,
+        out ulong lastProcessed,
+        out bool processedAll,
+        out ulong processedCount,
+        TimeSpan? timeLimit)
+    {
+        lastProcessed = 0UL;
+        processedCount = 0UL;
+        processedAll = false;
+
+        PrimeTestTimeLimit limitGuard;
+        if (!PrimeTestTimeLimit.TryCreate(timeLimit, out limitGuard))
+        {
+            return false;
+        }
+
+        bool enforceLimit = limitGuard.IsActive;
+        ulong iterationCounter = 0UL;
+
+        if (allowedMax < 3UL)
+        {
+            return false;
+        }
+
+        UInt128 step = (UInt128)prime << 1;
+        if (step == UInt128.Zero)
+        {
+            processedAll = true;
+            return false;
+        }
+
+        UInt128 limit = allowedMax;
+        UInt128 divisor = step + UInt128.One;
+        if (divisor > limit)
+        {
+            processedAll = true;
+            return false;
+        }
+
+        Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? factorCache = null;
+        DivisorCycleCache cycleCache = DivisorCycleCache.Shared;
+
+        ulong cachedModulus = 0UL;
+        MontgomeryDivisorData cachedDivisorData = default;
+        bool hasCachedDivisorData = false;
+
+        byte step10 = (byte)(step % 10UL);
+        byte step8 = (byte)(step % 8UL);
+        byte step5 = (byte)(step % 5UL);
+        byte step3 = (byte)(step % 3UL);
+        byte step7 = (byte)(step % 7UL);
+        byte step11 = (byte)(step % 11UL);
+
+        byte remainder10 = (byte)(divisor % 10UL);
+        byte remainder8 = (byte)(divisor % 8UL);
+        byte remainder5 = (byte)(divisor % 5UL);
+        byte remainder3 = (byte)(divisor % 3UL);
+        byte remainder7 = (byte)(divisor % 7UL);
+        byte remainder11 = (byte)(divisor % 11UL);
+
+        // Keep the divisibility filters aligned with the divisor-cycle generator so the
+        // CPU path never requests cycles that were skipped during cache creation.
+        bool lastIsSeven = (prime & 3UL) == 3UL;
+
+        while (divisor <= limit)
+        {
+            if (enforceLimit && (iterationCounter == 0UL || (iterationCounter & 63UL) == 0UL) && limitGuard.HasExpired())
+            {
+                processedAll = false;
+                return false;
+            }
+
+            iterationCounter++;
+            ulong candidate = (ulong)divisor;
+            processedCount++;
+            lastProcessed = candidate;
+
+            bool admissible = lastIsSeven
+                ? (remainder10 == 3 || remainder10 == 7 || remainder10 == 9)
+                : (remainder10 == 1 || remainder10 == 3 || remainder10 == 9);
+
+            if (admissible && (remainder8 == 1 || remainder8 == 7) && remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0)
+            {
+                if (!hasCachedDivisorData || cachedModulus != candidate)
+                {
+                    cachedDivisorData = MontgomeryDivisorData.FromModulus(candidate);
+                    cachedModulus = candidate;
+                    hasCachedDivisorData = true;
+                }
+
+                MontgomeryDivisorData divisorData = cachedDivisorData;
+                ulong divisorCycle;
+
+                if (candidate <= PerfectNumberConstants.MaxQForDivisorCycles)
+                {
+                    divisorCycle = cycleCache.GetCycleLength(candidate);
+                }
+                else
+                {
+                    factorCache ??= new Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>(8);
+                    // EvenPerfectBitScanner reaches this path only for divisors above the precomputed cycle snapshot.
+                    // Those candidates follow q = 2 * prime * k + 1 with prime >= 5, so the downstream order calculator
+                    // can rely on an odd divisor and a prime exponent when deriving the cycle length.
+                    if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(candidate, prime, divisorData, factorCache, out divisorCycle) || divisorCycle == 0UL)
+                    {
+                        divisorCycle = cycleCache.GetCycleLength(candidate);
+                    }
+                }
+
+                if (divisorCycle == prime)
+                {
+                    // A cycle equal to the tested exponent (which is prime in this path)
+                    // guarantees that the candidate divides the corresponding Mersenne
+                    // number because the order of 2 modulo the divisor is exactly p.
+                    processedAll = true;
+                    return true;
+                }
+
+                if (divisorCycle == 0UL)
+                {
+                    Console.WriteLine($"Divisor cycle was not calculated for {prime}");
+                }
+            }
+
+            divisor += step;
+            remainder10 = AddMod(remainder10, step10, (byte)10);
+            remainder8 = AddMod(remainder8, step8, (byte)8);
+            remainder5 = AddMod(remainder5, step5, (byte)5);
+            remainder3 = AddMod(remainder3, step3, (byte)3);
+            remainder7 = AddMod(remainder7, step7, (byte)7);
+            remainder11 = AddMod(remainder11, step11, (byte)11);
+        }
+
+        processedAll = divisor > limit;
+        return false;
+    }
+
+
+    private bool CheckDivisorsGpu(
         ulong prime,
         ulong allowedMax,
         out ulong lastProcessed,
@@ -536,6 +693,58 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 }
             }
 
+            if (_owner._deltasDevice == ByDivisorDeltasDevice.Cpu)
+            {
+                CheckDivisorCpu(cachedData, divisorCycle, primes, hits);
+                return;
+            }
+
+            CheckDivisorGpu(cachedData, divisorCycle, primes, hits, length);
+        }
+
+        private static void CheckDivisorCpu(
+            in MontgomeryDivisorData divisorData,
+            ulong divisorCycle,
+            ReadOnlySpan<ulong> primes,
+            Span<byte> hits)
+        {
+            // Keep these remainder steppers in place so future updates continue reusing the previously computed residues.
+            // They are critical for avoiding repeated full Montgomery exponentiation work when scanning divisors.
+            var exponentStepper = new ExponentRemainderStepper(divisorData);
+            if (!exponentStepper.IsValidModulus)
+            {
+                hits.Clear();
+                return;
+            }
+
+            var cycleStepper = new CycleRemainderStepper(divisorCycle);
+
+            ulong remainder = cycleStepper.Initialize(primes[0]);
+            hits[0] = remainder == 0UL
+                ? (exponentStepper.ComputeNextIsUnity(primes[0]) ? (byte)1 : (byte)0)
+                : (byte)0;
+
+            int length = primes.Length;
+            for (int i = 1; i < length; i++)
+            {
+                remainder = cycleStepper.ComputeNext(primes[i]);
+                if (remainder != 0UL)
+                {
+                    hits[i] = 0;
+                    continue;
+                }
+
+                hits[i] = exponentStepper.ComputeNextIsUnity(primes[i]) ? (byte)1 : (byte)0;
+            }
+        }
+
+        private void CheckDivisorGpu(
+            in MontgomeryDivisorData divisorData,
+            ulong divisorCycle,
+            ReadOnlySpan<ulong> primes,
+            Span<byte> hits,
+            int length)
+        {
             EnsureCapacity(length);
 
             Span<ulong> deltaSpan = _primeDeltas!.AsSpan(0, length);
@@ -544,35 +753,14 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             Span<ulong> remainderSpan = _cycleRemainders!.AsSpan(0, length);
             ComputeCycleRemainders(divisorCycle, primes, deltaSpan, remainderSpan);
 
-            ulong montgomeryOne = cachedData.MontgomeryOne;
+            EnsureGpuEvaluator();
+            Span<ulong> residueSpan = _montgomeryDeltas!.AsSpan(0, length);
+            _gpuResidueEvaluator!.ComputeResidues(primes, divisorData, residueSpan);
 
-            if (_owner._deltasDevice == ByDivisorDeltasDevice.Gpu)
+            ulong montgomeryOne = divisorData.MontgomeryOne;
+            for (int i = 0; i < length; i++)
             {
-                EnsureGpuEvaluator();
-                Span<ulong> residueSpan = _montgomeryDeltas!.AsSpan(0, length);
-                // Reuse the Montgomery delta buffer to hold the final residues returned by the GPU evaluator.
-                _gpuResidueEvaluator!.ComputeResidues(primes, cachedData, residueSpan);
-
-                for (int i = 0; i < length; i++)
-                {
-                    hits[i] = remainderSpan[i] == 0UL && residueSpan[i] == montgomeryOne ? (byte)1 : (byte)0;
-                }
-
-                return;
-            }
-
-            Span<ulong> montgomerySpan = _montgomeryDeltas!.AsSpan(0, length);
-            ComputeMontgomeryDeltas(cachedData, primes, deltaSpan, montgomerySpan);
-
-            ulong nPrime = cachedData.NPrime;
-            ulong currentMontgomery = montgomerySpan[0];
-
-            hits[0] = remainderSpan[0] == 0UL && currentMontgomery == montgomeryOne ? (byte)1 : (byte)0;
-
-            for (int i = 1; i < length; i++)
-            {
-                currentMontgomery = currentMontgomery.MontgomeryMultiply(montgomerySpan[i], modulus, nPrime);
-                hits[i] = remainderSpan[i] == 0UL && currentMontgomery == montgomeryOne ? (byte)1 : (byte)0;
+                hits[i] = remainderSpan[i] == 0UL && residueSpan[i] == montgomeryOne ? (byte)1 : (byte)0;
             }
         }
 
@@ -687,22 +875,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             {
                 remainder = AddMod(remainder, deltas[i], cycleLength);
                 remainders[i] = remainder;
-            }
-        }
-
-        private static void ComputeMontgomeryDeltas(in MontgomeryDivisorData divisorData, ReadOnlySpan<ulong> primes, ReadOnlySpan<ulong> deltas, Span<ulong> montgomeryValues)
-        {
-            if (primes.Length == 0)
-            {
-                montgomeryValues.Clear();
-                return;
-            }
-
-            montgomeryValues[0] = primes[0].Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: true);
-
-            for (int i = 1; i < primes.Length; i++)
-            {
-                montgomeryValues[i] = deltas[i].Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: true);
             }
         }
 
