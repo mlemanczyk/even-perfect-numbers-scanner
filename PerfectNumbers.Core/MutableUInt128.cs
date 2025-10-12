@@ -80,23 +80,23 @@ public struct MutableUInt128
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Sub(ulong value)
     {
-        ulong low = Low;
-        ulong result = low - value;
-        ulong borrow = result > low ? 1UL : 0UL;
+        ulong temp = Low;
+        ulong result = temp - value;
+        temp = result > temp ? 1UL : 0UL;
 
         Low = result;
-        High -= borrow;
+        High -= temp;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Sub(MutableUInt128 value)
     {
-        ulong low = Low;
-        ulong result = low - value.Low;
-        ulong borrow = low < value.Low ? 1UL : 0UL;
+        ulong temp = Low;
+        ulong result = temp - value.Low;
+        temp = temp < value.Low ? 1UL : 0UL;
 
         Low = result;
-        High = High - value.High - borrow;
+        High = High - value.High - temp;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -105,34 +105,34 @@ public struct MutableUInt128
         ulong currentHigh = High;
         ulong currentLow = Low;
 
-        ulong carry = Mul64(currentLow, value, out ulong newLow);
-        Mul64(currentHigh, value, out ulong shiftedHigh);
-        ulong newHigh = shiftedHigh + carry;
+        ulong temp = Mul64(currentLow, value, out currentLow);
+        Mul64(currentHigh, value, out currentHigh);
+        temp += currentHigh;
 
-        Low = newLow;
-        High = newHigh;
+        Low = currentLow;
+        High = temp;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong Mul64(ulong left, ulong right, out ulong low)
+    public static ulong Mul64(ulong left, ulong right, out ulong low)
     {
         const ulong Mask32 = 0xFFFF_FFFFUL;
 
-        ulong leftLow = left & Mask32;
         ulong leftHigh = left >> 32;
         ulong rightLow = right & Mask32;
-        ulong rightHigh = right >> 32;
 
+        ulong leftLow = left & Mask32;
         ulong lowLow = leftLow * rightLow;
-        ulong lowHigh = leftLow * rightHigh;
-        ulong highLow = leftHigh * rightLow;
-        ulong highHigh = leftHigh * rightHigh;
+        ulong temp = right >> 32;
+        leftLow *= temp;
+        rightLow *= leftHigh;
+        leftHigh *= temp;
 
-        ulong carry = (lowLow >> 32) + (lowHigh & Mask32) + (highLow & Mask32);
-        ulong high = highHigh + (lowHigh >> 32) + (highLow >> 32) + (carry >> 32);
+        temp = (lowLow >> 32) + (leftLow & Mask32) + (rightLow & Mask32);
+        leftHigh += (leftLow >> 32) + (rightLow >> 32) + (temp >> 32);
 
-        low = ((carry & Mask32) << 32) | (lowLow & Mask32);
-        return high;
+        low = ((temp & Mask32) << 32) | (lowLow & Mask32);
+        return leftHigh;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -182,22 +182,24 @@ public struct MutableUInt128
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly ulong Mod(ulong modulus)
-    {
-        if (modulus == 0UL)
-        {
-            throw new DivideByZeroException();
-        }
+	{
+		// This case will never happen in production code.
+		// if (modulus == 0UL)
+		// {
+		//     throw new DivideByZeroException();
+		// }
 
-        if (High == 0UL)
+		ulong high = High;
+		if (high == 0UL)
         {
             return Low % modulus;
         }
 
         MutableUInt128 remainder = default;
-        int highBitLength = 64 - BitOperations.LeadingZeroCount(High);
+        int highBitLength = 64 - BitOperations.LeadingZeroCount(high);
         if (highBitLength > 0)
         {
-            ProcessWord(ref remainder, High, highBitLength, modulus);
+            ProcessWord(ref remainder, high, highBitLength, modulus);
         }
 
         ProcessWord(ref remainder, Low, 64, modulus);
