@@ -1811,7 +1811,57 @@ internal static partial class PrimeOrderGpuHeuristics
     private static void Pow2ModKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> exponents, MontgomeryDivisorData divisor, ArrayView1D<ulong, Stride1D.Dense> remainders)
     {
         ulong exponent = exponents[index];
-        remainders[index] = exponent.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: false);
+        ulong modulus = divisor.Modulus;
+        ulong nPrime = divisor.NPrime;
+        ulong result = divisor.MontgomeryOne;
+        ulong baseValue = divisor.MontgomeryTwo;
+        ulong remainingExponent = exponent;
+
+        if (remainingExponent == 0UL)
+        {
+            remainders[index] = result.MontgomeryMultiply(1UL, modulus, nPrime);
+            return;
+        }
+
+        while (remainingExponent != 0UL)
+        {
+            if ((remainingExponent & 1UL) != 0UL)
+            {
+                result = result.MontgomeryMultiply(baseValue, modulus, nPrime);
+            }
+
+            remainingExponent >>= 1;
+            if (remainingExponent == 0UL)
+            {
+                break;
+            }
+
+            // Reusing baseValue to hold base^2 so we avoid allocating another register for the squared term.
+            baseValue = baseValue.MontgomeryMultiply(baseValue, modulus, nPrime);
+        }
+
+        remainders[index] = result.MontgomeryMultiply(1UL, modulus, nPrime);
+
+        // Plain modular exponentiation without Montgomery reduction kept for reference.
+        // ulong plainResult = 1UL % modulus;
+        // ulong plainBase = 2UL % modulus;
+        // ulong plainExponent = exponent;
+        // while (plainExponent != 0UL)
+        // {
+        //     if ((plainExponent & 1UL) != 0UL)
+        //     {
+        //         plainResult = (plainResult * plainBase) % modulus;
+        //     }
+        //
+        //     plainExponent >>= 1;
+        //     if (plainExponent == 0UL)
+        //     {
+        //         break;
+        //     }
+        //
+        //     plainBase = (plainBase * plainBase) % modulus;
+        // }
+        // remainders[index] = plainResult;
     }
 
     private static Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>> GetPow2ModWideKernel(Accelerator accelerator)
