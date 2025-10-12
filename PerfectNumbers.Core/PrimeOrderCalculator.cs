@@ -1327,7 +1327,7 @@ internal static partial class PrimeOrderCalculator
     {
         ref MutableUInt128 polynomial = ref s_pollardRhoPolynomialBuffer;
         polynomial.Set(x);
-        polynomial.Multiply(x);
+        polynomial.Mul(x);
         polynomial.Add(c);
         return polynomial.Mod(modulus);
     }

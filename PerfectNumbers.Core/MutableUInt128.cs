@@ -8,7 +8,7 @@ namespace PerfectNumbers.Core;
 /// Mutable helper for 128-bit arithmetic derived from the .NET runtime UInt128 implementation.
 /// Portions adapted from https://github.com/dotnet/runtime/blob/v8.0.0/src/libraries/System.Private.CoreLib/src/System/UInt128.cs.
 /// </summary>
-internal struct MutableUInt128
+public struct MutableUInt128
 {
     public ulong High;
     public ulong Low;
@@ -78,7 +78,7 @@ internal struct MutableUInt128
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Subtract(ulong value)
+    public void Sub(ulong value)
     {
         ulong low = Low;
         ulong result = low - value;
@@ -89,7 +89,7 @@ internal struct MutableUInt128
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Subtract(in MutableUInt128 value)
+    public void Sub(in MutableUInt128 value)
     {
         ulong low = Low;
         ulong result = low - value.Low;
@@ -100,13 +100,13 @@ internal struct MutableUInt128
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Multiply(ulong value)
+    public void Mul(ulong value)
     {
         ulong currentHigh = High;
         ulong currentLow = Low;
 
-        ulong carry = Multiply64(currentLow, value, out ulong newLow);
-        Multiply64(currentHigh, value, out ulong shiftedHigh);
+        ulong carry = Mul64(currentLow, value, out ulong newLow);
+        Mul64(currentHigh, value, out ulong shiftedHigh);
         ulong newHigh = shiftedHigh + carry;
 
         Low = newLow;
@@ -114,7 +114,7 @@ internal struct MutableUInt128
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong Multiply64(ulong left, ulong right, out ulong low)
+    private static ulong Mul64(ulong left, ulong right, out ulong low)
     {
         const ulong Mask32 = 0xFFFF_FFFFUL;
 
@@ -136,57 +136,52 @@ internal struct MutableUInt128
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void MultiplyAdd(ulong multiplier, ulong addend)
-    {
-        Multiply(multiplier);
-        Add(addend);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void MultiplyAddInline(ulong multiplier, ulong addend)
+    public void MulAdd(ulong multiplier, ulong addend)
     {
         const ulong Mask32 = 0xFFFF_FFFFUL;
 
         ulong multiplierLow = multiplier & Mask32;
         ulong multiplierHigh = multiplier >> 32;
 
-        ulong low = Low;
-        ulong lowLow = low & Mask32;
-        ulong lowHigh = low >> 32;
+        ulong product11 = Low;
+        ulong product01 = product11 & Mask32;
+        product11 >>= 32;
 
-        ulong product00 = lowLow * multiplierLow;
-        ulong product01 = lowLow * multiplierHigh;
-        ulong product10 = lowHigh * multiplierLow;
-        ulong product11 = lowHigh * multiplierHigh;
+        ulong product00 = product01 * multiplierLow;
+        product01 *= multiplierHigh;
+        ulong product10 = product11 * multiplierLow;
+        product11 *= multiplierHigh;
 
-        ulong carry = (product00 >> 32) + (product01 & Mask32) + (product10 & Mask32);
-        ulong lowResult = ((carry & Mask32) << 32) | (product00 & Mask32);
-        ulong highContribution = product11 + (product01 >> 32) + (product10 >> 32) + (carry >> 32);
+        ulong high = (product00 >> 32) + (product01 & Mask32) + (product10 & Mask32);
+        product11 = product11 + (product01 >> 32) + (product10 >> 32) + (high >> 32);
+        product10 = ((high & Mask32) << 32) | (product00 & Mask32);
 
-        ulong high = High;
-        ulong highLow = high & Mask32;
-        ulong highHigh = high >> 32;
+        high = High;
+        product00 = high & Mask32;
+        high >>= 32;
 
-        ulong product20 = highLow * multiplierLow;
-        ulong product21 = highLow * multiplierHigh;
-        ulong product30 = highHigh * multiplierLow;
+        product01 = product00 * multiplierLow;
+        product00 *= multiplierHigh;
+        high *= multiplierLow;
 
-        ulong highCarry = (product20 >> 32) + (product21 & Mask32) + (product30 & Mask32);
-        ulong shiftedHighLow = ((highCarry & Mask32) << 32) | (product20 & Mask32);
+        high = (product01 >> 32) + (product00 & Mask32) + (high & Mask32);
+		product01 = ((high & Mask32) << 32) | (product01 & Mask32);
 
-        ulong newLow = lowResult + addend;
-        ulong addCarry = newLow < addend ? 1UL : 0UL;
+		// Calculate low. We're assigning addend to local variable for a tiny bit better performance.
+		product00 = addend;
+		high = product10 + product00;
+        Low = high;
 
-        ulong newHigh = highContribution + shiftedHighLow;
+		// Calculate high including carry
+		high = high < product00 ? 1UL : 0UL;
+		high += product11 + product01;
+		
         // Discard overflow above 128 bits to match Multiply's truncation semantics.
-        newHigh += addCarry;
-
-        Low = newLow;
-        High = newHigh;
+        High = high;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ulong Mod(ulong modulus)
+    public readonly ulong Mod(ulong modulus)
     {
         if (modulus == 0UL)
         {
@@ -214,7 +209,7 @@ internal struct MutableUInt128
     {
         for (int bit = bitCount - 1; bit >= 0; bit--)
         {
-            remainder.ShiftLeftOneBit();
+            remainder.ShiftLeft();
             if (((word >> bit) & 1UL) != 0)
             {
                 remainder.Add(1UL);
@@ -225,7 +220,7 @@ internal struct MutableUInt128
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ShiftLeftOneBit()
+    private void ShiftLeft()
     {
         High = (High << 1) | (Low >> 63);
         Low <<= 1;
@@ -236,10 +231,10 @@ internal struct MutableUInt128
     {
         if (High != 0UL || Low >= modulus)
         {
-            Subtract(modulus);
+            Sub(modulus);
             if (High != 0UL || Low >= modulus)
             {
-                Subtract(modulus);
+                Sub(modulus);
             }
         }
     }
