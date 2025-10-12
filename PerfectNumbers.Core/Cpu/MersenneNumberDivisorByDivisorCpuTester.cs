@@ -363,20 +363,28 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             return false;
         }
 
-        UInt128 step = (UInt128)prime << 1;
-        if (step == UInt128.Zero)
+        UInt128 step128 = (UInt128)prime << 1;
+        if (step128 == UInt128.Zero)
         {
             processedAll = true;
             return false;
         }
 
+        if (step128 > ulong.MaxValue)
+        {
+            return CheckDivisorsCpu(prime, allowedMax, out lastProcessed, out processedAll, out processedCount, timeLimit);
+        }
+
         UInt128 limit = allowedMax;
-        UInt128 divisor = step + UInt128.One;
-        if (divisor > limit)
+        UInt128 divisor128 = step128 + UInt128.One;
+        if (divisor128 > limit)
         {
             processedAll = true;
             return false;
         }
+
+        ulong step = (ulong)step128;
+        ulong limit64 = allowedMax;
 
         int batchCapacity = Math.Max(1, _batchSize);
         DivisorCycleCache cycleCache = DivisorCycleCache.Shared;
@@ -386,17 +394,16 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             batchCapacity = preferredCycleBatch;
         }
 
-        ulong[] candidateBuffer = ArrayPool<ulong>.Shared.Rent(batchCapacity);
-        ulong[] cycleBuffer = ArrayPool<ulong>.Shared.Rent(batchCapacity);
-        MontgomeryDivisorData[] divisorDataBuffer = ArrayPool<MontgomeryDivisorData>.Shared.Rent(batchCapacity);
-        byte[] remainderBuffer = ArrayPool<byte>.Shared.Rent(batchCapacity * 6);
+        var candidateEvaluator = new MersenneNumberDivisorCandidateGpuEvaluator(batchCapacity);
 
-        Span<byte> remainder10Span = remainderBuffer.AsSpan(0, batchCapacity);
-        Span<byte> remainder8Span = remainderBuffer.AsSpan(batchCapacity, batchCapacity);
-        Span<byte> remainder5Span = remainderBuffer.AsSpan(batchCapacity * 2, batchCapacity);
-        Span<byte> remainder3Span = remainderBuffer.AsSpan(batchCapacity * 3, batchCapacity);
-        Span<byte> remainder7Span = remainderBuffer.AsSpan(batchCapacity * 4, batchCapacity);
-        Span<byte> remainder11Span = remainderBuffer.AsSpan(batchCapacity * 5, batchCapacity);
+        ulong[] candidateBuffer = ArrayPool<ulong>.Shared.Rent(batchCapacity);
+        byte[] maskBuffer = ArrayPool<byte>.Shared.Rent(batchCapacity);
+
+        Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? factorCache = null;
+
+        ulong cachedModulus = 0UL;
+        MontgomeryDivisorData cachedDivisorData = default;
+        bool hasCachedDivisorData = false;
 
         byte step10 = (byte)(step % 10UL);
         byte step8 = (byte)(step % 8UL);
@@ -405,31 +412,49 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         byte step7 = (byte)(step % 7UL);
         byte step11 = (byte)(step % 11UL);
 
-        byte remainder10 = (byte)(divisor % 10UL);
-        byte remainder8 = (byte)(divisor % 8UL);
-        byte remainder5 = (byte)(divisor % 5UL);
-        byte remainder3 = (byte)(divisor % 3UL);
-        byte remainder7 = (byte)(divisor % 7UL);
-        byte remainder11 = (byte)(divisor % 11UL);
+        byte remainder10 = (byte)((ulong)divisor128 % 10UL);
+        byte remainder8 = (byte)((ulong)divisor128 % 8UL);
+        byte remainder5 = (byte)((ulong)divisor128 % 5UL);
+        byte remainder3 = (byte)((ulong)divisor128 % 3UL);
+        byte remainder7 = (byte)((ulong)divisor128 % 7UL);
+        byte remainder11 = (byte)((ulong)divisor128 % 11UL);
 
         bool lastIsSeven = (prime & 3UL) == 3UL;
 
         try
         {
-            while (divisor <= limit)
+            while (divisor128 <= limit)
             {
-                Span<ulong> candidateSpan = candidateBuffer.AsSpan(0, batchCapacity);
-                int chunkCount = 0;
-                UInt128 localDivisor = divisor;
+                int chunkCount = ComputeChunkCount(divisor128, limit, step128, batchCapacity);
+                if (chunkCount <= 0)
+                {
+                    break;
+                }
 
-                byte localRemainder10 = remainder10;
-                byte localRemainder8 = remainder8;
-                byte localRemainder5 = remainder5;
-                byte localRemainder3 = remainder3;
-                byte localRemainder7 = remainder7;
-                byte localRemainder11 = remainder11;
+                Span<ulong> candidateSpan = candidateBuffer.AsSpan(0, chunkCount);
+                Span<byte> maskSpan = maskBuffer.AsSpan(0, chunkCount);
 
-                while (chunkCount < batchCapacity && localDivisor <= limit)
+                candidateEvaluator.EvaluateCandidates(
+                    (ulong)divisor128,
+                    step,
+                    limit64,
+                    remainder10,
+                    remainder8,
+                    remainder5,
+                    remainder3,
+                    remainder7,
+                    remainder11,
+                    step10,
+                    step8,
+                    step5,
+                    step3,
+                    step7,
+                    step11,
+                    lastIsSeven,
+                    candidateSpan,
+                    maskSpan);
+
+                for (int i = 0; i < chunkCount; i++)
                 {
                     if (enforceLimit && (iterationCounter == 0UL || (iterationCounter & 63UL) == 0UL) && limitGuard.HasExpired())
                     {
@@ -437,126 +462,116 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                         return false;
                     }
 
-                    ulong candidate = (ulong)localDivisor;
-                    candidateSpan[chunkCount] = candidate;
-                    remainder10Span[chunkCount] = localRemainder10;
-                    remainder8Span[chunkCount] = localRemainder8;
-                    remainder5Span[chunkCount] = localRemainder5;
-                    remainder3Span[chunkCount] = localRemainder3;
-                    remainder7Span[chunkCount] = localRemainder7;
-                    remainder11Span[chunkCount] = localRemainder11;
+                    iterationCounter++;
 
+                    ulong candidate = candidateSpan[i];
                     processedCount++;
                     lastProcessed = candidate;
-                    iterationCounter++;
-                    chunkCount++;
 
-                    localDivisor += step;
-                    localRemainder10 = AddMod(localRemainder10, step10, (byte)10);
-                    localRemainder8 = AddMod(localRemainder8, step8, (byte)8);
-                    localRemainder5 = AddMod(localRemainder5, step5, (byte)5);
-                    localRemainder3 = AddMod(localRemainder3, step3, (byte)3);
-                    localRemainder7 = AddMod(localRemainder7, step7, (byte)7);
-                    localRemainder11 = AddMod(localRemainder11, step11, (byte)11);
-                }
-
-                if (chunkCount == 0)
-                {
-                    break;
-                }
-
-                divisor = localDivisor;
-                remainder10 = localRemainder10;
-                remainder8 = localRemainder8;
-                remainder5 = localRemainder5;
-                remainder3 = localRemainder3;
-                remainder7 = localRemainder7;
-                remainder11 = localRemainder11;
-
-                // Reuse the candidate buffer in-place so the filtered results stay contiguous without additional arrays.
-                Span<ulong> chunkCandidates = candidateSpan[..chunkCount];
-                int filteredCount = 0;
-
-                for (int i = 0; i < chunkCount; i++)
-                {
-                    bool admissible = lastIsSeven
-                        ? (remainder10Span[i] == 3 || remainder10Span[i] == 7 || remainder10Span[i] == 9)
-                        : (remainder10Span[i] == 1 || remainder10Span[i] == 3 || remainder10Span[i] == 9);
-
-                    if (!admissible)
+                    if (maskSpan[i] == 0)
                     {
                         continue;
                     }
 
-                    if ((remainder8Span[i] != 1 && remainder8Span[i] != 7)
-                        || remainder3Span[i] == 0
-                        || remainder5Span[i] == 0
-                        || remainder7Span[i] == 0
-                        || remainder11Span[i] == 0)
+                    if (!hasCachedDivisorData || cachedModulus != candidate)
                     {
-                        continue;
+                        cachedDivisorData = MontgomeryDivisorData.FromModulus(candidate);
+                        cachedModulus = candidate;
+                        hasCachedDivisorData = true;
                     }
 
-                    // Store the accepted candidate at the next free slot so the front of the span becomes the filtered set.
-                    chunkCandidates[filteredCount++] = chunkCandidates[i];
-                }
+                    MontgomeryDivisorData divisorData = cachedDivisorData;
+                    ulong divisorCycle;
 
-                if (filteredCount == 0)
-                {
-                    continue;
-                }
-
-                Span<ulong> filteredSpan = chunkCandidates[..filteredCount];
-                Span<ulong> cycleSpan = cycleBuffer.AsSpan(0, filteredCount);
-                cycleCache.GetCycleLengths(filteredSpan, cycleSpan);
-
-                int admissibleCount = 0;
-                Span<MontgomeryDivisorData> divisorDataSpan = divisorDataBuffer.AsSpan(0, filteredCount);
-
-                for (int i = 0; i < filteredCount; i++)
-                {
-                    if (cycleSpan[i] != prime)
+                    if (candidate <= PerfectNumberConstants.MaxQForDivisorCycles)
                     {
-                        continue;
+                        divisorCycle = cycleCache.GetCycleLength(candidate);
+                    }
+                    else
+                    {
+                        factorCache ??= new Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>(8);
+                        if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(candidate, prime, divisorData, factorCache, out divisorCycle) || divisorCycle == 0UL)
+                        {
+                            divisorCycle = cycleCache.GetCycleLength(candidate);
+                        }
                     }
 
-                    ulong candidate = filteredSpan[i];
-                    // Reuse the filtered span's leading segment to accumulate the admissible divisors for Montgomery checks.
-                    filteredSpan[admissibleCount] = candidate;
-                    divisorDataSpan[admissibleCount] = MontgomeryDivisorData.FromModulus(candidate);
-                    admissibleCount++;
-                }
-
-                if (admissibleCount == 0)
-                {
-                    continue;
-                }
-
-                Span<ulong> admissibleSpan = filteredSpan[..admissibleCount];
-                Span<MontgomeryDivisorData> admissibleDataSpan = divisorDataSpan[..admissibleCount];
-
-                for (int i = 0; i < admissibleCount; i++)
-                {
-                    if (CheckDivisor(prime, prime, in admissibleDataSpan[i]) != 0)
+                    if (divisorCycle == prime)
                     {
-                        lastProcessed = admissibleSpan[i];
                         processedAll = true;
                         return true;
                     }
+
+                    if (divisorCycle == 0UL)
+                    {
+                        Console.WriteLine($"Divisor cycle was not calculated for {prime}");
+                    }
                 }
+
+                divisor128 += step128 * (UInt128)chunkCount;
+                remainder10 = AdvanceRemainder(remainder10, step10, 10, chunkCount);
+                remainder8 = AdvanceRemainder(remainder8, step8, 8, chunkCount);
+                remainder5 = AdvanceRemainder(remainder5, step5, 5, chunkCount);
+                remainder3 = AdvanceRemainder(remainder3, step3, 3, chunkCount);
+                remainder7 = AdvanceRemainder(remainder7, step7, 7, chunkCount);
+                remainder11 = AdvanceRemainder(remainder11, step11, 11, chunkCount);
             }
         }
         finally
         {
             ArrayPool<ulong>.Shared.Return(candidateBuffer, clearArray: false);
-            ArrayPool<ulong>.Shared.Return(cycleBuffer, clearArray: false);
-            ArrayPool<MontgomeryDivisorData>.Shared.Return(divisorDataBuffer, clearArray: false);
-            ArrayPool<byte>.Shared.Return(remainderBuffer, clearArray: false);
+            ArrayPool<byte>.Shared.Return(maskBuffer, clearArray: false);
+            candidateEvaluator.Dispose();
         }
 
-        processedAll = divisor > limit;
+        processedAll = divisor128 > limit;
         return false;
     }
+
+    private static int ComputeChunkCount(UInt128 currentDivisor, UInt128 limit, UInt128 step, int maxCount)
+    {
+        if (maxCount <= 0 || step == UInt128.Zero || currentDivisor > limit)
+        {
+            return 0;
+        }
+
+        UInt128 distance = limit - currentDivisor;
+        UInt128 stepsAvailable = distance / step;
+        UInt128 total = stepsAvailable + UInt128.One;
+        if (total > (UInt128)maxCount)
+        {
+            total = (UInt128)maxCount;
+        }
+
+        if (total > (UInt128)int.MaxValue)
+        {
+            return int.MaxValue;
+        }
+
+        return (int)total;
+    }
+
+    private static byte AdvanceRemainder(byte remainder, byte step, byte modulus, int count)
+    {
+        if (modulus == 0 || count <= 0)
+        {
+            return remainder;
+        }
+
+        int modulusValue = modulus;
+        int remainderValue = remainder % modulusValue;
+        int stepValue = step % modulusValue;
+
+        long delta = (long)stepValue * count;
+        int adjusted = (int)((remainderValue + delta) % modulusValue);
+        if (adjusted < 0)
+        {
+            adjusted += modulusValue;
+        }
+
+        return (byte)adjusted;
+    }
+
     private static byte CheckDivisor(ulong prime, ulong divisorCycle, in MontgomeryDivisorData divisorData)
     {
         ulong residue = prime.Pow2MontgomeryModWithCycleCpu(divisorCycle, divisorData);
