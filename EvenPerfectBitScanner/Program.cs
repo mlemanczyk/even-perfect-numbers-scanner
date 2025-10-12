@@ -75,6 +75,7 @@ internal static class Program
         bool useResidue = false;    // M_p test via residue divisors (replaces LL/incremental)
         bool useDivisor = false;     // M_p divisibility by specific divisor
         bool useByDivisor = false;   // Iterative divisor scan across primes		UInt128 divisor = UInt128.Zero;
+        ByDivisorDeltasDevice byDivisorDeltasDevice = ByDivisorDeltasDevice.Cpu;
                                      // Device routing
         bool useGpuCycles = true;
         bool mersenneOnGpu = true;   // controls Lucas/incremental/pow2mod device
@@ -181,6 +182,23 @@ internal static class Program
             else if (arg.StartsWith("--mersenne-device=", StringComparison.OrdinalIgnoreCase))
             {
                 mersenneOnGpu = !arg.AsSpan(arg.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+            }
+            else if (arg.StartsWith("--bydivisor-deltas-device=", StringComparison.OrdinalIgnoreCase))
+            {
+                ReadOnlySpan<char> deviceValue = arg.AsSpan(arg.IndexOf('=') + 1);
+                if (deviceValue.Equals("gpu", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorDeltasDevice = ByDivisorDeltasDevice.Gpu;
+                }
+                else if (deviceValue.Equals("cpu", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorDeltasDevice = ByDivisorDeltasDevice.Cpu;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid --bydivisor-deltas-device value. Expected cpu or gpu.");
+                    return;
+                }
             }
             else if (arg.StartsWith("--prime-test-limit=", StringComparison.OrdinalIgnoreCase))
             {
@@ -531,6 +549,10 @@ internal static class Program
                     ? new MersenneNumberDivisorByDivisorGpuTester()
                     : new MersenneNumberDivisorByDivisorCpuTester();
             _byDivisorTester.BatchSize = scanBatchSize;
+            if (_byDivisorTester is MersenneNumberDivisorByDivisorCpuTester cpuByDivisorTester)
+            {
+                cpuByDivisorTester.DeltasDevice = byDivisorDeltasDevice;
+            }
         }
 
         // Load RLE blacklist (optional)
@@ -557,6 +579,9 @@ internal static class Program
 
         Console.WriteLine("Initialization...");
         // Compose a results file name that encodes configuration (before opening file)
+        string byDivisorDeltasLabel = mersenneOnGpu
+            ? "gpu"
+            : (byDivisorDeltasDevice == ByDivisorDeltasDevice.Gpu ? "cpu-gpu" : "cpu");
         var builtName = BuildResultsFileName(
                         useBitTransform,
                         threadCount,
@@ -577,7 +602,8 @@ internal static class Program
         NttGpuMath.ReductionMode,
         mersenneOnGpu ? "gpu" : "cpu",
         (GpuContextPool.ForceCpu ? "cpu" : "gpu"),
-        orderOnGpu ? "gpu" : "cpu");
+        orderOnGpu ? "gpu" : "cpu",
+        byDivisorDeltasLabel);
 
         if (!string.IsNullOrEmpty(_resultsPrefix))
         {
@@ -984,6 +1010,7 @@ internal static class Program
         Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
         Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor");
         Console.WriteLine("  --prime-test-limit=<value>   Time limit for --mersenne=bydivisor prime checks (e.g. 5s, 500ms)");
+        Console.WriteLine("  --bydivisor-deltas-device=cpu|gpu  Device for --mersenne=bydivisor residue batches (default: cpu)");
         Console.WriteLine("  --use-order            test primality via q order");
         Console.WriteLine("  --workaround-mod       avoid '%' operator on the GPU");
         // mod-automaton removed
@@ -993,7 +1020,7 @@ internal static class Program
         Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
     }
 
-    private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool useByDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useModWorkaround, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
+    private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool useByDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useModWorkaround, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice, string byDivisorDeltasDevice)
     {
         string inc = bitInc ? "bit" : "add";
         string mers = useDivisorFlag
@@ -1001,7 +1028,7 @@ internal static class Program
             : (useLucasFlag
                 ? "lucas"
                 : (useByDivisorFlag
-                    ? "bydivisor"
+                    ? $"bydivisor-{byDivisorDeltasDevice}"
                     : (kernelType == GpuKernelType.Pow2Mod ? "pow2mod" : "incremental")));
         string ntt = nttBackend == NttBackend.Staged ? "staged" : "reference";
         string red = reduction switch { ModReductionMode.Mont64 => "mont64", ModReductionMode.Barrett128 => "barrett128", ModReductionMode.GpuUInt128 => "uint128", _ => "auto" };

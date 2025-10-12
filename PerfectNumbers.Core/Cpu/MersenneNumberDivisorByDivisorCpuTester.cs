@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Numerics;
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core.Cpu;
 
@@ -15,20 +16,51 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     private bool _isConfigured;
     private int _batchSize = 1_024;
 
+    private ulong _configuredMaxPrime;
+    private ByDivisorDeltasDevice _deltasDevice = ByDivisorDeltasDevice.Cpu;
+    private MersenneNumberDivisorByDivisorGpuTester? _gpuDeltasTester;
+    private bool _gpuTesterConfigured;
+
 
     public int BatchSize
     {
         get => _batchSize;
-        set => _batchSize = Math.Max(1, value);
+        set
+        {
+            int sanitized = Math.Max(1, value);
+            _batchSize = sanitized;
+
+            lock (_sync)
+            {
+                if (_gpuDeltasTester is not null)
+                {
+                    _gpuDeltasTester.GpuBatchSize = sanitized;
+                }
+            }
+        }
+    }
+
+    public ByDivisorDeltasDevice DeltasDevice
+    {
+        get => _deltasDevice;
+        set
+        {
+            lock (_sync)
+            {
+                _deltasDevice = value;
+            }
+        }
     }
 
     public void ConfigureFromMaxPrime(ulong maxPrime)
     {
         lock (_sync)
         {
+            _configuredMaxPrime = maxPrime;
             _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
             _lastStatusDivisor = 0UL;
             _isConfigured = true;
+            _gpuTesterConfigured = false;
         }
     }
 
@@ -133,6 +165,31 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         {
             allowedMaxValues[index] = ComputeAllowedMaxDivisor(primes[index], divisorLimit);
         }
+    }
+
+    internal IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateGpuDeltasSession()
+    {
+        MersenneNumberDivisorByDivisorGpuTester tester;
+
+        lock (_sync)
+        {
+            if (!_isConfigured)
+            {
+                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+            }
+
+            tester = _gpuDeltasTester ??= new MersenneNumberDivisorByDivisorGpuTester();
+
+            if (!_gpuTesterConfigured)
+            {
+                tester.ConfigureFromMaxPrime(_configuredMaxPrime);
+                _gpuTesterConfigured = true;
+            }
+
+            tester.GpuBatchSize = _batchSize;
+        }
+
+        return tester.CreateDivisorSession();
     }
 
     public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession()
@@ -457,6 +514,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         private ulong[]? _cycleRemainders;
         private ulong[]? _montgomeryDeltas;
         private int _bufferCapacity;
+        private IMersenneNumberDivisorByDivisorTester.IDivisorScanSession? _gpuSession;
 
         internal DivisorScanSession(MersenneNumberDivisorByDivisorCpuTester owner)
         {
@@ -514,6 +572,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 }
             }
 
+            if (_owner._deltasDevice == ByDivisorDeltasDevice.Gpu)
+            {
+                EnsureGpuSession();
+                _gpuSession!.CheckDivisor(divisor, cachedData, divisorCycle, primes, hits);
+                return;
+            }
+
             EnsureCapacity(length);
 
             Span<ulong> deltaSpan = _primeDeltas!.AsSpan(0, length);
@@ -536,6 +601,25 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 currentMontgomery = currentMontgomery.MontgomeryMultiply(montgomerySpan[i], modulus, nPrime);
                 hits[i] = remainderSpan[i] == 0UL && currentMontgomery == montgomeryOne ? (byte)1 : (byte)0;
             }
+        }
+
+        private void EnsureGpuSession()
+        {
+            if (_gpuSession is null)
+            {
+                _gpuSession = _owner.CreateGpuDeltasSession();
+            }
+        }
+
+        private void ReleaseGpuSession()
+        {
+            if (_gpuSession is null)
+            {
+                return;
+            }
+
+            _gpuSession.Dispose();
+            _gpuSession = null;
         }
 
         private void EnsureCapacity(int requiredLength)
@@ -683,6 +767,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             }
 
             _disposed = true;
+            ReleaseGpuSession();
             _owner.ReturnSession(this);
         }
     }
