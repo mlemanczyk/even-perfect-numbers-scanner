@@ -8,20 +8,22 @@ public static class Program
 {
     public static void Main(string[] args)
     {
-        if (args.Length > 0)
-        {
-            IConfig config = DefaultConfig.Instance.WithOptions(ConfigOptions.JoinSummary | ConfigOptions.DisableOptimizationsValidator);
-            BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
-            return;
-        }
+		if (args.Length > 0)
+		{
+			IConfig config = DefaultConfig.Instance.WithOptions(ConfigOptions.JoinSummary | ConfigOptions.DisableOptimizationsValidator);
+			BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
+			return;
+		}
 
-        Pow2MontgomeryModCycleComputationBenchmarks benchmarks = new()
-        {
-            Scale = Pow2MontgomeryModCycleComputationBenchmarks.InputScale.Large
-        };
+		BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run();
 
-        GpuPrimeWorkLimiter.SetLimit(1);
-        benchmarks.Setup();
+        // Pow2MontgomeryModCycleComputationBenchmarks benchmarks = new()
+        // {
+        //     Scale = Pow2MontgomeryModCycleComputationBenchmarks.InputScale.Large
+        // };
+
+        // GpuPrimeWorkLimiter.SetLimit(1);
+        // benchmarks.Setup();
 
         // Console.WriteLine("Press ENTER to run");
         // Console.ReadLine();
