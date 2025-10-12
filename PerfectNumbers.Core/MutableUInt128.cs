@@ -156,6 +156,49 @@ internal struct MutableUInt128
             return Low % modulus;
         }
 
-        return (ulong)(ToUInt128() % modulus);
+        MutableUInt128 remainder = default;
+        int highBitLength = 64 - BitOperations.LeadingZeroCount(High);
+        if (highBitLength > 0)
+        {
+            ProcessWord(ref remainder, High, highBitLength, modulus);
+        }
+
+        ProcessWord(ref remainder, Low, 64, modulus);
+        return remainder.Low;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ProcessWord(ref MutableUInt128 remainder, ulong word, int bitCount, ulong modulus)
+    {
+        for (int bit = bitCount - 1; bit >= 0; bit--)
+        {
+            remainder.ShiftLeftOneBit();
+            if (((word >> bit) & 1UL) != 0)
+            {
+                remainder.Add(1UL);
+            }
+
+            remainder.Reduce(modulus);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ShiftLeftOneBit()
+    {
+        High = (High << 1) | (Low >> 63);
+        Low <<= 1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void Reduce(ulong modulus)
+    {
+        if (High != 0UL || Low >= modulus)
+        {
+            Subtract(modulus);
+            if (High != 0UL || Low >= modulus)
+            {
+                Subtract(modulus);
+            }
+        }
     }
 }
