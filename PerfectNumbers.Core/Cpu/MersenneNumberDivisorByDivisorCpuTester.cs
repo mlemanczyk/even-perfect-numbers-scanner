@@ -363,27 +363,24 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             return false;
         }
 
-        UInt128 step128 = (UInt128)prime << 1;
-        if (step128 == UInt128.Zero)
+        GpuUInt128 step128 = new GpuUInt128(prime);
+        step128.ShiftLeft(1);
+        if (step128.IsZero)
         {
             processedAll = true;
             return false;
         }
 
-        if (step128 > ulong.MaxValue)
-        {
-            return CheckDivisorsCpu(prime, allowedMax, out lastProcessed, out processedAll, out processedCount, timeLimit);
-        }
-
-        UInt128 limit = allowedMax;
-        UInt128 divisor128 = step128 + UInt128.One;
-        if (divisor128 > limit)
+        GpuUInt128 limit128 = new GpuUInt128(allowedMax);
+        GpuUInt128 divisor128 = step128;
+        divisor128.Add(1UL);
+        if (divisor128.CompareTo(limit128) > 0)
         {
             processedAll = true;
             return false;
         }
 
-        ulong step = (ulong)step128;
+        ulong step = step128.Low;
         ulong limit64 = allowedMax;
 
         int batchCapacity = Math.Max(1, _batchSize);
@@ -412,20 +409,27 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         byte step7 = (byte)(step % 7UL);
         byte step11 = (byte)(step % 11UL);
 
-        byte remainder10 = (byte)((ulong)divisor128 % 10UL);
-        byte remainder8 = (byte)((ulong)divisor128 % 8UL);
-        byte remainder5 = (byte)((ulong)divisor128 % 5UL);
-        byte remainder3 = (byte)((ulong)divisor128 % 3UL);
-        byte remainder7 = (byte)((ulong)divisor128 % 7UL);
-        byte remainder11 = (byte)((ulong)divisor128 % 11UL);
+        ulong startDivisor64 = divisor128.Low;
+        byte remainder10 = (byte)(startDivisor64 % 10UL);
+        byte remainder8 = (byte)(startDivisor64 % 8UL);
+        byte remainder5 = (byte)(startDivisor64 % 5UL);
+        byte remainder3 = (byte)(startDivisor64 % 3UL);
+        byte remainder7 = (byte)(startDivisor64 % 7UL);
+        byte remainder11 = (byte)(startDivisor64 % 11UL);
 
         bool lastIsSeven = (prime & 3UL) == 3UL;
 
         try
         {
-            while (divisor128 <= limit)
+            while (divisor128.CompareTo(limit128) <= 0)
             {
-                int chunkCount = ComputeChunkCount(divisor128, limit, step128, batchCapacity);
+                if (divisor128.High != 0UL)
+                {
+                    break;
+                }
+
+                ulong currentDivisor = divisor128.Low;
+                int chunkCount = ComputeChunkCount(currentDivisor, limit64, step, batchCapacity);
                 if (chunkCount <= 0)
                 {
                     break;
@@ -435,7 +439,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 Span<byte> maskSpan = maskBuffer.AsSpan(0, chunkCount);
 
                 candidateEvaluator.EvaluateCandidates(
-                    (ulong)divisor128,
+                    currentDivisor,
                     step,
                     limit64,
                     remainder10,
@@ -508,7 +512,10 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                     }
                 }
 
-                divisor128 += step128 * (UInt128)chunkCount;
+                GpuUInt128 increment = step128;
+                increment.Mul((ulong)chunkCount);
+                divisor128.Add(increment);
+
                 remainder10 = AdvanceRemainder(remainder10, step10, 10, chunkCount);
                 remainder8 = AdvanceRemainder(remainder8, step8, 8, chunkCount);
                 remainder5 = AdvanceRemainder(remainder5, step5, 5, chunkCount);
@@ -524,26 +531,26 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             candidateEvaluator.Dispose();
         }
 
-        processedAll = divisor128 > limit;
+        processedAll = divisor128.CompareTo(limit128) > 0;
         return false;
     }
 
-    private static int ComputeChunkCount(UInt128 currentDivisor, UInt128 limit, UInt128 step, int maxCount)
+    private static int ComputeChunkCount(ulong currentDivisor, ulong limit, ulong step, int maxCount)
     {
-        if (maxCount <= 0 || step == UInt128.Zero || currentDivisor > limit)
+        if (maxCount <= 0 || step == 0UL || currentDivisor > limit)
         {
             return 0;
         }
 
-        UInt128 distance = limit - currentDivisor;
-        UInt128 stepsAvailable = distance / step;
-        UInt128 total = stepsAvailable + UInt128.One;
-        if (total > (UInt128)maxCount)
+        ulong distance = limit - currentDivisor;
+        ulong stepsAvailable = step == 0UL ? 0UL : distance / step;
+        ulong total = stepsAvailable + 1UL;
+        if (total > (ulong)maxCount)
         {
-            total = (UInt128)maxCount;
+            total = (ulong)maxCount;
         }
 
-        if (total > (UInt128)int.MaxValue)
+        if (total > (ulong)int.MaxValue)
         {
             return int.MaxValue;
         }

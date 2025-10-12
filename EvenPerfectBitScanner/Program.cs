@@ -579,9 +579,6 @@ internal static class Program
 
         Console.WriteLine("Initialization...");
         // Compose a results file name that encodes configuration (before opening file)
-        string byDivisorDeltasLabel = mersenneOnGpu
-            ? "gpu"
-            : (byDivisorDeltasDevice == ByDivisorDeltasDevice.Gpu ? "cpu-gpu" : "cpu");
         var builtName = BuildResultsFileName(
                         useBitTransform,
                         threadCount,
@@ -591,19 +588,18 @@ internal static class Program
                         useDivisor,
                         useByDivisor,
                         mersenneOnGpu,
-        useOrder,
-        useModuloWorkaround,
-        _useGcdFilter,
-        NttGpuMath.GpuTransformBackend,
-        gpuPrimeThreads,
-        sliceSize,
-        scanBatchSize,
-        _orderWarmupLimitOverride ?? 5_000_000UL,
-        NttGpuMath.ReductionMode,
-        mersenneOnGpu ? "gpu" : "cpu",
-        (GpuContextPool.ForceCpu ? "cpu" : "gpu"),
-        orderOnGpu ? "gpu" : "cpu",
-        byDivisorDeltasLabel);
+                        useOrder,
+                        useModuloWorkaround,
+                        _useGcdFilter,
+                        NttGpuMath.GpuTransformBackend,
+                        gpuPrimeThreads,
+                        sliceSize,
+                        scanBatchSize,
+                        _orderWarmupLimitOverride ?? 5_000_000UL,
+                        NttGpuMath.ReductionMode,
+                        mersenneOnGpu ? "gpu" : "cpu",
+                        (GpuContextPool.ForceCpu ? "cpu" : "gpu"),
+                        orderOnGpu ? "gpu" : "cpu");
 
         if (!string.IsNullOrEmpty(_resultsPrefix))
         {
@@ -1020,7 +1016,7 @@ internal static class Program
         Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
     }
 
-    private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool useByDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useModWorkaround, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice, string byDivisorDeltasDevice)
+    private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool useByDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useModWorkaround, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
     {
         string inc = bitInc ? "bit" : "add";
         string mers = useDivisorFlag
@@ -1028,7 +1024,7 @@ internal static class Program
             : (useLucasFlag
                 ? "lucas"
                 : (useByDivisorFlag
-                    ? $"bydivisor-{byDivisorDeltasDevice}"
+                    ? "bydivisor"
                     : (kernelType == GpuKernelType.Pow2Mod ? "pow2mod" : "incremental")));
         string ntt = nttBackend == NttBackend.Staged ? "staged" : "reference";
         string red = reduction switch { ModReductionMode.Mont64 => "mont64", ModReductionMode.Barrett128 => "barrett128", ModReductionMode.GpuUInt128 => "uint128", _ => "auto" };
