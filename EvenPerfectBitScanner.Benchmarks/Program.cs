@@ -8,8 +8,12 @@ public static class Program
 {
     public static void Main(string[] args)
     {
-        // var config = DefaultConfig.Instance.WithOptions(ConfigOptions.JoinSummary | ConfigOptions.DisableOptimizationsValidator);
-        // BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
+        if (args.Length > 0)
+        {
+            IConfig config = DefaultConfig.Instance.WithOptions(ConfigOptions.JoinSummary | ConfigOptions.DisableOptimizationsValidator);
+            BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
+            return;
+        }
 
         Pow2MontgomeryModCycleComputationBenchmarks benchmarks = new()
         {
