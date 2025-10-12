@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
@@ -11,7 +9,7 @@ namespace EvenPerfectBitScanner.Benchmarks;
 [MemoryDiagnoser]
 public class MutableUInt128AddBenchmarks
 {
-	private static readonly AddInput[] Inputs =
+	private static readonly BenchmarkInput[] Inputs =
 	[
 		new(Create(0UL, 0x0000_0000_0000_0007UL), Create(0, 0x3UL), "TinyOperands"),
 		new(Create(0x1234_5678_9ABC_DEF0UL, 0x0FED_CBA9_8765_4321UL), Create(0xFFFF_FFFF, 0x0000_0001UL), "MixedOperands"),
@@ -19,14 +17,14 @@ public class MutableUInt128AddBenchmarks
     ];
 
     [ParamsSource(nameof(GetInputs))]
-    public AddInput Input { get; set; }
+    public BenchmarkInput Input { get; set; }
 
-    public static IEnumerable<AddInput> GetInputs() => Inputs;
+    public static IEnumerable<BenchmarkInput> GetInputs() => Inputs;
 
 	private static MutableUInt128 Create(ulong high, ulong low) => new(high, low);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void Add(ref MutableUInt128 source, MutableUInt128 value)
+	private static void StandardInternal(ref MutableUInt128 source, MutableUInt128 value)
 	{
         ulong temp = source.Low + value.Low;
         source.Low = temp;
@@ -44,10 +42,10 @@ public class MutableUInt128AddBenchmarks
 	/// Observed means: MixedOperands 3.370 ns, NearMaxOperands 3.361 ns, TinyOperands 3.368 ns.
 	/// </remarks>
 	[Benchmark(Baseline = true)]
-	public MutableUInt128 AddStandard()
+	public MutableUInt128 Standard()
 	{
 		MutableUInt128 value = Input.InitialValue;
-		Add(ref value, Input.Addend);
+		StandardInternal(ref value, Input.Addend);
 		return value;
 	}
 
@@ -60,14 +58,14 @@ public class MutableUInt128AddBenchmarks
 	/// Status: Implemented
     /// </remarks>
     [Benchmark]
-    public MutableUInt128 AddOptimized()
+    public MutableUInt128 Optimized()
     {
         MutableUInt128 value = Input.InitialValue;
         value.Add(Input.Addend);
         return value;
     }
 
-    public readonly record struct AddInput(MutableUInt128 InitialValue, MutableUInt128 Addend, string Name)
+    public readonly record struct BenchmarkInput(MutableUInt128 InitialValue, MutableUInt128 Addend, string Name)
     {
         public override string ToString()
         {
