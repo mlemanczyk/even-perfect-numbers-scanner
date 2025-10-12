@@ -75,6 +75,8 @@ internal static class Program
         bool useResidue = false;    // M_p test via residue divisors (replaces LL/incremental)
         bool useDivisor = false;     // M_p divisibility by specific divisor
         bool useByDivisor = false;   // Iterative divisor scan across primes		UInt128 divisor = UInt128.Zero;
+        ByDivisorDeltasDevice byDivisorDeltasDevice = ByDivisorDeltasDevice.Cpu;
+        ByDivisorMontgomeryDevice byDivisorMontgomeryDevice = ByDivisorMontgomeryDevice.Cpu;
                                      // Device routing
         bool useGpuCycles = true;
         bool mersenneOnGpu = true;   // controls Lucas/incremental/pow2mod device
@@ -181,6 +183,40 @@ internal static class Program
             else if (arg.StartsWith("--mersenne-device=", StringComparison.OrdinalIgnoreCase))
             {
                 mersenneOnGpu = !arg.AsSpan(arg.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+            }
+            else if (arg.StartsWith("--bydivisor-deltas-device=", StringComparison.OrdinalIgnoreCase))
+            {
+                ReadOnlySpan<char> deviceValue = arg.AsSpan(arg.IndexOf('=') + 1);
+                if (deviceValue.Equals("gpu", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorDeltasDevice = ByDivisorDeltasDevice.Gpu;
+                }
+                else if (deviceValue.Equals("cpu", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorDeltasDevice = ByDivisorDeltasDevice.Cpu;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid --bydivisor-deltas-device value. Expected cpu or gpu.");
+                    return;
+                }
+            }
+            else if (arg.StartsWith("--bydivisor-montgomery-device=", StringComparison.OrdinalIgnoreCase))
+            {
+                ReadOnlySpan<char> deviceValue = arg.AsSpan(arg.IndexOf('=') + 1);
+                if (deviceValue.Equals("gpu", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorMontgomeryDevice = ByDivisorMontgomeryDevice.Gpu;
+                }
+                else if (deviceValue.Equals("cpu", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorMontgomeryDevice = ByDivisorMontgomeryDevice.Cpu;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid --bydivisor-montgomery-device value. Expected cpu or gpu.");
+                    return;
+                }
             }
             else if (arg.StartsWith("--prime-test-limit=", StringComparison.OrdinalIgnoreCase))
             {
@@ -531,6 +567,11 @@ internal static class Program
                     ? new MersenneNumberDivisorByDivisorGpuTester()
                     : new MersenneNumberDivisorByDivisorCpuTester();
             _byDivisorTester.BatchSize = scanBatchSize;
+            if (_byDivisorTester is MersenneNumberDivisorByDivisorCpuTester cpuByDivisorTester)
+            {
+                cpuByDivisorTester.DeltasDevice = byDivisorDeltasDevice;
+                cpuByDivisorTester.MontgomeryDevice = byDivisorMontgomeryDevice;
+            }
         }
 
         // Load RLE blacklist (optional)
@@ -566,18 +607,18 @@ internal static class Program
                         useDivisor,
                         useByDivisor,
                         mersenneOnGpu,
-        useOrder,
-        useModuloWorkaround,
-        _useGcdFilter,
-        NttGpuMath.GpuTransformBackend,
-        gpuPrimeThreads,
-        sliceSize,
-        scanBatchSize,
-        _orderWarmupLimitOverride ?? 5_000_000UL,
-        NttGpuMath.ReductionMode,
-        mersenneOnGpu ? "gpu" : "cpu",
-        (GpuContextPool.ForceCpu ? "cpu" : "gpu"),
-        orderOnGpu ? "gpu" : "cpu");
+                        useOrder,
+                        useModuloWorkaround,
+                        _useGcdFilter,
+                        NttGpuMath.GpuTransformBackend,
+                        gpuPrimeThreads,
+                        sliceSize,
+                        scanBatchSize,
+                        _orderWarmupLimitOverride ?? 5_000_000UL,
+                        NttGpuMath.ReductionMode,
+                        mersenneOnGpu ? "gpu" : "cpu",
+                        (GpuContextPool.ForceCpu ? "cpu" : "gpu"),
+                        orderOnGpu ? "gpu" : "cpu");
 
         if (!string.IsNullOrEmpty(_resultsPrefix))
         {
@@ -984,6 +1025,8 @@ internal static class Program
         Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
         Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor");
         Console.WriteLine("  --prime-test-limit=<value>   Time limit for --mersenne=bydivisor prime checks (e.g. 5s, 500ms)");
+        Console.WriteLine("  --bydivisor-deltas-device=cpu|gpu  Device for --mersenne=bydivisor residue batches (default: cpu)");
+        Console.WriteLine("  --bydivisor-montgomery-device=cpu|gpu  Device for Montgomery data when using --mersenne=bydivisor (default: cpu)");
         Console.WriteLine("  --use-order            test primality via q order");
         Console.WriteLine("  --workaround-mod       avoid '%' operator on the GPU");
         // mod-automaton removed
