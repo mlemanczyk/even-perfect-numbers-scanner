@@ -412,6 +412,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                     ulong divisorValue = filteredDivisorsSpan[i];
                     divisorSpan[i] = divisorValue;
                     exponentSpan[i] = prime;
+                    // Divisors never repeat while scanning the monotonically increasing sequence, so regenerate
+                    // the Montgomery data for each entry rather than storing cache lines that no future batch would hit.
                     divisorDataSpan[i] = MontgomeryDivisorData.FromModulus(divisorValue);
                 }
 

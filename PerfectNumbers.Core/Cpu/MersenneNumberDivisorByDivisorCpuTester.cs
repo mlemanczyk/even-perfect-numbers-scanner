@@ -253,10 +253,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? factorCache = null;
         DivisorCycleCache cycleCache = DivisorCycleCache.Shared;
 
-        ulong cachedModulus = 0UL;
-        MontgomeryDivisorData cachedDivisorData = default;
-        bool hasCachedDivisorData = false;
-
         byte step10 = (byte)(step % 10UL);
         byte step8 = (byte)(step % 8UL);
         byte step5 = (byte)(step % 5UL);
@@ -294,14 +290,10 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
             if (admissible && (remainder8 == 1 || remainder8 == 7) && remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0)
             {
-                if (!hasCachedDivisorData || cachedModulus != candidate)
-                {
-                    cachedDivisorData = MontgomeryDivisorData.FromModulus(candidate);
-                    cachedModulus = candidate;
-                    hasCachedDivisorData = true;
-                }
-
-                MontgomeryDivisorData divisorData = cachedDivisorData;
+                // Each divisor appears only once in this monotonically increasing sequence, so
+                // rebuilding the Montgomery data per candidate avoids caching entries that we
+                // would never hit again.
+                MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(candidate);
                 ulong divisorCycle;
 
                 if (candidate <= PerfectNumberConstants.MaxQForDivisorCycles)
@@ -410,10 +402,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? factorCache = null;
 
-        ulong cachedModulus = 0UL;
-        MontgomeryDivisorData cachedDivisorData = default;
-        bool hasCachedDivisorData = false;
-
         const int RemainderTableSize = 6;
         byte[] remainderBuffer = ArrayPool<byte>.Shared.Rent(RemainderTableSize);
         byte[] stepBuffer = ArrayPool<byte>.Shared.Rent(RemainderTableSize);
@@ -483,6 +471,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 if (montgomeryBuilder != null && montgomeryBuffer != null)
                 {
                     montgomerySpan = montgomeryBuffer.AsSpan(0, chunkCount);
+                    // Every candidate divisor is unique across the scan, so build Montgomery data
+                    // for the current batch and drop it immediately instead of maintaining a cache.
                     montgomeryBuilder.Build(candidateSpan, montgomerySpan);
                 }
 
@@ -511,19 +501,16 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                         divisorData = montgomerySpan[i];
                         if (divisorData.Modulus != candidate)
                         {
+                            // The GPU builder might skip entries when masks zero them out; recompute on the CPU
+                            // without caching because divisors never repeat within a session.
                             divisorData = MontgomeryDivisorData.FromModulus(candidate);
                         }
                     }
                     else
                     {
-                        if (!hasCachedDivisorData || cachedModulus != candidate)
-                        {
-                            cachedDivisorData = MontgomeryDivisorData.FromModulus(candidate);
-                            cachedModulus = candidate;
-                            hasCachedDivisorData = true;
-                        }
-
-                        divisorData = cachedDivisorData;
+                        // Candidates remain unique even when GPU Montgomery support is disabled, so rebuild
+                        // the divisor data inline instead of persisting unused cache entries.
+                        divisorData = MontgomeryDivisorData.FromModulus(candidate);
                     }
 
                     ulong divisorCycle;
@@ -663,9 +650,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     {
         private readonly MersenneNumberDivisorByDivisorCpuTester _owner;
         private bool _disposed;
-        private bool _hasCachedDivisorData;
-        private ulong _cachedDivisor;
-        private MontgomeryDivisorData _cachedDivisorData;
         private ulong[]? _primeDeltas;
         private ulong[]? _cycleRemainders;
         private ulong[]? _montgomeryDeltas;
@@ -680,9 +664,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         internal void Reset()
         {
             _disposed = false;
-            _hasCachedDivisorData = false;
-            _cachedDivisor = 0UL;
-            _cachedDivisorData = default;
         }
 
         public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
@@ -698,20 +679,15 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 return;
             }
 
-            MontgomeryDivisorData cachedData = divisorData;
-            if (cachedData.Modulus != divisor)
+            MontgomeryDivisorData effectiveDivisorData = divisorData;
+            if (effectiveDivisorData.Modulus != divisor)
             {
-                if (!_hasCachedDivisorData || _cachedDivisor != divisor)
-                {
-                    _cachedDivisorData = MontgomeryDivisorData.FromModulus(divisor);
-                    _cachedDivisor = divisor;
-                    _hasCachedDivisorData = true;
-                }
-
-                cachedData = _cachedDivisorData;
+                // Each divisor surfaces only once across the monotonic scan, so rebuild the Montgomery data
+                // instead of retaining a cache entry that would never be reused within future checks.
+                effectiveDivisorData = MontgomeryDivisorData.FromModulus(divisor);
             }
 
-            ulong modulus = cachedData.Modulus;
+            ulong modulus = effectiveDivisorData.Modulus;
             if (modulus <= 1UL || (modulus & 1UL) == 0UL)
             {
                 hits.Clear();
@@ -730,11 +706,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
             if (_owner._deltasDevice == ByDivisorDeltasDevice.Cpu)
             {
-                CheckDivisorCpu(cachedData, divisorCycle, primes, hits);
+                CheckDivisorCpu(effectiveDivisorData, divisorCycle, primes, hits);
                 return;
             }
 
-            CheckDivisorGpu(cachedData, divisorCycle, primes, hits, length);
+            CheckDivisorGpu(effectiveDivisorData, divisorCycle, primes, hits, length);
         }
 
         private static void CheckDivisorCpu(
