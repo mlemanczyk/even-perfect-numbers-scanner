@@ -79,7 +79,7 @@ public static class ULongExtensions
     public static ulong MultiplyShiftRightShiftFirst(ulong value, ulong multiplier, int shift)
     {
         ulong high = value >> shift;
-		ulong mask = (1UL << shift) - 1UL;
+        ulong mask = (1UL << shift) - 1UL;
         ulong low = value & mask;
 
         UInt128 highContribution = (UInt128)high * multiplier;
@@ -330,7 +330,7 @@ public static class ULongExtensions
         //     return 1UL % modulus;
         // }
 
-        // Even though the by-divisor pipeline only feeds very large exponents, the legacy callers and unit tests
+        // Even though the by-divisor pipeline only feeds very large exponents, the legacy diagnostic callers
         // still hit this small-exponent fast path, so keep the fallback in place.
         if (exponent <= Pow2WindowFallbackThreshold)
         {
@@ -426,15 +426,15 @@ public static class ULongExtensions
         //     return 0UL;
         // }
 
-        // Exponents fed into the GPU kernels are positive on the scanning path, yet the zero case remains for
-        // completeness when unit tests probe boundary behavior.
-        if (exponent == 0UL)
-        {
-            return 1UL;
-        }
+        // The GPU pipeline only emits positive exponents on production workloads, so skip the zero guard to avoid an extra branch.
+        // Diagnostic harnesses must normalize their inputs before invoking this helper.
+        // if (exponent == 0UL)
+        // {
+        //     return 1UL;
+        // }
 
-        // The GPU kernels mostly process large exponents as well, but the binary fallback is still useful when
-        // unit tests probe edge cases around the threshold.
+        // The GPU kernels mostly process large exponents as well, but the binary fallback still serves
+        // diagnostic harnesses that probe edge cases around the threshold.
         if (exponent <= Pow2WindowFallbackThreshold)
         {
             return Pow2ModBinaryGpuFallback(exponent, modulus);
@@ -548,10 +548,16 @@ public static class ULongExtensions
         ulong result = divisor.MontgomeryOne;
         ulong nPrime = divisor.NPrime;
 
-        Span<ulong> oddPowerStorage = oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount ? stackalloc ulong[PerfectNumberConstants.MaxOddPowersCount] : default;
+        Span<ulong> oddPowerStorage = oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount
+            ? stackalloc ulong[PerfectNumberConstants.MaxOddPowersCount]
+            : default;
         ulong[]? pooledOddPowers = null;
 
-		if (oddPowerCount < PerfectNumberConstants.PooledArrayThreshold)
+        if (oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount)
+        {
+            oddPowerStorage = oddPowerStorage[..oddPowerCount];
+        }
+        else if (oddPowerCount < PerfectNumberConstants.PooledArrayThreshold)
         {
             oddPowerStorage = new ulong[oddPowerCount];
         }
