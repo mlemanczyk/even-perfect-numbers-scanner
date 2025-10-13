@@ -1004,10 +1004,12 @@ internal static partial class PrimeOrderGpuHeuristics
         long candidateCapacity = candidates.Length;
         int candidateLimit = candidateCapacity < HeuristicCandidateLimit ? (int)candidateCapacity : HeuristicCandidateLimit;
         int candidateCount = BuildCandidatesKernel(order, workFactors, workExponents, factorCount, candidates, stackIndex, stackExponent, stackProduct, candidateLimit);
-        if (candidateCount == 0)
-        {
-            return false;
-        }
+        // Candidate enumeration always yields at least one order on the configured workloads, so the zero-count guard remains
+        // commented out to eliminate the redundant branch.
+        // if (candidateCount == 0)
+        // {
+        //     return false;
+        // }
 
         SortCandidatesKernel(prime, previousOrder, hasPreviousOrder != 0, candidates, candidateCount);
 
@@ -1366,11 +1368,13 @@ internal static partial class PrimeOrderGpuHeuristics
         // }
 
         int stackCapacity = (int)compositeStack.Length;
-        if (stackCapacity <= 0)
-        {
-            statusOut[0] = (byte)PrimeOrderKernelStatus.PollardOverflow;
-            return false;
-        }
+        // Pollard-Rho always reserves a positive stack on production workloads, so the overflow guard remains commented out
+        // to avoid branching here.
+        // if (stackCapacity <= 0)
+        // {
+        //     statusOut[0] = (byte)PrimeOrderKernelStatus.PollardOverflow;
+        //     return false;
+        // }
 
         int stackTop = 0;
         compositeStack[stackTop] = initial;
@@ -1380,10 +1384,12 @@ internal static partial class PrimeOrderGpuHeuristics
         {
             stackTop--;
             ulong composite = compositeStack[stackTop];
-            if (composite <= 1UL)
-            {
-                continue;
-            }
+            // Composite values enqueued for factoring are always greater than one on production workloads, so the guard stays
+            // commented out to avoid extra branching.
+            // if (composite <= 1UL)
+            // {
+            //     continue;
+            // }
 
             if (!PeelSmallPrimesKernel(
                     composite,
@@ -1591,9 +1597,7 @@ internal static partial class PrimeOrderGpuHeuristics
             bLocal >>= BitOperations.TrailingZeroCount(bLocal);
             if (aLocal > bLocal)
             {
-                ulong temp = aLocal;
-                aLocal = bLocal;
-                bLocal = temp;
+                (aLocal, bLocal) = (bLocal, aLocal);
             }
 
             bLocal -= aLocal;

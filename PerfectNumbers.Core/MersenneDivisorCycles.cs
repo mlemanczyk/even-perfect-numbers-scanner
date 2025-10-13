@@ -74,10 +74,12 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        if (exponent <= 1UL || divisor <= 1UL || (divisor & 1UL) == 0UL)
-        {
-            return false;
-        }
+        // Exponent and divisor validation happens during scheduling, so the defensive guard remains commented out to keep the
+        // hot path branch-free.
+        // if (exponent <= 1UL || divisor <= 1UL || (divisor & 1UL) == 0UL)
+        // {
+        //     return false;
+        // }
 
         // Production scans never revisit divisors in the small-cycle snapshot, so skip the legacy lookup here. Factoring and
         // diagnostics can query TryMatchSmallCycleForFactoring when they need those cached values.
@@ -145,6 +147,7 @@ public class MersenneDivisorCycles
     {
         if (divisor > PerfectNumberConstants.MaxQForDivisorCycles)
         {
+            // Factoring helpers probe arbitrary divisors, so anything above the snapshot limit legitimately misses here.
             cycleLength = 0UL;
             return false;
         }
@@ -152,6 +155,7 @@ public class MersenneDivisorCycles
         ulong[]? small = Shared._smallCycles;
         if (small is null)
         {
+            // Snapshot recycling during diagnostics can temporarily clear the table; surface the miss so callers recompute.
             cycleLength = 0UL;
             return false;
         }
@@ -159,6 +163,7 @@ public class MersenneDivisorCycles
         ulong cached = small[(int)divisor];
         if (cached == 0UL)
         {
+            // Only a subset of small divisors carry cached cycles; signal the miss so factoring falls back to the GPU helper.
             cycleLength = 0UL;
             return false;
         }

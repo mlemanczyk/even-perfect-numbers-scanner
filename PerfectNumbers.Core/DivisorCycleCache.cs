@@ -82,8 +82,7 @@ public sealed class DivisorCycleCache
                 ulong cached = snapshot[divisor];
                 if (cached == 0UL)
                 {
-                    missingBuffer[missingCount++] = i;
-                    continue;
+                    throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
                 }
 
                 cycles[i] = cached;
@@ -106,15 +105,6 @@ public sealed class DivisorCycleCache
                 ComputeCyclesCpu(divisors, cycles, missingIndices);
             }
 
-            for (int j = 0; j < missingCount; j++)
-            {
-                int target = missingIndices[j];
-                ulong divisor = divisors[target];
-                if (divisor < (ulong)snapshot.Length)
-                {
-                    snapshot[divisor] = cycles[target];
-                }
-            }
         }
 
         if (rentedMissing is not null)

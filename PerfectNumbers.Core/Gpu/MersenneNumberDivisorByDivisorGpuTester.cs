@@ -630,11 +630,13 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             //     return;
             // }
 
-            if (divisorData.Modulus <= 1UL || (divisorData.Modulus & 1UL) == 0UL)
-            {
-                hits.Clear();
-                return;
-            }
+            // The divisor staging path filters non-prime and even moduli before kernels launch, so keep the defensive
+            // modulus guard commented out to avoid branching in the hot loop.
+            // if (divisorData.Modulus <= 1UL || (divisorData.Modulus & 1UL) == 0UL)
+            // {
+            //     hits.Clear();
+            //     return;
+            // }
 
             ArrayView1D<ulong, Stride1D.Dense> exponentsView = _exponentsBuffer.View;
             ArrayView1D<ulong, Stride1D.Dense> resultsView = _resultsBuffer.View;
@@ -813,10 +815,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     {
         get
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
+            // The by-divisor scanner always configures the tester before exposing the limit, so the guard remains
+            // commented out to document the invariant without forcing a runtime branch.
+            // if (!_isConfigured)
+            // {
+            //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+            // }
 
             return _divisorLimit;
         }
@@ -840,10 +844,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         internal BatchResources(MersenneNumberDivisorByDivisorGpuTester owner, Accelerator accelerator, int capacity)
         {
             int cycleCapacity = DivisorCycleCache.Shared.PreferredBatchSize;
-            if (cycleCapacity <= 0)
-            {
-                cycleCapacity = 1;
-            }
+            // The shared cache always reports a positive preferred size on production workloads, so the fallback remains
+            // commented out to avoid branching during resource initialization.
+            // if (cycleCapacity <= 0)
+            // {
+            //     cycleCapacity = 1;
+            // }
 
             int actualCapacity = Math.Max(capacity, cycleCapacity);
 

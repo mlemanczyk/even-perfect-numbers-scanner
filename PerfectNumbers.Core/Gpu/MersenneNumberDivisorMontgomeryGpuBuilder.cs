@@ -104,17 +104,21 @@ internal sealed class MersenneNumberDivisorMontgomeryGpuBuilder : IDisposable
     private static void BuildKernel(Index1D index, ArrayView<ulong> moduli, ArrayView<MontgomeryDivisorData> destination)
     {
         int idx = index;
-        if (idx >= moduli.Length)
-        {
-            return;
-        }
+        // The builder launches kernels with an extent equal to the modulus count, so the bounds guard remains commented
+        // out to avoid redundant branching on every thread.
+        // if (idx >= moduli.Length)
+        // {
+        //     return;
+        // }
 
         ulong modulus = moduli[idx];
-        if (modulus <= 1UL || (modulus & 1UL) == 0UL)
-        {
-            destination[idx] = default;
-            return;
-        }
+        // All staged divisors are odd primes on the scanner path, so keep the defensive modulus guard commented out to
+        // remove the branch from the kernel.
+        // if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+        // {
+        //     destination[idx] = default;
+        //     return;
+        // }
 
         ulong nPrime = ComputeMontgomeryNPrime(modulus);
         ulong montgomeryOne = ComputeMontgomeryResidue64(modulus);

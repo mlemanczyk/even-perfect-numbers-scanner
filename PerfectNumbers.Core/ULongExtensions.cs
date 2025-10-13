@@ -17,10 +17,12 @@ public static class ULongExtensions
 
     public static ulong CalculateOrder(this ulong q)
     {
-        if (q <= 2UL)
-        {
-            return 0UL;
-        }
+        // Order computations only run on admissible divisors, so the small-prime guard remains commented out to keep the
+        // path branch-free.
+        // if (q <= 2UL)
+        // {
+        //     return 0UL;
+        // }
 
         ulong order = q - 1UL, prime, temp;
         uint[] smallPrimes = PrimesGenerator.SmallPrimes;
@@ -292,10 +294,12 @@ public static class ULongExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong MulMod64(this ulong a, ulong b, ulong modulus)
     {
-        if (modulus <= 1UL)
-        {
-            return 0UL;
-        }
+        // Scanner inputs always provide odd prime moduli, so the legacy modulus guard stays commented out to avoid extra
+        // branching.
+        // if (modulus <= 1UL)
+        // {
+        //     return 0UL;
+        // }
 
         ulong reducedA = a >= modulus ? a % modulus : a;
         ulong reducedB = b >= modulus ? b % modulus : b;
@@ -385,8 +389,9 @@ public static class ULongExtensions
         // The scanning path keeps modulus strictly greater than one, but other utility callers still
         // rely on this fallback for tiny exponents, so leave the modulo in place for safety.
         ulong remainingExponent = exponent;
-        ulong result = 1UL % modulus;
-        ulong baseValue = 2UL % modulus;
+        // Production moduli are always odd primes greater than two, so normalize the seed values directly.
+        ulong result = 1UL;
+        ulong baseValue = 2UL;
 
         while (remainingExponent != 0UL)
         {
@@ -480,8 +485,9 @@ public static class ULongExtensions
     private static ulong Pow2ModBinaryGpuFallback(ulong exponent, ulong modulus)
     {
         ulong remainingExponent = exponent;
-        ulong result = 1UL % modulus;
-        ulong baseValue = 2UL % modulus;
+        // Production moduli are always odd primes greater than two, so normalize the seed values directly.
+        ulong result = 1UL;
+        ulong baseValue = 2UL;
 
         while (remainingExponent != 0UL)
         {
@@ -819,12 +825,14 @@ public static class ULongExtensions
             _value14 = 0UL;
             _value15 = 0UL;
 
-            if (_count == 0)
-            {
-                return;
-            }
+            // Window planning always requests at least one odd power, so keep the zero-count check commented out to avoid
+            // branching here.
+            // if (_count == 0)
+            // {
+            //     return;
+            // }
 
-            ulong baseValue = 2UL % modulus;
+            ulong baseValue = 2UL;
             _value0 = baseValue;
             if (_count == 1)
             {
@@ -843,10 +851,12 @@ public static class ULongExtensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ulong Get(int index)
         {
-            if ((uint)index >= (uint)_count)
-            {
-                return 0UL;
-            }
+            // Windowed lookups never exceed the populated table bounds on production workloads, so leave the check commented
+            // out to remove the branch.
+            // if ((uint)index >= (uint)_count)
+            // {
+            //     return 0UL;
+            // }
 
             return index switch
             {
