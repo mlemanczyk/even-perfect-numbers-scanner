@@ -122,7 +122,6 @@ PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:203:         
 PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:207:                // TODO: When divisorCycle is zero (cache miss), compute only that single cycle on the device
 PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:214:                // TODO: Remove this no-cycle branch and require on-demand cycle computation (without
 PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:240:            // TODO: Replace this linear increment with the batched divisor-cycle walker validated in the
-PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:262:                : prime.Pow2MontgomeryMod(divisorData); // TODO: Switch to the upcoming ProcessEightBitWindows helper once the
 PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:283:        // TODO: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI
 PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:356:                // TODO: Replace this guard with an on-demand CPU/GPU cycle computation path that skips
 PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:396:            // TODO: Remove this no-cycle fallback once divisor cycles are mandatory; the per-prime pow2 ladder here
@@ -266,7 +265,6 @@ todo_list.txt:121:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTeste
 todo_list.txt:122:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:207:                // TODO: When divisorCycle is zero (cache miss), compute only that single cycle on the device
 todo_list.txt:123:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:214:                // TODO: Remove this no-cycle branch and require on-demand cycle computation (without
 todo_list.txt:124:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:240:            // TODO: Replace this linear increment with the batched divisor-cycle walker validated in the
-todo_list.txt:125:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:262:                : prime.Pow2MontgomeryMod(divisorData); // TODO: Switch to the upcoming ProcessEightBitWindows helper once the
 todo_list.txt:126:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:283:        // TODO: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI
 todo_list.txt:127:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:356:                // TODO: Replace this guard with an on-demand CPU/GPU cycle computation path that skips
 todo_list.txt:128:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:396:            // TODO: Remove this no-cycle fallback once divisor cycles are mandatory; the per-prime pow2 ladder here
@@ -407,17 +405,6 @@ PerfectNumbers.Core\ModResidueTracker.cs:257:                        // TODO: Us
 PerfectNumbers.Core\ModResidueTracker.cs:263:                // TODO: Consult MersenneDivisorCycles.Shared (or similar caches) here so we reuse precomputed cycle lengths
 PerfectNumbers.Core\ModResidueTracker.cs:295:                                // TODO: Route this through the planned UInt128 windowed powmod so the inner MulMod adopts the
 PerfectNumbers.Core\ModResidueTracker.cs:314:                // TODO: Replace this double-and-add fallback with the UInt128 intrinsic-backed multiplier once the
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:49:        set => _useDivisorCycles = value; // TODO: Remove this flag once GPU runs unconditionally fetch cycle lengths so every divisor check benefits from the measured speedups.
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:298:                // TODO: Stage MontgomeryDivisorData in a GPU-ready cache keyed by divisor so we can copy
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:372:        // TODO: Replace the block lease with a direct single-cycle lookup so the GPU path
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:395:                        // TODO: Drop this block hand-off once the cache exposes a direct
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:409:                            // TODO: Replace this `%` with the cycle-cache helper that subtracts precomputed
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:425:                        // TODO: Trigger an immediate GPU computation for the single missing cycle without storing
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:476:                    // TODO: Preload ProcessEightBitWindows-friendly divisor metadata for GPU batches so this
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:563:        hits[index] = exponent.Pow2MontgomeryMod(divisor) == 1UL ? (byte)1 : (byte)0; // TODO: Replace Pow2MontgomeryMod with the ProcessEightBitWindows helper once available so GPU by-divisor scans reuse the benchmarked fast pow2 ladder.
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:632:                // TODO: Replace this guard with an on-demand cycle computation that runs on the device selected
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:787:                        // TODO: Replace this `%` with the divisor-cycle remainder helper so we reuse cached
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:858:        results[index] = exponent.Pow2MontgomeryModMontgomery(divisor); // TODO: Swap this Montgomery-domain pow2 with the windowed helper slated to replace the slower ladder in Pow2Minus1Mod benchmarks.
 PerfectNumbers.Core\MersenneNumberDivisorByDivisorTester.cs:43:                // TODO: Swap this per-run enumerator creation for the shared PrimeIterator so by-divisor scans reuse the
 PerfectNumbers.Core\MersenneNumberDivisorByDivisorTester.cs:219:                        // TODO: Swap Task.Factory.StartNew for the shared low-overhead work queue once the scanner's
 PerfectNumbers.Core\MersenneNumberDivisorByDivisorTester.cs:240:                                bool useDivisorCycles = tester.UseDivisorCycles; // TODO: Remove the conditional path once all testers always enable divisor cycles to keep every divisor scan on the faster cached-length track.
