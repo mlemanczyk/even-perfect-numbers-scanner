@@ -134,7 +134,8 @@ internal static partial class PrimeOrderCalculator
     }
 
     private static ulong CalculateInternal(ulong prime, ulong? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
-    {
+	{
+		// TODO: Is this condition ever met on EvenPerfectBitScanner's execution path? If not, we can add a clarification comment and comment out the entire block. We want to support p candidates at least greater or equal to 31.
         if (prime <= 3UL)
         {
             return prime == 3UL ? 2UL : 1UL;
