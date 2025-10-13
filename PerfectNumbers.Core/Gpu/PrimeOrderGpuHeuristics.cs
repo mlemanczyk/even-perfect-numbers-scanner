@@ -811,7 +811,7 @@ internal static partial class PrimeOrderGpuHeuristics
             }
 
             ulong reduced = phi / factor;
-            if (reduced.Pow2ModBinaryGpu(divisor.Modulus) == 1UL)
+            if (reduced.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: false) == 1UL)
             {
                 return false;
             }
@@ -1595,7 +1595,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
     private static bool Pow2EqualsOneKernel(ulong exponent, in MontgomeryDivisorData divisor)
     {
-        return exponent.Pow2ModBinaryGpu(divisor.Modulus) == 1UL;
+        return exponent.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: false) == 1UL;
     }
 
     private static ulong CalculateByDoublingKernel(ulong prime)
