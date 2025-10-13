@@ -176,7 +176,7 @@ public sealed class PrimeTester(bool useInternal = false)
             DevicePrimes.View.CopyFromCPU(primes);
         }
 
-        internal sealed class ScratchBuffers : IDisposable
+        internal sealed class ScratchBuffers
         {
             public MemoryBuffer1D<ulong, Stride1D.Dense> Input { get; private set; }
             public MemoryBuffer1D<byte, Stride1D.Dense> Output { get; private set; }

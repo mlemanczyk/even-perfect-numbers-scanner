@@ -76,10 +76,10 @@ public readonly struct ResiduePrimeViews(
     public readonly ArrayView1D<ulong, Stride1D.Dense> LastSevenPow2 = lastSevenPow2;
 }
 
-public ref struct GpuKernelLease(IDisposable limiter, GpuContextLease gpu, KernelContainer kernels)
+public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLease gpu, KernelContainer kernels)
 {
     private bool disposedValue;
-    private IDisposable? _limiter = limiter;
+    private GpuPrimeWorkLimiter.Lease? _limiter = limiter;
     private GpuContextLease? _gpu = gpu;
     private KernelContainer _kernels = kernels;
     private AcceleratorStream? _stream;

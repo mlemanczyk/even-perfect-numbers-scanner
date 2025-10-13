@@ -530,7 +530,9 @@ public static class ULongExtensions
         ulong modulus = divisor.Modulus;
         if (exponent == 0UL)
         {
-            return keepMontgomery ? divisor.MontgomeryOne : 1UL % modulus;
+            return keepMontgomery
+                ? divisor.MontgomeryOne
+                : 1UL; // Montgomery moduli stay above one on the scanning path, so the modulo would always yield one.
         }
 
         if (exponent <= Pow2WindowFallbackThreshold)
@@ -622,7 +624,9 @@ public static class ULongExtensions
         ulong modulus = divisor.Modulus;
         if (exponent == 0UL)
         {
-            return keepMontgomery ? divisor.MontgomeryOne : 1UL % modulus;
+            return keepMontgomery
+                ? divisor.MontgomeryOne
+                : 1UL; // Montgomery moduli stay above one on the scanning path, so the modulo would always yield one.
         }
 
         if (exponent <= Pow2WindowFallbackThreshold)
@@ -769,7 +773,7 @@ public static class ULongExtensions
             return;
         }
 
-        ulong baseValue = 2UL % modulus;
+        ulong baseValue = 2UL; // Moduli arrive as odd primes greater than two, so the modulo would always return two.
         destination[0] = baseValue;
         if (oddPowerCount == 1)
         {

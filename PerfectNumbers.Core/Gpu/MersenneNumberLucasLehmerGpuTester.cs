@@ -327,8 +327,9 @@ public class MersenneNumberLucasLehmerGpuTester
             // TODO: Replace StreamWriter with the pooled TextFileWriter pipeline so persisting NTT
             // parameters reuses the zero-allocation buffered writes highlighted in the scanner I/O
             // benchmarks instead of allocating a new encoder per append.
-            using var writer = new StreamWriter(ParameterFilePath, append: true);
+            var writer = new StreamWriter(ParameterFilePath, append: true);
             writer.WriteLine($"{length} {modulus.High} {modulus.Low} {primitiveRoot.High} {primitiveRoot.Low}");
+            writer.Dispose();
         }
     }
 
@@ -338,7 +339,7 @@ public class MersenneNumberLucasLehmerGpuTester
         ulong foundRoot = 0UL;
         bool success = false;
         var processorCount = Environment.ProcessorCount;
-        using var cts = new System.Threading.CancellationTokenSource();
+        var cts = new System.Threading.CancellationTokenSource();
         object sync = new();
 
         // TODO: Move this Parallel.For to the shared low-overhead work scheduler once the NTT parameter
@@ -381,11 +382,13 @@ public class MersenneNumberLucasLehmerGpuTester
         {
             modulus = new GpuUInt128(0UL, foundCandidate);
             primitiveRoot = new GpuUInt128(0UL, foundRoot);
+            cts.Dispose();
             return true;
         }
 
         modulus = new GpuUInt128(0UL, 18446744069414584321UL);
         primitiveRoot = new GpuUInt128(0UL, 7UL);
+        cts.Dispose();
         return false;
     }
 

@@ -196,7 +196,7 @@ public class MersenneDivisorCycles
     public static IEnumerable<(ulong divisor, ulong cycleLength)> EnumerateStream(Stream compressor)
     {
         // Binary pairs: (ulong divisor, ulong cycle)
-        using var reader = new BinaryReader(compressor, Encoding.UTF8, leaveOpen: true);
+        var reader = new BinaryReader(compressor, Encoding.UTF8, leaveOpen: true);
         while (true)
         {
             ulong d, c;
@@ -207,6 +207,7 @@ public class MersenneDivisorCycles
             }
             catch (EndOfStreamException)
             {
+                reader.Dispose();
                 yield break;
             }
 
@@ -829,7 +830,7 @@ public class MersenneDivisorCycles
         // Start fresh to avoid mixing formats
         outputStream.SetLength(0L);
         outputStream.Position = 0L;
-        using var writer = new BinaryWriter(outputStream, Encoding.UTF8, leaveOpen: false);
+        var writer = new BinaryWriter(outputStream, Encoding.UTF8, leaveOpen: false);
         for (var taskIndex = 0; taskIndex < threads; taskIndex++)
         {
             ulong threadStart = start + (ulong)taskIndex * blockSize;
@@ -911,6 +912,7 @@ public class MersenneDivisorCycles
         }
 
         Task.WaitAll(tasks);
+        writer.Dispose();
     }
 
     public static void GenerateGpu(string path, ulong maxDivisor, int batchSize = 1_000_000, long skipCount = 0L, long nextPosition = 0L)
@@ -947,7 +949,7 @@ public class MersenneDivisorCycles
             outputStream.Position = 0L;
         }
 
-        using var writer = new BinaryWriter(outputStream, Encoding.UTF8, leaveOpen: false);
+        var writer = new BinaryWriter(outputStream, Encoding.UTF8, leaveOpen: false);
         try
         {
             while (skipCount > 0L && start <= maxDivisor)
@@ -1022,6 +1024,7 @@ public class MersenneDivisorCycles
             pool.Return(outCycles, clearArray: false);
         }
 
+        writer.Dispose();
         stream.Dispose();
         lease.Dispose();
 

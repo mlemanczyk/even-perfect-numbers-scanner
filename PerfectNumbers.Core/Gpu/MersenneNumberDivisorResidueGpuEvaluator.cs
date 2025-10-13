@@ -7,7 +7,7 @@ using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
 
-internal sealed class MersenneNumberDivisorResidueGpuEvaluator : IDisposable
+internal sealed class MersenneNumberDivisorResidueGpuEvaluator
 {
     private readonly GpuContextPool.GpuContextLease _lease;
     private readonly Accelerator _accelerator;

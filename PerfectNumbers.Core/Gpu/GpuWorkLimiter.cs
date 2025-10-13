@@ -6,14 +6,14 @@ public static class GpuWorkLimiter
     private static readonly object _lock = new();
     private static int _currentLimit = 1;
 
-    public static IDisposable Acquire()
+    public static Lease Acquire()
     {
         // TODO: Replace the per-call Releaser allocation with the pooled struct-based guard from the
         // GpuLimiterThroughputBenchmarks so limiter acquisition does not allocate when we enter the
         // GPU scanning hot path.
         var sem = _semaphore;
         sem.Wait();
-        return new Releaser(sem);
+        return new Lease(sem);
     }
 
     public static void SetLimit(int value)
@@ -40,12 +40,12 @@ public static class GpuWorkLimiter
         }
     }
 
-    private sealed class Releaser : IDisposable
+    public sealed class Lease
     {
         private readonly SemaphoreSlim _sem;
         private bool _disposed;
 
-        public Releaser(SemaphoreSlim sem)
+        public Lease(SemaphoreSlim sem)
         {
             _sem = sem;
         }

@@ -64,31 +64,25 @@ internal static class MontgomeryOddPowerGpu
         var accelerator = lease.Accelerator;
         var stream = lease.Stream;
 
-        using var divisorBuffer = accelerator.Allocate1D<MontgomeryDivisorData>(divisorCount);
-        using var countBuffer = accelerator.Allocate1D<int>(divisorCount);
-        using var resultBuffer = accelerator.Allocate1D<ulong>(divisorCount * stride);
+        var divisorBuffer = accelerator.Allocate1D<MontgomeryDivisorData>(divisorCount);
+        var countBuffer = accelerator.Allocate1D<int>(divisorCount);
+        var resultBuffer = accelerator.Allocate1D<ulong>(divisorCount * stride);
 
-        try
-        {
-            divisorBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(divisors), divisorCount);
-            countBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(oddPowerCounts), divisorCount);
-            resultBuffer.MemSetToZero();
+        divisorBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(divisors), divisorCount);
+        countBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(oddPowerCounts), divisorCount);
+        resultBuffer.MemSetToZero();
 
-            var kernel = lease.MontgomeryOddPowerKernel;
-            kernel(stream, divisorCount, divisorBuffer.View, countBuffer.View, resultBuffer.View, stride);
-            stream.Synchronize();
+        var kernel = lease.MontgomeryOddPowerKernel;
+        kernel(stream, divisorCount, divisorBuffer.View, countBuffer.View, resultBuffer.View, stride);
+        stream.Synchronize();
 
-            resultBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(results), divisorCount * stride);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-        finally
-        {
-            execution.Dispose();
-            lease.Dispose();
-        }
+        resultBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(results), divisorCount * stride);
+
+        resultBuffer.Dispose();
+        countBuffer.Dispose();
+        divisorBuffer.Dispose();
+        execution.Dispose();
+        lease.Dispose();
+        return true;
     }
 }
