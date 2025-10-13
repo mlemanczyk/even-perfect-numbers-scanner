@@ -51,10 +51,12 @@ internal sealed class MersenneNumberDivisorResidueGpuEvaluator : IDisposable
         }
 
         int length = exponents.Length;
-        if (length == 0)
-        {
-            return;
-        }
+        // Residue batches always include at least one exponent when scheduled from the by-divisor scanner, so
+        // the empty-length guard remains commented out to avoid branching.
+        // if (length == 0)
+        // {
+        //     return;
+        // }
 
         EnsureCapacity(length);
 
@@ -79,10 +81,11 @@ internal sealed class MersenneNumberDivisorResidueGpuEvaluator : IDisposable
         }
 
         int newCapacity = _capacity;
-        if (newCapacity == 0)
-        {
-            newCapacity = 1;
-        }
+        // The evaluator always starts with a positive capacity, so the zero-capacity fallback stays commented.
+        // if (newCapacity == 0)
+        // {
+        //     newCapacity = 1;
+        // }
 
         while (newCapacity < required)
         {

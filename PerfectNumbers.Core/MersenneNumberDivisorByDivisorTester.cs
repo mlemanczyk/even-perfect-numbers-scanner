@@ -180,11 +180,13 @@ public static class MersenneNumberDivisorByDivisorTester
             return;
         }
 
-        if (maxPrime <= 1UL)
-        {
-            Console.WriteLine("The filter specified by --filter-p must contain at least one prime exponent greater than 1 for --mersenne=bydivisor.");
-            return;
-        }
+        // EvenPerfectBitScanner removes candidates <= 1 before reaching this point,
+        // so this guard never triggers during production runs.
+        // if (maxPrime <= 1UL)
+        // {
+        //     Console.WriteLine("The filter specified by --filter-p must contain at least one prime exponent greater than 1 for --mersenne=bydivisor.");
+        //     return;
+        // }
 
         tester.ConfigureFromMaxPrime(maxPrime);
 

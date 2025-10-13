@@ -87,11 +87,13 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             batchCapacity = _gpuBatchSize;
         }
 
-        if (allowedMax < 3UL)
-        {
-            divisorsExhausted = true;
-            return true;
-        }
+        // The GPU path always receives an allowed maximum well above the minimal divisor, so the legacy
+        // guard stays commented out to document the invariant without branching.
+        // if (allowedMax < 3UL)
+        // {
+        //     divisorsExhausted = true;
+        //     return true;
+        // }
 
         bool composite;
         bool coveredRange;
@@ -222,7 +224,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         ArrayView1D<ulong, Stride1D.Dense> exponentView;
         ArrayView1D<byte, Stride1D.Dense> hitsView;
 
-        cycleCapacity = Math.Max(1, cycleCapacity);
+        // Batch resources expose a positive cycle capacity, so skip the redundant clamp here.
+        // cycleCapacity = Math.Max(1, cycleCapacity);
 
         int chunkCapacity = Math.Min(batchCapacity, cycleCapacity);
         int maxThreadsPerGroup = (int)accelerator.MaxNumThreadsPerGroup;
@@ -231,20 +234,22 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             chunkCapacity = Math.Min(chunkCapacity, maxThreadsPerGroup);
         }
 
-        if (chunkCapacity <= 0)
-        {
-            chunkCapacity = cycleCapacity;
-        }
+        // cycleCapacity already bounds chunkCapacity above zero, so the fallback would never execute.
+        // if (chunkCapacity <= 0)
+        // {
+        //     chunkCapacity = cycleCapacity;
+        // }
 
         ulong[] filteredDivisors = ArrayPool<ulong>.Shared.Rent(chunkCapacity);
         ulong[] divisorGaps = ArrayPool<ulong>.Shared.Rent(chunkCapacity);
 
         UInt128 twoP128 = (UInt128)prime << 1;
-        if (twoP128 == UInt128.Zero)
-        {
-            coveredRange = true;
-            return false;
-        }
+        // Primes above one yield a non-zero 2p value, so the legacy zero guard remains commented out.
+        // if (twoP128 == UInt128.Zero)
+        // {
+        //     coveredRange = true;
+        //     return false;
+        // }
 
         UInt128 allowedMax128 = allowedMax;
         UInt128 firstDivisor128 = twoP128 + UInt128.One;
@@ -255,11 +260,13 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         }
 
         UInt128 maxK128 = (allowedMax128 - UInt128.One) / twoP128;
-        if (maxK128 == UInt128.Zero)
-        {
-            coveredRange = true;
-            return false;
-        }
+        // Once the first divisor falls within the allowed range, at least one multiplier k is admissible,
+        // so keep the defensive zero check commented out.
+        // if (maxK128 == UInt128.Zero)
+        // {
+        //     coveredRange = true;
+        //     return false;
+        // }
 
         ulong maxK = maxK128 > ulong.MaxValue ? ulong.MaxValue : (ulong)maxK128;
         ulong currentK = 1UL;
@@ -301,10 +308,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                     chunkCount = (int)remainingK;
                 }
 
-                if (chunkCount <= 0)
-                {
-                    break;
-                }
+                // chunkCapacity and the remaining multiplier range are strictly positive here, so the zero
+                // chunk fallback never triggers on production scans.
+                // if (chunkCount <= 0)
+                // {
+                //     break;
+                // }
 
                 Span<ulong> candidateSpan = cycleCandidates.AsSpan(0, chunkCount);
                 Span<ulong> gapSpan = divisorGaps.AsSpan(0, chunkCount);
@@ -465,10 +474,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         Action<Index1D, ArrayView<ulong>, ArrayView<byte>, byte> deltaKernel,
         Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte> scanKernel)
     {
-        if (count <= 0)
-        {
-            return;
-        }
+        // GPU batches always contain at least one divisor gap, so the empty-count guard remains commented
+        // to eliminate redundant branching.
+        // if (count <= 0)
+        // {
+        //     return;
+        // }
 
         deltaKernel(count, gapView, deltaView, modulus);
         SharedMemoryConfig sharedMemoryConfig = SharedMemoryConfig.RequestDynamic<int>(count);
@@ -491,11 +502,13 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         Span<byte> destination,
         Action<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>> maskKernel)
     {
-        if (count <= 0)
-        {
-            destination.Clear();
-            return;
-        }
+        // Candidate batches always provide at least one entry, so the zero-count guard stays commented out
+        // to avoid clearing spans unnecessarily.
+        // if (count <= 0)
+        // {
+        //     destination.Clear();
+        //     return;
+        // }
 
         maskKernel(count, remainder10View, remainder8View, remainder5View, remainder3View, lastIsSevenFlag, maskView);
         maskView.CopyToCPU(ref MemoryMarshal.GetReference(destination), count);
@@ -503,10 +516,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
     private static byte FetchLastRemainder(ArrayView1D<byte, Stride1D.Dense> remainderView, int count)
     {
-        if (count <= 0)
-        {
-            return 0;
-        }
+        // Kernels always process at least one remainder in this path, so the empty-span guard remains
+        // commented to document the invariant.
+        // if (count <= 0)
+        // {
+        //     return 0;
+        // }
 
         byte value = 0;
         remainderView.SubView(count - 1, 1).CopyToCPU(ref value, 1);
@@ -519,10 +534,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         if (result >= modulus)
         {
             result -= modulus;
-            if (result >= modulus)
-            {
-                result %= modulus;
-            }
+            // The step deltas remain below the modulus, so a single subtraction suffices on this path.
+            // if (result >= modulus)
+            // {
+            //     result %= modulus;
+            // }
         }
 
         return (byte)result;

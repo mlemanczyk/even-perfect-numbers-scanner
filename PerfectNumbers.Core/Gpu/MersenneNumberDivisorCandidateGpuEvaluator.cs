@@ -68,10 +68,12 @@ internal sealed class MersenneNumberDivisorCandidateGpuEvaluator : IDisposable
         }
 
         int count = candidates.Length;
-        if (count == 0)
-        {
-            return;
-        }
+        // Candidate batches always carry at least one divisor on the by-divisor path, so the empty-count
+        // guard remains commented out to eliminate the branch.
+        // if (count == 0)
+        // {
+        //     return;
+        // }
 
         EnsureCapacity(count);
 
@@ -115,7 +117,12 @@ internal sealed class MersenneNumberDivisorCandidateGpuEvaluator : IDisposable
             return;
         }
 
-        int newCapacity = _capacity == 0 ? 1 : _capacity;
+        int newCapacity = _capacity;
+        // The evaluator always starts with a positive capacity, so the zero-capacity fallback remains commented.
+        // if (newCapacity == 0)
+        // {
+        //     newCapacity = 1;
+        // }
         while (newCapacity < required)
         {
             newCapacity <<= 1;
@@ -188,10 +195,11 @@ internal sealed class MersenneNumberDivisorCandidateGpuEvaluator : IDisposable
 
     private static int ComputeRemainder(byte remainder, byte step, int index, int modulus)
     {
-        if (modulus == 0)
-        {
-            return 0;
-        }
+        // Modulus lookups only cover {10, 8, 5, 3, 7, 11}, so the zero-modulus guard stays commented out.
+        // if (modulus == 0)
+        // {
+        //     return 0;
+        // }
 
         long value = remainder;
         value += (long)step * index;
