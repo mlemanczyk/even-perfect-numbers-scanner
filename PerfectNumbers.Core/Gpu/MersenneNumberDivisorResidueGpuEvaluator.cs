@@ -109,6 +109,13 @@ internal sealed class MersenneNumberDivisorResidueGpuEvaluator : IDisposable
         }
 
         ulong exponent = exponents[idx];
-        results[idx] = exponent.Pow2MontgomeryModWindowedGpu(divisorData, keepMontgomery: true);
+        ulong modulus = divisorData.Modulus;
+        if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+        {
+            results[idx] = 0UL;
+            return;
+        }
+
+        results[idx] = exponent.Pow2ModBinaryGpu(modulus);
     }
 }

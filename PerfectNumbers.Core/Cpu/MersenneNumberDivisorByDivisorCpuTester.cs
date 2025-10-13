@@ -652,7 +652,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         private bool _disposed;
         private ulong[]? _primeDeltas;
         private ulong[]? _cycleRemainders;
-        private ulong[]? _montgomeryDeltas;
+        private ulong[]? _residues;
         private int _bufferCapacity;
         private MersenneNumberDivisorResidueGpuEvaluator? _gpuResidueEvaluator;
 
@@ -765,13 +765,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             ComputeCycleRemainders(divisorCycle, primes, deltaSpan, remainderSpan);
 
             EnsureGpuEvaluator();
-            Span<ulong> residueSpan = _montgomeryDeltas!.AsSpan(0, length);
+            Span<ulong> residueSpan = _residues!.AsSpan(0, length);
             _gpuResidueEvaluator!.ComputeResidues(primes, divisorData, residueSpan);
 
-            ulong montgomeryOne = divisorData.MontgomeryOne;
             for (int i = 0; i < length; i++)
             {
-                hits[i] = remainderSpan[i] == 0UL && residueSpan[i] == montgomeryOne ? (byte)1 : (byte)0;
+                hits[i] = remainderSpan[i] == 0UL && residueSpan[i] == 1UL ? (byte)1 : (byte)0;
             }
         }
 
@@ -801,7 +800,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 return;
             }
 
-            if (requiredLength <= _bufferCapacity && _primeDeltas is not null && _cycleRemainders is not null && _montgomeryDeltas is not null)
+            if (requiredLength <= _bufferCapacity && _primeDeltas is not null && _cycleRemainders is not null && _residues is not null)
             {
                 return;
             }
@@ -821,7 +820,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
             _primeDeltas = ArrayPool<ulong>.Shared.Rent(newCapacity);
             _cycleRemainders = ArrayPool<ulong>.Shared.Rent(newCapacity);
-            _montgomeryDeltas = ArrayPool<ulong>.Shared.Rent(newCapacity);
+            _residues = ArrayPool<ulong>.Shared.Rent(newCapacity);
             _bufferCapacity = newCapacity;
         }
 
@@ -839,10 +838,10 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 _cycleRemainders = null;
             }
 
-            if (_montgomeryDeltas is not null)
+            if (_residues is not null)
             {
-                ArrayPool<ulong>.Shared.Return(_montgomeryDeltas, clearArray: false);
-                _montgomeryDeltas = null;
+                ArrayPool<ulong>.Shared.Return(_residues, clearArray: false);
+                _residues = null;
             }
 
             _bufferCapacity = 0;
