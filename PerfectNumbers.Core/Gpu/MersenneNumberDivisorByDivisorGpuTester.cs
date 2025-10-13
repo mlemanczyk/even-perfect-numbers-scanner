@@ -64,28 +64,22 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
     public void ConfigureFromMaxPrime(ulong maxPrime)
     {
-        lock (_sync)
-        {
-            _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
-            _isConfigured = true;
-        }
+        // Configuration happens once during startup, so no synchronization is required to cache the divisor limit.
+        _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
+        _isConfigured = true;
     }
 
     public bool IsPrime(ulong prime, out bool divisorsExhausted, TimeSpan? timeLimit = null)
     {
-        ulong allowedMax;
-        int batchCapacity;
+        // The CLI always configures the tester during startup, so the historical guard is commented out to avoid branching.
+        // if (!_isConfigured)
+        // {
+        //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+        // }
 
-        lock (_sync)
-        {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            allowedMax = ComputeAllowedMaxDivisor(prime, _divisorLimit);
-            batchCapacity = _gpuBatchSize;
-        }
+        // Configuration is immutable, so the cached values can be read without locking.
+        ulong allowedMax = ComputeAllowedMaxDivisor(prime, _divisorLimit);
+        int batchCapacity = _gpuBatchSize;
 
         // The GPU path always receives an allowed maximum well above the minimal divisor, so the legacy
         // guard stays commented out to document the invariant without branching.

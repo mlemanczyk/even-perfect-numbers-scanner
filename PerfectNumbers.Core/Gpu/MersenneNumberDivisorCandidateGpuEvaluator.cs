@@ -75,7 +75,10 @@ internal sealed class MersenneNumberDivisorCandidateGpuEvaluator : IDisposable
         //     return;
         // }
 
-        EnsureCapacity(count);
+        if (count > _capacity)
+        {
+            EnsureCapacity(count);
+        }
 
         Span<ulong> hostCandidateSpan = _hostCandidates.AsSpan(0, count);
         Span<byte> hostMaskSpan = _hostMask.AsSpan(0, count);

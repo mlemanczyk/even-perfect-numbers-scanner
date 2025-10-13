@@ -52,7 +52,7 @@ internal sealed class MersenneNumberDivisorRemainderGpuStepper : IDisposable
     {
         if (_disposed)
         {
-            return;
+            throw new InvalidOperationException("MersenneNumberDivisorRemainderGpuStepper was disposed more than once.");
         }
 
         _disposed = true;
@@ -78,10 +78,11 @@ internal sealed class MersenneNumberDivisorRemainderGpuStepper : IDisposable
         //     return;
         // }
 
-        if (remainders.Length != _length)
-        {
-            throw new ArgumentException("Remainder buffer length must match the configured length.");
-        }
+        // Production code always calls the stepper with a fixed-length table, so the historical length guard stays commented.
+        // if (remainders.Length != _length)
+        // {
+        //     throw new ArgumentException("Remainder buffer length must match the configured length.");
+        // }
 
         Span<byte> hostRemainderSpan = _hostRemainders.AsSpan(0, _length);
         remainders.CopyTo(hostRemainderSpan);

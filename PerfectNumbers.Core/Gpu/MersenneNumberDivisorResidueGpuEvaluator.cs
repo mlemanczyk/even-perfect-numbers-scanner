@@ -33,7 +33,7 @@ internal sealed class MersenneNumberDivisorResidueGpuEvaluator : IDisposable
     {
         if (_disposed)
         {
-            return;
+            throw new InvalidOperationException("MersenneNumberDivisorResidueGpuEvaluator was disposed more than once.");
         }
 
         _disposed = true;

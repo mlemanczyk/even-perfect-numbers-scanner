@@ -152,17 +152,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         //     throw new ArgumentException("allowedMaxValues span must be at least as long as primes span.", nameof(allowedMaxValues));
         // }
 
-        ulong divisorLimit;
-
-        lock (_sync)
+        if (!_isConfigured)
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            divisorLimit = _divisorLimit;
+            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
         }
+
+        // Configuration is immutable after startup, so reading the cached limit does not require locking.
+        ulong divisorLimit = _divisorLimit;
 
         for (int index = 0; index < primes.Length; index++)
         {
@@ -172,21 +168,18 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession()
     {
-        lock (_sync)
+        if (!_isConfigured)
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            if (_sessionPool.TryTake(out DivisorScanSession? session))
-            {
-                session.Reset();
-                return session;
-            }
-
-            return new DivisorScanSession(this);
+            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
         }
+
+        if (_sessionPool.TryTake(out DivisorScanSession? session))
+        {
+            session.Reset();
+            return session;
+        }
+
+        return new DivisorScanSession(this);
     }
 
     private void ReturnSession(DivisorScanSession session)
@@ -323,11 +316,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                     return true;
                 }
 
-                // DivisorCycleCache guarantees a non-zero cycle for every divisor reached on the EvenPerfectBitScanner path.
-                // if (divisorCycle == 0UL)
-                // {
-                //     Console.WriteLine($"Divisor cycle was not calculated for {prime}");
-                // }
+                if (divisorCycle == 0UL)
+                {
+                    // Keep this guard active to surface mismatches between generated candidates and the snapshot cache.
+                    Console.WriteLine($"Divisor cycle was not calculated for {prime}");
+                }
             }
 
             divisor += step;
@@ -830,7 +823,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             int newCapacity = _bufferCapacity;
             if (newCapacity == 0)
             {
-                // Fresh sessions start without buffers; seed the first rent with a single-slot array.
+                // EvenPerfectBitScanner hits this branch on the first batch of each session, so keep the seed allocation.
                 newCapacity = 1;
             }
 
@@ -908,6 +901,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         {
             if (modulus == 0UL)
             {
+                // A zero modulus indicates a missing cycle entry; preserve the fallback so snapshot regressions remain visible.
                 return 0UL;
             }
 
