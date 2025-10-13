@@ -1611,7 +1611,7 @@ internal static partial class PrimeOrderGpuHeuristics
     private static ulong CalculateByDoublingKernel(ulong prime)
     {
         ulong order = 1UL;
-        ulong value = 2UL % prime;
+        ulong value = 2UL; // Candidate primes exceed two, so the modulo would always return two.
 
         while (value != 1UL)
         {

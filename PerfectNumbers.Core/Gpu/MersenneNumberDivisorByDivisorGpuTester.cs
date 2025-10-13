@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Numerics;
@@ -122,6 +123,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             resources.CycleCandidates,
             resources.CycleLengths,
             resources.CycleCapacity,
+            resources,
             out lastProcessed,
             out coveredRange,
             out processedCount
@@ -186,6 +188,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         ulong[] cycleCandidates,
         ulong[] cycleLengths,
         int cycleCapacity,
+        BatchResources resources,
         out ulong lastProcessed,
         out bool coveredRange,
         out ulong processedCount)
@@ -340,10 +343,10 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
                 gapView.CopyFromCPU(ref MemoryMarshal.GetReference(gapSpan), chunkCount);
 
-                ComputeRemaindersOnGpu(chunkCount, remainder10, 10, gapView, deltaView, remainder10View, remainderDeltaKernel, remainderScanKernel);
-                ComputeRemaindersOnGpu(chunkCount, remainder8, 8, gapView, deltaView, remainder8View, remainderDeltaKernel, remainderScanKernel);
-                ComputeRemaindersOnGpu(chunkCount, remainder5, 5, gapView, deltaView, remainder5View, remainderDeltaKernel, remainderScanKernel);
-                ComputeRemaindersOnGpu(chunkCount, remainder3, 3, gapView, deltaView, remainder3View, remainderDeltaKernel, remainderScanKernel);
+                ComputeRemaindersOnGpu(chunkCount, remainder10, 10, gapView, deltaView, remainder10View, remainderDeltaKernel, remainderScanKernel, resources.GetRemainderScanConfig);
+                ComputeRemaindersOnGpu(chunkCount, remainder8, 8, gapView, deltaView, remainder8View, remainderDeltaKernel, remainderScanKernel, resources.GetRemainderScanConfig);
+                ComputeRemaindersOnGpu(chunkCount, remainder5, 5, gapView, deltaView, remainder5View, remainderDeltaKernel, remainderScanKernel, resources.GetRemainderScanConfig);
+                ComputeRemaindersOnGpu(chunkCount, remainder3, 3, gapView, deltaView, remainder3View, remainderDeltaKernel, remainderScanKernel, resources.GetRemainderScanConfig);
 
                 BuildCandidateMaskOnGpu(chunkCount, remainder10View, remainder8View, remainder5View, remainder3View, lastIsSevenFlag, maskView, maskSpan, candidateMaskKernel);
 
@@ -461,7 +464,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         ArrayView1D<byte, Stride1D.Dense> deltaView,
         ArrayView1D<byte, Stride1D.Dense> remainderView,
         Action<Index1D, ArrayView<ulong>, ArrayView<byte>, byte> deltaKernel,
-        Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte> scanKernel)
+        Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte> scanKernel,
+        Func<int, KernelConfig> configProvider)
     {
         // GPU batches always contain at least one divisor gap, so the empty-count guard remains commented
         // to eliminate redundant branching.
@@ -471,10 +475,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         // }
 
         deltaKernel(count, gapView, deltaView, modulus);
-        SharedMemoryConfig sharedMemoryConfig = SharedMemoryConfig.RequestDynamic<int>(count);
-        Index1D gridDim = new Index1D(1);
-        Index1D groupDim = new Index1D(count);
-        KernelConfig kernelConfig = new KernelConfig(gridDim, groupDim, sharedMemoryConfig);
+        KernelConfig kernelConfig = configProvider(count);
 
         scanKernel(kernelConfig, new Index1D(count), deltaView, remainderView, baseRemainder, modulus);
     }
@@ -906,9 +907,23 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         internal readonly Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte> RemainderScanKernel;
         internal readonly Action<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>> CandidateMaskKernel;
 
+        private readonly Dictionary<int, KernelConfig> _remainderScanConfigs = new();
+
         internal readonly int Capacity;
 
         internal readonly int CycleCapacity;
+
+        internal KernelConfig GetRemainderScanConfig(int count)
+        {
+            if (!_remainderScanConfigs.TryGetValue(count, out KernelConfig config))
+            {
+                SharedMemoryConfig sharedMemoryConfig = SharedMemoryConfig.RequestDynamic<int>(count);
+                config = new KernelConfig(new Index1D(1), new Index1D(count), sharedMemoryConfig);
+                _remainderScanConfigs[count] = config;
+            }
+
+            return config;
+        }
 
         public void Dispose()
         {
