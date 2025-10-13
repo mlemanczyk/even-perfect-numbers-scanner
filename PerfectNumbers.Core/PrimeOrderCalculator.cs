@@ -18,7 +18,7 @@ internal static partial class PrimeOrderCalculator
 
     internal readonly struct PrimeOrderSearchConfig(uint smallFactorLimit, int pollardRhoMilliseconds, int maxPowChecks, PrimeOrderMode mode)
     {
-        public static PrimeOrderSearchConfig HeuristicDefault => new(smallFactorLimit: 100_000, pollardRhoMilliseconds: 24, maxPowChecks: 24, PrimeOrderMode.Heuristic);
+        public static PrimeOrderSearchConfig HeuristicDefault => new(smallFactorLimit: 4_000_000, pollardRhoMilliseconds: 24 * 2048, maxPowChecks: 24, PrimeOrderMode.Heuristic);
         public static PrimeOrderSearchConfig StrictDefault => new(smallFactorLimit: 1_000_000, pollardRhoMilliseconds: 0, maxPowChecks: 0, PrimeOrderMode.Strict);
 
         public readonly uint SmallFactorLimit = smallFactorLimit;
@@ -428,8 +428,8 @@ internal static partial class PrimeOrderCalculator
 
             // DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
             int index = 0;
-            const int MaxGpuBatchSize = 1024;
-            const int StackGpuBatchSize = 1024;
+            const int MaxGpuBatchSize = 256;
+            const int StackGpuBatchSize = 64;
             Span<ulong> stackGpuRemainders = stackalloc ulong[StackGpuBatchSize];
             while (index < candidateCount && powUsed < powBudget)
             {
