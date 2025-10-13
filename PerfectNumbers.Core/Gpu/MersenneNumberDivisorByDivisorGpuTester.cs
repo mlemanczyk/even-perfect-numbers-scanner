@@ -844,7 +844,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
     private void ReturnBatchResources(Accelerator accelerator, BatchResources resources) => _resourcePools.GetOrAdd(accelerator, static _ => []).Add(resources);
 
-    private sealed class BatchResources : IDisposable
+    private sealed class BatchResources
     {
         internal BatchResources(MersenneNumberDivisorByDivisorGpuTester owner, Accelerator accelerator, int capacity)
         {
@@ -948,7 +948,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         return ComputeAllowedMaxDivisor(prime, _divisorLimit);
     }
 
-    public DivisorScanSession CreateDivisorSession()
+    public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession()
     {
         // Divisor sessions are handed out only after configuration, so this guard would never trigger on the
         // production path.
@@ -965,8 +965,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         return new DivisorScanSession(this);
     }
-
-    IMersenneNumberDivisorByDivisorTester.IDivisorScanSession IMersenneNumberDivisorByDivisorTester.CreateDivisorSession() => CreateDivisorSession();
 }
 
 

@@ -6,7 +6,7 @@ using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
 
-internal sealed class MersenneNumberDivisorCandidateGpuEvaluator : IDisposable
+internal sealed class MersenneNumberDivisorCandidateGpuEvaluator
 {
     private const int RemainderCount = 6;
 

@@ -14,8 +14,8 @@ public class MersenneDivisorCyclesGenerateGpuTests
         {
             MersenneDivisorCycles.GenerateGpu(path, maxDivisor: 50UL, batchSize: 16, skipCount: 0, nextPosition: 0);
             var pairs = new List<(ulong divisor, ulong cycle)>();
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read);
-            using var reader = new BinaryReader(stream);
+            var stream = new FileStream(path, FileMode.Open, FileAccess.Read);
+            var reader = new BinaryReader(stream);
             while (stream.Position < stream.Length)
             {
                 ulong d = reader.ReadUInt64();
@@ -41,6 +41,9 @@ public class MersenneDivisorCyclesGenerateGpuTests
                 MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(pair.divisor);
                 pair.cycle.Should().Be(MersenneDivisorCycles.CalculateCycleLength(pair.divisor, divisorData));
             }
+
+            reader.Dispose();
+            stream.Dispose();
         }
         finally
         {
@@ -61,8 +64,8 @@ public class MersenneDivisorCyclesGenerateGpuTests
             MersenneDivisorCycles.Generate(path, maxDivisor: 50UL, threads: 4);
 
             var pairs = new List<(ulong divisor, ulong cycle)>();
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read);
-            using var reader = new BinaryReader(stream);
+            var stream = new FileStream(path, FileMode.Open, FileAccess.Read);
+            var reader = new BinaryReader(stream);
             while (stream.Position < stream.Length)
             {
                 ulong divisor = reader.ReadUInt64();
@@ -95,6 +98,9 @@ public class MersenneDivisorCyclesGenerateGpuTests
 
             var (_, completeCount) = MersenneDivisorCycles.FindLast(path);
             completeCount.Should().Be(expected.Count);
+
+            reader.Dispose();
+            stream.Dispose();
         }
         finally
         {

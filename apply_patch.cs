@@ -335,10 +335,13 @@ if (patchResults.Any(static r => !r.Success))
 
 static List<PatchFile> ParsePatchFromFile(string patchFilePath)
 {
-    using var stream = File.OpenRead(patchFilePath);
-    using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 16_384, leaveOpen: false);
-    using var lineReader = new PatchLineReader(reader);
+    var stream = File.OpenRead(patchFilePath);
+    var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 16_384, leaveOpen: false);
+    var lineReader = new PatchLineReader(reader);
     var files = ParsePatch(lineReader);
+    lineReader.Dispose();
+    reader.Dispose();
+    stream.Dispose();
     return files;
 }
 
@@ -500,7 +503,7 @@ static void FinalizePatchFile(
     files.Add(new PatchFile(originalPath, modifiedPath, hunks ?? new List<PatchHunk>(), type));
 }
 
-private sealed class PatchLineReader : IDisposable
+private sealed class PatchLineReader
 {
     private const int ReadBufferSize = 4096;
     private const int InitialLineBufferSize = 256;

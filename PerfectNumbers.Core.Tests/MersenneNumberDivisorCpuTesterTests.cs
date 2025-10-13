@@ -46,7 +46,7 @@ public class MersenneNumberDivisorCpuTesterTests
         var tester = new MersenneNumberDivisorByDivisorCpuTester();
         tester.ConfigureFromMaxPrime(197UL);
 
-        using var session = tester.CreateDivisorSession();
+        var session = tester.CreateDivisorSession();
         ulong[] exponents = { 59UL, 61UL, 67UL, 71UL, 73UL, 79UL, 117_652UL, 333_380UL };
         byte[] hits = new byte[exponents.Length];
 
@@ -74,6 +74,8 @@ public class MersenneNumberDivisorCpuTesterTests
         }
 
         hits.Should().Equal(expected2);
+
+        session.Dispose();
     }
 
     [Fact]
@@ -83,7 +85,7 @@ public class MersenneNumberDivisorCpuTesterTests
         var tester = new MersenneNumberDivisorByDivisorCpuTester();
         tester.ConfigureFromMaxPrime(197UL);
 
-        using var session = tester.CreateDivisorSession();
+        var session = tester.CreateDivisorSession();
         MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(LargeDivisor1);
         ulong cycle = MersenneDivisorCycles.CalculateCycleLength(LargeDivisor1, divisorData);
 
@@ -98,6 +100,8 @@ public class MersenneNumberDivisorCpuTesterTests
         }
 
         hits.Should().Equal(expected);
+
+        session.Dispose();
     }
 
     [Fact]
@@ -107,7 +111,7 @@ public class MersenneNumberDivisorCpuTesterTests
         var tester = new MersenneNumberDivisorByDivisorCpuTester();
         tester.ConfigureFromMaxPrime(197UL);
 
-        using var session = tester.CreateDivisorSession();
+        var session = tester.CreateDivisorSession();
         MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(LargeDivisor2);
         ulong cycle = MersenneDivisorCycles.CalculateCycleLength(LargeDivisor2, divisorData);
 
@@ -122,5 +126,7 @@ public class MersenneNumberDivisorCpuTesterTests
         }
 
         hits.Should().Equal(expected);
+
+        session.Dispose();
     }
 }

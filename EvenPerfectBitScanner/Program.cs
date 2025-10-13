@@ -720,7 +720,21 @@ internal static class Program
 
         if (_useByDivisorMode)
         {
-            RunByDivisorMode(byDivisorCandidates, threadCount, _primeTestLimit);
+            if (_byDivisorTester is null)
+            {
+                throw new InvalidOperationException("By-divisor tester has not been initialized.");
+            }
+
+            MersenneNumberDivisorByDivisorTester.Run(
+                    byDivisorCandidates,
+                    _byDivisorTester,
+                    _byDivisorPreviousResults,
+                    _byDivisorStartPrime,
+                    static () => _lastCompositeP = true,
+                    static () => _lastCompositeP = false,
+                    PrintResult,
+                    threadCount,
+                    _primeTestLimit);
             FlushBuffer();
             StringBuilderPool.Return(_outputBuilder!);
             return;
@@ -859,27 +873,6 @@ internal static class Program
         }
 
         return candidates;
-    }
-
-    private static void RunByDivisorMode(List<ulong> candidates, int threadCount, TimeSpan? primeTestLimit)
-    {
-        if (_byDivisorTester is null)
-        {
-            throw new InvalidOperationException("By-divisor tester has not been initialized.");
-        }
-
-        // TODO: Inline this helper by invoking MersenneNumberDivisorByDivisorTester.Run directly at call sites so
-        // the CLI avoids this extra frame during the hot composite-reporting path.
-        MersenneNumberDivisorByDivisorTester.Run(
-                candidates,
-                _byDivisorTester,
-                _byDivisorPreviousResults,
-                _byDivisorStartPrime,
-                static () => _lastCompositeP = true,
-                static () => _lastCompositeP = false,
-                PrintResult,
-                threadCount,
-                primeTestLimit);
     }
 
     private static unsafe void LoadResultsFile(string resultsFileName, Action<ulong, bool, bool> lineProcessorAction)

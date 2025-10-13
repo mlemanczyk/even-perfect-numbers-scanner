@@ -3,7 +3,7 @@ using System.Buffers;
 
 namespace PerfectNumbers.Core
 {
-    internal sealed class PrimeFactorPartialResult : IDisposable
+    internal sealed class PrimeFactorPartialResult
     {
         [ThreadStatic]
         private static PrimeFactorPartialResult? s_poolHead;

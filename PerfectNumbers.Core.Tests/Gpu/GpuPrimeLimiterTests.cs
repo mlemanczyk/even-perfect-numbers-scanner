@@ -18,13 +18,14 @@ public class GpuPrimeLimiterTests
         var startedSecond = new TaskCompletionSource<bool>();
         var sw = new Stopwatch();
 
-        using var first = GpuPrimeWorkLimiter.Acquire();
+        var first = GpuPrimeWorkLimiter.Acquire();
         sw.Start();
 
         var secondTask = Task.Run(() =>
         {
-            using var second = GpuPrimeWorkLimiter.Acquire();
+            var second = GpuPrimeWorkLimiter.Acquire();
             startedSecond.TrySetResult(true);
+            second.Dispose();
         });
 
         // Give secondTask a moment to attempt acquire (it should block).

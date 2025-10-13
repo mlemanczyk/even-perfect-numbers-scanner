@@ -54,10 +54,11 @@ static ProbeResult ProbeBigInteger(Accelerator accelerator)
     try
     {
         var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<int, Stride1D.Dense>>(BigIntegerKernel);
-        using var buffer = accelerator.Allocate1D<int>(1);
+        var buffer = accelerator.Allocate1D<int>(1);
         var extent = new Index1D((int)buffer.Length);
         kernel(extent, buffer.View);
         accelerator.Synchronize();
+        buffer.Dispose();
         return ProbeResult.Success(
             "System.Numerics.BigInteger",
             "Addition, subtraction, multiplication, division, and modulo compile on the CPU accelerator.");
@@ -73,9 +74,10 @@ static ProbeResult ProbeEInteger(Accelerator accelerator)
     try
     {
         var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<int, Stride1D.Dense>>(EIntegerKernel);
-        using var buffer = accelerator.Allocate1D<int>(1);
+        var buffer = accelerator.Allocate1D<int>(1);
         kernel(new Index1D((int)buffer.Length), buffer.View);
         accelerator.Synchronize();
+        buffer.Dispose();
         return ProbeResult.Success(
             "PeterO.Numbers.EInteger",
             "Addition, subtraction, multiplication, division, and remainder compile on the CPU accelerator.");
@@ -93,7 +95,7 @@ static ProbeResult ProbeERational(Accelerator accelerator)
     try
     {
         var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<int, Stride1D.Dense>>(ERationalKernel);
-        using var buffer = accelerator.Allocate1D<int>(1);
+        var buffer = accelerator.Allocate1D<int>(1);
         kernel(new Index1D((int)buffer.Length), buffer.View);
         accelerator.Synchronize();
 
@@ -101,6 +103,7 @@ static ProbeResult ProbeERational(Accelerator accelerator)
         details += hasRemainder
             ? " ERational exposes a remainder API that requires further investigation."
             : " ERational does not expose a remainder/modulo API.";
+        buffer.Dispose();
         return ProbeResult.Success("PeterO.Numbers.ERational", details);
     }
     catch (Exception ex)
@@ -120,9 +123,10 @@ static ProbeResult ProbeOpenNumericPrimesIsPrime(Accelerator accelerator)
     try
     {
         var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<int, Stride1D.Dense>>(OpenNumericPrimesIsPrimeKernel);
-        using var buffer = accelerator.Allocate1D<int>(4);
+        var buffer = accelerator.Allocate1D<int>(4);
         kernel(new Index1D((int)buffer.Length), buffer.View);
         accelerator.Synchronize();
+        buffer.Dispose();
         return ProbeResult.Success(
             "Open.Numeric.Primes.Prime.Numbers.IsPrime",
             "IsPrime compiles and runs on the CPU accelerator kernel.");
