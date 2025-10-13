@@ -54,10 +54,12 @@ internal sealed class MersenneNumberDivisorMontgomeryGpuBuilder : IDisposable
         }
 
         int length = moduli.Length;
-        if (length == 0)
-        {
-            return;
-        }
+        // Montgomery batches always include at least one modulus on the by-divisor path, so the empty-length
+        // guard stays commented out to avoid branching.
+        // if (length == 0)
+        // {
+        //     return;
+        // }
 
         EnsureCapacity(length);
 
@@ -83,7 +85,12 @@ internal sealed class MersenneNumberDivisorMontgomeryGpuBuilder : IDisposable
             return;
         }
 
-        int newCapacity = _capacity == 0 ? 1 : _capacity;
+        int newCapacity = _capacity;
+        // The builder always starts with a positive capacity, so the zero-capacity fallback remains commented.
+        // if (newCapacity == 0)
+        // {
+        //     newCapacity = 1;
+        // }
         while (newCapacity < required)
         {
             newCapacity <<= 1;

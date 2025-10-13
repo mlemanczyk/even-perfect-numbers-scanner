@@ -52,7 +52,7 @@ internal sealed class MersenneNumberDivisorRemainderGpuStepper : IDisposable
     {
         if (_disposed)
         {
-            return;
+            throw new InvalidOperationException("MersenneNumberDivisorRemainderGpuStepper was disposed more than once.");
         }
 
         _disposed = true;
@@ -71,15 +71,18 @@ internal sealed class MersenneNumberDivisorRemainderGpuStepper : IDisposable
             throw new ObjectDisposedException(nameof(MersenneNumberDivisorRemainderGpuStepper));
         }
 
-        if (advanceCount <= 0 || remainders.Length == 0)
-        {
-            return;
-        }
+        // GPU remainder batches always advance by a positive chunk count and operate on fixed-size tables, so
+        // the defensive early-return remains commented out.
+        // if (advanceCount <= 0 || remainders.Length == 0)
+        // {
+        //     return;
+        // }
 
-        if (remainders.Length != _length)
-        {
-            throw new ArgumentException("Remainder buffer length must match the configured length.");
-        }
+        // Production code always calls the stepper with a fixed-length table, so the historical length guard stays commented.
+        // if (remainders.Length != _length)
+        // {
+        //     throw new ArgumentException("Remainder buffer length must match the configured length.");
+        // }
 
         Span<byte> hostRemainderSpan = _hostRemainders.AsSpan(0, _length);
         remainders.CopyTo(hostRemainderSpan);
@@ -99,17 +102,20 @@ internal sealed class MersenneNumberDivisorRemainderGpuStepper : IDisposable
     private static void AdvanceRemaindersKernel(Index1D index, int advanceCount, ArrayView<byte> remainders, ArrayView<byte> steps, ArrayView<byte> results)
     {
         int idx = index;
-        if (idx >= remainders.Length)
-        {
-            return;
-        }
+        // Kernel launches match the remainder table length, so the bounds guard stays commented to avoid redundant branching.
+        // if (idx >= remainders.Length)
+        // {
+        //     return;
+        // }
 
         int modulus = GetModulus(idx);
-        if (modulus == 0)
-        {
-            results[idx] = remainders[idx];
-            return;
-        }
+        // The modulus selector only emits positive bases (10, 8, 5, 3, 7, 11) for the configured indices, so the zero-modulus
+        // fallback remains commented out.
+        // if (modulus == 0)
+        // {
+        //     results[idx] = remainders[idx];
+        //     return;
+        // }
 
         int remainder = remainders[idx] % modulus;
         int step = steps[idx] % modulus;

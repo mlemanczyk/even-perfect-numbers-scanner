@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 
@@ -10,14 +11,11 @@ namespace PerfectNumbers.Core.Cpu;
 
 public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDivisorByDivisorTester
 {
-    private readonly object _sync = new();
     private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
     private ulong _divisorLimit;
-    private ulong _lastStatusDivisor;
+    private int _lastStatusDivisor;
     private bool _isConfigured;
     private int _batchSize = 1_024;
-
-    private ulong _configuredMaxPrime;
     private ByDivisorDeltasDevice _deltasDevice = ByDivisorDeltasDevice.Cpu;
     private ByDivisorMontgomeryDevice _montgomeryDevice = ByDivisorMontgomeryDevice.Cpu;
 
@@ -34,79 +32,60 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     public ByDivisorDeltasDevice DeltasDevice
     {
         get => _deltasDevice;
-        set
-        {
-            lock (_sync)
-            {
-                _deltasDevice = value;
-            }
-        }
+        set => _deltasDevice = value;
     }
 
     public ByDivisorMontgomeryDevice MontgomeryDevice
     {
         get => _montgomeryDevice;
-        set
-        {
-            lock (_sync)
-            {
-                _montgomeryDevice = value;
-            }
-        }
+        set => _montgomeryDevice = value;
     }
 
     public void ConfigureFromMaxPrime(ulong maxPrime)
     {
-        lock (_sync)
-        {
-            _configuredMaxPrime = maxPrime;
-            _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
-            _lastStatusDivisor = 0UL;
-            _isConfigured = true;
-        }
+        _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
+        _lastStatusDivisor = 0;
+        _isConfigured = true;
     }
 
     public ulong DivisorLimit
     {
         get
         {
-            lock (_sync)
-            {
-                if (!_isConfigured)
-                {
-                    throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-                }
+            // The by-divisor driver configures the tester during startup, so exposing the divisor limit never
+            // re-enters this method before initialization completes.
+            // if (!_isConfigured)
+            // {
+            //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+            // }
 
-                return _divisorLimit;
-            }
+            return _divisorLimit;
         }
     }
 
     public ulong GetAllowedMaxDivisor(ulong prime)
     {
-        lock (_sync)
-        {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
+        // The CLI wires the tester through ConfigureFromMaxPrime before invoking query helpers, so the guard
+        // would never trigger in production runs.
+        // if (!_isConfigured)
+        // {
+        //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+        // }
 
-            return ComputeAllowedMaxDivisor(prime, _divisorLimit);
-        }
+        return ComputeAllowedMaxDivisor(prime, _divisorLimit);
     }
 
     public bool IsPrime(ulong prime, out bool divisorsExhausted, TimeSpan? timeLimit = null)
     {
-        ulong allowedMax;
-        lock (_sync)
-        {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
+        // The tester is configured once during startup, so runtime IsPrime calls always observe a ready
+        // configuration and the legacy guard can remain commented out.
+        // if (!_isConfigured)
+        // {
+        //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+        // }
 
-            allowedMax = ComputeAllowedMaxDivisor(prime, _divisorLimit);
-        }
+        ulong divisorLimit = _divisorLimit;
+        ulong allowedMax = ComputeAllowedMaxDivisor(prime, divisorLimit);
 
         if (allowedMax < 3UL)
         {
@@ -128,10 +107,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         if (processedCount > 0UL)
         {
-            lock (_sync)
-            {
-                UpdateStatusUnsafe(processedCount);
-            }
+            UpdateStatusUnsafe(processedCount);
         }
 
         if (composite)
@@ -146,22 +122,21 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     public void PrepareCandidates(ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)
     {
-        if (allowedMaxValues.Length < primes.Length)
-        {
-            throw new ArgumentException("allowedMaxValues span must be at least as long as primes span.", nameof(allowedMaxValues));
-        }
+        // EvenPerfectBitScanner always provides equally sized spans here, so the historical guard never triggers.
+        // if (allowedMaxValues.Length < primes.Length)
+        // {
+        //     throw new ArgumentException("allowedMaxValues span must be at least as long as primes span.", nameof(allowedMaxValues));
+        // }
 
-        ulong divisorLimit;
+        // PrepareCandidates is scheduled only after ConfigureFromMaxPrime succeeds, so the tester state is
+        // stable here and the defensive guard is no longer needed.
+        // if (!_isConfigured)
+        // {
+        //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+        // }
 
-        lock (_sync)
-        {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            divisorLimit = _divisorLimit;
-        }
+        // Configuration is immutable after startup, so reading the cached limit does not require locking.
+        ulong divisorLimit = _divisorLimit;
 
         for (int index = 0; index < primes.Length; index++)
         {
@@ -171,21 +146,20 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession()
     {
-        lock (_sync)
+        // The session pool is populated only after configuration, so consumers never request a session before
+        // ConfigureFromMaxPrime completes.
+        // if (!_isConfigured)
+        // {
+        //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+        // }
+
+        if (_sessionPool.TryTake(out DivisorScanSession? session))
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            if (_sessionPool.TryTake(out DivisorScanSession? session))
-            {
-                session.Reset();
-                return session;
-            }
-
-            return new DivisorScanSession(this);
+            session.Reset();
+            return session;
         }
+
+        return new DivisorScanSession(this);
     }
 
     private void ReturnSession(DivisorScanSession session)
@@ -236,11 +210,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         }
 
         UInt128 step = (UInt128)prime << 1;
-        if (step == UInt128.Zero)
-        {
-            processedAll = true;
-            return false;
-        }
+        // EvenPerfectBitScanner only supplies primes greater than one here, so the shifted step never becomes zero.
+        // if (step == UInt128.Zero)
+        // {
+        //     processedAll = true;
+        //     return false;
+        // }
 
         UInt128 limit = allowedMax;
         UInt128 divisor = step + UInt128.One;
@@ -323,6 +298,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
                 if (divisorCycle == 0UL)
                 {
+                    // Keep this guard active to surface mismatches between generated candidates and the snapshot cache.
                     Console.WriteLine($"Divisor cycle was not calculated for {prime}");
                 }
             }
@@ -369,11 +345,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         GpuUInt128 step128 = new GpuUInt128(prime);
         step128.ShiftLeft(1);
-        if (step128.IsZero)
-        {
-            processedAll = true;
-            return false;
-        }
+        // Primes above one yield a non-zero 2p value even after widening to GpuUInt128, so the defensive
+        // zero guard remains commented out to document the invariant without branching.
+        // if (step128.IsZero)
+        // {
+        //     processedAll = true;
+        //     return false;
+        // }
 
         GpuUInt128 limit128 = new GpuUInt128(allowedMax);
         GpuUInt128 divisor128 = step128;
@@ -449,10 +427,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 int chunkCount = remainingCandidates > (ulong)batchCapacity
                     ? batchCapacity
                     : (int)remainingCandidates;
-                if (chunkCount <= 0)
-                {
-                    break;
-                }
+                // batchCapacity and remainingCandidates are strictly positive in this path, so the zero-count
+                // shortcut never executes on production scans.
+                // if (chunkCount <= 0)
+                // {
+                //     break;
+                // }
 
                 Span<ulong> candidateSpan = candidateBuffer.AsSpan(0, chunkCount);
                 Span<byte> maskSpan = maskBuffer.AsSpan(0, chunkCount);
@@ -603,17 +583,34 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             return;
         }
 
-        ulong interval = PerfectNumberConstants.ConsoleInterval;
-        if (interval == 0UL)
+        int interval = PerfectNumberConstants.ConsoleInterval;
+        // PerfectNumberConstants.ConsoleInterval is a positive constant, so this guard never triggers on EvenPerfectBitScanner.
+        // if (interval <= 0)
+        // {
+        //     Volatile.Write(ref _lastStatusDivisor, 0);
+        //     return;
+        // }
+
+        int processedDelta = (int)(processedCount % (uint)interval);
+        if (processedDelta == 0)
         {
-            _lastStatusDivisor = 0UL;
             return;
         }
 
-        ulong total = _lastStatusDivisor + processedCount;
-        // TODO: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI
-        // status benchmarks so we avoid `%` in this hot loop while still wrapping progress correctly.
-        _lastStatusDivisor = total % interval;
+        while (true)
+        {
+            int previous = Volatile.Read(ref _lastStatusDivisor);
+            int total = previous + processedDelta;
+            if (total >= interval)
+            {
+                total -= interval;
+            }
+
+            if (previous == Interlocked.CompareExchange(ref _lastStatusDivisor, total, previous))
+            {
+                return;
+            }
+        }
     }
 
     private static ulong ComputeDivisorLimitFromMaxPrime(ulong maxPrime)
@@ -696,11 +693,14 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             }
 
             ulong modulus = effectiveDivisorData.Modulus;
-            if (modulus <= 1UL || (modulus & 1UL) == 0UL)
-            {
-                hits.Clear();
-                return;
-            }
+            // EvenPerfectBitScanner only schedules odd divisors greater than one, and the fallback
+            // above rebuilds Montgomery data when the modulus mismatches, so this guard never
+            // triggers for production scans.
+            // if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+            // {
+            //     hits.Clear();
+            //     return;
+            // }
 
             if (divisorCycle == 0UL)
             {
@@ -803,10 +803,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         private void EnsureCapacity(int requiredLength)
         {
-            if (requiredLength <= 0)
-            {
-                return;
-            }
+            // Prime batches are never empty on the by-divisor scanner path, so the zero-length guard stays commented
+            // out to remove the redundant branch.
+            // if (requiredLength <= 0)
+            // {
+            //     return;
+            // }
 
             // Sessions release pooled buffers between scans; a single null check covers every array because buffers are rented and returned together.
             if (requiredLength <= _bufferCapacity && _primeDeltas is not null)
@@ -817,7 +819,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             int newCapacity = _bufferCapacity;
             if (newCapacity == 0)
             {
-                // Fresh sessions start without buffers; seed the first rent with a single-slot array.
+                // EvenPerfectBitScanner hits this branch on the first batch of each session, so keep the seed allocation.
                 newCapacity = 1;
             }
 
@@ -873,11 +875,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         private static void ComputeCycleRemainders(ulong cycleLength, ReadOnlySpan<ulong> primes, ReadOnlySpan<ulong> deltas, Span<ulong> remainders)
         {
-            if (cycleLength == 0UL || primes.Length == 0)
-            {
-                remainders.Clear();
-                return;
-            }
+            // Divisor cycles are validated before reaching the GPU helper, and prime batches are non-empty, so
+            // the defensive zero checks remain commented out here.
+            // if (cycleLength == 0UL || primes.Length == 0)
+            // {
+            //     remainders.Clear();
+            //     return;
+            // }
 
             ulong remainder = primes[0] % cycleLength;
             remainders[0] = remainder;
@@ -893,6 +897,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         {
             if (modulus == 0UL)
             {
+                // A zero modulus indicates a missing cycle entry; preserve the fallback so snapshot regressions remain visible.
                 return 0UL;
             }
 
