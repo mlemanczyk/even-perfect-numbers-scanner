@@ -258,7 +258,7 @@ public class MersenneNumberDivisorGpuTesterTests
 
     [Fact]
     [Trait("Category", "Fast")]
-    public void ByDivisor_gpu_tester_skips_divisors_excluded_by_small_cycle_generation()
+    public void ByDivisor_gpu_tester_ignores_small_cycle_overrides()
     {
         var cycles = MersenneDivisorCycles.Shared;
         var tableField = typeof(MersenneDivisorCycles).GetField("_table", BindingFlags.NonPublic | BindingFlags.Instance)!;
@@ -269,25 +269,25 @@ public class MersenneNumberDivisorGpuTesterTests
 
         try
         {
-            var patchedTable = new List<(ulong Divisor, ulong Cycle)>();
-            ulong[] patchedSmall = new ulong[PerfectNumberConstants.MaxQForDivisorCycles + 1];
+            var tester = new MersenneNumberDivisorByDivisorGpuTester();
+            tester.ConfigureFromMaxPrime(19UL);
 
-            MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(191UL);
-            patchedSmall[191] = MersenneDivisorCycles.CalculateCycleLength(191UL, divisorData);
+            tester.IsPrime(19UL, out bool baselineExhausted).Should().BeTrue();
+            baselineExhausted.Should().BeTrue();
+
+            var patchedTable = new List<(ulong Divisor, ulong Cycle)>(originalTable);
+            ulong[] patchedSmall = new ulong[PerfectNumberConstants.MaxQForDivisorCycles + 1];
+            patchedSmall[191] = 5UL;
 
             tableField.SetValue(cycles, patchedTable);
             smallCyclesField.SetValue(cycles, patchedSmall);
             DivisorCycleCache.Shared.RefreshSnapshot();
 
-            var tester = new MersenneNumberDivisorByDivisorGpuTester();
-            tester.ConfigureFromMaxPrime(19UL);
+            tester.IsPrime(19UL, out bool patchedExhausted).Should().BeTrue();
+            patchedExhausted.Should().BeTrue();
 
-            typeof(MersenneNumberDivisorByDivisorGpuTester)
-                .GetField("_divisorLimit", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .SetValue(tester, 200UL);
-
-            tester.IsPrime(19UL, out bool divisorsExhausted).Should().BeTrue();
-            divisorsExhausted.Should().BeTrue();
+            MersenneDivisorCycles.TryMatchSmallCycleForFactoring(191UL, 5UL, out ulong cachedCycle).Should().BeTrue();
+            cachedCycle.Should().Be(5UL);
         }
         finally
         {

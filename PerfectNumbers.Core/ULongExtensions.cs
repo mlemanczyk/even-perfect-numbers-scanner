@@ -290,26 +290,17 @@ public static class ULongExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    // TODO: Replace this fallback with the UInt128 Montgomery helper measured fastest in
-    // MulMod64Benchmarks so CPU callers stop paying for triple modulo operations.
-    public static ulong MulMod64(this ulong a, ulong b, ulong modulus) => (ulong)(UInt128)(((a % modulus) * (b % modulus)) % modulus);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong MulMod64GpuCompatible(this ulong a, ulong b, ulong modulus)
+    public static ulong MulMod64(this ulong a, ulong b, ulong modulus)
     {
-        // TODO: Remove this GPU-compatible shim from production once callers migrate to MulMod64,
-        // which the benchmarks show is roughly 6-7× faster on dense 64-bit inputs.
-        GpuUInt128 state = new(a % modulus);
-        return state.MulMod(b, modulus);
-    }
+        if (modulus <= 1UL)
+        {
+            return 0UL;
+        }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong MulMod64GpuCompatibleDeferred(this ulong a, ulong b, ulong modulus)
-    {
-        // TODO: Move this deferred helper to the benchmark suite; the baseline MulMod64 avoids the
-        // 5-40× slowdown seen across real-world operand distributions.
-        GpuUInt128 state = new(a);
-        return state.MulModWithNativeModulo(b, modulus);
+        ulong reducedA = a >= modulus ? a % modulus : a;
+        ulong reducedB = b >= modulus ? b % modulus : b;
+        GpuUInt128 state = new(reducedA);
+        return state.MulMod(reducedB, modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -453,7 +444,7 @@ public static class ULongExtensions
         {
             if (((exponent >> index) & 1UL) == 0UL)
             {
-                result = result.MulMod64GpuCompatible(result, modulus);
+                result = result.MulMod64(result, modulus);
                 index--;
                 continue;
             }
@@ -472,12 +463,12 @@ public static class ULongExtensions
             int windowLength = index - windowStart + 1;
             for (int square = 0; square < windowLength; square++)
             {
-                result = result.MulMod64GpuCompatible(result, modulus);
+                result = result.MulMod64(result, modulus);
             }
 
             ulong windowValue = (exponent >> windowStart) & ((1UL << windowLength) - 1UL);
             int tableIndex = (int)((windowValue - 1UL) >> 1);
-            result = result.MulMod64GpuCompatible(oddPowers.Get(tableIndex), modulus);
+            result = result.MulMod64(oddPowers.Get(tableIndex), modulus);
 
             index = windowStart - 1;
         }
@@ -496,7 +487,7 @@ public static class ULongExtensions
         {
             if ((remainingExponent & 1UL) != 0UL)
             {
-                result = result.MulMod64GpuCompatible(baseValue, modulus);
+                result = result.MulMod64(baseValue, modulus);
             }
 
             remainingExponent >>= 1;
@@ -505,7 +496,7 @@ public static class ULongExtensions
                 break;
             }
 
-            baseValue = baseValue.MulMod64GpuCompatible(baseValue, modulus);
+            baseValue = baseValue.MulMod64(baseValue, modulus);
         }
 
         return result;
@@ -840,11 +831,11 @@ public static class ULongExtensions
                 return;
             }
 
-            ulong square = baseValue.MulMod64GpuCompatible(baseValue, modulus);
+            ulong square = baseValue.MulMod64(baseValue, modulus);
             ulong current = baseValue;
             for (int i = 1; i < _count; i++)
             {
-                current = current.MulMod64GpuCompatible(square, modulus);
+                current = current.MulMod64(square, modulus);
                 SetValue(i, current);
             }
         }

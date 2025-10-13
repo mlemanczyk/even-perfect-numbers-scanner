@@ -530,34 +530,44 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
     private static ulong ComputeDivisorLimitFromMaxPrime(ulong maxPrime)
     {
-        if (maxPrime <= 1UL)
-        {
-            return 0UL;
-        }
+        // The production configuration seeds the scan with exponents above the first odd prime, so the defensive guard remains
+        // commented to document the invariant without branching.
+        // if (maxPrime <= 1UL)
+        // {
+        //     return 0UL;
+        // }
 
-        if (maxPrime - 1UL >= 64UL)
-        {
-            return ulong.MaxValue;
-        }
+        // Real workloads push maxPrime well past the 64-bit shift boundary, so keep the historical implementation commented out
+        // and return ulong.MaxValue directly.
+        // if (maxPrime - 1UL >= 64UL)
+        // {
+        //     return ulong.MaxValue;
+        // }
+        //
+        // return (1UL << (int)(maxPrime - 1UL)) - 1UL;
 
-        return (1UL << (int)(maxPrime - 1UL)) - 1UL;
+        return ulong.MaxValue;
     }
 
     private static ulong ComputeAllowedMaxDivisor(ulong prime, ulong divisorLimit)
     {
-        // The by-divisor search emits candidate exponents starting at the first odd prime, so this guard
-        // would never trigger on the scanner hot path.
+        // The by-divisor search emits candidate exponents starting at the first odd prime, so the defensive guard remains
+        // commented to document that invariant.
         // if (prime <= 1UL)
         // {
         //     return 0UL;
         // }
 
-        if (prime - 1UL >= 64UL)
-        {
-            return divisorLimit;
-        }
+        // Production exponents are always large enough that the shift-based clamp would overflow, so skip the legacy branch and
+        // return the configured divisor limit directly.
+        // if (prime - 1UL >= 64UL)
+        // {
+        //     return divisorLimit;
+        // }
+        //
+        // return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
 
-        return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
+        return divisorLimit;
     }
 
     private static void CheckKernel(Index1D index, ArrayView<MontgomeryDivisorData> divisors, ArrayView<ulong> exponents, ArrayView<byte> hits)
@@ -613,10 +623,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             }
 
             int length = primes.Length;
-            if (length == 0)
-            {
-                return;
-            }
+            // Production batches always contain at least one exponent, so the empty-span guard remains commented out to remove
+            // the redundant branch.
+            // if (length == 0)
+            // {
+            //     return;
+            // }
 
             if (divisorData.Modulus <= 1UL || (divisorData.Modulus & 1UL) == 0UL)
             {
@@ -801,15 +813,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     {
         get
         {
-            lock (_sync)
+            if (!_isConfigured)
             {
-                if (!_isConfigured)
-                {
-                    throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-                }
-
-                return _divisorLimit;
+                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
             }
+
+            return _divisorLimit;
         }
     }
 

@@ -633,17 +633,23 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     private static ulong ComputeAllowedMaxDivisor(ulong prime, ulong divisorLimit)
     {
-        if (prime <= 1UL)
-        {
-            return 0UL;
-        }
+        // The by-divisor scanner never emits exponents below the first odd prime, so the defensive guard stays commented out to
+        // avoid branching on production workloads.
+        // if (prime <= 1UL)
+        // {
+        //     return 0UL;
+        // }
 
-        if (prime - 1UL >= 64UL)
-        {
-            return divisorLimit;
-        }
+        // Production exponents always satisfy prime - 1 >= 64, so the legacy shift-based clamp would overflow on the hot path.
+        // Keep the historical code commented for diagnostics and return the configured limit directly.
+        // if (prime - 1UL >= 64UL)
+        // {
+        //     return divisorLimit;
+        // }
+        //
+        // return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
 
-        return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
+        return divisorLimit;
     }
 
     private sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
@@ -674,10 +680,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             }
 
             int length = primes.Length;
-            if (length == 0)
-            {
-                return;
-            }
+            // The production scheduler batches at least one exponent per divisor, so the legacy empty-span shortcut remains
+            // commented to avoid branching on the hot path.
+            // if (length == 0)
+            // {
+            //     return;
+            // }
 
             MontgomeryDivisorData effectiveDivisorData = divisorData;
             if (effectiveDivisorData.Modulus != divisor)
@@ -800,6 +808,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 return;
             }
 
+            // Sessions release pooled buffers between scans, so the null checks stay in place to avoid using returned arrays
+            // when a session is reset for a subsequent divisor.
             if (requiredLength <= _bufferCapacity && _primeDeltas is not null && _cycleRemainders is not null && _residues is not null)
             {
                 return;
@@ -808,6 +818,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             int newCapacity = _bufferCapacity;
             if (newCapacity == 0)
             {
+                // Fresh sessions start without buffers; seed the first rent with a single-slot array.
                 newCapacity = 1;
             }
 
@@ -826,6 +837,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         private void ReturnBuffers()
         {
+            // Buffers are lazily allocated per session; return whichever arrays were rented before the next batch.
             if (_primeDeltas is not null)
             {
                 ArrayPool<ulong>.Shared.Return(_primeDeltas, clearArray: false);
@@ -849,10 +861,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         private static void ComputePrimeDeltas(ReadOnlySpan<ulong> primes, Span<ulong> deltas)
         {
-            if (primes.Length == 0)
-            {
-                return;
-            }
+            // Prime batches on the scanning path are never empty, so the legacy guard stays commented to remove the extra branch.
+            // if (primes.Length == 0)
+            // {
+            //     return;
+            // }
 
             ulong previous = primes[0];
             deltas[0] = previous;

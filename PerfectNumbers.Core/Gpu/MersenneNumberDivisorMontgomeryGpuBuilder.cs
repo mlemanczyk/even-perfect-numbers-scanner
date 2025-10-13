@@ -118,7 +118,7 @@ internal sealed class MersenneNumberDivisorMontgomeryGpuBuilder : IDisposable
 
         ulong nPrime = ComputeMontgomeryNPrime(modulus);
         ulong montgomeryOne = ComputeMontgomeryResidue64(modulus);
-        ulong montgomeryTwo = montgomeryOne.MulMod64GpuCompatible(2UL, modulus);
+        ulong montgomeryTwo = montgomeryOne.MulMod64(2UL, modulus);
         ulong montgomeryTwoSquared = MontgomeryMultiplyGpu(montgomeryTwo, montgomeryTwo, modulus, nPrime);
 
         destination[idx] = new MontgomeryDivisorData(

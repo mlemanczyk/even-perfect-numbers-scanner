@@ -158,36 +158,16 @@ public class MulMod64Benchmarks
     }
 
     /// <summary>
-    /// Uses the GPU-friendly <see cref="ULongExtensions.MulMod64GpuCompatible(ulong, ulong, ulong)"/> helper; dense inputs now
-    /// cost 24.4–61.9 ns, while NearFullRange and SparseOperands finish near 7.27 ns and ZeroOperands stay baseline-fast at
-    /// 3.59 ns.
+    /// Uses the production <see cref="ULongExtensions.MulMod64(ulong, ulong, ulong)"/> helper shared by CPU and GPU callers.
     /// </summary>
     /// <remarks>
-    /// Observed means: CrossWordBlend 24.422 ns (6.86×), MixedBitPattern 61.850 ns, NearFullRange 7.267 ns,
+    /// Observed means prior to the helper consolidation: CrossWordBlend 24.422 ns, MixedBitPattern 61.850 ns, NearFullRange 7.267 ns,
     /// PrimeSizedModulus 55.114 ns, SparseOperands 7.261 ns, ZeroOperands 3.587 ns.
     /// </remarks>
     [Benchmark]
-    public ulong GpuCompatibleBaseline()
+    public ulong UnifiedMulMod()
     {
-        // TODO: Callers in production should migrate to ULongExtensions.MulMod64 where GPU parity
-        // is not required; that baseline stayed 6–17× faster for dense 64-bit operands.
-        return Input.Left.MulMod64GpuCompatible(Input.Right, Input.Modulus);
-    }
-
-    /// <summary>
-    /// Uses the deferred native-modulo helper <see cref="ULongExtensions.MulMod64GpuCompatibleDeferred(ulong, ulong, ulong)"/>;
-    /// excels when operands are tiny (2.01 ns on ZeroOperands) yet remains the slowest choice on dense data at 146–295 ns.
-    /// </summary>
-    /// <remarks>
-    /// Observed means: CrossWordBlend 146.559 ns (40.63×), MixedBitPattern 255.555 ns, NearFullRange 21.390 ns,
-    /// PrimeSizedModulus 294.486 ns, SparseOperands 18.182 ns, ZeroOperands 2.009 ns.
-    /// </remarks>
-    [Benchmark]
-    public ulong GpuCompatibleDeferred()
-    {
-        // TODO: Retire the deferred GPU shim from runtime paths and keep it only for benchmarks;
-        // ULongExtensions.MulMod64 avoids the 6×–82× slowdown on real-world operand mixes.
-        return Input.Left.MulMod64GpuCompatibleDeferred(Input.Right, Input.Modulus);
+        return Input.Left.MulMod64(Input.Right, Input.Modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

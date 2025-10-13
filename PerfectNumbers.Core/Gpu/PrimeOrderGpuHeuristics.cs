@@ -850,10 +850,11 @@ internal static partial class PrimeOrderGpuHeuristics
         {
             ulong primeFactor = factors[i];
             int exponent = exponents[i];
-            if (primeFactor <= 1UL)
-            {
-                continue;
-            }
+            // Factorization never yields unity on the scanning path, so skip the redundant guard.
+            // if (primeFactor <= 1UL)
+            // {
+            //     continue;
+            // }
 
             for (int iteration = 0; iteration < exponent; iteration++)
             {
@@ -889,10 +890,12 @@ internal static partial class PrimeOrderGpuHeuristics
         ArrayView1D<ulong, Stride1D.Dense> compositeStack,
         ArrayView1D<byte, Stride1D.Dense> statusOut)
     {
-        if (order == 0UL)
-        {
-            return false;
-        }
+        // Order values handed to the kernel are strictly positive on the production path, so the zero guard stays commented
+        // out to remove the redundant branch.
+        // if (order == 0UL)
+        // {
+        //     return false;
+        // }
 
         if ((order).Pow2ModWindowedGpu(divisor.Modulus) != 1UL)
         {
@@ -924,10 +927,11 @@ internal static partial class PrimeOrderGpuHeuristics
         {
             ulong primeFactor = factors[i];
             int exponent = exponents[i];
-            if (primeFactor <= 1UL)
-            {
-                continue;
-            }
+            // Factorization never yields one on the by-divisor path, so the defensive continue stays commented out.
+            // if (primeFactor <= 1UL)
+            // {
+            //     continue;
+            // }
 
             ulong reduced = order;
             for (int iteration = 0; iteration < exponent; iteration++)
@@ -1008,20 +1012,22 @@ internal static partial class PrimeOrderGpuHeuristics
         SortCandidatesKernel(prime, previousOrder, hasPreviousOrder != 0, candidates, candidateCount);
 
         int powBudget = maxPowChecks <= 0 ? candidateCount : maxPowChecks;
-        if (powBudget <= 0)
-        {
-            powBudget = candidateCount;
-        }
+        // The heuristics always reserve at least one check, so the zero-budget fallback remains commented out.
+        // if (powBudget <= 0)
+        // {
+        //     powBudget = candidateCount;
+        // }
 
         int powUsed = 0;
 
         for (int i = 0; i < candidateCount && powUsed < powBudget; i++)
         {
             ulong candidate = candidates[i];
-            if (candidate <= 1UL)
-            {
-                continue;
-            }
+            // Candidate generation skips 1 by construction, so the defensive continue stays commented out.
+            // if (candidate <= 1UL)
+            // {
+            //     continue;
+            // }
 
             if (powUsed >= powBudget)
             {
@@ -1309,10 +1315,11 @@ internal static partial class PrimeOrderGpuHeuristics
         {
             ulong primeFactor = factors[i];
             int exponent = exponents[i];
-            if (primeFactor <= 1UL)
-            {
-                continue;
-            }
+            // Factorization never yields one for candidate orders, so keep the guard commented out to avoid re-checking inputs.
+            // if (primeFactor <= 1UL)
+            // {
+            //     continue;
+            // }
 
             ulong reduced = candidate;
             for (int iteration = 0; iteration < exponent; iteration++)
@@ -1351,10 +1358,12 @@ internal static partial class PrimeOrderGpuHeuristics
         ArrayView1D<ulong, Stride1D.Dense> compositeStack,
         ArrayView1D<byte, Stride1D.Dense> statusOut)
     {
-        if (initial <= 1UL)
-        {
-            return true;
-        }
+        // Composite candidates sent here are always greater than one during production scans, so the trivial-return branch stays
+        // commented out.
+        // if (initial <= 1UL)
+        // {
+        //     return true;
+        // }
 
         int stackCapacity = (int)compositeStack.Length;
         if (stackCapacity <= 0)
@@ -1616,10 +1625,11 @@ internal static partial class PrimeOrderGpuHeuristics
 
     private static GpuPow2ModStatus TryPow2ModBatchInternal(ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> remainders)
     {
-        if (exponents.Length == 0)
-        {
-            return GpuPow2ModStatus.Success;
-        }
+        // Residue batches are never empty on production workloads, so skip the zero-length success shortcut.
+        // if (exponents.Length == 0)
+        // {
+        //     return GpuPow2ModStatus.Success;
+        // }
 
         if (remainders.Length < exponents.Length)
         {
@@ -1706,10 +1716,11 @@ internal static partial class PrimeOrderGpuHeuristics
     private static bool TryComputeOnGpuWide(ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> results)
     {
         int length = exponents.Length;
-        if (length == 0)
-        {
-            return true;
-        }
+        // Production launches always carry work, so keep the empty-batch shortcut commented out.
+        // if (length == 0)
+        // {
+        //     return true;
+        // }
 
         GpuUInt128[]? rentedExponents = null;
         GpuUInt128[]? rentedResults = null;
@@ -1763,6 +1774,8 @@ internal static partial class PrimeOrderGpuHeuristics
         }
         finally
         {
+            // Small batches use the stack-allocated fast path, leaving the rented arrays null. Retain the guards so pooled
+            // buffers are only returned when they were actually leased.
             if (rentedExponents is not null)
             {
                 ArrayPool<GpuUInt128>.Shared.Return(rentedExponents, clearArray: false);

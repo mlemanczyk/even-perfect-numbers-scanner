@@ -103,10 +103,12 @@ internal sealed class MersenneNumberDivisorResidueGpuEvaluator : IDisposable
     {
         int idx = index;
         int length = (int)exponents.Length;
-        if (idx >= length)
-        {
-            return;
-        }
+        // Batched launches match the buffer length on production workloads, so the bounds guard stays commented out to remove
+        // the redundant comparison.
+        // if (idx >= length)
+        // {
+        //     return;
+        // }
 
         ulong exponent = exponents[idx];
         ulong modulus = divisorData.Modulus;
