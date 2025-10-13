@@ -86,11 +86,10 @@ public sealed class DivisorCycleCache
                 }
 
                 cycles[i] = cached;
+                continue;
             }
-            else
-            {
-                missingBuffer[missingCount++] = i;
-            }
+
+            missingBuffer[missingCount++] = i;
         }
 
         if (missingCount != 0)
@@ -104,6 +103,7 @@ public sealed class DivisorCycleCache
             {
                 ComputeCyclesCpu(divisors, cycles, missingIndices);
             }
+
         }
 
         if (rentedMissing is not null)

@@ -12,13 +12,17 @@ public static class ULongExtensions
     private const int Pow2WindowSize = 8;
     private const ulong Pow2WindowFallbackThreshold = 32UL;
     private const int Pow2WindowOddPowerCount = 1 << (Pow2WindowSize - 1);
+    private const int Pow2WindowSizeGpu = 5;
+    private const int Pow2WindowOddPowerCountGpu = 1 << (Pow2WindowSizeGpu - 1);
 
     public static ulong CalculateOrder(this ulong q)
     {
-        if (q <= 2UL)
-        {
-            return 0UL;
-        }
+        // Order computations only run on admissible divisors, so the small-prime guard remains commented out to keep the
+        // path branch-free.
+        // if (q <= 2UL)
+        // {
+        //     return 0UL;
+        // }
 
         ulong order = q - 1UL, prime, temp;
         uint[] smallPrimes = PrimesGenerator.SmallPrimes;
@@ -77,7 +81,7 @@ public static class ULongExtensions
     public static ulong MultiplyShiftRightShiftFirst(ulong value, ulong multiplier, int shift)
     {
         ulong high = value >> shift;
-		ulong mask = (1UL << shift) - 1UL;
+        ulong mask = (1UL << shift) - 1UL;
         ulong low = value & mask;
 
         UInt128 highContribution = (UInt128)high * multiplier;
@@ -288,26 +292,220 @@ public static class ULongExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    // TODO: Replace this fallback with the UInt128 Montgomery helper measured fastest in
-    // MulMod64Benchmarks so CPU callers stop paying for triple modulo operations.
-    public static ulong MulMod64(this ulong a, ulong b, ulong modulus) => (ulong)(UInt128)(((a % modulus) * (b % modulus)) % modulus);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong MulMod64GpuCompatible(this ulong a, ulong b, ulong modulus)
+    public static ulong MulMod64(this ulong a, ulong b, ulong modulus)
     {
-        // TODO: Remove this GPU-compatible shim from production once callers migrate to MulMod64,
-        // which the benchmarks show is roughly 6-7× faster on dense 64-bit inputs.
-        GpuUInt128 state = new(a % modulus);
-        return state.MulMod(b, modulus);
+        // Scanner inputs always provide odd prime moduli, so the legacy modulus guard stays commented out to avoid extra
+        // branching.
+        // if (modulus <= 1UL)
+        // {
+        //     return 0UL;
+        // }
+
+        ulong reducedA = a >= modulus ? a % modulus : a;
+        ulong reducedB = b >= modulus ? b % modulus : b;
+        GpuUInt128 state = new(reducedA);
+        return state.MulMod(reducedB, modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong MulMod64GpuCompatibleDeferred(this ulong a, ulong b, ulong modulus)
+    public static ulong Pow2ModWindowedCpu(this ulong exponent, ulong modulus)
     {
-        // TODO: Move this deferred helper to the benchmark suite; the baseline MulMod64 avoids the
-        // 5-40× slowdown seen across real-world operand distributions.
-        GpuUInt128 state = new(a);
-        return state.MulModWithNativeModulo(b, modulus);
+        // The by-divisor pipeline only schedules odd prime moduli, so the defensive check below
+        // would never trigger on that path. Leaving it commented documents the invariant without
+        // forcing a branch in the hot loop.
+        // if (modulus <= 1UL)
+        // {
+        //     return 0UL;
+        // }
+
+        // Exponents flow from the strictly positive candidate list on the by-divisor scanner, so
+        // this guard would be redundant there.
+        // if (exponent == 0UL)
+        // {
+        //     return 1UL % modulus;
+        // }
+
+        // Even though the by-divisor pipeline only feeds very large exponents, the legacy diagnostic callers
+        // still hit this small-exponent fast path, so keep the fallback in place.
+        if (exponent <= Pow2WindowFallbackThreshold)
+        {
+            return Pow2ModBinaryFallback(exponent, modulus);
+        }
+
+        int bitLength = GetPortableBitLength(exponent);
+        int windowSize = GetWindowSize(bitLength);
+        int oddPowerCount = 1 << (windowSize - 1);
+
+        Span<ulong> oddPowerStorage = oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount
+            ? stackalloc ulong[PerfectNumberConstants.MaxOddPowersCount]
+            : new ulong[oddPowerCount];
+        oddPowerStorage = oddPowerStorage[..oddPowerCount];
+        InitializePlainOddPowers(modulus, oddPowerStorage);
+
+        // With modulus guaranteed to exceed one on the scanning path, the modulo operation would
+        // always yield one, so keep the literal to highlight the intended base value.
+        ulong result = 1UL;
+        int index = bitLength - 1;
+
+        while (index >= 0)
+        {
+            if (((exponent >> index) & 1UL) == 0UL)
+            {
+                result = result.MulMod64(result, modulus);
+                index--;
+                continue;
+            }
+
+            int windowStart = index - windowSize + 1;
+            if (windowStart < 0)
+            {
+                windowStart = 0;
+            }
+
+            while (((exponent >> windowStart) & 1UL) == 0UL)
+            {
+                windowStart++;
+            }
+
+            int windowLength = index - windowStart + 1;
+            for (int square = 0; square < windowLength; square++)
+            {
+                result = result.MulMod64(result, modulus);
+            }
+
+            ulong windowValue = (exponent >> windowStart) & ((1UL << windowLength) - 1UL);
+            int tableIndex = (int)((windowValue - 1UL) >> 1);
+            result = result.MulMod64(oddPowerStorage[tableIndex], modulus);
+
+            index = windowStart - 1;
+        }
+
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong Pow2ModBinaryFallback(ulong exponent, ulong modulus)
+    {
+        // The scanning path keeps modulus strictly greater than one, but other utility callers still
+        // rely on this fallback for tiny exponents, so leave the modulo in place for safety.
+        ulong remainingExponent = exponent;
+        // Production moduli are always odd primes greater than two, so normalize the seed values directly.
+        ulong result = 1UL;
+        ulong baseValue = 2UL;
+
+        while (remainingExponent != 0UL)
+        {
+            if ((remainingExponent & 1UL) != 0UL)
+            {
+                result = result.MulMod64(baseValue, modulus);
+            }
+
+            remainingExponent >>= 1;
+            if (remainingExponent == 0UL)
+            {
+                break;
+            }
+
+            baseValue = baseValue.MulMod64(baseValue, modulus);
+        }
+
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong Pow2ModWindowedGpu(this ulong exponent, ulong modulus)
+    {
+        // The GPU pipeline feeds only odd prime moduli, so the removed guard would never fire for
+        // EvenPerfectBitScanner workloads.
+        // if (modulus <= 1UL)
+        // {
+        //     return 0UL;
+        // }
+
+        // The GPU pipeline only emits positive exponents on production workloads, so skip the zero guard to avoid an extra branch.
+        // Diagnostic harnesses must normalize their inputs before invoking this helper.
+        // if (exponent == 0UL)
+        // {
+        //     return 1UL;
+        // }
+
+        // The GPU kernels mostly process large exponents as well, but the binary fallback still serves
+        // diagnostic harnesses that probe edge cases around the threshold.
+        if (exponent <= Pow2WindowFallbackThreshold)
+        {
+            return Pow2ModBinaryGpuFallback(exponent, modulus);
+        }
+
+        int bitLength = GetPortableBitLength(exponent);
+        int windowSize = GetGpuWindowSize(bitLength);
+        int oddPowerCount = 1 << (windowSize - 1);
+
+        PlainOddPowerTableGpu oddPowers = new PlainOddPowerTableGpu(modulus, oddPowerCount);
+
+        ulong result = 1UL;
+        int index = bitLength - 1;
+
+        while (index >= 0)
+        {
+            if (((exponent >> index) & 1UL) == 0UL)
+            {
+                result = result.MulMod64(result, modulus);
+                index--;
+                continue;
+            }
+
+            int windowStart = index - windowSize + 1;
+            if (windowStart < 0)
+            {
+                windowStart = 0;
+            }
+
+            while (((exponent >> windowStart) & 1UL) == 0UL)
+            {
+                windowStart++;
+            }
+
+            int windowLength = index - windowStart + 1;
+            for (int square = 0; square < windowLength; square++)
+            {
+                result = result.MulMod64(result, modulus);
+            }
+
+            ulong windowValue = (exponent >> windowStart) & ((1UL << windowLength) - 1UL);
+            int tableIndex = (int)((windowValue - 1UL) >> 1);
+            result = result.MulMod64(oddPowers.Get(tableIndex), modulus);
+
+            index = windowStart - 1;
+        }
+
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong Pow2ModBinaryGpuFallback(ulong exponent, ulong modulus)
+    {
+        ulong remainingExponent = exponent;
+        // Production moduli are always odd primes greater than two, so normalize the seed values directly.
+        ulong result = 1UL;
+        ulong baseValue = 2UL;
+
+        while (remainingExponent != 0UL)
+        {
+            if ((remainingExponent & 1UL) != 0UL)
+            {
+                result = result.MulMod64(baseValue, modulus);
+            }
+
+            remainingExponent >>= 1;
+            if (remainingExponent == 0UL)
+            {
+                break;
+            }
+
+            baseValue = baseValue.MulMod64(baseValue, modulus);
+        }
+
+        return result;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -347,10 +545,16 @@ public static class ULongExtensions
         ulong result = divisor.MontgomeryOne;
         ulong nPrime = divisor.NPrime;
 
-        Span<ulong> oddPowerStorage = oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount ? stackalloc ulong[PerfectNumberConstants.MaxOddPowersCount] : default;
+        Span<ulong> oddPowerStorage = oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount
+            ? stackalloc ulong[PerfectNumberConstants.MaxOddPowersCount]
+            : default;
         ulong[]? pooledOddPowers = null;
 
-		if (oddPowerCount < PerfectNumberConstants.PooledArrayThreshold)
+        if (oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount)
+        {
+            oddPowerStorage = oddPowerStorage[..oddPowerCount];
+        }
+        else if (oddPowerCount < PerfectNumberConstants.PooledArrayThreshold)
         {
             oddPowerStorage = new ulong[oddPowerCount];
         }
@@ -548,6 +752,187 @@ public static class ULongExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetGpuWindowSize(int bitLength)
+    {
+        int window = GetWindowSize(bitLength);
+        return window > Pow2WindowSizeGpu ? Pow2WindowSizeGpu : window;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void InitializePlainOddPowers(ulong modulus, Span<ulong> destination)
+    {
+        int oddPowerCount = destination.Length;
+        // The by-divisor kernels always request at least one odd power, but other helpers reuse this initializer
+        // for smaller workloads, so the early exit stays in place.
+        if (oddPowerCount == 0)
+        {
+            return;
+        }
+
+        ulong baseValue = 2UL % modulus;
+        destination[0] = baseValue;
+        if (oddPowerCount == 1)
+        {
+            return;
+        }
+
+        ulong square = baseValue.MulMod64(baseValue, modulus);
+        for (int i = 1; i < oddPowerCount; i++)
+        {
+            // Reuse baseValue to accumulate successive odd powers and avoid allocating another local.
+            baseValue = baseValue.MulMod64(square, modulus);
+            destination[i] = baseValue;
+        }
+    }
+
+    private struct PlainOddPowerTableGpu
+    {
+        private readonly int _count;
+        private ulong _value0;
+        private ulong _value1;
+        private ulong _value2;
+        private ulong _value3;
+        private ulong _value4;
+        private ulong _value5;
+        private ulong _value6;
+        private ulong _value7;
+        private ulong _value8;
+        private ulong _value9;
+        private ulong _value10;
+        private ulong _value11;
+        private ulong _value12;
+        private ulong _value13;
+        private ulong _value14;
+        private ulong _value15;
+
+        public PlainOddPowerTableGpu(ulong modulus, int requestedCount)
+        {
+            _count = requestedCount > Pow2WindowOddPowerCountGpu ? Pow2WindowOddPowerCountGpu : requestedCount;
+            _value0 = 0UL;
+            _value1 = 0UL;
+            _value2 = 0UL;
+            _value3 = 0UL;
+            _value4 = 0UL;
+            _value5 = 0UL;
+            _value6 = 0UL;
+            _value7 = 0UL;
+            _value8 = 0UL;
+            _value9 = 0UL;
+            _value10 = 0UL;
+            _value11 = 0UL;
+            _value12 = 0UL;
+            _value13 = 0UL;
+            _value14 = 0UL;
+            _value15 = 0UL;
+
+            // Window planning always requests at least one odd power, so keep the zero-count check commented out to avoid
+            // branching here.
+            // if (_count == 0)
+            // {
+            //     return;
+            // }
+
+            ulong baseValue = 2UL;
+            _value0 = baseValue;
+            if (_count == 1)
+            {
+                return;
+            }
+
+            ulong square = baseValue.MulMod64(baseValue, modulus);
+            ulong current = baseValue;
+            for (int i = 1; i < _count; i++)
+            {
+                current = current.MulMod64(square, modulus);
+                SetValue(i, current);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ulong Get(int index)
+        {
+            // Windowed lookups never exceed the populated table bounds on production workloads, so leave the check commented
+            // out to remove the branch.
+            // if ((uint)index >= (uint)_count)
+            // {
+            //     return 0UL;
+            // }
+
+            return index switch
+            {
+                0 => _value0,
+                1 => _value1,
+                2 => _value2,
+                3 => _value3,
+                4 => _value4,
+                5 => _value5,
+                6 => _value6,
+                7 => _value7,
+                8 => _value8,
+                9 => _value9,
+                10 => _value10,
+                11 => _value11,
+                12 => _value12,
+                13 => _value13,
+                14 => _value14,
+                _ => _value15,
+            };
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetValue(int index, ulong value)
+        {
+            switch (index)
+            {
+                case 1:
+                    _value1 = value;
+                    break;
+                case 2:
+                    _value2 = value;
+                    break;
+                case 3:
+                    _value3 = value;
+                    break;
+                case 4:
+                    _value4 = value;
+                    break;
+                case 5:
+                    _value5 = value;
+                    break;
+                case 6:
+                    _value6 = value;
+                    break;
+                case 7:
+                    _value7 = value;
+                    break;
+                case 8:
+                    _value8 = value;
+                    break;
+                case 9:
+                    _value9 = value;
+                    break;
+                case 10:
+                    _value10 = value;
+                    break;
+                case 11:
+                    _value11 = value;
+                    break;
+                case 12:
+                    _value12 = value;
+                    break;
+                case 13:
+                    _value13 = value;
+                    break;
+                case 14:
+                    _value14 = value;
+                    break;
+                case 15:
+                    _value15 = value;
+                    break;
+            }
+        }
+    }
+
     private static void InitializeMontgomeryOddPowersCpu(in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime, Span<ulong> destination)
     {
         int oddPowerCount = destination.Length;

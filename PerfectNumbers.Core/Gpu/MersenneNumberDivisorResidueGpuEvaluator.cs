@@ -103,12 +103,23 @@ internal sealed class MersenneNumberDivisorResidueGpuEvaluator : IDisposable
     {
         int idx = index;
         int length = (int)exponents.Length;
-        if (idx >= length)
-        {
-            return;
-        }
+        // Batched launches match the buffer length on production workloads, so the bounds guard stays commented out to remove
+        // the redundant comparison.
+        // if (idx >= length)
+        // {
+        //     return;
+        // }
 
         ulong exponent = exponents[idx];
-        results[idx] = exponent.Pow2MontgomeryModWindowedGpu(divisorData, keepMontgomery: true);
+        ulong modulus = divisorData.Modulus;
+        // Residue batches only include valid odd moduli, so the defensive check stays commented to avoid re-validating
+        // the invariant on every iteration.
+        // if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+        // {
+        //     results[idx] = 0UL;
+        //     return;
+        // }
+
+        results[idx] = exponent.Pow2ModWindowedGpu(modulus);
     }
 }

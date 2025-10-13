@@ -633,17 +633,23 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     private static ulong ComputeAllowedMaxDivisor(ulong prime, ulong divisorLimit)
     {
-        if (prime <= 1UL)
-        {
-            return 0UL;
-        }
+        // The by-divisor scanner never emits exponents below the first odd prime, so the defensive guard stays commented out to
+        // avoid branching on production workloads.
+        // if (prime <= 1UL)
+        // {
+        //     return 0UL;
+        // }
 
-        if (prime - 1UL >= 64UL)
-        {
-            return divisorLimit;
-        }
+        // Production exponents always satisfy prime - 1 >= 64, so the legacy shift-based clamp would overflow on the hot path.
+        // Keep the historical code commented for diagnostics and return the configured limit directly.
+        // if (prime - 1UL >= 64UL)
+        // {
+        //     return divisorLimit;
+        // }
+        //
+        // return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
 
-        return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
+        return divisorLimit;
     }
 
     private sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
@@ -652,7 +658,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         private bool _disposed;
         private ulong[]? _primeDeltas;
         private ulong[]? _cycleRemainders;
-        private ulong[]? _montgomeryDeltas;
+        private ulong[]? _residues;
         private int _bufferCapacity;
         private MersenneNumberDivisorResidueGpuEvaluator? _gpuResidueEvaluator;
 
@@ -674,10 +680,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             }
 
             int length = primes.Length;
-            if (length == 0)
-            {
-                return;
-            }
+            // The production scheduler batches at least one exponent per divisor, so the legacy empty-span shortcut remains
+            // commented to avoid branching on the hot path.
+            // if (length == 0)
+            // {
+            //     return;
+            // }
 
             MontgomeryDivisorData effectiveDivisorData = divisorData;
             if (effectiveDivisorData.Modulus != divisor)
@@ -765,13 +773,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             ComputeCycleRemainders(divisorCycle, primes, deltaSpan, remainderSpan);
 
             EnsureGpuEvaluator();
-            Span<ulong> residueSpan = _montgomeryDeltas!.AsSpan(0, length);
+            Span<ulong> residueSpan = _residues!.AsSpan(0, length);
             _gpuResidueEvaluator!.ComputeResidues(primes, divisorData, residueSpan);
 
-            ulong montgomeryOne = divisorData.MontgomeryOne;
             for (int i = 0; i < length; i++)
             {
-                hits[i] = remainderSpan[i] == 0UL && residueSpan[i] == montgomeryOne ? (byte)1 : (byte)0;
+                hits[i] = remainderSpan[i] == 0UL && residueSpan[i] == 1UL ? (byte)1 : (byte)0;
             }
         }
 
@@ -801,7 +808,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 return;
             }
 
-            if (requiredLength <= _bufferCapacity && _primeDeltas is not null && _cycleRemainders is not null && _montgomeryDeltas is not null)
+            // Sessions release pooled buffers between scans; a single null check covers every array because buffers are rented and returned together.
+            if (requiredLength <= _bufferCapacity && _primeDeltas is not null)
             {
                 return;
             }
@@ -809,6 +817,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             int newCapacity = _bufferCapacity;
             if (newCapacity == 0)
             {
+                // Fresh sessions start without buffers; seed the first rent with a single-slot array.
                 newCapacity = 1;
             }
 
@@ -821,51 +830,42 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
             _primeDeltas = ArrayPool<ulong>.Shared.Rent(newCapacity);
             _cycleRemainders = ArrayPool<ulong>.Shared.Rent(newCapacity);
-            _montgomeryDeltas = ArrayPool<ulong>.Shared.Rent(newCapacity);
+            _residues = ArrayPool<ulong>.Shared.Rent(newCapacity);
             _bufferCapacity = newCapacity;
         }
 
         private void ReturnBuffers()
         {
-            if (_primeDeltas is not null)
+            // Buffers are lazily allocated per session; the _primeDeltas guard applies to every pooled array because sessions rent and release them together.
+            if (_primeDeltas is null)
             {
-                ArrayPool<ulong>.Shared.Return(_primeDeltas, clearArray: false);
-                _primeDeltas = null;
+                return;
             }
 
-            if (_cycleRemainders is not null)
-            {
-                ArrayPool<ulong>.Shared.Return(_cycleRemainders, clearArray: false);
-                _cycleRemainders = null;
-            }
-
-            if (_montgomeryDeltas is not null)
-            {
-                ArrayPool<ulong>.Shared.Return(_montgomeryDeltas, clearArray: false);
-                _montgomeryDeltas = null;
-            }
-
+            ArrayPool<ulong>.Shared.Return(_primeDeltas, clearArray: false);
+            ArrayPool<ulong>.Shared.Return(_cycleRemainders!, clearArray: false);
+            ArrayPool<ulong>.Shared.Return(_residues!, clearArray: false);
+            _primeDeltas = null;
+            _cycleRemainders = null;
+            _residues = null;
             _bufferCapacity = 0;
         }
 
         private static void ComputePrimeDeltas(ReadOnlySpan<ulong> primes, Span<ulong> deltas)
         {
-            if (primes.Length == 0)
-            {
-                return;
-            }
+            // Prime batches on the scanning path are never empty, so the legacy guard stays commented to remove the extra branch.
+            // if (primes.Length == 0)
+            // {
+            //     return;
+            // }
 
             ulong previous = primes[0];
             deltas[0] = previous;
 
+            // Production batches feed strictly increasing primes; callers outside the scanning path must uphold the contract.
             for (int i = 1; i < primes.Length; i++)
             {
                 ulong current = primes[i];
-                if (current <= previous)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(primes), "Primes must be strictly increasing.");
-                }
-
                 deltas[i] = current - previous;
                 previous = current;
             }

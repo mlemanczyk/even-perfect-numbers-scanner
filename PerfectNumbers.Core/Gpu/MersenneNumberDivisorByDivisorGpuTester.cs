@@ -35,7 +35,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         _kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>>(CheckKernel));
 
     private Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> GetKernelByPrimeExponent(Accelerator accelerator) =>
-        _kernelExponentCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>>(ComputeMontgomeryExponentKernel));
+        _kernelExponentCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>>(ComputeExponentKernel));
 
     private Action<Index1D, ArrayView<ulong>, ArrayView<byte>, byte> GetRemainderDeltaKernel(Accelerator accelerator) =>
         _remainderDeltaKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>, byte>(ComputeRemainderDeltasKernel));
@@ -530,46 +530,60 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
     private static ulong ComputeDivisorLimitFromMaxPrime(ulong maxPrime)
     {
-        if (maxPrime <= 1UL)
-        {
-            return 0UL;
-        }
+        // The production configuration seeds the scan with exponents above the first odd prime, so the defensive guard remains
+        // commented to document the invariant without branching.
+        // if (maxPrime <= 1UL)
+        // {
+        //     return 0UL;
+        // }
 
-        if (maxPrime - 1UL >= 64UL)
-        {
-            return ulong.MaxValue;
-        }
+        // Real workloads push maxPrime well past the 64-bit shift boundary, so keep the historical implementation commented out
+        // and return ulong.MaxValue directly.
+        // if (maxPrime - 1UL >= 64UL)
+        // {
+        //     return ulong.MaxValue;
+        // }
+        //
+        // return (1UL << (int)(maxPrime - 1UL)) - 1UL;
 
-        return (1UL << (int)(maxPrime - 1UL)) - 1UL;
+        return ulong.MaxValue;
     }
 
     private static ulong ComputeAllowedMaxDivisor(ulong prime, ulong divisorLimit)
     {
-        if (prime <= 1UL)
-        {
-            return 0UL;
-        }
+        // The by-divisor search emits candidate exponents starting at the first odd prime, so the defensive guard remains
+        // commented to document that invariant.
+        // if (prime <= 1UL)
+        // {
+        //     return 0UL;
+        // }
 
-        if (prime - 1UL >= 64UL)
-        {
-            return divisorLimit;
-        }
+        // Production exponents are always large enough that the shift-based clamp would overflow, so skip the legacy branch and
+        // return the configured divisor limit directly.
+        // if (prime - 1UL >= 64UL)
+        // {
+        //     return divisorLimit;
+        // }
+        //
+        // return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
 
-        return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
+        return divisorLimit;
     }
 
     private static void CheckKernel(Index1D index, ArrayView<MontgomeryDivisorData> divisors, ArrayView<ulong> exponents, ArrayView<byte> hits)
     {
         MontgomeryDivisorData divisor = divisors[index];
         ulong modulus = divisor.Modulus;
-        if (modulus <= 1UL || (modulus & 1UL) == 0UL)
-        {
-            hits[index] = 0;
-            return;
-        }
+        // The divisor staging path filters out non-prime and even moduli before they reach the device, so this guard
+        // would never fire for EvenPerfectBitScanner workloads.
+        // if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+        // {
+        //     hits[index] = 0;
+        //     return;
+        // }
 
         ulong exponent = exponents[index];
-        hits[index] = exponent.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: false) == 1UL ? (byte)1 : (byte)0;
+        hits[index] = exponent.Pow2ModWindowedGpu(modulus) == 1UL ? (byte)1 : (byte)0;
     }
 
     public sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
@@ -609,16 +623,20 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             }
 
             int length = primes.Length;
-            if (length == 0)
-            {
-                return;
-            }
+            // Production batches always contain at least one exponent, so the empty-span guard remains commented out to remove
+            // the redundant branch.
+            // if (length == 0)
+            // {
+            //     return;
+            // }
 
-            if (divisorData.Modulus <= 1UL || (divisorData.Modulus & 1UL) == 0UL)
-            {
-                hits.Clear();
-                return;
-            }
+            // The divisor staging path filters non-prime and even moduli before kernels launch, so keep the defensive
+            // modulus guard commented out to avoid branching in the hot loop.
+            // if (divisorData.Modulus <= 1UL || (divisorData.Modulus & 1UL) == 0UL)
+            // {
+            //     hits.Clear();
+            //     return;
+            // }
 
             ArrayView1D<ulong, Stride1D.Dense> exponentsView = _exponentsBuffer.View;
             ArrayView1D<ulong, Stride1D.Dense> resultsView = _resultsBuffer.View;
@@ -777,33 +795,34 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         mask[globalIndex] = 1;
     }
 
-    private static void ComputeMontgomeryExponentKernel(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
+    private static void ComputeExponentKernel(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
     {
         ulong modulus = divisor.Modulus;
-        if (modulus <= 1UL || (modulus & 1UL) == 0UL)
-        {
-            results[index] = 0UL;
-            return;
-        }
+        // Kernel inputs are constrained to odd prime moduli, so this defensive branch would never execute on the configured
+        // scanning path.
+        // if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+        // {
+        //     results[index] = 0UL;
+        //     return;
+        // }
 
         ulong exponent = exponents[index];
 
-        results[index] = exponent.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: true);
+        results[index] = exponent.Pow2ModWindowedGpu(modulus);
     }
 
     public ulong DivisorLimit
     {
         get
         {
-            lock (_sync)
-            {
-                if (!_isConfigured)
-                {
-                    throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-                }
+            // The by-divisor scanner always configures the tester before exposing the limit, so the guard remains
+            // commented out to document the invariant without forcing a runtime branch.
+            // if (!_isConfigured)
+            // {
+            //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+            // }
 
-                return _divisorLimit;
-            }
+            return _divisorLimit;
         }
     }
 
@@ -825,10 +844,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         internal BatchResources(MersenneNumberDivisorByDivisorGpuTester owner, Accelerator accelerator, int capacity)
         {
             int cycleCapacity = DivisorCycleCache.Shared.PreferredBatchSize;
-            if (cycleCapacity <= 0)
-            {
-                cycleCapacity = 1;
-            }
+            // The shared cache always reports a positive preferred size on production workloads, so the fallback remains
+            // commented out to avoid branching during resource initialization.
+            // if (cycleCapacity <= 0)
+            // {
+            //     cycleCapacity = 1;
+            // }
 
             int actualCapacity = Math.Max(capacity, cycleCapacity);
 

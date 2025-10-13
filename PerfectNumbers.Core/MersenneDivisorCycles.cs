@@ -74,23 +74,27 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        if (exponent <= 1UL || divisor <= 1UL || (divisor & 1UL) == 0UL)
-        {
-            return false;
-        }
+        // Exponent and divisor validation happens during scheduling, so the defensive guard remains commented out to keep the
+        // hot path branch-free.
+        // if (exponent <= 1UL || divisor <= 1UL || (divisor & 1UL) == 0UL)
+        // {
+        //     return false;
+        // }
 
-        if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
-        {
-            var small = Shared._smallCycles;
-            if (small is not null)
-            {
-                ulong cached = small[(int)divisor];
-                if (cached != 0UL)
-                {
-                    return cached == exponent;
-                }
-            }
-        }
+        // Production scans never revisit divisors in the small-cycle snapshot, so skip the legacy lookup here. Factoring and
+        // diagnostics can query TryMatchSmallCycleForFactoring when they need those cached values.
+        // if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
+        // {
+        //     var small = Shared._smallCycles;
+        //     if (small is not null)
+        //     {
+        //         ulong cached = small[(int)divisor];
+        //         if (cached != 0UL)
+        //         {
+        //             return cached == exponent;
+        //         }
+        //     }
+        // }
 
         if (TryCalculateCycleLengthHeuristic(divisor, divisorData, out ulong heuristicCycle) && heuristicCycle != 0UL)
         {
@@ -98,6 +102,7 @@ public class MersenneDivisorCycles
         }
 
         Dictionary<ulong, FactorCacheEntry>? cache = factorCache;
+        // Each by-divisor scan session starts with a null cache and fills it lazily, so keep the allocation guard in place.
         if (cache is null)
         {
             cache = new Dictionary<ulong, FactorCacheEntry>(8);
@@ -109,7 +114,7 @@ public class MersenneDivisorCycles
             return cycleLength == exponent;
         }
 
-        return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
+        return exponent.Pow2ModWindowedCpu(divisorData.Modulus) == 1UL;
     }
 
     public static bool CycleEqualsExponentForMersenneCandidate(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
@@ -119,35 +124,70 @@ public class MersenneDivisorCycles
             return false;
         }
 
-        if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
+        // Candidate divisors on the production path sit well above the precomputed snapshot, so skip the small-cycle lookup
+        // here and leave factoring scenarios to call TryMatchSmallCycleForFactoring when necessary.
+        // if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
+        // {
+        //     MersenneDivisorCycles shared = Shared;
+        //     ulong[]? small = shared._smallCycles;
+        //     if (small is not null)
+        //     {
+        //         ulong cached = small[(int)divisor];
+        //         if (cached != 0UL)
+        //         {
+        //             return cached == exponent;
+        //         }
+        //     }
+        // }
+
+        return exponent.Pow2ModWindowedCpu(divisorData.Modulus) == 1UL;
+    }
+
+    public static bool TryMatchSmallCycleForFactoring(ulong divisor, ulong exponent, out ulong cycleLength)
+    {
+        if (divisor > PerfectNumberConstants.MaxQForDivisorCycles)
         {
-            MersenneDivisorCycles shared = Shared;
-            ulong[]? small = shared._smallCycles;
-            if (small is not null)
-            {
-                ulong cached = small[(int)divisor];
-                if (cached != 0UL)
-                {
-                    return cached == exponent;
-                }
-            }
+            // Factoring helpers probe arbitrary divisors, so anything above the snapshot limit legitimately misses here.
+            cycleLength = 0UL;
+            return false;
         }
 
-        return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
+        ulong[]? small = Shared._smallCycles;
+        if (small is null)
+        {
+            // Snapshot recycling during diagnostics can temporarily clear the table; surface the miss so callers recompute.
+            cycleLength = 0UL;
+            return false;
+        }
+
+        ulong cached = small[(int)divisor];
+        if (cached == 0UL)
+        {
+            // Only a subset of small divisors carry cached cycles; signal the miss so factoring falls back to the GPU helper.
+            cycleLength = 0UL;
+            return false;
+        }
+
+        cycleLength = cached;
+        return cached == exponent;
     }
 
     private static bool IsValidMersenneDivisorCandidate(ulong divisor, ulong exponent)
     {
-        if (exponent <= 1UL || divisor <= 1UL || (divisor & 1UL) == 0UL)
-        {
-            return false;
-        }
+        // Production workloads pre-filter invalid inputs, so skip the defensive guards here. Factoring and diagnostics should
+        // validate inputs before calling into the candidate path.
+        // if (exponent <= 1UL || divisor <= 1UL || (divisor & 1UL) == 0UL)
+        // {
+        //     return false;
+        // }
 
         UInt128 step = (UInt128)exponent << 1;
-        if (step == UInt128.Zero)
-        {
-            return false;
-        }
+        // The overflow bail-out is handled by factoring-specific call sites; keep the historical branch commented to document the
+        // legacy behavior.
+        // if (step == UInt128.Zero)
+        // {
+        //     return false;
+        // }
 
         UInt128 adjusted = (UInt128)divisor - UInt128.One;
         return adjusted % step == UInt128.Zero;

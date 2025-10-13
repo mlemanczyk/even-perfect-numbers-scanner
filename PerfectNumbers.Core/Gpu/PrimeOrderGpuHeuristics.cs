@@ -805,13 +805,15 @@ internal static partial class PrimeOrderGpuHeuristics
         for (int i = 0; i < factorCount; i++)
         {
             ulong factor = factors[i];
-            if (factor <= 1UL)
-            {
-                continue;
-            }
+            // The factorization routine emits strictly greater-than-one factors for phi on this path, so the
+            // defensive continue would never execute.
+            // if (factor <= 1UL)
+            // {
+            //     continue;
+            // }
 
             ulong reduced = phi / factor;
-            if (reduced.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: false) == 1UL)
+            if (reduced.Pow2ModWindowedGpu(divisor.Modulus) == 1UL)
             {
                 return false;
             }
@@ -827,7 +829,7 @@ internal static partial class PrimeOrderGpuHeuristics
         if (residue == 1UL || residue == 7UL)
         {
             ulong half = phi >> 1;
-            if (Pow2EqualsOneKernel(half, divisor))
+            if ((half).Pow2ModWindowedGpu(divisor.Modulus) == 1UL)
             {
                 order = half;
             }
@@ -848,10 +850,11 @@ internal static partial class PrimeOrderGpuHeuristics
         {
             ulong primeFactor = factors[i];
             int exponent = exponents[i];
-            if (primeFactor <= 1UL)
-            {
-                continue;
-            }
+            // Factorization never yields unity on the scanning path, so skip the redundant guard.
+            // if (primeFactor <= 1UL)
+            // {
+            //     continue;
+            // }
 
             for (int iteration = 0; iteration < exponent; iteration++)
             {
@@ -861,7 +864,7 @@ internal static partial class PrimeOrderGpuHeuristics
                 }
 
                 ulong reduced = order / primeFactor;
-                if (Pow2EqualsOneKernel(reduced, divisor))
+                if ((reduced).Pow2ModWindowedGpu(divisor.Modulus) == 1UL)
                 {
                     order = reduced;
                     continue;
@@ -887,12 +890,14 @@ internal static partial class PrimeOrderGpuHeuristics
         ArrayView1D<ulong, Stride1D.Dense> compositeStack,
         ArrayView1D<byte, Stride1D.Dense> statusOut)
     {
-        if (order == 0UL)
-        {
-            return false;
-        }
+        // Order values handed to the kernel are strictly positive on the production path, so the zero guard stays commented
+        // out to remove the redundant branch.
+        // if (order == 0UL)
+        // {
+        //     return false;
+        // }
 
-        if (!Pow2EqualsOneKernel(order, divisor))
+        if ((order).Pow2ModWindowedGpu(divisor.Modulus) != 1UL)
         {
             return false;
         }
@@ -922,10 +927,11 @@ internal static partial class PrimeOrderGpuHeuristics
         {
             ulong primeFactor = factors[i];
             int exponent = exponents[i];
-            if (primeFactor <= 1UL)
-            {
-                continue;
-            }
+            // Factorization never yields one on the by-divisor path, so the defensive continue stays commented out.
+            // if (primeFactor <= 1UL)
+            // {
+            //     continue;
+            // }
 
             ulong reduced = order;
             for (int iteration = 0; iteration < exponent; iteration++)
@@ -936,7 +942,7 @@ internal static partial class PrimeOrderGpuHeuristics
                 }
 
                 reduced /= primeFactor;
-                if (Pow2EqualsOneKernel(reduced, divisor))
+                if ((reduced).Pow2ModWindowedGpu(divisor.Modulus) == 1UL)
                 {
                     return false;
                 }
@@ -998,28 +1004,32 @@ internal static partial class PrimeOrderGpuHeuristics
         long candidateCapacity = candidates.Length;
         int candidateLimit = candidateCapacity < HeuristicCandidateLimit ? (int)candidateCapacity : HeuristicCandidateLimit;
         int candidateCount = BuildCandidatesKernel(order, workFactors, workExponents, factorCount, candidates, stackIndex, stackExponent, stackProduct, candidateLimit);
-        if (candidateCount == 0)
-        {
-            return false;
-        }
+        // Candidate enumeration always yields at least one order on the configured workloads, so the zero-count guard remains
+        // commented out to eliminate the redundant branch.
+        // if (candidateCount == 0)
+        // {
+        //     return false;
+        // }
 
         SortCandidatesKernel(prime, previousOrder, hasPreviousOrder != 0, candidates, candidateCount);
 
         int powBudget = maxPowChecks <= 0 ? candidateCount : maxPowChecks;
-        if (powBudget <= 0)
-        {
-            powBudget = candidateCount;
-        }
+        // The heuristics always reserve at least one check, so the zero-budget fallback remains commented out.
+        // if (powBudget <= 0)
+        // {
+        //     powBudget = candidateCount;
+        // }
 
         int powUsed = 0;
 
         for (int i = 0; i < candidateCount && powUsed < powBudget; i++)
         {
             ulong candidate = candidates[i];
-            if (candidate <= 1UL)
-            {
-                continue;
-            }
+            // Candidate generation skips 1 by construction, so the defensive continue stays commented out.
+            // if (candidate <= 1UL)
+            // {
+            //     continue;
+            // }
 
             if (powUsed >= powBudget)
             {
@@ -1027,7 +1037,7 @@ internal static partial class PrimeOrderGpuHeuristics
             }
 
             powUsed++;
-            if (!Pow2EqualsOneKernel(candidate, divisor))
+            if ((candidate).Pow2ModWindowedGpu(divisor.Modulus) != 1UL)
             {
                 continue;
             }
@@ -1307,10 +1317,11 @@ internal static partial class PrimeOrderGpuHeuristics
         {
             ulong primeFactor = factors[i];
             int exponent = exponents[i];
-            if (primeFactor <= 1UL)
-            {
-                continue;
-            }
+            // Factorization never yields one for candidate orders, so keep the guard commented out to avoid re-checking inputs.
+            // if (primeFactor <= 1UL)
+            // {
+            //     continue;
+            // }
 
             ulong reduced = candidate;
             for (int iteration = 0; iteration < exponent; iteration++)
@@ -1327,7 +1338,7 @@ internal static partial class PrimeOrderGpuHeuristics
                 }
 
                 powUsed++;
-                if (Pow2EqualsOneKernel(reduced, divisor))
+                if ((reduced).Pow2ModWindowedGpu(divisor.Modulus) == 1UL)
                 {
                     return false;
                 }
@@ -1349,17 +1360,21 @@ internal static partial class PrimeOrderGpuHeuristics
         ArrayView1D<ulong, Stride1D.Dense> compositeStack,
         ArrayView1D<byte, Stride1D.Dense> statusOut)
     {
-        if (initial <= 1UL)
-        {
-            return true;
-        }
+        // Composite candidates sent here are always greater than one during production scans, so the trivial-return branch stays
+        // commented out.
+        // if (initial <= 1UL)
+        // {
+        //     return true;
+        // }
 
         int stackCapacity = (int)compositeStack.Length;
-        if (stackCapacity <= 0)
-        {
-            statusOut[0] = (byte)PrimeOrderKernelStatus.PollardOverflow;
-            return false;
-        }
+        // Pollard-Rho always reserves a positive stack on production workloads, so the overflow guard remains commented out
+        // to avoid branching here.
+        // if (stackCapacity <= 0)
+        // {
+        //     statusOut[0] = (byte)PrimeOrderKernelStatus.PollardOverflow;
+        //     return false;
+        // }
 
         int stackTop = 0;
         compositeStack[stackTop] = initial;
@@ -1369,10 +1384,12 @@ internal static partial class PrimeOrderGpuHeuristics
         {
             stackTop--;
             ulong composite = compositeStack[stackTop];
-            if (composite <= 1UL)
-            {
-                continue;
-            }
+            // Composite values enqueued for factoring are always greater than one on production workloads, so the guard stays
+            // commented out to avoid extra branching.
+            // if (composite <= 1UL)
+            // {
+            //     continue;
+            // }
 
             if (!PeelSmallPrimesKernel(
                     composite,
@@ -1580,9 +1597,7 @@ internal static partial class PrimeOrderGpuHeuristics
             bLocal >>= BitOperations.TrailingZeroCount(bLocal);
             if (aLocal > bLocal)
             {
-                ulong temp = aLocal;
-                aLocal = bLocal;
-                bLocal = temp;
+                (aLocal, bLocal) = (bLocal, aLocal);
             }
 
             bLocal -= aLocal;
@@ -1591,11 +1606,6 @@ internal static partial class PrimeOrderGpuHeuristics
                 return aLocal << shift;
             }
         }
-    }
-
-    private static bool Pow2EqualsOneKernel(ulong exponent, in MontgomeryDivisorData divisor)
-    {
-        return exponent.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: false) == 1UL;
     }
 
     private static ulong CalculateByDoublingKernel(ulong prime)
@@ -1619,10 +1629,11 @@ internal static partial class PrimeOrderGpuHeuristics
 
     private static GpuPow2ModStatus TryPow2ModBatchInternal(ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> remainders)
     {
-        if (exponents.Length == 0)
-        {
-            return GpuPow2ModStatus.Success;
-        }
+        // Residue batches are never empty on production workloads, so skip the zero-length success shortcut.
+        // if (exponents.Length == 0)
+        // {
+        //     return GpuPow2ModStatus.Success;
+        // }
 
         if (remainders.Length < exponents.Length)
         {
@@ -1698,19 +1709,22 @@ internal static partial class PrimeOrderGpuHeuristics
     private static void ComputePow2ModCpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorData divisorData, Span<ulong> results)
     {
         int length = exponents.Length;
+        ulong modulus = divisorData.Modulus;
+        _ = prime; // modulus and divisorData both describe the same q; retain the parameter to preserve the public signature.
         for (int i = 0; i < length; i++)
         {
-            results[i] = Pow2ModCpu(exponents[i], prime, divisorData);
+            results[i] = exponents[i].Pow2ModWindowedCpu(modulus);
         }
     }
 
     private static bool TryComputeOnGpuWide(ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> results)
     {
         int length = exponents.Length;
-        if (length == 0)
-        {
-            return true;
-        }
+        // Production launches always carry work, so keep the empty-batch shortcut commented out.
+        // if (length == 0)
+        // {
+        //     return true;
+        // }
 
         GpuUInt128[]? rentedExponents = null;
         GpuUInt128[]? rentedResults = null;
@@ -1764,6 +1778,8 @@ internal static partial class PrimeOrderGpuHeuristics
         }
         finally
         {
+            // Small batches use the stack-allocated fast path, leaving the rented arrays null. Retain the guards so pooled
+            // buffers are only returned when they were actually leased.
             if (rentedExponents is not null)
             {
                 ArrayPool<GpuUInt128>.Shared.Return(rentedExponents, clearArray: false);
@@ -1788,16 +1804,6 @@ internal static partial class PrimeOrderGpuHeuristics
         }
     }
 
-    private static ulong Pow2ModCpu(ulong exponent, ulong modulus, in MontgomeryDivisorData divisorData)
-    {
-        if (modulus <= 1UL)
-        {
-            return 0UL;
-        }
-
-        return exponent.Pow2MontgomeryModWindowedGpu(divisorData, keepMontgomery: false);
-    }
-
     private static Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> GetPow2ModKernel(Accelerator accelerator)
     {
         return Pow2ModKernelCache.GetOrAdd(accelerator, static accel =>
@@ -1810,58 +1816,17 @@ internal static partial class PrimeOrderGpuHeuristics
 
     private static void Pow2ModKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> exponents, MontgomeryDivisorData divisor, ArrayView1D<ulong, Stride1D.Dense> remainders)
     {
-        ulong exponent = exponents[index];
         ulong modulus = divisor.Modulus;
-		// ulong nPrime = divisor.NPrime;
-		// ulong result = divisor.MontgomeryOne;
-		// ulong baseValue = divisor.MontgomeryTwo;
-		// ulong remainingExponent = exponent;
+        // The by-divisor heuristics call this kernel only with odd prime moduli, so the defensive branch stays commented to
+        // document the invariant without spending a branch in the kernel.
+        // if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+        // {
+        //     remainders[index] = 0UL;
+        //     return;
+        // }
 
-		// if (remainingExponent == 0UL)
-		// {
-		//     remainders[index] = result.MontgomeryMultiply(1UL, modulus, nPrime);
-		//     return;
-		// }
-
-		// while (remainingExponent != 0UL)
-		// {
-		//     if ((remainingExponent & 1UL) != 0UL)
-		//     {
-		//         result = result.MontgomeryMultiply(baseValue, modulus, nPrime);
-		//     }
-
-		//     remainingExponent >>= 1;
-		//     if (remainingExponent == 0UL)
-		//     {
-		//         break;
-		//     }
-
-		//     // Reusing baseValue to hold base^2 so we avoid allocating another register for the squared term.
-		//     baseValue = baseValue.MontgomeryMultiply(baseValue, modulus, nPrime);
-		// }
-
-		// remainders[index] = result.MontgomeryMultiply(1UL, modulus, nPrime);
-
-		// Plain modular exponentiation without Montgomery reduction kept for reference.
-		ulong plainResult = 1UL;// % modulus;
-		ulong plainBase = 2UL;// % modulus;
-		while (exponent != 0UL)
-		{
-			if ((exponent & 1UL) != 0UL)
-			{
-				plainResult = (plainResult * plainBase) % modulus;
-			}
-
-			exponent >>= 1;
-			if (exponent == 0UL)
-			{
-				break;
-			}
-
-			plainBase = (plainBase * plainBase) % modulus;
-		}
-		
-        remainders[index] = plainResult;
+        ulong exponent = exponents[index];
+        remainders[index] = exponent.Pow2ModWindowedGpu(modulus);
     }
 
     private static Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>> GetPow2ModWideKernel(Accelerator accelerator)
