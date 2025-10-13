@@ -808,9 +808,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 return;
             }
 
-            // Sessions release pooled buffers between scans, so the null checks stay in place to avoid using returned arrays
-            // when a session is reset for a subsequent divisor.
-            if (requiredLength <= _bufferCapacity && _primeDeltas is not null && _cycleRemainders is not null && _residues is not null)
+            // Sessions release pooled buffers between scans; a single null check covers every array because buffers are rented and returned together.
+            if (requiredLength <= _bufferCapacity && _primeDeltas is not null)
             {
                 return;
             }
@@ -837,25 +836,18 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         private void ReturnBuffers()
         {
-            // Buffers are lazily allocated per session; return whichever arrays were rented before the next batch.
-            if (_primeDeltas is not null)
+            // Buffers are lazily allocated per session; the _primeDeltas guard applies to every pooled array because sessions rent and release them together.
+            if (_primeDeltas is null)
             {
-                ArrayPool<ulong>.Shared.Return(_primeDeltas, clearArray: false);
-                _primeDeltas = null;
+                return;
             }
 
-            if (_cycleRemainders is not null)
-            {
-                ArrayPool<ulong>.Shared.Return(_cycleRemainders, clearArray: false);
-                _cycleRemainders = null;
-            }
-
-            if (_residues is not null)
-            {
-                ArrayPool<ulong>.Shared.Return(_residues, clearArray: false);
-                _residues = null;
-            }
-
+            ArrayPool<ulong>.Shared.Return(_primeDeltas, clearArray: false);
+            ArrayPool<ulong>.Shared.Return(_cycleRemainders!, clearArray: false);
+            ArrayPool<ulong>.Shared.Return(_residues!, clearArray: false);
+            _primeDeltas = null;
+            _cycleRemainders = null;
+            _residues = null;
             _bufferCapacity = 0;
         }
 
@@ -870,14 +862,10 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             ulong previous = primes[0];
             deltas[0] = previous;
 
+            // Production batches feed strictly increasing primes; callers outside the scanning path must uphold the contract.
             for (int i = 1; i < primes.Length; i++)
             {
                 ulong current = primes[i];
-                if (current <= previous)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(primes), "Primes must be strictly increasing.");
-                }
-
                 deltas[i] = current - previous;
                 previous = current;
             }

@@ -1030,7 +1030,7 @@ internal static class Program
         Console.WriteLine("  --use-order            test primality via q order");
         Console.WriteLine("  --workaround-mod       avoid '%' operator on the GPU");
         // mod-automaton removed
-        Console.WriteLine("  --filter-p=<path>      process only p from previous run results (required for --mersenne=bydivisor)");
+        Console.WriteLine("  --filter-p=<path>      process only p from previous run results (required for --mersenne=bydivisor; primes must be strictly increasing)");
         Console.WriteLine("  --write-batch-size=<value> overwrite frequency of disk writes (default 100 lines)");
         Console.WriteLine("  --gcd-filter           enable early sieve based on GCD");
         Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
