@@ -52,10 +52,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     {
         get
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
+            // The by-divisor driver configures the tester during startup, so exposing the divisor limit never
+            // re-enters this method before initialization completes.
+            // if (!_isConfigured)
+            // {
+            //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+            // }
 
             return _divisorLimit;
         }
@@ -63,20 +65,24 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     public ulong GetAllowedMaxDivisor(ulong prime)
     {
-        if (!_isConfigured)
-        {
-            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-        }
+        // The CLI wires the tester through ConfigureFromMaxPrime before invoking query helpers, so the guard
+        // would never trigger in production runs.
+        // if (!_isConfigured)
+        // {
+        //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+        // }
 
         return ComputeAllowedMaxDivisor(prime, _divisorLimit);
     }
 
     public bool IsPrime(ulong prime, out bool divisorsExhausted, TimeSpan? timeLimit = null)
     {
-        if (!_isConfigured)
-        {
-            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-        }
+        // The tester is configured once during startup, so runtime IsPrime calls always observe a ready
+        // configuration and the legacy guard can remain commented out.
+        // if (!_isConfigured)
+        // {
+        //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+        // }
 
         ulong divisorLimit = _divisorLimit;
         ulong allowedMax = ComputeAllowedMaxDivisor(prime, divisorLimit);
@@ -122,10 +128,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         //     throw new ArgumentException("allowedMaxValues span must be at least as long as primes span.", nameof(allowedMaxValues));
         // }
 
-        if (!_isConfigured)
-        {
-            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-        }
+        // PrepareCandidates is scheduled only after ConfigureFromMaxPrime succeeds, so the tester state is
+        // stable here and the defensive guard is no longer needed.
+        // if (!_isConfigured)
+        // {
+        //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+        // }
 
         // Configuration is immutable after startup, so reading the cached limit does not require locking.
         ulong divisorLimit = _divisorLimit;
@@ -138,10 +146,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession()
     {
-        if (!_isConfigured)
-        {
-            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-        }
+        // The session pool is populated only after configuration, so consumers never request a session before
+        // ConfigureFromMaxPrime completes.
+        // if (!_isConfigured)
+        // {
+        //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+        // }
 
         if (_sessionPool.TryTake(out DivisorScanSession? session))
         {

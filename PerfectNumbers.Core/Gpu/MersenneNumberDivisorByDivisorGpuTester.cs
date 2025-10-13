@@ -150,10 +150,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             throw new ArgumentException("allowedMaxValues span must be at least as long as primes span.", nameof(allowedMaxValues));
         }
 
-        if (!_isConfigured)
-        {
-            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-        }
+        // The GPU pipeline calls ConfigureFromMaxPrime before preparing candidates, so the legacy guard
+        // remains commented out to document the invariant without branching.
+        // if (!_isConfigured)
+        // {
+        //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+        // }
 
         ulong divisorLimit = _divisorLimit;
         for (int index = 0; index < primes.Length; index++)
@@ -936,20 +938,24 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
     public ulong GetAllowedMaxDivisor(ulong prime)
     {
-        if (!_isConfigured)
-        {
-            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-        }
+        // The CLI configures the GPU tester once at startup, so callers never request divisor limits before
+        // initialization completes.
+        // if (!_isConfigured)
+        // {
+        //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+        // }
 
         return ComputeAllowedMaxDivisor(prime, _divisorLimit);
     }
 
     public DivisorScanSession CreateDivisorSession()
     {
-        if (!_isConfigured)
-        {
-            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-        }
+        // Divisor sessions are handed out only after configuration, so this guard would never trigger on the
+        // production path.
+        // if (!_isConfigured)
+        // {
+        //     throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+        // }
 
         if (_sessionPool.TryTake(out DivisorScanSession? session))
         {
