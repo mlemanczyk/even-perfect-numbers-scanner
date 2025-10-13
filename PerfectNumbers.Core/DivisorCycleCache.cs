@@ -80,11 +80,13 @@ public sealed class DivisorCycleCache
             if (divisor < (ulong)snapshot.Length)
             {
                 ulong cached = snapshot[divisor];
-                if (cached != 0UL)
+                if (cached == 0UL)
                 {
-                    cycles[i] = cached;
-                    continue;
+                    throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
                 }
+
+                cycles[i] = cached;
+                continue;
             }
 
             missingBuffer[missingCount++] = i;
