@@ -109,7 +109,7 @@ public class MersenneDivisorCycles
             return cycleLength == exponent;
         }
 
-        return exponent.Pow2ModBinaryCpu(divisorData.Modulus) == 1UL;
+        return exponent.Pow2ModWindowedCpu(divisorData.Modulus) == 1UL;
     }
 
     public static bool CycleEqualsExponentForMersenneCandidate(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
@@ -133,7 +133,7 @@ public class MersenneDivisorCycles
             }
         }
 
-        return exponent.Pow2ModBinaryCpu(divisorData.Modulus) == 1UL;
+        return exponent.Pow2ModWindowedCpu(divisorData.Modulus) == 1UL;
     }
 
     private static bool IsValidMersenneDivisorCandidate(ulong divisor, ulong exponent)

@@ -313,11 +313,80 @@ public static class ULongExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Pow2ModBinaryCpu(this ulong exponent, ulong modulus)
     {
+        return Pow2ModWindowedCpu(exponent, modulus);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong Pow2ModWindowedCpu(this ulong exponent, ulong modulus)
+    {
         if (modulus <= 1UL)
         {
             return 0UL;
         }
 
+        if (exponent == 0UL)
+        {
+            return 1UL % modulus;
+        }
+
+        if (exponent <= Pow2WindowFallbackThreshold)
+        {
+            return Pow2ModBinaryFallback(exponent, modulus);
+        }
+
+        int bitLength = GetPortableBitLength(exponent);
+        int windowSize = GetWindowSize(bitLength);
+        int oddPowerCount = 1 << (windowSize - 1);
+
+        Span<ulong> oddPowerStorage = oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount
+            ? stackalloc ulong[PerfectNumberConstants.MaxOddPowersCount]
+            : new ulong[oddPowerCount];
+        // Reuse oddPowerStorage to expose only the populated slice and avoid another local span.
+        oddPowerStorage = oddPowerStorage[..oddPowerCount];
+        InitializePlainOddPowers(modulus, oddPowerStorage);
+
+        ulong result = 1UL % modulus;
+        int index = bitLength - 1;
+
+        while (index >= 0)
+        {
+            if (((exponent >> index) & 1UL) == 0UL)
+            {
+                result = result.MulMod64(result, modulus);
+                index--;
+                continue;
+            }
+
+            int windowStart = index - windowSize + 1;
+            if (windowStart < 0)
+            {
+                windowStart = 0;
+            }
+
+            while (((exponent >> windowStart) & 1UL) == 0UL)
+            {
+                windowStart++;
+            }
+
+            int windowLength = index - windowStart + 1;
+            for (int square = 0; square < windowLength; square++)
+            {
+                result = result.MulMod64(result, modulus);
+            }
+
+            ulong windowValue = (exponent >> windowStart) & ((1UL << windowLength) - 1UL);
+            int tableIndex = (int)((windowValue - 1UL) >> 1);
+            result = result.MulMod64(oddPowerStorage[tableIndex], modulus);
+
+            index = windowStart - 1;
+        }
+
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong Pow2ModBinaryFallback(ulong exponent, ulong modulus)
+    {
         ulong remainingExponent = exponent;
         ulong result = 1UL % modulus;
         ulong baseValue = 2UL % modulus;
@@ -610,6 +679,30 @@ public static class ULongExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void InitializePlainOddPowers(ulong modulus, Span<ulong> destination)
+    {
+        int oddPowerCount = destination.Length;
+        if (oddPowerCount == 0)
+        {
+            return;
+        }
+
+        ulong baseValue = 2UL % modulus;
+        destination[0] = baseValue;
+        if (oddPowerCount == 1)
+        {
+            return;
+        }
+
+        ulong square = baseValue.MulMod64(baseValue, modulus);
+        for (int i = 1; i < oddPowerCount; i++)
+        {
+            // Reuse baseValue to accumulate successive odd powers and avoid allocating another local.
+            baseValue = baseValue.MulMod64(square, modulus);
+            destination[i] = baseValue;
+        }
+    }
+
     private static void InitializeMontgomeryOddPowersCpu(in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime, Span<ulong> destination)
     {
         int oddPowerCount = destination.Length;
