@@ -81,6 +81,8 @@ public class MersenneDivisorCycles
 
         if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
         {
+            // Even though production scans never revisit divisors below this bound, the shared cache still serves
+            // precomputation steps and tests, so keep the fast lookup enabled.
             var small = Shared._smallCycles;
             if (small is not null)
             {
@@ -98,6 +100,7 @@ public class MersenneDivisorCycles
         }
 
         Dictionary<ulong, FactorCacheEntry>? cache = factorCache;
+        // Each by-divisor scan session starts with a null cache and fills it lazily, so keep the allocation guard in place.
         if (cache is null)
         {
             cache = new Dictionary<ulong, FactorCacheEntry>(8);
@@ -121,6 +124,8 @@ public class MersenneDivisorCycles
 
         if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
         {
+            // The by-divisor path only handles divisors far above this cutoff, but Pollard Rho factoring and unit tests
+            // still reuse the cached small-cycle table, so keep the fast path enabled.
             MersenneDivisorCycles shared = Shared;
             ulong[]? small = shared._smallCycles;
             if (small is not null)
@@ -138,12 +143,16 @@ public class MersenneDivisorCycles
 
     private static bool IsValidMersenneDivisorCandidate(ulong divisor, ulong exponent)
     {
+        // The divisor enumeration pipeline has already filtered invalid inputs, but keep the guard so external callers and
+        // tests continue to receive a defensive answer.
         if (exponent <= 1UL || divisor <= 1UL || (divisor & 1UL) == 0UL)
         {
             return false;
         }
 
         UInt128 step = (UInt128)exponent << 1;
+        // Exponents drawn from prime candidates are far below the overflow boundary, yet the broader factoring utilities rely
+        // on this bail-out when validating arbitrary inputs.
         if (step == UInt128.Zero)
         {
             return false;

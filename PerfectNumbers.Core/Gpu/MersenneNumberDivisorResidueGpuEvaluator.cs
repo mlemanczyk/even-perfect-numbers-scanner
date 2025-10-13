@@ -110,12 +110,14 @@ internal sealed class MersenneNumberDivisorResidueGpuEvaluator : IDisposable
 
         ulong exponent = exponents[idx];
         ulong modulus = divisorData.Modulus;
-        if (modulus <= 1UL || (modulus & 1UL) == 0UL)
-        {
-            results[idx] = 0UL;
-            return;
-        }
+        // Residue batches only include valid odd moduli, so the defensive check stays commented to avoid re-validating
+        // the invariant on every iteration.
+        // if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+        // {
+        //     results[idx] = 0UL;
+        //     return;
+        // }
 
-        results[idx] = exponent.Pow2ModBinaryGpu(modulus);
+        results[idx] = exponent.Pow2ModWindowedGpu(modulus);
     }
 }

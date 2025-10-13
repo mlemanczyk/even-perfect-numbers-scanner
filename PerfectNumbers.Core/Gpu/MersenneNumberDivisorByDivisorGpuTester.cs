@@ -545,10 +545,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
     private static ulong ComputeAllowedMaxDivisor(ulong prime, ulong divisorLimit)
     {
-        if (prime <= 1UL)
-        {
-            return 0UL;
-        }
+        // The by-divisor search emits candidate exponents starting at the first odd prime, so this guard
+        // would never trigger on the scanner hot path.
+        // if (prime <= 1UL)
+        // {
+        //     return 0UL;
+        // }
 
         if (prime - 1UL >= 64UL)
         {
@@ -562,14 +564,16 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     {
         MontgomeryDivisorData divisor = divisors[index];
         ulong modulus = divisor.Modulus;
-        if (modulus <= 1UL || (modulus & 1UL) == 0UL)
-        {
-            hits[index] = 0;
-            return;
-        }
+        // The divisor staging path filters out non-prime and even moduli before they reach the device, so this guard
+        // would never fire for EvenPerfectBitScanner workloads.
+        // if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+        // {
+        //     hits[index] = 0;
+        //     return;
+        // }
 
         ulong exponent = exponents[index];
-        hits[index] = exponent.Pow2ModBinaryGpu(modulus) == 1UL ? (byte)1 : (byte)0;
+        hits[index] = exponent.Pow2ModWindowedGpu(modulus) == 1UL ? (byte)1 : (byte)0;
     }
 
     public sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
@@ -780,15 +784,17 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     private static void ComputeExponentKernel(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
     {
         ulong modulus = divisor.Modulus;
-        if (modulus <= 1UL || (modulus & 1UL) == 0UL)
-        {
-            results[index] = 0UL;
-            return;
-        }
+        // Kernel inputs are constrained to odd prime moduli, so this defensive branch would never execute on the configured
+        // scanning path.
+        // if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+        // {
+        //     results[index] = 0UL;
+        //     return;
+        // }
 
         ulong exponent = exponents[index];
 
-        results[index] = exponent.Pow2ModBinaryGpu(modulus);
+        results[index] = exponent.Pow2ModWindowedGpu(modulus);
     }
 
     public ulong DivisorLimit
