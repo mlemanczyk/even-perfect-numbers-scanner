@@ -311,37 +311,6 @@ public static class ULongExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong Pow2ModBinaryGpu(this ulong exponent, ulong modulus)
-    {
-        if (modulus <= 1UL)
-        {
-            return 0UL;
-        }
-
-        ulong remainingExponent = exponent;
-        ulong result = 1UL % modulus;
-        ulong baseValue = 2UL % modulus;
-
-        while (remainingExponent != 0UL)
-        {
-            if ((remainingExponent & 1UL) != 0UL)
-            {
-                result = result.MulMod64GpuCompatible(baseValue, modulus);
-            }
-
-            remainingExponent >>= 1;
-            if (remainingExponent == 0UL)
-            {
-                break;
-            }
-
-            baseValue = baseValue.MulMod64GpuCompatible(baseValue, modulus);
-        }
-
-        return result;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong MontgomeryMultiply(this ulong a, ulong b, ulong modulus, ulong nPrime)
     {
         ulong tLow = unchecked(a * b);
