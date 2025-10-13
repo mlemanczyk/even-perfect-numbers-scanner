@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 
@@ -10,14 +11,11 @@ namespace PerfectNumbers.Core.Cpu;
 
 public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDivisorByDivisorTester
 {
-    private readonly object _sync = new();
     private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
     private ulong _divisorLimit;
-    private ulong _lastStatusDivisor;
+    private int _lastStatusDivisor;
     private bool _isConfigured;
     private int _batchSize = 1_024;
-
-    private ulong _configuredMaxPrime;
     private ByDivisorDeltasDevice _deltasDevice = ByDivisorDeltasDevice.Cpu;
     private ByDivisorMontgomeryDevice _montgomeryDevice = ByDivisorMontgomeryDevice.Cpu;
 
@@ -34,79 +32,54 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     public ByDivisorDeltasDevice DeltasDevice
     {
         get => _deltasDevice;
-        set
-        {
-            lock (_sync)
-            {
-                _deltasDevice = value;
-            }
-        }
+        set => _deltasDevice = value;
     }
 
     public ByDivisorMontgomeryDevice MontgomeryDevice
     {
         get => _montgomeryDevice;
-        set
-        {
-            lock (_sync)
-            {
-                _montgomeryDevice = value;
-            }
-        }
+        set => _montgomeryDevice = value;
     }
 
     public void ConfigureFromMaxPrime(ulong maxPrime)
     {
-        lock (_sync)
-        {
-            _configuredMaxPrime = maxPrime;
-            _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
-            _lastStatusDivisor = 0UL;
-            _isConfigured = true;
-        }
+        _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
+        _lastStatusDivisor = 0;
+        _isConfigured = true;
     }
 
     public ulong DivisorLimit
     {
         get
         {
-            lock (_sync)
+            if (!_isConfigured)
             {
-                if (!_isConfigured)
-                {
-                    throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-                }
-
-                return _divisorLimit;
+                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
             }
+
+            return _divisorLimit;
         }
     }
 
     public ulong GetAllowedMaxDivisor(ulong prime)
     {
-        lock (_sync)
+        if (!_isConfigured)
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            return ComputeAllowedMaxDivisor(prime, _divisorLimit);
+            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
         }
+
+        return ComputeAllowedMaxDivisor(prime, _divisorLimit);
     }
 
     public bool IsPrime(ulong prime, out bool divisorsExhausted, TimeSpan? timeLimit = null)
     {
-        ulong allowedMax;
-        lock (_sync)
+        if (!_isConfigured)
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            allowedMax = ComputeAllowedMaxDivisor(prime, _divisorLimit);
+            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
         }
+
+        ulong divisorLimit = _divisorLimit;
+        ulong allowedMax = ComputeAllowedMaxDivisor(prime, divisorLimit);
 
         if (allowedMax < 3UL)
         {
@@ -128,10 +101,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         if (processedCount > 0UL)
         {
-            lock (_sync)
-            {
-                UpdateStatusUnsafe(processedCount);
-            }
+            UpdateStatusUnsafe(processedCount);
         }
 
         if (composite)
@@ -603,18 +573,34 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             return;
         }
 
-        ulong interval = PerfectNumberConstants.ConsoleInterval;
+        int interval = PerfectNumberConstants.ConsoleInterval;
         // PerfectNumberConstants.ConsoleInterval is a positive constant, so this guard never triggers on EvenPerfectBitScanner.
-        // if (interval == 0UL)
+        // if (interval <= 0)
         // {
-        //     _lastStatusDivisor = 0UL;
+        //     Volatile.Write(ref _lastStatusDivisor, 0);
         //     return;
         // }
 
-        ulong total = _lastStatusDivisor + processedCount;
-        // TODO: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI
-        // status benchmarks so we avoid `%` in this hot loop while still wrapping progress correctly.
-        _lastStatusDivisor = total % interval;
+        int processedDelta = (int)(processedCount % (uint)interval);
+        if (processedDelta == 0)
+        {
+            return;
+        }
+
+        while (true)
+        {
+            int previous = Volatile.Read(ref _lastStatusDivisor);
+            int total = previous + processedDelta;
+            if (total >= interval)
+            {
+                total -= interval;
+            }
+
+            if (previous == Interlocked.CompareExchange(ref _lastStatusDivisor, total, previous))
+            {
+                return;
+            }
+        }
     }
 
     private static ulong ComputeDivisorLimitFromMaxPrime(ulong maxPrime)

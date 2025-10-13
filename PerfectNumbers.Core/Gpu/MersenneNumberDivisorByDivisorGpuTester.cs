@@ -19,7 +19,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     private const int RemainderSlotCount = 4;
 
     private int _gpuBatchSize = GpuConstants.ScanBatchSize;
-    private readonly object _sync = new();
     private ulong _divisorLimit;
     private bool _isConfigured;
 
@@ -151,18 +150,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             throw new ArgumentException("allowedMaxValues span must be at least as long as primes span.", nameof(allowedMaxValues));
         }
 
-        ulong divisorLimit;
-
-        lock (_sync)
+        if (!_isConfigured)
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            divisorLimit = _divisorLimit;
+            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
         }
 
+        ulong divisorLimit = _divisorLimit;
         for (int index = 0; index < primes.Length; index++)
         {
             allowedMaxValues[index] = ComputeAllowedMaxDivisor(primes[index], divisorLimit);
@@ -943,34 +936,28 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
     public ulong GetAllowedMaxDivisor(ulong prime)
     {
-        lock (_sync)
+        if (!_isConfigured)
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            return ComputeAllowedMaxDivisor(prime, _divisorLimit);
+            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
         }
+
+        return ComputeAllowedMaxDivisor(prime, _divisorLimit);
     }
 
     public DivisorScanSession CreateDivisorSession()
     {
-        lock (_sync)
+        if (!_isConfigured)
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            if (_sessionPool.TryTake(out DivisorScanSession? session))
-            {
-                session.Reset();
-                return session;
-            }
-
-            return new DivisorScanSession(this);
+            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
         }
+
+        if (_sessionPool.TryTake(out DivisorScanSession? session))
+        {
+            session.Reset();
+            return session;
+        }
+
+        return new DivisorScanSession(this);
     }
 
     IMersenneNumberDivisorByDivisorTester.IDivisorScanSession IMersenneNumberDivisorByDivisorTester.CreateDivisorSession() => CreateDivisorSession();
