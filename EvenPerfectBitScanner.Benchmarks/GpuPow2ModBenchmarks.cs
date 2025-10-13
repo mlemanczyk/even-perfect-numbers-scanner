@@ -33,7 +33,7 @@ public class GpuPow2ModBenchmarks
     [Benchmark(Baseline = true)]
     public GpuUInt128 ProcessEightBitWindows()
     {
-        return GpuUInt128.Pow2Mod(Input.Exponent, Input.Modulus);
+        return GpuUInt128.Pow2ModWindowed(Input.Exponent, Input.Modulus);
     }
 
     /// <summary>

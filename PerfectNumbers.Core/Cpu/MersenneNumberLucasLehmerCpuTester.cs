@@ -25,15 +25,15 @@ public class MersenneNumberLucasLehmerCpuTester
             return false;
         }
 
-        UInt128 s = UInt128Numbers.Four, two = UInt128Numbers.Two,
-            m = (UInt128.One << (int)exponent) - UInt128.One;
+        UInt128 s = UInt128Numbers.Four,
+                two = UInt128Numbers.Two,
+                m = (UInt128.One << (int)exponent) - UInt128.One,
+                cycle = MersenneDivisorCycles.GetCycle(m);
 
         UInt128 limit = exponent - UInt128Numbers.Two;
         for (UInt128 i = UInt128.Zero; i < limit; i++)
         {
-            // TODO: Port this Lucas–Lehmer powmod to the ProcessEightBitWindows helper so the CPU
-            // fallback benefits from the same windowed ladder that halves runtime in the Pow2 benchmarks.
-            s = s.PowModWithCycle(two, MersenneDivisorCycles.GetCycle(m)) - two;
+            s = s.Pow2ModWindowed(m, cycle) - two;
             if (s < UInt128.Zero)
             {
                 s += m;

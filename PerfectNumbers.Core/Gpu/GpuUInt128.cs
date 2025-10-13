@@ -351,7 +351,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         //     return Zero;
         // }
 
-        GpuUInt128 pow = Pow2Mod(exponent, modulus);
+        GpuUInt128 pow = Pow2ModWindowed(exponent, in modulus);
         if (pow.IsZero)
         {
             pow = modulus;
@@ -501,7 +501,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static GpuUInt128 Pow2Mod(ulong exponent, in ReadOnlyGpuUInt128 modulus)
+    public static GpuUInt128 Pow2ModWindowed(ulong exponent, in ReadOnlyGpuUInt128 modulus)
     {
         // This should never happen in production code.
         // if (modulus.IsZero || modulus == One)
@@ -576,6 +576,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
         return result;
     }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int TrailingZeroCount(in ReadOnlyGpuUInt128 value)
     {
@@ -1068,18 +1069,10 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ShiftLeftByNativeChunk(ulong value, ulong modulus)
     {
-        // TODO: Collapse this eight-step shift ladder into the ProcessEightBitWindows helper once it lands so
-        // we reuse the precomputed window residues instead of emitting `% modulus` after every shift.
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-
-        return value;
+        return ULongExtensions.MulMod64(
+            value,
+            ULongExtensions.Pow2ModWindowedCpu((ulong)NativeModuloChunkBits, modulus),
+            modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

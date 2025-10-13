@@ -146,9 +146,7 @@ public sealed class MersenneNumberDivisorGpuTester
 		ReadOnlyGpuUInt128 readOnlyMod = divisor;
                 if (x == 0)
                 {
-                        // TODO: Swap Pow2Mod for the ProcessEightBitWindows helper once Pow2Minus1Mod adopts it;
-                        // GpuPow2ModBenchmarks showed the windowed kernel cutting large divisors from ~51 µs to ~21 µs.
-                        baseVal = GpuUInt128.Pow2Mod(exponent, in readOnlyMod);
+                        baseVal = GpuUInt128.Pow2ModWindowed(exponent, in readOnlyMod);
 			result[0] = baseVal.High == 0UL && baseVal.Low == 1UL ? (byte)1 : (byte)0;
 			return;
 		}
@@ -165,9 +163,7 @@ public sealed class MersenneNumberDivisorGpuTester
 
                 GpuUInt128 pow = baseVal;
                 pow.ModPow(exponent / ux, in readOnlyMod);
-                // TODO: Replace this trailing Pow2Mod call with the ProcessEightBitWindows variant once the shared
-                // windowed helper lands so mixed-radix decompositions benefit from the same GPU speedup.
-                var part2 = GpuUInt128.Pow2Mod(exponent % ux, in readOnlyMod);
+                var part2 = GpuUInt128.Pow2ModWindowed(exponent % ux, in readOnlyMod);
 		GpuUInt128 product = pow;
 		ReadOnlyGpuUInt128 part2ReadOnly = part2.AsReadOnly();
 		product.MulMod(in part2ReadOnly, in readOnlyMod);

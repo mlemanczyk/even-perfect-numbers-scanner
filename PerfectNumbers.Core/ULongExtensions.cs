@@ -509,6 +509,164 @@ public static class ULongExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UInt128 Pow2ModWindowed(this ulong exponent, UInt128 modulus, UInt128 cycleLength)
+    {
+        UInt128 rotation = exponent;
+        if (cycleLength > UInt128.Zero)
+        {
+            // TODO: Replace this modulo with the cached cycle remainder produced by the divisor-cycle cache so Pow2ModWindowed avoids repeated `%` work, matching the ProcessEightBitWindows wins captured in Pow2MontgomeryModCycleComputationBenchmarks.
+            rotation %= cycleLength;
+        }
+
+        return Pow2ModWindowedInternal(rotation, modulus);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UInt128 Pow2ModWindowed(this UInt128 exponent, UInt128 modulus, UInt128 cycleLength)
+    {
+        UInt128 rotation = exponent;
+        if (cycleLength > UInt128.Zero)
+        {
+            // TODO: Replace this modulo with the cached cycle remainder produced by the divisor-cycle cache so Pow2ModWindowed avoids repeated `%` work, matching the ProcessEightBitWindows wins captured in Pow2MontgomeryModCycleComputationBenchmarks.
+            rotation %= cycleLength;
+        }
+
+        return Pow2ModWindowedInternal(rotation, modulus);
+    }
+
+    private static UInt128 Pow2ModWindowedInternal(UInt128 rotation, UInt128 modulus)
+    {
+        if (modulus == UInt128.One)
+        {
+            return UInt128.Zero;
+        }
+
+        if (rotation == UInt128.Zero)
+        {
+            return UInt128.One;
+        }
+
+        if ((modulus & (modulus - UInt128.One)) == UInt128.Zero)
+        {
+            int shift = (int)(rotation & UInt128Numbers.OneHundredTwentySeven);
+            UInt128 mask = modulus - UInt128.One;
+            UInt128 result = UInt128.One << shift;
+            return result & mask;
+        }
+
+        if ((rotation >> 64) == UInt128.Zero)
+        {
+            ulong rotation64 = (ulong)rotation;
+            if (modulus <= ulong.MaxValue)
+            {
+                ulong modulus64 = (ulong)modulus;
+                ulong remainder = rotation64.Pow2ModWindowedCpu(modulus64);
+                return remainder;
+            }
+
+            ReadOnlyGpuUInt128 readOnlyModulus = new ReadOnlyGpuUInt128(modulus);
+            GpuUInt128 pow = GpuUInt128.Pow2ModWindowed(rotation64, in readOnlyModulus);
+            return (UInt128)pow;
+        }
+
+        return Pow2ModWindowedLargeRotation(rotation, modulus);
+    }
+
+    private static UInt128 Pow2ModWindowedLargeRotation(UInt128 rotation, UInt128 modulus)
+    {
+        ReadOnlyGpuUInt128 modulusReadOnly = new ReadOnlyGpuUInt128(modulus);
+        int bitLength = rotation.GetBitLength();
+        int windowSize = GetWindowSize(bitLength);
+        int oddPowerCount = 1 << (windowSize - 1);
+
+        Span<GpuUInt128> oddPowerStorage = oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount
+            ? stackalloc GpuUInt128[PerfectNumberConstants.MaxOddPowersCount]
+            : new GpuUInt128[oddPowerCount];
+        Span<GpuUInt128> oddPowers = oddPowerStorage[..oddPowerCount];
+        InitializePow2OddPowers(modulusReadOnly, oddPowers);
+
+        GpuUInt128 result = GpuUInt128.One;
+        int index = bitLength - 1;
+
+        while (index >= 0)
+        {
+            if (!IsBitSet(rotation, index))
+            {
+                result.SquareMod(modulusReadOnly);
+                index--;
+                continue;
+            }
+
+            int windowStart = index - windowSize + 1;
+            if (windowStart < 0)
+            {
+                windowStart = 0;
+            }
+
+            while (!IsBitSet(rotation, windowStart))
+            {
+                windowStart++;
+            }
+
+            int windowBitCount = index - windowStart + 1;
+            for (int square = 0; square < windowBitCount; square++)
+            {
+                result.SquareMod(modulusReadOnly);
+            }
+
+            ulong windowValue = ExtractWindowValue(rotation, windowStart, windowBitCount);
+            int tableIndex = (int)((windowValue - 1UL) >> 1);
+            result.MulMod(oddPowers[tableIndex], modulusReadOnly);
+
+            index = windowStart - 1;
+        }
+
+        return (UInt128)result;
+    }
+
+    private static void InitializePow2OddPowers(in ReadOnlyGpuUInt128 modulus, Span<GpuUInt128> oddPowers)
+    {
+        GpuUInt128 baseValue = new GpuUInt128(2UL);
+        if (baseValue.CompareTo(modulus) >= 0)
+        {
+            baseValue.Sub(modulus);
+        }
+
+        oddPowers[0] = baseValue;
+        if (oddPowers.Length == 1)
+        {
+            return;
+        }
+
+        GpuUInt128 baseSquare = baseValue;
+        baseSquare.MulMod(baseValue, modulus);
+        for (int i = 1; i < oddPowers.Length; i++)
+        {
+            oddPowers[i] = oddPowers[i - 1];
+            oddPowers[i].MulMod(baseSquare, modulus);
+        }
+    }
+
+    private static bool IsBitSet(UInt128 value, int bitIndex)
+    {
+        if (bitIndex >= 64)
+        {
+            ulong high = (ulong)(value >> 64);
+            return ((high >> (bitIndex - 64)) & 1UL) != 0UL;
+        }
+
+        ulong low = (ulong)value;
+        return ((low >> bitIndex) & 1UL) != 0UL;
+    }
+
+    private static ulong ExtractWindowValue(UInt128 value, int windowStart, int windowBitCount)
+    {
+        UInt128 shifted = value >> windowStart;
+        ulong mask = (1UL << windowBitCount) - 1UL;
+        return (ulong)shifted & mask;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong MontgomeryMultiply(this ulong a, ulong b, ulong modulus, ulong nPrime)
     {
         ulong tLow = unchecked(a * b);
@@ -1068,54 +1226,8 @@ public static class ULongExtensions
     /// </summary>
     public static UInt128 PowModWithCycle(this ulong exponent, UInt128 modulus, ulong cycleLength)
     {
-        UInt128 result = UInt128.One;
-        ulong exponentLoopIndex = 0UL;
-
-        // TODO: Wire this cycle-aware overload into the ProcessEightBitWindows helper so the reduced exponent path
-        // inherits the faster windowed pow2 routine highlighted in the Pow2Montgomery benchmarks.
-        // Return 1 because 2^0 = 1
-        if (exponent == 0UL)
-            return result;
-
-        // Any number mod 1 is 0
-        if (modulus == UInt128.One)
-            return UInt128.Zero;
-
-        // For small exponents, do classic method
-        if (exponent < 64 || modulus < 4)
-        {
-            for (; exponentLoopIndex < exponent; exponentLoopIndex++)
-            {
-                result <<= 1;
-                if (result >= modulus)
-                    result -= modulus;
-            }
-
-            return result;
-        }
-
-        // Special case: if modulus is a power of two, use bitmasking for efficiency and correctness
-        if ((modulus & (modulus - 1)) == 0)
-        {
-            result = UInt128.One << (int)(exponent & 127);
-            return result & (modulus - 1);
-        }
-
-        // Reusing exponentLoopIndex to iterate over the rotation count for the cycle-aware path.
-        exponentLoopIndex = 0UL;
-        // Reusing result after resetting it for the rotation-accumulation pass.
-        result = UInt128.One;
-        // TODO: Replace this modulo with the cached cycle remainder produced by the divisor-cycle cache so PowModWithCycle avoids
-        // repeated `%` work, matching the ProcessEightBitWindows wins captured in Pow2MontgomeryModCycleComputationBenchmarks.
-        ulong rotationCount = exponent % cycleLength;
-        for (; exponentLoopIndex < rotationCount; exponentLoopIndex++)
-        {
-            result <<= 1;
-            if (result >= modulus)
-                result -= modulus;
-        }
-
-        return result;
+        UInt128 cycle = cycleLength;
+        return ((UInt128)exponent).Pow2ModWindowed(modulus, cycle);
     }
 
     /// <summary>
@@ -1123,55 +1235,7 @@ public static class ULongExtensions
     /// </summary>
     public static UInt128 PowModWithCycle(this ulong exponent, UInt128 modulus, UInt128 cycleLength)
     {
-        UInt128 result = UInt128.One;
-        ulong exponentLoopIndex = 0UL;
-
-        // TODO: Replace this UInt128-cycle overload with the ProcessEightBitWindows helper so large-exponent CPU scans
-        // reuse the faster windowed pow2 ladder instead of the manual rotation loop measured to lag behind in benchmarks.
-        // Return 1 because 2^0 = 1
-        if (exponent == UInt128.Zero)
-            return result;
-
-        // Any number mod 1 is 0
-        if (modulus == UInt128.One)
-            return UInt128.Zero;
-
-        // For small exponents, do classic method
-        if (exponent < UInt128Numbers.SixtyFour || modulus < UInt128Numbers.Four)
-        {
-            for (; exponentLoopIndex < exponent; exponentLoopIndex++)
-            {
-                result <<= 1;
-                if (result >= modulus)
-                    result -= modulus;
-            }
-
-            return result;
-        }
-
-        // Special case: if modulus is a power of two, use bitmasking for efficiency and correctness
-        if ((modulus & (modulus - UInt128.One)) == UInt128.Zero)
-        {
-            result = UInt128.One << (int)(exponent & UInt128Numbers.OneHundredTwentySeven);
-            return result & (modulus - 1);
-        }
-
-        // Reusing result after resetting it for the rotation-driven accumulation phase.
-        result = UInt128.One;
-        // TODO: Swap this modulo with the upcoming UInt128 cycle remainder helper so large-exponent scans reuse cached
-        // reductions instead of recomputing `%` for every lookup, as demonstrated in Pow2MontgomeryModCycleComputationBenchmarks.
-        UInt128 rotationCount = exponent % cycleLength;
-        UInt128 rotationIndex = UInt128.Zero;
-        while (rotationIndex < rotationCount)
-        {
-            result <<= 1;
-            if (result >= modulus)
-                result -= modulus;
-
-            rotationIndex += UInt128.One;
-        }
-
-        return result;
+        return ((UInt128)exponent).Pow2ModWindowed(modulus, cycleLength);
     }
 
     /// <summary>
@@ -1179,58 +1243,7 @@ public static class ULongExtensions
     /// </summary>
     public static UInt128 PowModWithCycle(this UInt128 exponent, UInt128 modulus, UInt128 cycleLength)
     {
-        UInt128 one = UInt128.One,
-                result = one,
-                zero = UInt128.Zero;
-        ulong exponentLoopIndex = 0UL;
-
-        // TODO: Migrate this UInt128 exponent overload to ProcessEightBitWindows so the large-cycle reductions drop the
-        // slow manual loop that underperforms the windowed pow2 helper in the Pow2 benchmark suite.
-        // Return 1 because 2^0 = 1
-        if (exponent == zero)
-            return result;
-
-        // Any number mod 1 is 0
-        if (modulus == one)
-            return zero;
-
-        // For small exponents, do classic method
-        if (exponent < UInt128Numbers.SixtyFour || modulus < UInt128Numbers.Four)
-        {
-            for (; exponentLoopIndex < exponent; exponentLoopIndex++)
-            {
-                result <<= 1;
-                if (result >= modulus)
-                    result -= modulus;
-            }
-
-            return result;
-        }
-
-        // Special case: if modulus is a power of two, use bitmasking for efficiency and correctness
-        if ((modulus & (modulus - one)) == zero)
-        {
-            result = one << (int)(exponent & UInt128Numbers.OneHundredTwentySeven);
-            return result & (modulus - 1);
-        }
-
-        // Reusing result after resetting it for the rotation-driven accumulation phase.
-        result = one;
-        // TODO: Swap this modulo with the shared UInt128 cycle remainder helper once available so CRT powmods reuse cached
-        // reductions in the windowed ladder, avoiding the `%` cost highlighted in Pow2MontgomeryModCycleComputationBenchmarks.
-        UInt128 rotationCount = exponent % cycleLength;
-
-        // We're reusing "zero" as rotation index for just a little better performance
-        while (zero < rotationCount)
-        {
-            result <<= 1;
-            if (result >= modulus)
-                result -= modulus;
-
-            zero += one;
-        }
-
-        return result;
+        return exponent.Pow2ModWindowed(modulus, cycleLength);
     }
 
     /// <summary>

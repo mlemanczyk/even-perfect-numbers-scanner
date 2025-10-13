@@ -7,8 +7,6 @@ namespace PerfectNumbers.Core.Gpu;
 public static class GpuContextPool
 {
     private static readonly bool PoolingEnabled = true;
-    // TODO: Introduce accelerator-specific warmup so pooled contexts precompile the ProcessEightBitWindows kernels and load
-    // divisor-cycle data before the first scan begins.
     // Default device preference for generic GPU kernels (prime scans, NTT, etc.)
     public static bool ForceCpu { get; set; } = false;
 
@@ -26,6 +24,10 @@ public static class GpuContextPool
             Context = Context.CreateDefault();
             Accelerator = Context.GetPreferredDevice(preferCpu).CreateAccelerator(Context);
             IsCpu = Accelerator.AcceleratorType == AcceleratorType.CPU;
+            if (!IsCpu)
+            {
+                GpuKernelPool.WarmupProcessEightBitWindows(Accelerator);
+            }
             // NOTE: Avoid loading/compiling any kernel here to prevent implicit
             // CL stream/queue creation during accelerator construction.
             // Some OpenCL drivers are fragile when a queue is created immediately

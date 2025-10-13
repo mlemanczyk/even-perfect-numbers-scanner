@@ -6,6 +6,10 @@ namespace PerfectNumbers.Core;
 internal struct CycleRemainderStepper
 {
     private readonly ulong _cycleLength;
+    private readonly UInt128 _cycleLength128;
+    private readonly int _cycleLengthLog2;
+    private readonly bool _cycleIsPowerOfTwo;
+    private readonly ulong _cycleMask;
     private ulong _previousPrime;
     private ulong _currentRemainder;
     private bool _hasState;
@@ -18,6 +22,10 @@ internal struct CycleRemainderStepper
         }
 
         _cycleLength = cycleLength;
+        _cycleLength128 = cycleLength;
+        _cycleIsPowerOfTwo = (cycleLength & (cycleLength - 1UL)) == 0UL;
+        _cycleMask = cycleLength - 1UL;
+        _cycleLengthLog2 = BitOperations.Log2(cycleLength);
         _previousPrime = 0UL;
         _currentRemainder = 0UL;
         _hasState = false;
@@ -62,33 +70,69 @@ internal struct CycleRemainderStepper
             throw new ArgumentOutOfRangeException(nameof(prime), "Primes must be processed in strictly increasing order.");
         }
 
-        ulong cycleLength = _cycleLength;
         ulong delta = prime - _previousPrime;
         _previousPrime = prime;
 
-        if (ulong.MaxValue - _currentRemainder < delta)
-        {
-            UInt128 extended = (UInt128)_currentRemainder + delta;
-            // TODO: Replace this `%` with the UInt128-aware cycle reducer so large deltas use the cached subtraction
-            // ladder instead of falling back to the slower modulo implementation.
-            _currentRemainder = (ulong)(extended % cycleLength);
-            return _currentRemainder;
-        }
-
-        _currentRemainder += delta;
-
-        if (_currentRemainder >= cycleLength)
-        {
-            _currentRemainder -= cycleLength;
-            if (_currentRemainder >= cycleLength)
-            {
-                // TODO: Route this `%` through the shared divisor-cycle helper so repeated wrap-arounds avoid
-                // modulo operations and match the benchmarked fast path highlighted in
-                // MersenneDivisorCycleLengthGpuBenchmarks.
-                _currentRemainder %= cycleLength;
-            }
-        }
+        UInt128 extended = (UInt128)_currentRemainder + delta;
+        _currentRemainder = Reduce(extended);
         return _currentRemainder;
+    }
+
+    private ulong Reduce(UInt128 value)
+    {
+        if (value < _cycleLength128)
+        {
+            return (ulong)value;
+        }
+
+        if (_cycleIsPowerOfTwo)
+        {
+            return (ulong)value & _cycleMask;
+        }
+
+        UInt128 remainder = value;
+        UInt128 modulus = _cycleLength128;
+        int modulusLog2 = _cycleLengthLog2;
+
+        while (remainder >= modulus)
+        {
+            int remainderLog2 = Log2(remainder);
+            int shift = remainderLog2 - modulusLog2;
+            if (shift <= 0)
+            {
+                remainder -= modulus;
+                continue;
+            }
+
+            UInt128 scaled = modulus << shift;
+            if (scaled > remainder)
+            {
+                shift--;
+                if (shift <= 0)
+                {
+                    remainder -= modulus;
+                    continue;
+                }
+
+                scaled = modulus << shift;
+            }
+
+            remainder -= scaled;
+        }
+
+        return (ulong)remainder;
+    }
+
+    private static int Log2(UInt128 value)
+    {
+        ulong high = (ulong)(value >> 64);
+        if (high != 0UL)
+        {
+            return 63 - BitOperations.LeadingZeroCount(high) + 64;
+        }
+
+        ulong low = (ulong)value;
+        return 63 - BitOperations.LeadingZeroCount(low);
     }
 
     public void CaptureState(out ulong previousPrime, out ulong previousRemainder, out bool hasState)

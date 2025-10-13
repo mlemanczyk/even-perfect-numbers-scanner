@@ -181,7 +181,7 @@ public class GpuKernelCompilationTests
         yield return Loader("MersenneNumberLucasLehmerGpuTester.KernelBatch", CompileLucasLehmerBatchKernel);
         yield return Loader("PrimeOrderGpuHeuristics.PartialFactorKernel", CompilePrimeOrderPartialFactorKernel);
         yield return Loader("PrimeOrderGpuHeuristics.CalculateOrderKernel", CompilePrimeOrderKernel);
-        yield return Loader("PrimeOrderGpuHeuristics.Pow2ModKernel", CompilePrimeOrderPow2ModKernel);
+        yield return Loader("PrimeOrderGpuHeuristics.Pow2ModWindowedKernel", CompilePrimeOrderPow2ModKernel);
         yield return Loader("PrimeOrderGpuHeuristics.Pow2ModKernelWide", CompilePrimeOrderPow2ModWideKernel);
         yield return Loader("MersenneDivisorCycles.GpuDivisorCycleKernel", CompileMersenneDivisorCyclesKernel);
         yield return Loader("PrimeTester.SmallPrimeSieveKernel", CompilePrimeTesterSmallPrimeKernel);
@@ -399,9 +399,9 @@ public class GpuKernelCompilationTests
         {
             _ = lease.OrderKernel;
             _ = lease.IncrementalKernel;
-            _ = lease.Pow2ModKernel;
+            _ = lease.Pow2ModWindowedKernel;
             _ = lease.IncrementalOrderKernel;
-            _ = lease.Pow2ModOrderKernel;
+            _ = lease.Pow2ModWindowedOrderKernel;
         }
         finally
         {
@@ -413,9 +413,9 @@ public class GpuKernelCompilationTests
         {
             _ = orderLease.OrderKernel;
             _ = orderLease.IncrementalKernel;
-            _ = orderLease.Pow2ModKernel;
+            _ = orderLease.Pow2ModWindowedKernel;
             _ = orderLease.IncrementalOrderKernel;
-            _ = orderLease.Pow2ModOrderKernel;
+            _ = orderLease.Pow2ModWindowedOrderKernel;
         }
         finally
         {

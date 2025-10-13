@@ -32,11 +32,11 @@ public sealed class KernelContainer
     public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
         ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>,
         ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>,
-        ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2Mod;
+        ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2ModWindowed;
     public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
             ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>? IncrementalOrder;
     public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
-        ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2ModOrder;
+        ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2ModWindowedOrder;
     public Action<AcceleratorStream, Index1D, ArrayView1D<MontgomeryDivisorData, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int>? MontgomeryOddPowers;
 
     // Optional device buffer with small divisor cycles (<= 4M). Index = divisor, value = cycle length.
@@ -122,16 +122,16 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
         }
     }
 
-    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> Pow2ModKernel
+    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> Pow2ModWindowedKernel
     {
         get
         {
             var accel = Accelerator;
             // lock (_gpu!.Value.KernelInitLock)
             // {
-                return KernelContainer.InitOnce(ref _kernels.Pow2Mod, () =>
+                return KernelContainer.InitOnce(ref _kernels.Pow2ModWindowed, () =>
                 {
-                    var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernelScan);
+                    var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModWindowedKernelScan);
                     var kernel = KernelUtil.GetKernel(loaded);
                     return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
                 });
@@ -173,16 +173,16 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
         }
     }
 
-    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>> Pow2ModOrderKernel
+    public readonly Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>> Pow2ModWindowedOrderKernel
     {
         get
         {
             var accel = Accelerator;
             // lock (_gpu!.Value.KernelInitLock)
             // {
-                return KernelContainer.InitOnce(ref _kernels.Pow2ModOrder, () =>
+                return KernelContainer.InitOnce(ref _kernels.Pow2ModWindowedOrder, () =>
                 {
-                    var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModOrderKernelScan);
+                    var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModWindowedOrderKernelScan);
                     var kernel = KernelUtil.GetKernel(loaded);
                     return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
                 });
@@ -324,13 +324,13 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
         ulong phi64 = phi.Low;
         // TODO: Replace these Pow2Mod calls with the ProcessEightBitWindows helper when the shared windowed
         // scalar implementation lands; benchmarks showed the windowed kernel trimming per-divisor runtime by ~2.4×.
-        if (GpuUInt128.Pow2Mod(phi64, in readOnlyQ) != GpuUInt128.One)
+        if (GpuUInt128.Pow2ModWindowed(phi64, in readOnlyQ) != GpuUInt128.One)
         {
             orders[index] = 0UL;
             return;
         }
 
-        GpuUInt128 halfPow = GpuUInt128.Pow2Mod(phi64 >> 1, in readOnlyQ) - GpuUInt128.One;
+        GpuUInt128 halfPow = GpuUInt128.Pow2ModWindowed(phi64 >> 1, in readOnlyQ) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(halfPow, q) != GpuUInt128.One)
         {
             orders[index] = 0UL;
@@ -338,7 +338,7 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
         }
 
         ulong div = FastDiv64Gpu(phi64, exponent, divMul);
-        GpuUInt128 divPow = GpuUInt128.Pow2Mod(div, in readOnlyQ) - GpuUInt128.One;
+        GpuUInt128 divPow = GpuUInt128.Pow2ModWindowed(div, in readOnlyQ) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(divPow, q) != GpuUInt128.One)
         {
             orders[index] = 0UL;
@@ -362,14 +362,13 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
         ulong phi64 = phi.Low;
         // TODO: Once the ProcessEightBitWindows helper is available, switch this order kernel to that faster
         // Pow2Mod variant so cycle checks inherit the same gains observed in GpuPow2ModBenchmarks.
-        GpuUInt128 pow = GpuUInt128.Pow2Mod(phi64, in readOnlyQ);
-        if (pow != GpuUInt128.One)
+        if (GpuUInt128.Pow2ModWindowed(phi64, in readOnlyQ) != GpuUInt128.One)
         {
             orders[index] = 0UL;
             return;
         }
 
-        GpuUInt128 halfPow = GpuUInt128.Pow2Mod(phi64 >> 1, in readOnlyQ) - GpuUInt128.One;
+        GpuUInt128 halfPow = GpuUInt128.Pow2ModWindowed(phi64 >> 1, in readOnlyQ) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(halfPow, q) != GpuUInt128.One)
         {
             orders[index] = 0UL;
@@ -377,7 +376,7 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
         }
 
         ulong div = FastDiv64Gpu(phi64, exponent, divMul);
-        GpuUInt128 divPow = GpuUInt128.Pow2Mod(div, in readOnlyQ) - GpuUInt128.One;
+        GpuUInt128 divPow = GpuUInt128.Pow2ModWindowed(div, in readOnlyQ) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(divPow, q) != GpuUInt128.One)
         {
             orders[index] = 0UL;
@@ -414,7 +413,7 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
         }
     }
 
-    private static void Pow2ModKernelScan(Index1D index, ulong exponent, GpuUInt128 twoP, GpuUInt128 kStart, byte lastIsSeven, ulong _,
+    internal static void Pow2ModWindowedKernelScan(Index1D index, ulong exponent, GpuUInt128 twoP, GpuUInt128 kStart, byte lastIsSeven, ulong _,
         ResidueAutomatonArgs ra, ArrayView<ulong> orders,
         ArrayView1D<ulong, Stride1D.Dense> smallCycles,
         ArrayView1D<uint, Stride1D.Dense> smallPrimesLastOne,
@@ -478,9 +477,7 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
                 return;
             }
         }
-        // TODO: Swap Pow2Minus1Mod for the eight-bit window helper once the scalar version switches;
-        // benchmarks show the windowed variant cuts large-divisor scans from ~51 µs to ~21 µs.
-        if (GpuUInt128.Pow2Minus1Mod(exponent, in readOnlyQ) != GpuUInt128.Zero)
+        if (GpuUInt128.Pow2ModWindowed(exponent, in readOnlyQ) != GpuUInt128.One)
         {
             orders[index] = 0UL;
             return;
@@ -637,19 +634,19 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
         ulong phi64 = phi.Low;
         // TODO: Upgrade this pow2mod order kernel to the ProcessEightBitWindows helper once available so GPU residue
         // scans avoid the single-bit ladder that benchmarks found to be 2.3× slower on large exponents.
-        if (GpuUInt128.Pow2Mod(phi64, in readOnlyQ) != GpuUInt128.One)
+        if (GpuUInt128.Pow2ModWindowed(phi64, in readOnlyQ) != GpuUInt128.One)
         {
             return;
         }
 
-        GpuUInt128 halfPow = GpuUInt128.Pow2Mod(phi64 >> 1, in readOnlyQ) - GpuUInt128.One;
+        GpuUInt128 halfPow = GpuUInt128.Pow2ModWindowed(phi64 >> 1, in readOnlyQ) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(halfPow, q) != GpuUInt128.One)
         {
             return;
         }
 
         ulong div = FastDiv64Gpu(phi64, exponent, divMul);
-        GpuUInt128 divPow = GpuUInt128.Pow2Mod(div, in readOnlyQ) - GpuUInt128.One;
+        GpuUInt128 divPow = GpuUInt128.Pow2ModWindowed(div, in readOnlyQ) - GpuUInt128.One;
         if (GpuUInt128.BinaryGcd(divPow, q) != GpuUInt128.One)
         {
             return;
@@ -658,7 +655,7 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
         Atomic.Or(ref found[0], 1);
     }
 
-    private static void Pow2ModOrderKernelScan(Index1D index, ulong exponent, GpuUInt128 twoP, GpuUInt128 kStart, byte lastIsSeven, ulong _,
+    internal static void Pow2ModWindowedOrderKernelScan(Index1D index, ulong exponent, GpuUInt128 twoP, GpuUInt128 kStart, byte lastIsSeven, ulong _,
                 ResidueAutomatonArgs ra, ArrayView<int> found, ArrayView1D<ulong, Stride1D.Dense> smallCycles)
     {
         ulong idx = (ulong)index.X;
@@ -714,9 +711,7 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
                 return;
             }
         }
-        // TODO: Replace this Pow2Mod check with the ProcessEightBitWindows helper once Pow2Minus1Mod adopts it;
-        // residue order scans will then benefit from the same 2× speedup the benchmarked windowed kernel delivered.
-        if (GpuUInt128.Pow2Mod(exponent, in readOnlyQ) != GpuUInt128.One)
+        if (GpuUInt128.Pow2ModWindowed(exponent, in readOnlyQ) != GpuUInt128.One)
         {
             return;
         }
@@ -834,6 +829,28 @@ public class GpuKernelPool
 
             return new ResiduePrimeViews(deviceLastOne.View, deviceLastSeven.View, deviceLastOnePow2.View, deviceLastSevenPow2.View);
         // }
+    }
+
+    internal static void WarmupProcessEightBitWindows(Accelerator accelerator)
+    {
+        var kernels = GetKernels(accelerator);
+
+        KernelContainer.InitOnce(ref kernels.Pow2ModWindowed, () =>
+        {
+            var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(GpuKernelLease.Pow2ModWindowedKernelScan);
+            var kernel = KernelUtil.GetKernel(loaded);
+            return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+        });
+
+        KernelContainer.InitOnce(ref kernels.Pow2ModWindowedOrder, () =>
+        {
+            var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>(GpuKernelLease.Pow2ModWindowedOrderKernelScan);
+            var kernel = KernelUtil.GetKernel(loaded);
+            return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
+        });
+
+        EnsureSmallCyclesOnDevice(accelerator);
+        EnsureSmallPrimesOnDevice(accelerator);
     }
 
     public static GpuKernelLease GetKernel(bool useGpuOrder)

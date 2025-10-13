@@ -20,7 +20,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 
                 var kernel = _kernelType switch
                 {
-                        GpuKernelType.Pow2Mod => gpuLease.Pow2ModOrderKernel,
+                        GpuKernelType.Pow2Mod => gpuLease.Pow2ModWindowedOrderKernel,
                         _ => gpuLease.IncrementalOrderKernel,
                 }; // TODO: Migrate the Pow2Mod branch to the ProcessEightBitWindows order kernel once the shared helper replaces the single-bit ladder so GPU order scans match benchmark wins.
                 // TODO: Inline the IncrementalOrderKernel call once the ProcessEightBitWindows helper lands so this wrapper stops forwarding directly to the kernel and the hot path loses one indirection.
