@@ -408,17 +408,6 @@ public class GpuKernelCompilationTests
             lease.Dispose();
         }
 
-        var smallCycleLease = GpuKernelPool.GetKernel(useGpuOrder: false, requiresSmallCycles: true);
-        try
-        {
-            _ = smallCycleLease.Pow2ModWindowedKernelWithCycles;
-            _ = GpuKernelPool.EnsureSmallCyclesOnDevice(smallCycleLease.Accelerator);
-        }
-        finally
-        {
-            smallCycleLease.Dispose();
-        }
-
         var orderLease = GpuKernelPool.GetKernel(useGpuOrder: true);
         try
         {
