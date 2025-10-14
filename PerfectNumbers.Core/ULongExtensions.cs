@@ -554,9 +554,21 @@ public static class ULongExtensions
 
         if (rotation <= (UInt128)Pow2WindowFallbackThreshold)
         {
-            // Small exponents always route through the CPU ladder so the fallback stays branch-free on the GPU path.
-            // This matches the historical behavior where diagnostic harnesses exercised these ranges without paying kernel setup costs.
-            return Pow2ModWindowedCpu(rotation, modulus);
+            if ((modulus >> 64) == UInt128.Zero)
+            {
+                // Small exponents over 64-bit moduli reuse the CPU ladder to mirror the historical fallback without incurring GPU dispatch.
+                return Pow2ModWindowedCpu(rotation, modulus);
+            }
+
+            if (GpuContextPool.ForceCpu)
+            {
+                // CLI callers forcing CPU pow2 computations still bypass the GPU ladder even for tiny rotations.
+                return Pow2ModWindowedCpu(rotation, modulus);
+            }
+
+            // Large moduli benefit from the GPU ladder even for tiny exponents; routing them back to the device avoids
+            // the expensive UInt128 multiplications that were stalling production scans and inflating host memory usage.
+            return Pow2ModWindowedGpu(rotation, modulus);
         }
 
         // Production scans never feed power-of-two moduli, so the specialized mask-and-shift shortcut is
