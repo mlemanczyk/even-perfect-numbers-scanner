@@ -64,6 +64,7 @@ internal static class Program
         int threadCount = Environment.ProcessorCount;
         int blockSize = 1;
         int gpuPrimeThreads = 1;
+        int gpuSmallCycleThreads = 512;
         int gpuPrimeBatch = 262_144;
         GpuKernelType kernelType = GpuKernelType.Incremental;
         bool useModuloWorkaround = false; // TODO: Remove once the runtime defaults to the ImmediateModulo path measured fastest in GpuUInt128NativeModuloBenchmarks.
@@ -372,6 +373,10 @@ internal static class Program
                 // allocation-free in the hot startup path.
                 gpuPrimeThreads = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
             }
+            else if (arg.StartsWith("--primes-with-smallcycles-threads=", StringComparison.OrdinalIgnoreCase))
+            {
+                gpuSmallCycleThreads = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+            }
             else if (arg.StartsWith("--gpu-prime-batch=", StringComparison.OrdinalIgnoreCase))
             {
                 // TODO: Swap int.Parse for Utf8Parser to align with the faster CLI numeric parsing path.
@@ -450,6 +455,7 @@ internal static class Program
 
         // Apply GPU prime sieve runtime configuration
         GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
+        GpuSmallCycleKernelLimiter.SetLimit(gpuSmallCycleThreads);
         PrimeTester.GpuBatchSize = Math.Max(1, gpuPrimeBatch);
 
         MersenneDivisorCycles mersenneDivisorCycles = new();
@@ -713,6 +719,7 @@ internal static class Program
 
         // Limit GPU concurrency only for prime checks (LL/NTT & GPU order scans).
         GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
+        GpuSmallCycleKernelLimiter.SetLimit(gpuSmallCycleThreads);
         // Configure batch size for GPU primality sieve
         PrimeTester.GpuBatchSize = gpuPrimeBatch;
 
@@ -1002,6 +1009,7 @@ internal static class Program
         Console.WriteLine("  --ntt=reference|staged GPU NTT backend (default staged)");
         Console.WriteLine("  --mod-reduction=auto|uint128|mont64|barrett128  staged NTT reduction (default auto)");
         Console.WriteLine("  --gpu-prime-threads=<value>  max concurrent GPU prime checks (default 1)");
+        Console.WriteLine("  --primes-with-smallcycles-threads=<value>  max concurrent pow2 kernels that preload small cycles (default 512)");
         Console.WriteLine("  --ll-slice=<value>     Lucas–Lehmer iterations per slice (default 32)");
         Console.WriteLine("  --gpu-scan-batch=<value>  GPU q-scan batch size (default 2_097_152)");
         Console.WriteLine("  --order-warmup-limit=<value>  Warm-up order candidates (default 5_000_000)");

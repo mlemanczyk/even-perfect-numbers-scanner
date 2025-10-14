@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Threading;
+using ILGPU;
 using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
@@ -18,15 +19,16 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
     // GPU residue variant: check 2^p % q == 1 for q = 2*p*k + 1.
     public void Scan(ulong exponent, UInt128 twoP, bool lastIsSeven, UInt128 maxK, ref bool isPrime)
     {
-        var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder);
+        var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder, requiresSmallCycles: true);
         var accelerator = gpuLease.Accelerator;
         var stream = gpuLease.Stream;
+        ArrayView1D<ulong, Stride1D.Dense> smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
         ResiduePrimeViews primeViews = GpuKernelPool.EnsureSmallPrimesOnDevice(accelerator);
         int batchSize = GpuConstants.ScanBatchSize;
         UInt128 kStart = 1UL;
         UInt128 limit = maxK + UInt128.One;
         byte last = lastIsSeven ? (byte)1 : (byte)0;
-        var kernel = gpuLease.Pow2ModWindowedKernel;
+        var kernel = gpuLease.Pow2ModWindowedKernelWithCycles;
         if (exponent > uint.MaxValue)
         {
             throw new ArgumentOutOfRangeException(nameof(exponent), "Pow2ModWindowedKernel stores order sentinels in 32-bit buffers.");
@@ -63,7 +65,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
                 var kernelArgs = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
 
                 kernel(stream, currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, 0UL,
-                        kernelArgs, orderBuffer.View, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
+                        kernelArgs, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
 
                 accelerator.Synchronize();
                 orderBuffer.View.CopyToCPU(ref ordersRef, currentSize);
