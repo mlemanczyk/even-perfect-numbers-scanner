@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using System.Numerics;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
+using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 
 namespace EvenPerfectBitScanner.Benchmarks;
@@ -43,6 +45,15 @@ public class GpuPow2ModBenchmarks
     public GpuUInt128 ProcessSingleBits()
     {
         return Pow2ModSingleBit(Input.Exponent, Input.Modulus);
+    }
+
+    [Benchmark]
+    public GpuUInt128 ProcessCpuWindowed()
+    {
+        UInt128 exponent = Input.Exponent;
+        UInt128 modulus = (UInt128)Input.Modulus;
+        UInt128 remainder = exponent.Pow2ModWindowed(modulus, UInt128.Zero);
+        return new GpuUInt128(remainder);
     }
 
     private static GpuUInt128 Pow2ModSingleBit(ulong exponent, GpuUInt128 modulus)
