@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using PerfectNumbers.Core;
 
 namespace PerfectNumbers.Core.Cpu;
@@ -10,7 +11,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 {
     private readonly object _sync = new();
     private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
-    private ulong _divisorLimit;
+    private readonly ConcurrentDictionary<ulong, ulong> _allowedMaxCache = new();
+    private long _divisorLimitBits;
     private ulong _lastStatusDivisor;
     private bool _isConfigured;
     private int _batchSize = 1_024;
@@ -24,11 +26,14 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     public void ConfigureFromMaxPrime(ulong maxPrime)
     {
+        ulong divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
+
         lock (_sync)
         {
-            _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
+            _allowedMaxCache.Clear();
+            Volatile.Write(ref _divisorLimitBits, unchecked((long)divisorLimit));
             _lastStatusDivisor = 0UL;
-            _isConfigured = true;
+            Volatile.Write(ref _isConfigured, true);
         }
     }
 
@@ -36,42 +41,42 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     {
         get
         {
-            lock (_sync)
+            if (!Volatile.Read(ref _isConfigured))
             {
-                if (!_isConfigured)
-                {
-                    throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-                }
-
-                return _divisorLimit;
+                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
             }
+
+            return unchecked((ulong)Volatile.Read(ref _divisorLimitBits));
         }
     }
 
     public ulong GetAllowedMaxDivisor(ulong prime)
     {
-        lock (_sync)
+        if (!Volatile.Read(ref _isConfigured))
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            return ComputeAllowedMaxDivisor(prime, _divisorLimit);
+            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
         }
+
+        if (_allowedMaxCache.TryGetValue(prime, out ulong cachedAllowedMax))
+        {
+            return cachedAllowedMax;
+        }
+
+        ulong divisorLimit = unchecked((ulong)Volatile.Read(ref _divisorLimitBits));
+        return ComputeAllowedMaxDivisor(prime, divisorLimit);
     }
 
     public bool IsPrime(ulong prime, out bool divisorsExhausted)
     {
-        ulong allowedMax;
-        lock (_sync)
+        if (!Volatile.Read(ref _isConfigured))
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
+            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
+        }
 
-            allowedMax = ComputeAllowedMaxDivisor(prime, _divisorLimit);
+        if (!_allowedMaxCache.TryRemove(prime, out ulong allowedMax))
+        {
+            ulong divisorLimit = unchecked((ulong)Volatile.Read(ref _divisorLimitBits));
+            allowedMax = ComputeAllowedMaxDivisor(prime, divisorLimit);
         }
 
         if (allowedMax < 3UL)
@@ -116,41 +121,44 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             throw new ArgumentException("allowedMaxValues span must be at least as long as primes span.", nameof(allowedMaxValues));
         }
 
-        ulong divisorLimit;
-
-        lock (_sync)
+        if (!Volatile.Read(ref _isConfigured))
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            divisorLimit = _divisorLimit;
+            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
         }
+
+        ulong divisorLimit = unchecked((ulong)Volatile.Read(ref _divisorLimitBits));
 
         for (int index = 0; index < primes.Length; index++)
         {
-            allowedMaxValues[index] = ComputeAllowedMaxDivisor(primes[index], divisorLimit);
+            ulong prime = primes[index];
+            ulong allowedMax = ComputeAllowedMaxDivisor(prime, divisorLimit);
+            allowedMaxValues[index] = allowedMax;
+
+            if (allowedMax >= 3UL)
+            {
+                _allowedMaxCache[prime] = allowedMax;
+            }
+            else
+            {
+                _allowedMaxCache.TryRemove(prime, out _);
+            }
         }
     }
 
     public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession()
     {
-        lock (_sync)
+        if (!Volatile.Read(ref _isConfigured))
         {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            if (_sessionPool.TryTake(out DivisorScanSession? session))
-            {
-                session.Reset();
-                return session;
-            }
-
-            return new DivisorScanSession(this);
+            throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
         }
+
+        if (_sessionPool.TryTake(out DivisorScanSession? session))
+        {
+            session.Reset();
+            return session;
+        }
+
+        return new DivisorScanSession(this);
     }
 
     private void ReturnSession(DivisorScanSession session)
