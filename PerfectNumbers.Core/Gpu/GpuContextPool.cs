@@ -24,10 +24,10 @@ public static class GpuContextPool
             Context = Context.CreateDefault();
             Accelerator = Context.GetPreferredDevice(preferCpu).CreateAccelerator(Context);
             IsCpu = Accelerator.AcceleratorType == AcceleratorType.CPU;
-            if (!IsCpu)
-            {
-                GpuKernelPool.WarmupProcessEightBitWindows(Accelerator);
-            }
+            // Pow2 kernels are prewarmed explicitly when the caller requests them (see EvenPerfectBitScanner
+            // warm-up). Avoid uploading the ProcessEightBitWindows tables for every GPU lease so CPU-bound
+            // paths that still borrow GPU contexts (prime sieves, by-divisor helpers) do not pay for the
+            // extra CPU↔GPU transfers or retain the large buffers when the kernels are never used.
             // NOTE: Avoid loading/compiling any kernel here to prevent implicit
             // CL stream/queue creation during accelerator construction.
             // Some OpenCL drivers are fragile when a queue is created immediately

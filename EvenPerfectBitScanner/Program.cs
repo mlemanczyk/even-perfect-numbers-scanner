@@ -1596,6 +1596,8 @@ internal static class Program
     {
         using var warmupLease = GpuKernelPool.GetKernel(useGpuOrder);
         var warmupScope = warmupLease.EnterExecutionScope();
+        var accelerator = warmupLease.Accelerator;
+        _ = GpuKernelPool.EnsureSmallPrimesOnDevice(accelerator);
         try
         {
             _ = warmupLease.Pow2ModWindowedKernel;
