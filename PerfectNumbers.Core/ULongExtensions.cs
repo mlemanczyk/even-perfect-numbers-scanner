@@ -552,6 +552,13 @@ public static class ULongExtensions
             return UInt128.One;
         }
 
+        if (rotation <= (UInt128)Pow2WindowFallbackThreshold)
+        {
+            // Small exponents always route through the CPU ladder so the fallback stays branch-free on the GPU path.
+            // This matches the historical behavior where diagnostic harnesses exercised these ranges without paying kernel setup costs.
+            return Pow2ModWindowedCpu(rotation, modulus);
+        }
+
         // Production scans never feed power-of-two moduli, so the specialized mask-and-shift shortcut is
         // commented out. Validation harnesses that still exercise those inputs should call a dedicated helper
         // if they need the micro-optimized path.
