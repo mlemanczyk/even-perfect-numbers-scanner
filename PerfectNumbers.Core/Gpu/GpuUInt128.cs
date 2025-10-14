@@ -25,6 +25,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
     public static readonly GpuUInt128 Zero = new();
     public static readonly GpuUInt128 One = new(1UL);
+    public static readonly GpuUInt128 Two = new(2UL);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public GpuUInt128()
@@ -1069,10 +1070,8 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ShiftLeftByNativeChunk(ulong value, ulong modulus)
     {
-        return ULongExtensions.MulMod64(
-            value,
-            ULongExtensions.Pow2ModWindowedCpu((ulong)NativeModuloChunkBits, modulus),
-            modulus);
+        ulong nativeChunkMultiplier = ULongExtensions.Pow2ModWindowedCpu((ulong)NativeModuloChunkBits, modulus);
+        return ULongExtensions.MulMod64(value, nativeChunkMultiplier, modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

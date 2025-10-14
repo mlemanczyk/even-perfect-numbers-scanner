@@ -50,7 +50,7 @@ public static class ULongExtensions
             while (order % prime == 0UL)
             {
                 temp = order / prime;
-                if (temp.PowModWithCycle(q128, cycle) == UInt128.One)
+                if (temp.Pow2ModWindowed(q128, cycle) == UInt128.One)
                 {
                     order = temp;
                 }
@@ -514,7 +514,8 @@ public static class ULongExtensions
         UInt128 rotation = exponent;
         if (cycleLength > UInt128.Zero)
         {
-            // TODO: Replace this modulo with the cached cycle remainder produced by the divisor-cycle cache so Pow2ModWindowed avoids repeated `%` work, matching the ProcessEightBitWindows wins captured in Pow2MontgomeryModCycleComputationBenchmarks.
+            // Production divisor lookups supply non-zero cycle lengths during scanning, so this hot path keeps the reduced rotation cached.
+            // TODO: Replace this modulo with the cached cycle remainder produced by the divisor-cycle cache so Pow2ModWindowed avoids repeated '%'.
             rotation %= cycleLength;
         }
 
@@ -527,7 +528,8 @@ public static class ULongExtensions
         UInt128 rotation = exponent;
         if (cycleLength > UInt128.Zero)
         {
-            // TODO: Replace this modulo with the cached cycle remainder produced by the divisor-cycle cache so Pow2ModWindowed avoids repeated `%` work, matching the ProcessEightBitWindows wins captured in Pow2MontgomeryModCycleComputationBenchmarks.
+            // CRT reductions for very large exponents also ship precomputed cycles, so this matches the CPU and GPU scanning flow.
+            // TODO: Replace this modulo with the cached cycle remainder produced by the divisor-cycle cache so Pow2ModWindowed avoids repeated '%'.
             rotation %= cycleLength;
         }
 
@@ -538,16 +540,19 @@ public static class ULongExtensions
     {
         if (modulus == UInt128.One)
         {
+            // Production moduli are odd primes greater than two, so this guard only trips in targeted tests and micro-benchmarks.
             return UInt128.Zero;
         }
 
         if (rotation == UInt128.Zero)
         {
+            // A zero rotation appears when the exponent shares the divisor cycle length, which happens intermittently during real scans.
             return UInt128.One;
         }
 
         if ((modulus & (modulus - UInt128.One)) == UInt128.Zero)
         {
+            // Power-of-two moduli show up exclusively in validation tests; scanning workloads never rely on this specialization.
             int shift = (int)(rotation & UInt128Numbers.OneHundredTwentySeven);
             UInt128 mask = modulus - UInt128.One;
             UInt128 result = UInt128.One << shift;
@@ -556,6 +561,7 @@ public static class ULongExtensions
 
         if ((rotation >> 64) == UInt128.Zero)
         {
+            // Most production rotations fit in 64 bits after cycle reduction, so cover that hot path without allocating GPU buffers.
             ulong rotation64 = (ulong)rotation;
             if (modulus <= ulong.MaxValue)
             {
@@ -626,21 +632,23 @@ public static class ULongExtensions
 
     private static void InitializePow2OddPowers(in ReadOnlyGpuUInt128 modulus, Span<GpuUInt128> oddPowers)
     {
-        GpuUInt128 baseValue = new GpuUInt128(2UL);
+        GpuUInt128 baseValue = GpuUInt128.Two;
         if (baseValue.CompareTo(modulus) >= 0)
         {
+            // Production moduli always exceed two, so this subtraction only occurs in guard tests that probe tiny divisors.
             baseValue.Sub(modulus);
         }
 
+        int oddPowersLength = oddPowers.Length;
         oddPowers[0] = baseValue;
-        if (oddPowers.Length == 1)
+        if (oddPowersLength == 1)
         {
             return;
         }
 
         GpuUInt128 baseSquare = baseValue;
         baseSquare.MulMod(baseValue, modulus);
-        for (int i = 1; i < oddPowers.Length; i++)
+        for (int i = 1; i < oddPowersLength; i++)
         {
             oddPowers[i] = oddPowers[i - 1];
             oddPowers[i].MulMod(baseSquare, modulus);
@@ -1222,31 +1230,6 @@ public static class ULongExtensions
     }
 
     /// <summary>
-    /// Computes 2^exponent mod modulus using a known cycle length.
-    /// </summary>
-    public static UInt128 PowModWithCycle(this ulong exponent, UInt128 modulus, ulong cycleLength)
-    {
-        UInt128 cycle = cycleLength;
-        return ((UInt128)exponent).Pow2ModWindowed(modulus, cycle);
-    }
-
-    /// <summary>
-    /// Computes 2^exponent mod modulus using a known cycle length.
-    /// </summary>
-    public static UInt128 PowModWithCycle(this ulong exponent, UInt128 modulus, UInt128 cycleLength)
-    {
-        return ((UInt128)exponent).Pow2ModWindowed(modulus, cycleLength);
-    }
-
-    /// <summary>
-    /// Computes 2^exponent mod modulus using a known cycle length.
-    /// </summary>
-    public static UInt128 PowModWithCycle(this UInt128 exponent, UInt128 modulus, UInt128 cycleLength)
-    {
-        return exponent.Pow2ModWindowed(modulus, cycleLength);
-    }
-
-    /// <summary>
     /// Computes 2^exponent mod modulus using iterative CRT composition from mod 10 up to modulus.
     /// Only for modulus >= 10 and reasonable size.
     /// </summary>
@@ -1260,14 +1243,14 @@ public static class ULongExtensions
                 cycle,
                 modulusCandidate = 11,
                 remainderForCandidate,
-                result = PowModWithCycle(exponent, 10, 4),
+                result = ((UInt128)exponent).Pow2ModWindowed(10, 4),
                 zero = UInt128.Zero;
 
         for (; modulusCandidate <= modulus; modulusCandidate++)
         {
             cycle = MersenneDivisorCycles.GetCycle(modulusCandidate);
             remainderForCandidate = cycle > zero
-                    ? PowModWithCycle(exponent, modulusCandidate, cycle)
+                    ? ((UInt128)exponent).Pow2ModWindowed(modulusCandidate, cycle)
                     : PowMod(exponent, modulusCandidate);
 
             // Solve x ≡ result mod currentModulus

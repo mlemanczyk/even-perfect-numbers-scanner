@@ -100,9 +100,9 @@ public class ULongExtensionsTests
     [Trait("Category", "Fast")]
     [InlineData(5UL, 7UL, 3UL, 4UL)]
     [InlineData(10UL, 7UL, 3UL, 2UL)]
-    public void PowModWithCycle_uses_cycle_length(ulong exponent, ulong modulus, ulong cycle, ulong expected)
+    public void Pow2ModWindowed_uint128_cycle_respects_cycle(ulong exponent, ulong modulus, ulong cycle, ulong expected)
     {
-        ((UInt128)exponent).PowModWithCycle((UInt128)modulus, cycle).Should().Be((UInt128)expected);
+        ((UInt128)exponent).Pow2ModWindowed((UInt128)modulus, (UInt128)cycle).Should().Be((UInt128)expected);
     }
 
     [Theory]
@@ -165,22 +165,22 @@ public class ULongExtensionsTests
     [Trait("Category", "Fast")]
     [InlineData(100UL, 7UL, 3UL)]
     [InlineData(123UL, 9UL, 6UL)]
-    public void PowModWithCycle_ulong_overload_uses_cycle(ulong exponent, ulong modulus, ulong cycle)
+    public void Pow2ModWindowed_ulong_cycle_matches_big_integer(ulong exponent, ulong modulus, ulong cycle)
     {
         UInt128 expected = (UInt128)BigInteger.ModPow(2, exponent, modulus);
 
-        exponent.PowModWithCycle((UInt128)modulus, cycle).Should().Be(expected);
+        exponent.Pow2ModWindowed((UInt128)modulus, (UInt128)cycle).Should().Be(expected);
     }
 
     [Theory]
     [Trait("Category", "Fast")]
     [InlineData(100UL, 7UL, 3UL)]
     [InlineData(123UL, 9UL, 6UL)]
-    public void PowModWithCycle_ulong_uint128_cycle_uses_cycle(ulong exponent, ulong modulus, ulong cycle)
+    public void Pow2ModWindowed_ulong_uint128_cycle_matches_big_integer(ulong exponent, ulong modulus, ulong cycle)
     {
         UInt128 expected = (UInt128)BigInteger.ModPow(2, exponent, modulus);
 
-        exponent.PowModWithCycle((UInt128)modulus, (UInt128)cycle).Should().Be(expected);
+        exponent.Pow2ModWindowed((UInt128)modulus, (UInt128)cycle).Should().Be(expected);
     }
 
     [Theory]
