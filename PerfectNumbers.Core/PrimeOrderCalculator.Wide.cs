@@ -121,6 +121,65 @@ internal static partial class PrimeOrderCalculator
     {
         ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
         int length = factors.Count;
+        if (length == 0)
+        {
+            return true;
+        }
+
+        if (IsGpuPow2Allowed && length > 1)
+        {
+            const int StackThreshold = 16;
+            Span<UInt128> exponentBuffer = length <= StackThreshold ? stackalloc UInt128[length] : default;
+            UInt128[]? rentedExponents = null;
+            if (length > StackThreshold)
+            {
+                rentedExponents = ArrayPool<UInt128>.Shared.Rent(length);
+                exponentBuffer = rentedExponents.AsSpan(0, length);
+            }
+
+            Span<UInt128> remainderBuffer = length <= StackThreshold ? stackalloc UInt128[length] : default;
+            UInt128[]? rentedRemainders = null;
+            if (length > StackThreshold)
+            {
+                rentedRemainders = ArrayPool<UInt128>.Shared.Rent(length);
+                remainderBuffer = rentedRemainders.AsSpan(0, length);
+            }
+
+            for (int i = 0; i < length; i++)
+            {
+                exponentBuffer[i] = phi / factorSpan[i].Value;
+            }
+
+            try
+            {
+                GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponentBuffer, prime, remainderBuffer);
+                if (status == GpuPow2ModStatus.Success)
+                {
+                    for (int i = 0; i < length; i++)
+                    {
+                        if (remainderBuffer[i] == UInt128.One)
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+            }
+            finally
+            {
+                if (rentedExponents is not null)
+                {
+                    ArrayPool<UInt128>.Shared.Return(rentedExponents, clearArray: false);
+                }
+
+                if (rentedRemainders is not null)
+                {
+                    ArrayPool<UInt128>.Shared.Return(rentedRemainders, clearArray: false);
+                }
+            }
+        }
+
         for (int i = 0; i < length; i++)
         {
             UInt128 factor = factorSpan[i].Value;

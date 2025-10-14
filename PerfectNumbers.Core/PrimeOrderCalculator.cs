@@ -289,6 +289,65 @@ internal static partial class PrimeOrderCalculator
     {
         ReadOnlySpan<FactorEntry> factorSpan = factors.Factors;
         int length = factors.Count;
+        if (length == 0)
+        {
+            return true;
+        }
+
+        if (IsGpuPow2Allowed && length > 1)
+        {
+            const int StackThreshold = 16;
+            Span<ulong> exponentBuffer = length <= StackThreshold ? stackalloc ulong[length] : default;
+            ulong[]? rentedExponents = null;
+            if (length > StackThreshold)
+            {
+                rentedExponents = ArrayPool<ulong>.Shared.Rent(length);
+                exponentBuffer = rentedExponents.AsSpan(0, length);
+            }
+
+            Span<ulong> remainderBuffer = length <= StackThreshold ? stackalloc ulong[length] : default;
+            ulong[]? rentedRemainders = null;
+            if (length > StackThreshold)
+            {
+                rentedRemainders = ArrayPool<ulong>.Shared.Rent(length);
+                remainderBuffer = rentedRemainders.AsSpan(0, length);
+            }
+
+            for (int i = 0; i < length; i++)
+            {
+                exponentBuffer[i] = phi / factorSpan[i].Value;
+            }
+
+            try
+            {
+                GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponentBuffer, prime, remainderBuffer, divisorData);
+                if (status == GpuPow2ModStatus.Success)
+                {
+                    for (int i = 0; i < length; i++)
+                    {
+                        if (remainderBuffer[i] == 1UL)
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+            }
+            finally
+            {
+                if (rentedExponents is not null)
+                {
+                    ArrayPool<ulong>.Shared.Return(rentedExponents, clearArray: false);
+                }
+
+                if (rentedRemainders is not null)
+                {
+                    ArrayPool<ulong>.Shared.Return(rentedRemainders, clearArray: false);
+                }
+            }
+        }
+
         for (int i = 0; i < length; i++)
         {
             ulong factor = factorSpan[i].Value;

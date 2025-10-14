@@ -390,8 +390,20 @@ internal static partial class PrimeOrderGpuHeuristics
             }
         }
 
+        if (exponents.Length <= 1)
+        {
+            ComputePow2ModCpu(exponents, prime, divisorData, remainders);
+            return GpuPow2ModStatus.Success;
+        }
+
         bool computed = TryComputeOnGpu(exponents, prime, divisorData, remainders);
-        return computed ? GpuPow2ModStatus.Success : GpuPow2ModStatus.Unavailable;
+        if (!computed)
+        {
+            ComputePow2ModCpu(exponents, prime, divisorData, remainders);
+            return GpuPow2ModStatus.Unavailable;
+        }
+
+        return GpuPow2ModStatus.Success;
     }
 
     public static GpuPow2ModStatus TryPow2Mod(in UInt128 exponent, in UInt128 prime, out UInt128 remainder)
@@ -1666,8 +1678,20 @@ internal static partial class PrimeOrderGpuHeuristics
             }
         }
 
+        if (exponents.Length <= 1)
+        {
+            ComputePow2ModCpuWide(exponents, prime, target);
+            return GpuPow2ModStatus.Success;
+        }
+
         bool computed = TryComputeOnGpuWide(exponents, prime, target);
-        return computed ? GpuPow2ModStatus.Success : GpuPow2ModStatus.Unavailable;
+        if (!computed)
+        {
+            ComputePow2ModCpuWide(exponents, prime, target);
+            return GpuPow2ModStatus.Unavailable;
+        }
+
+        return GpuPow2ModStatus.Success;
     }
 
     private static bool TryComputeOnGpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorData divisorData, Span<ulong> results)
