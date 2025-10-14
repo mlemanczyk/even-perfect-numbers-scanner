@@ -538,11 +538,13 @@ public static class ULongExtensions
 
     private static UInt128 Pow2ModWindowedInternal(UInt128 rotation, UInt128 modulus)
     {
-        if (modulus == UInt128.One)
-        {
-            // Production moduli are odd primes greater than two, so this guard only trips in targeted tests and micro-benchmarks.
-            return UInt128.Zero;
-        }
+        // Scanning divisors are always odd primes greater than two, so the modulus == 1 guard never triggers
+        // on production paths. Leave the branch commented out to document the invariant while keeping the hot
+        // path branch-free; validation tests and benchmarks can rely on the general implementation instead.
+        // if (modulus == UInt128.One)
+        // {
+        //     return UInt128.Zero;
+        // }
 
         if (rotation == UInt128.Zero)
         {
@@ -550,14 +552,16 @@ public static class ULongExtensions
             return UInt128.One;
         }
 
-        if ((modulus & (modulus - UInt128.One)) == UInt128.Zero)
-        {
-            // Power-of-two moduli show up exclusively in validation tests; scanning workloads never rely on this specialization.
-            int shift = (int)(rotation & UInt128Numbers.OneHundredTwentySeven);
-            UInt128 mask = modulus - UInt128.One;
-            UInt128 result = UInt128.One << shift;
-            return result & mask;
-        }
+        // Production scans never feed power-of-two moduli, so the specialized mask-and-shift shortcut is
+        // commented out. Validation harnesses that still exercise those inputs should call a dedicated helper
+        // if they need the micro-optimized path.
+        // if ((modulus & (modulus - UInt128.One)) == UInt128.Zero)
+        // {
+        //     int shift = (int)(rotation & UInt128Numbers.OneHundredTwentySeven);
+        //     UInt128 mask = modulus - UInt128.One;
+        //     UInt128 result = UInt128.One << shift;
+        //     return result & mask;
+        // }
 
         if ((rotation >> 64) == UInt128.Zero)
         {
@@ -633,11 +637,13 @@ public static class ULongExtensions
     private static void InitializePow2OddPowers(in ReadOnlyGpuUInt128 modulus, Span<GpuUInt128> oddPowers)
     {
         GpuUInt128 baseValue = GpuUInt128.Two;
-        if (baseValue.CompareTo(modulus) >= 0)
-        {
-            // Production moduli always exceed two, so this subtraction only occurs in guard tests that probe tiny divisors.
-            baseValue.Sub(modulus);
-        }
+        // Production moduli always exceed two, so the baseValue >= modulus guard never fires outside test
+        // scaffolding. Keep the branch commented out to document the constraint without injecting extra
+        // instructions into the scanner path.
+        // if (baseValue.CompareTo(modulus) >= 0)
+        // {
+        //     baseValue.Sub(modulus);
+        // }
 
         int oddPowersLength = oddPowers.Length;
         oddPowers[0] = baseValue;
