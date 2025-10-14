@@ -1,3 +1,4 @@
+using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -26,12 +27,16 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
         UInt128 limit = maxK + UInt128.One;
         byte last = lastIsSeven ? (byte)1 : (byte)0;
         var kernel = gpuLease.Pow2ModWindowedKernel;
+        if (exponent > uint.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(nameof(exponent), "Pow2ModWindowedKernel stores order sentinels in 32-bit buffers.");
+        }
         twoP.Mod10_8_5_3(out ulong step10, out ulong step8, out ulong step5, out ulong step3);
         step10 = step10.Mod10();
 
         GpuUInt128 twoPGpu = (GpuUInt128)twoP;
 
-        var orderBuffer = accelerator.Allocate1D<ulong>(batchSize);
+        var orderBuffer = accelerator.Allocate1D<uint>(batchSize);
         // Device memory returned by Allocate1D is not guaranteed to be zeroed.
         // Ensure the buffer starts with a known state so that lanes skipped by the
         // kernel (for example due to early rejections) do not leave stale garbage
@@ -39,7 +44,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
         // to the host. This mirrors the explicit zeroing performed by other GPU
         // testers such as the order kernels.
         orderBuffer.MemSetToZero();
-        ulong[] orderArray = ArrayPool<ulong>.Shared.Rent(batchSize);
+        uint[] orderArray = ArrayPool<uint>.Shared.Rent(batchSize);
         UInt128 batchSize128 = (UInt128)batchSize;
         UInt128 fullBatchStep = twoP * batchSize128;
         UInt128 q = twoP * kStart + UInt128.One;
@@ -51,8 +56,8 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
             {
                 UInt128 remaining = limit - kStart;
                 int currentSize = remaining > batchSize128 ? batchSize : (int)remaining;
-                Span<ulong> orders = orderArray.AsSpan(0, currentSize);
-                ref ulong ordersRef = ref MemoryMarshal.GetReference(orders);
+                Span<uint> orders = orderArray.AsSpan(0, currentSize);
+                ref uint ordersRef = ref MemoryMarshal.GetReference(orders);
 
                 q.Mod10_8_5_3(out ulong q0m10, out ulong q0m8, out ulong q0m5, out ulong q0m3);
                 var kernelArgs = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
@@ -70,7 +75,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
                 bool compositeFound = false;
                 for (int i = 0; i < currentSize; i++)
                 {
-                    if (orders[i] != 0UL)
+                    if (orders[i] != 0U)
                     {
                         Volatile.Write(ref isPrime, false);
                         compositeFound = true;
@@ -100,7 +105,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
         }
         finally
         {
-            ArrayPool<ulong>.Shared.Return(orderArray);
+            ArrayPool<uint>.Shared.Return(orderArray);
             orderBuffer.Dispose();
             gpuLease.Dispose();
         }
