@@ -509,6 +509,62 @@ public static class ULongExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong Pow2ModWindowed(this ulong exponent, ulong modulus)
+    {
+        return Pow2ModWindowed(exponent, modulus, 0UL);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong Pow2ModWindowed(this ulong exponent, ulong modulus, ulong cycleLength)
+    {
+        ulong rotation = exponent;
+        if (cycleLength != 0UL)
+        {
+            rotation %= cycleLength;
+        }
+
+        // Reusing rotation to carry the cycle-reduced exponent avoids introducing another local.
+        return Pow2ModWindowedInternal(rotation, modulus);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong Pow2ModWindowed(this UInt128 exponent, ulong modulus)
+    {
+        return exponent.Pow2ModWindowed(modulus, 0UL);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong Pow2ModWindowed(this UInt128 exponent, ulong modulus, ulong cycleLength)
+    {
+        UInt128 rotation = exponent;
+        if (cycleLength != 0UL)
+        {
+            rotation %= cycleLength;
+        }
+
+        // Reusing rotation to carry the cycle-reduced exponent avoids introducing another local.
+        UInt128 reduced = rotation.Pow2ModWindowed((UInt128)modulus, UInt128.Zero);
+        return (ulong)reduced;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong Pow2ModWindowedInternal(ulong rotation, ulong modulus)
+    {
+        if (rotation == 0UL)
+        {
+            // Scanning moduli stay above one, so returning the literal keeps the path branch-free.
+            return 1UL;
+        }
+
+        if (GpuContextPool.ForceCpu)
+        {
+            return Pow2ModWindowedCpu(rotation, modulus);
+        }
+
+        return Pow2ModWindowedGpu(rotation, modulus);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static UInt128 Pow2ModWindowed(this ulong exponent, UInt128 modulus, UInt128 cycleLength)
     {
         UInt128 rotation = exponent;

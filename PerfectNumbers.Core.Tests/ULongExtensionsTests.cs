@@ -167,20 +167,20 @@ public class ULongExtensionsTests
     [InlineData(123UL, 9UL, 6UL)]
     public void Pow2ModWindowed_ulong_cycle_matches_big_integer(ulong exponent, ulong modulus, ulong cycle)
     {
-        UInt128 expected = (UInt128)BigInteger.ModPow(2, exponent, modulus);
+        ulong expected = (ulong)BigInteger.ModPow(2, exponent, modulus);
 
-        exponent.Pow2ModWindowed((UInt128)modulus, (UInt128)cycle).Should().Be(expected);
+        exponent.Pow2ModWindowed(modulus, cycle).Should().Be(expected);
     }
 
     [Theory]
     [Trait("Category", "Fast")]
-    [InlineData(100UL, 7UL, 3UL)]
-    [InlineData(123UL, 9UL, 6UL)]
-    public void Pow2ModWindowed_ulong_uint128_cycle_matches_big_integer(ulong exponent, ulong modulus, ulong cycle)
+    [InlineData(100UL, 7UL)]
+    [InlineData(123UL, 9UL)]
+    public void Pow2ModWindowed_ulong_matches_big_integer(ulong exponent, ulong modulus)
     {
-        UInt128 expected = (UInt128)BigInteger.ModPow(2, exponent, modulus);
+        ulong expected = (ulong)BigInteger.ModPow(2, exponent, modulus);
 
-        exponent.Pow2ModWindowed((UInt128)modulus, (UInt128)cycle).Should().Be(expected);
+        exponent.Pow2ModWindowed(modulus).Should().Be(expected);
     }
 
     [Theory]
