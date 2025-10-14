@@ -16,12 +16,77 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     private const ulong NativeModuloChunkMask = (1UL << NativeModuloChunkBits) - 1UL;
     private static readonly ulong[] NativeModuloBitMasks = CreateNativeModuloBitMasks();
 
-    private const int Pow2WindowSizeBits = 8;
-    private const int Pow2WindowOddPowerCount = 1 << (Pow2WindowSizeBits - 1);
-    private const int Pow2WindowMaxExponent = (1 << Pow2WindowSizeBits) - 1;
+    private const int Pow2WindowSizeMax = 5;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetScalarBitLength(ulong value) => value == 0UL ? 0 : 64 - XMath.LeadingZeroCount(value);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetWindowSize(int bitLength)
+    {
+        if (bitLength <= 6)
+        {
+            return bitLength == 0 ? 1 : bitLength;
+        }
+
+        if (bitLength <= 23)
+        {
+            return 4;
+        }
+
+        if (bitLength <= 79)
+        {
+            return 5;
+        }
+
+        if (bitLength <= 239)
+        {
+            return 6;
+        }
+
+        if (bitLength <= 671)
+        {
+            return 7;
+        }
+
+        return 8;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetGpuWindowSize(int bitLength)
+    {
+        int window = GetWindowSize(bitLength);
+        return window > Pow2WindowSizeMax ? Pow2WindowSizeMax : window;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void InitializeOddPowers(int windowSize, GpuUInt128 modulus, Span<GpuUInt128> destination)
+    {
+        if (destination.IsEmpty)
+        {
+            return;
+        }
+
+        int oddPowerCount = destination.Length;
+        int maxExponent = (1 << windowSize) - 1;
+        GpuUInt128 power = One;
+
+        int oddIndex = 0;
+        for (int bit = 1; bit <= maxExponent && oddIndex < oddPowerCount; bit++)
+        {
+            power.Add(power);
+            if (power.CompareTo(modulus) >= 0)
+            {
+                power.Sub(modulus);
+            }
+
+            if ((bit & 1) != 0)
+            {
+                destination[oddIndex] = power;
+                oddIndex++;
+            }
+        }
+    }
 
     public static readonly GpuUInt128 Zero = new();
     public static readonly GpuUInt128 One = new(1UL);
@@ -504,39 +569,16 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GpuUInt128 Pow2ModWindowed(ulong exponent, in ReadOnlyGpuUInt128 modulus)
     {
-        // This should never happen in production code.
-        // if (modulus.IsZero || modulus == One)
-        // {
-        //     return new();
-        // }
-
-        // This should never happen in production code.
-        // if (exponent == 0UL)
-        // {
-        //     return new GpuUInt128(1UL);
-        // }
-
-        GpuUInt128[] oddPowers = new GpuUInt128[PerfectNumberConstants.MaxOddPowersCount];
-        GpuUInt128 power = new(1UL);
-        int oddIndex = 0;
-
-        for (int bit = 1; bit <= Pow2WindowMaxExponent; bit++)
-        {
-            power.Add(power);
-            if (power.CompareTo(modulus) >= 0)
-            {
-                power.Sub(modulus);
-            }
-
-            if ((bit & 1) != 0)
-            {
-                oddPowers[oddIndex] = power;
-                oddIndex++;
-            }
-        }
-
-        GpuUInt128 result = GpuUInt128.One;
+        GpuUInt128 modulusMutable = modulus.ToMutable();
         int bitLength = GetScalarBitLength(exponent);
+        int windowSize = GetGpuWindowSize(bitLength);
+        int oddPowerCount = 1 << (windowSize - 1);
+
+        Span<GpuUInt128> oddPowerBuffer = stackalloc GpuUInt128[PerfectNumberConstants.MaxOddPowersCount];
+        Span<GpuUInt128> oddPowers = oddPowerBuffer.Slice(0, oddPowerCount);
+        InitializeOddPowers(windowSize, modulusMutable, oddPowers);
+
+        GpuUInt128 result = One;
         int index = bitLength - 1;
 
         while (index >= 0)
@@ -548,7 +590,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
                 continue;
             }
 
-            int windowStart = index - Pow2WindowSizeBits + 1;
+            int windowStart = index - windowSize + 1;
             if (windowStart < 0)
             {
                 windowStart = 0;
@@ -570,7 +612,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             int tableIndex = (int)((windowValue - 1UL) >> 1);
 
             GpuUInt128 factor = oddPowers[tableIndex];
-            result.MulMod(factor, modulus);
+            result.MulMod(factor.AsReadOnly(), modulus);
 
             index = windowStart - 1;
         }

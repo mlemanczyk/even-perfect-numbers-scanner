@@ -9,12 +9,15 @@ namespace EvenPerfectBitScanner.Benchmarks;
 [MemoryDiagnoser]
 public class GpuPow2ModBenchmarks
 {
+    private const ulong TargetExponent = 138_000_001UL;
+
     private static readonly Pow2ModInput[] Inputs = new Pow2ModInput[]
     {
-        new(63UL, new GpuUInt128(0UL, 97UL), "SmallExponentSmallModulus"),
-        new(1_048_575UL, new GpuUInt128(0UL, 0xFFFF_FFFBUL), "MediumExponentPrimeModulus"),
-        new(6_710_886_400UL, new GpuUInt128(0x0000_0000_0000_0001UL, 0xFFFF_FFFF_FFFF_FFC3UL), "LargeExponentHighWordModulus"),
-        new(ulong.MaxValue, new GpuUInt128(0xFFFF_FFFF_FFFF_FFFBUL, 0xFFFF_FFFF_FFFF_FFC5UL), "FullWidthExponentFullWidthModulus"),
+        new(TargetExponent, new GpuUInt128(0UL, 276_000_003UL), "P138M_K1_Modulus"),
+        new(TargetExponent, new GpuUInt128(0UL, 1_380_000_011UL), "P138M_K5_Modulus"),
+        new(276_000_002_000UL, new GpuUInt128(0UL, 276_000_002_001UL), "OrderCandidate_K1000"),
+        new(TargetExponent, new GpuUInt128(7UL, 8_872_792_484_033_138_689UL), "P138M_K5e11_Modulus"),
+        new(ulong.MaxValue, new GpuUInt128(0xFFFF_FFFF_FFFF_FFFBUL, 0xFFFF_FFFF_FFFF_FFC5UL), "FullWidthStress"),
     };
 
     [ParamsSource(nameof(GetInputs))]
@@ -23,13 +26,9 @@ public class GpuPow2ModBenchmarks
     public static IEnumerable<Pow2ModInput> GetInputs() => Inputs;
 
     /// <summary>
-    /// Windowed (8-bit) exponentiation that dominated every dataset: 21.5 μs for the full-width modulus, 7.87 μs for the large
-    /// set, 265 ns for medium, and 82.97 ns for the small modulus sample.
+    /// Adaptive windowed exponentiation tuned for the 138M+ Mersenne workloads. The helper now picks a GPU-friendly window size
+    /// per exponent and reuses a stack-allocated table so we avoid rebuilding all 128 odd powers for every scan.
     /// </summary>
-    /// <remarks>
-    /// Observed means: FullWidthExponentFullWidthModulus 21,481.71 ns (1.00×), LargeExponentHighWordModulus 7,874.85 ns,
-    /// MediumExponentPrimeModulus 264.97 ns, SmallExponentSmallModulus 82.97 ns.
-    /// </remarks>
     [Benchmark(Baseline = true)]
     public GpuUInt128 ProcessEightBitWindows()
     {
@@ -37,13 +36,9 @@ public class GpuPow2ModBenchmarks
     }
 
     /// <summary>
-    /// Bit-by-bit fallback; competitive only on medium/small moduli (266 ns / 85.39 ns) while trailing badly on the widest
-    /// modulus (50.97 μs, 2.37× slower) and large input (8.85 μs, 1.12× slower).
+    /// Bit-by-bit fallback kept for comparison and for callers that insist on the legacy ladder. The 138M benchmarks still keep
+    /// it around the GPU sweeps, but production code should rarely need it once batching kicks in.
     /// </summary>
-    /// <remarks>
-    /// Observed means: FullWidthExponentFullWidthModulus 50,967.07 ns (2.37×), LargeExponentHighWordModulus 8,851.95 ns,
-    /// MediumExponentPrimeModulus 265.98 ns, SmallExponentSmallModulus 85.39 ns.
-    /// </remarks>
     [Benchmark]
     public GpuUInt128 ProcessSingleBits()
     {
