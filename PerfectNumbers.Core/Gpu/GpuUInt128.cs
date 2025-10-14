@@ -17,6 +17,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     private static readonly ulong[] NativeModuloBitMasks = CreateNativeModuloBitMasks();
 
     private const int Pow2WindowSizeMax = 5;
+    private const ulong Pow2WindowFallbackThreshold = 32UL;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetScalarBitLength(ulong value) => value == 0UL ? 0 : 64 - XMath.LeadingZeroCount(value);
@@ -570,6 +571,11 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public static GpuUInt128 Pow2ModWindowed(ulong exponent, in ReadOnlyGpuUInt128 modulus)
     {
         GpuUInt128 modulusMutable = modulus.ToMutable();
+        if (modulusMutable.High != 0UL || exponent <= Pow2WindowFallbackThreshold)
+        {
+            return Pow2ModSingleBit(exponent, modulusMutable);
+        }
+
         int bitLength = GetScalarBitLength(exponent);
         int windowSize = GetGpuWindowSize(bitLength);
         int oddPowerCount = 1 << (windowSize - 1);
@@ -615,6 +621,41 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             result.MulMod(factor.AsReadOnly(), modulus);
 
             index = windowStart - 1;
+        }
+
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static GpuUInt128 Pow2ModSingleBit(ulong exponent, GpuUInt128 modulus)
+    {
+        GpuUInt128 result = One;
+        if (exponent == 0UL)
+        {
+            return result;
+        }
+
+        ReadOnlyGpuUInt128 readOnlyModulus = modulus.AsReadOnly();
+        GpuUInt128 baseValue = Two;
+        if (baseValue.CompareTo(modulus) >= 0)
+        {
+            baseValue.Sub(modulus);
+        }
+
+        while (true)
+        {
+            if ((exponent & 1UL) != 0UL)
+            {
+                result.MulMod(baseValue.AsReadOnly(), readOnlyModulus);
+            }
+
+            exponent >>= 1;
+            if (exponent == 0UL)
+            {
+                break;
+            }
+
+            baseValue.MulMod(baseValue.AsReadOnly(), readOnlyModulus);
         }
 
         return result;

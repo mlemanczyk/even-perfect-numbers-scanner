@@ -1916,7 +1916,7 @@ internal static partial class PrimeOrderGpuHeuristics
         //     baseValue.Sub(modulus);
         // }
 
-        if (ShouldUseSingleBit(exponent))
+        if (ShouldUseSingleBit(exponent, modulus))
         {
             return Pow2MontgomeryModSingleBit(exponent, modulus, baseValue);
         }
@@ -1971,7 +1971,15 @@ internal static partial class PrimeOrderGpuHeuristics
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool ShouldUseSingleBit(GpuUInt128 exponent) => exponent.High == 0UL && exponent.Low <= Pow2WindowFallbackThreshold;
+    private static bool ShouldUseSingleBit(GpuUInt128 exponent, GpuUInt128 modulus)
+    {
+        if (modulus.High != 0UL)
+        {
+            return true;
+        }
+
+        return exponent.High == 0UL && exponent.Low <= Pow2WindowFallbackThreshold;
+    }
 
     private static int GetWindowSize(int bitLength)
     {
