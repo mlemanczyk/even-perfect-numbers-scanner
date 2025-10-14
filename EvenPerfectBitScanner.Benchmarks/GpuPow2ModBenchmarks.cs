@@ -56,6 +56,49 @@ public class GpuPow2ModBenchmarks
         return new GpuUInt128(remainder);
     }
 
+    [Benchmark]
+    public GpuUInt128 ProcessCpuSingleBits()
+    {
+        UInt128 modulus = (UInt128)Input.Modulus;
+        UInt128 remainder = Pow2ModSingleBitCpu(Input.Exponent, modulus);
+        return new GpuUInt128(remainder);
+    }
+
+    private static UInt128 Pow2ModSingleBitCpu(ulong exponent, UInt128 modulus)
+    {
+        if (modulus <= UInt128.One)
+        {
+            return UInt128.Zero;
+        }
+
+        if (exponent == 0UL)
+        {
+            return UInt128.One % modulus;
+        }
+
+        UInt128 result = UInt128.One;
+        UInt128 baseValue = 2UL % modulus;
+        ulong remainingExponent = exponent;
+
+        while (true)
+        {
+            if ((remainingExponent & 1UL) != 0UL)
+            {
+                result = result.MulMod(baseValue, modulus);
+            }
+
+            remainingExponent >>= 1;
+            if (remainingExponent == 0UL)
+            {
+                break;
+            }
+
+            baseValue = baseValue.MulMod(baseValue, modulus);
+        }
+
+        return result;
+    }
+
     private static GpuUInt128 Pow2ModSingleBit(ulong exponent, GpuUInt128 modulus)
     {
         if (modulus.IsZero || modulus == GpuUInt128.One)
