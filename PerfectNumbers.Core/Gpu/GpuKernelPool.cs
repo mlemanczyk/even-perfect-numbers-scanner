@@ -849,6 +849,7 @@ public class GpuKernelPool
             return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
         });
 
+        // Small cycles only fuel the kernels' early exit path; skipping the upload keeps pow2mod results correct
         EnsureSmallCyclesOnDevice(accelerator);
         EnsureSmallPrimesOnDevice(accelerator);
     }
