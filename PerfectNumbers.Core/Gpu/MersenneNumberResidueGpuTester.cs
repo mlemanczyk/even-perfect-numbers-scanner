@@ -20,8 +20,6 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
         var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder);
         var accelerator = gpuLease.Accelerator;
         var stream = gpuLease.Stream;
-        // Ensure device has small cycles and primes tables for in-kernel lookup
-        var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
         ResiduePrimeViews primeViews = GpuKernelPool.EnsureSmallPrimesOnDevice(accelerator);
         int batchSize = GpuConstants.ScanBatchSize;
         UInt128 kStart = 1UL;
@@ -60,7 +58,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
                 var kernelArgs = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
 
                 kernel(stream, currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, 0UL,
-                        kernelArgs, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
+                        kernelArgs, orderBuffer.View, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
 
                 accelerator.Synchronize();
                 orderBuffer.View.CopyToCPU(ref ordersRef, currentSize);
