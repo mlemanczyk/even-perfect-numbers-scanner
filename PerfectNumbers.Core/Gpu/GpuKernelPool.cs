@@ -921,7 +921,9 @@ public class GpuKernelPool
                 smallCycleLease = GpuSmallCycleKernelLimiter.Acquire();
             }
 
-            gpu = RentPreferred(preferCpu: !useGpuOrder);
+            // Favor GPU accelerators for ProcessEightBitWindows unless the CLI explicitly forces CPU mode.
+            bool preferCpu = GpuContextPool.ForceCpu;
+            gpu = RentPreferred(preferCpu);
         }
         catch
         {
