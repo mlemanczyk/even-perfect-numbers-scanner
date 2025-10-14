@@ -714,7 +714,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
             if (_owner._deltasDevice == ByDivisorDeltasDevice.Cpu)
             {
-                CheckDivisorCpu(effectiveDivisorData, divisorCycle, primes, hits);
+                CheckDivisorCpu(effectiveDivisorData, primes, hits);
                 return;
             }
 
@@ -723,12 +723,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         private static void CheckDivisorCpu(
             in MontgomeryDivisorData divisorData,
-            ulong divisorCycle,
             ReadOnlySpan<ulong> primes,
             Span<byte> hits)
         {
-            // Keep these remainder steppers in place so future updates continue reusing the previously computed residues.
-            // They are critical for avoiding repeated full Montgomery exponentiation work when scanning divisors.
+            // Keep the exponent remainder stepper in place so future updates continue reusing the previously computed residues.
+            // It remains critical for avoiding repeated full Montgomery exponentiation work when scanning divisors.
             var exponentStepper = new ExponentRemainderStepper(divisorData);
             if (!exponentStepper.IsValidModulus)
             {
@@ -736,23 +735,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 return;
             }
 
-            var cycleStepper = new CycleRemainderStepper(divisorCycle);
-
-            ulong remainder = cycleStepper.Initialize(primes[0]);
-            hits[0] = remainder == 0UL
-                ? (exponentStepper.ComputeNextIsUnity(primes[0]) ? (byte)1 : (byte)0)
-                : (byte)0;
-
             int length = primes.Length;
-            for (int i = 1; i < length; i++)
+            for (int i = 0; i < length; i++)
             {
-                remainder = cycleStepper.ComputeNext(primes[i]);
-                if (remainder != 0UL)
-                {
-                    hits[i] = 0;
-                    continue;
-                }
-
                 hits[i] = exponentStepper.ComputeNextIsUnity(primes[i]) ? (byte)1 : (byte)0;
             }
         }
