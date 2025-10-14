@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using ILGPU;
@@ -80,10 +81,11 @@ public readonly struct ResiduePrimeViews(
     public readonly ArrayView1D<ulong, Stride1D.Dense> LastSevenPow2 = lastSevenPow2;
 }
 
-public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLease gpu, KernelContainer kernels, GpuSmallCycleKernelLimiter.Lease? smallCycleLimiter = null)
+public ref struct GpuKernelLease(GpuContextLease gpu, KernelContainer kernels, GpuSmallCycleKernelLimiter.Lease? smallCycleLimiter = null)
 {
     private bool disposedValue;
-    private GpuPrimeWorkLimiter.Lease? _limiter = limiter;
+    private GpuPrimeWorkLimiter.Lease? _activeExecutionLimiter;
+    private int _executionActive;
     private GpuSmallCycleKernelLimiter.Lease? _smallCycleLimiter = smallCycleLimiter;
     private GpuContextLease? _gpu = gpu;
     private KernelContainer _kernels = kernels;
@@ -108,7 +110,19 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
         }
     }
 
-    public readonly ExecutionScope EnterExecutionScope() => new ExecutionScope(_executionLock);
+    public unsafe ExecutionScope EnterExecutionScope()
+    {
+        if (_executionActive != 0)
+        {
+            throw new InvalidOperationException("Kernel execution scope is already active for this lease.");
+        }
+
+        var limiter = GpuPrimeWorkLimiter.Acquire();
+        _activeExecutionLimiter = limiter;
+        _executionActive = 1;
+        int* flag = (int*)Unsafe.AsPointer(ref _executionActive);
+        return new ExecutionScope(_executionLock, limiter, flag);
+    }
 
     public readonly Action<AcceleratorStream, Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>> OrderKernel
     {
@@ -414,8 +428,13 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
                 _smallCycleLimiter?.Dispose();
                 _smallCycleLimiter = null;
 
-                _limiter?.Dispose();
-                _limiter = null;
+                if (_activeExecutionLimiter is { } limiter)
+                {
+                    limiter.Dispose();
+                    _activeExecutionLimiter = null;
+                }
+
+                _executionActive = 0;
             }
 
             // free unmanaged resources (unmanaged objects) and override finalizer
@@ -784,13 +803,19 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
         // GC.SuppressFinalize(this);
     }
 
-    public readonly struct ExecutionScope
+    public unsafe struct ExecutionScope
     {
         private readonly object? _lock;
+        private readonly GpuPrimeWorkLimiter.Lease _limiter;
+        private readonly int* _activeFlag;
+        private bool _disposed;
 
-        public ExecutionScope(object? sync)
+        internal ExecutionScope(object? sync, GpuPrimeWorkLimiter.Lease limiter, int* activeFlag)
         {
             _lock = sync;
+            _limiter = limiter;
+            _activeFlag = activeFlag;
+            _disposed = false;
             // if (_lock is not null)
             // {
             //     Monitor.Enter(_lock);
@@ -799,6 +824,26 @@ public ref struct GpuKernelLease(GpuPrimeWorkLimiter.Lease limiter, GpuContextLe
 
         public void Dispose()
         {
+            if (_disposed)
+            {
+                return;
+            }
+
+            if (_activeFlag is not null && *_activeFlag == 0)
+            {
+                _disposed = true;
+                return;
+            }
+
+            _limiter.Dispose();
+
+            if (_activeFlag is not null)
+            {
+                *_activeFlag = 0;
+            }
+
+            _disposed = true;
+
             // if (_lock is not null)
             // {
             //     Monitor.Exit(_lock);
@@ -911,7 +956,6 @@ public class GpuKernelPool
 
     public static GpuKernelLease GetKernel(bool useGpuOrder, bool requiresSmallCycles)
     {
-        var primeLease = GpuPrimeWorkLimiter.Acquire();
         GpuSmallCycleKernelLimiter.Lease? smallCycleLease = null;
         GpuContextLease gpu;
         try
@@ -928,13 +972,12 @@ public class GpuKernelPool
         catch
         {
             smallCycleLease?.Dispose();
-            primeLease.Dispose();
             throw;
         }
 
         var accelerator = gpu.Accelerator;
         var kernels = GetKernels(accelerator);
-        return new(primeLease, gpu, kernels, smallCycleLease);
+        return new(gpu, kernels, smallCycleLease);
     }
 
     /// <summary>

@@ -498,6 +498,7 @@ internal static partial class PrimeOrderGpuHeuristics
         if (kernelStatus == PrimeOrderKernelStatus.Fallback)
         {
             DisposeResources();
+            execution.Dispose();
             lease.Dispose();
             return false;
         }
@@ -505,6 +506,7 @@ internal static partial class PrimeOrderGpuHeuristics
         if (kernelStatus == PrimeOrderKernelStatus.PollardOverflow)
         {
             DisposeResources();
+            execution.Dispose();
             lease.Dispose();
             throw new InvalidOperationException("GPU Pollard Rho stack overflow; increase HeuristicStackCapacity.");
         }
@@ -517,6 +519,7 @@ internal static partial class PrimeOrderGpuHeuristics
         }
 
         DisposeResources();
+        execution.Dispose();
         lease.Dispose();
 
         return order != 0UL;
@@ -533,7 +536,6 @@ internal static partial class PrimeOrderGpuHeuristics
             stackProductBuffer.Dispose();
             resultBuffer.Dispose();
             statusBuffer.Dispose();
-            execution.Dispose();
         }
     }
 
