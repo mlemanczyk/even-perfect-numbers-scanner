@@ -563,26 +563,93 @@ public static class ULongExtensions
         //     return result & mask;
         // }
 
+        if (GpuContextPool.ForceCpu)
+        {
+            // Respect --primes-device=cpu outside GPU kernels by routing the windowed pow2 helper through the CPU-only ladder.
+            return Pow2ModWindowedCpu(rotation, modulus);
+        }
+
+        return Pow2ModWindowedGpu(rotation, modulus);
+    }
+
+    private static UInt128 Pow2ModWindowedCpu(UInt128 rotation, UInt128 modulus)
+    {
+        if ((rotation >> 64) == UInt128.Zero && modulus <= ulong.MaxValue)
+        {
+            ulong rotation64 = (ulong)rotation;
+            ulong modulus64 = (ulong)modulus;
+            ulong remainder = rotation64.Pow2ModWindowedCpu(modulus64);
+            return remainder;
+        }
+
+        return Pow2ModWindowedCpuLargeRotation(rotation, modulus);
+    }
+
+    private static UInt128 Pow2ModWindowedGpu(UInt128 rotation, UInt128 modulus)
+    {
         if ((rotation >> 64) == UInt128.Zero)
         {
-            // Most production rotations fit in 64 bits after cycle reduction, so cover that hot path without allocating GPU buffers.
             ulong rotation64 = (ulong)rotation;
-            if (modulus <= ulong.MaxValue)
-            {
-                ulong modulus64 = (ulong)modulus;
-                ulong remainder = rotation64.Pow2ModWindowedCpu(modulus64);
-                return remainder;
-            }
-
             ReadOnlyGpuUInt128 readOnlyModulus = new ReadOnlyGpuUInt128(modulus);
             GpuUInt128 pow = GpuUInt128.Pow2ModWindowed(rotation64, in readOnlyModulus);
             return (UInt128)pow;
         }
 
-        return Pow2ModWindowedLargeRotation(rotation, modulus);
+        return Pow2ModWindowedGpuLargeRotation(rotation, modulus);
     }
 
-    private static UInt128 Pow2ModWindowedLargeRotation(UInt128 rotation, UInt128 modulus)
+    private static UInt128 Pow2ModWindowedCpuLargeRotation(UInt128 rotation, UInt128 modulus)
+    {
+        int bitLength = rotation.GetBitLength();
+        int windowSize = GetWindowSize(bitLength);
+        int oddPowerCount = 1 << (windowSize - 1);
+
+        Span<UInt128> oddPowerStorage = oddPowerCount <= PerfectNumberConstants.MaxOddPowersCount
+            ? stackalloc UInt128[PerfectNumberConstants.MaxOddPowersCount]
+            : new UInt128[oddPowerCount];
+        Span<UInt128> oddPowers = oddPowerStorage[..oddPowerCount];
+        InitializePow2OddPowersCpu(modulus, oddPowers);
+
+        UInt128 result = UInt128.One;
+        int index = bitLength - 1;
+
+        while (index >= 0)
+        {
+            if (!IsBitSet(rotation, index))
+            {
+                result = result.MulMod(result, modulus);
+                index--;
+                continue;
+            }
+
+            int windowStart = index - windowSize + 1;
+            if (windowStart < 0)
+            {
+                windowStart = 0;
+            }
+
+            while (!IsBitSet(rotation, windowStart))
+            {
+                windowStart++;
+            }
+
+            int windowBitCount = index - windowStart + 1;
+            for (int square = 0; square < windowBitCount; square++)
+            {
+                result = result.MulMod(result, modulus);
+            }
+
+            ulong windowValue = ExtractWindowValue(rotation, windowStart, windowBitCount);
+            int tableIndex = (int)((windowValue - 1UL) >> 1);
+            result = result.MulMod(oddPowers[tableIndex], modulus);
+
+            index = windowStart - 1;
+        }
+
+        return result;
+    }
+
+    private static UInt128 Pow2ModWindowedGpuLargeRotation(UInt128 rotation, UInt128 modulus)
     {
         ReadOnlyGpuUInt128 modulusReadOnly = new ReadOnlyGpuUInt128(modulus);
         int bitLength = rotation.GetBitLength();
@@ -593,7 +660,7 @@ public static class ULongExtensions
             ? stackalloc GpuUInt128[PerfectNumberConstants.MaxOddPowersCount]
             : new GpuUInt128[oddPowerCount];
         Span<GpuUInt128> oddPowers = oddPowerStorage[..oddPowerCount];
-        InitializePow2OddPowers(modulusReadOnly, oddPowers);
+        InitializePow2OddPowersGpu(modulusReadOnly, oddPowers);
 
         GpuUInt128 result = GpuUInt128.One;
         int index = bitLength - 1;
@@ -634,7 +701,27 @@ public static class ULongExtensions
         return (UInt128)result;
     }
 
-    private static void InitializePow2OddPowers(in ReadOnlyGpuUInt128 modulus, Span<GpuUInt128> oddPowers)
+    private static void InitializePow2OddPowersCpu(UInt128 modulus, Span<UInt128> oddPowers)
+    {
+        UInt128 baseValue = UInt128.One << 1;
+        int oddPowersLength = oddPowers.Length;
+        oddPowers[0] = baseValue;
+        if (oddPowersLength == 1)
+        {
+            return;
+        }
+
+        UInt128 baseSquare = baseValue;
+        baseSquare = baseSquare.MulMod(baseValue, modulus);
+        // Reusing baseSquare to carry base^2 so the CPU ladder mirrors the GPU helper without introducing extra temporaries.
+        for (int i = 1; i < oddPowersLength; i++)
+        {
+            oddPowers[i] = oddPowers[i - 1];
+            oddPowers[i] = oddPowers[i].MulMod(baseSquare, modulus);
+        }
+    }
+
+    private static void InitializePow2OddPowersGpu(in ReadOnlyGpuUInt128 modulus, Span<GpuUInt128> oddPowers)
     {
         GpuUInt128 baseValue = GpuUInt128.Two;
         // Production moduli always exceed two, so the baseValue >= modulus guard never fires outside test
