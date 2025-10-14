@@ -458,6 +458,18 @@ internal static class Program
         GpuSmallCycleKernelLimiter.SetLimit(gpuSmallCycleThreads);
         PrimeTester.GpuBatchSize = Math.Max(1, gpuPrimeBatch);
 
+        bool warmGpuPow2Kernel = mersenneOnGpu
+            && !GpuContextPool.ForceCpu
+            && !useResidue
+            && !useDivisor
+            && !useByDivisor
+            && !useLucas
+            && kernelType == GpuKernelType.Pow2Mod;
+        if (warmGpuPow2Kernel)
+        {
+            WarmPow2ModKernels(orderOnGpu, useOrder);
+        }
+
         MersenneDivisorCycles mersenneDivisorCycles = new();
         if (!File.Exists(cyclesPath) || continueCyclesGeneration)
         {
@@ -1579,6 +1591,24 @@ internal static class Program
     private static readonly byte[] BytePrefixZero = new byte[256];
     private static readonly byte[] ByteSuffixZero = new byte[256];
     private static readonly byte[] ByteMaxZeroRun = new byte[256];
+
+    private static void WarmPow2ModKernels(bool useGpuOrder, bool warmOrderKernel)
+    {
+        using var warmupLease = GpuKernelPool.GetKernel(useGpuOrder);
+        var warmupScope = warmupLease.EnterExecutionScope();
+        try
+        {
+            _ = warmupLease.Pow2ModWindowedKernel;
+            if (warmOrderKernel)
+            {
+                _ = warmupLease.Pow2ModWindowedOrderKernel;
+            }
+        }
+        finally
+        {
+            warmupScope.Dispose();
+        }
+    }
 
     static Program()
     {
