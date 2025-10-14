@@ -383,35 +383,16 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 return;
             }
 
-            var cycleStepper = new CycleRemainderStepper(divisorCycle);
-
-            ulong remainder = cycleStepper.Initialize(primes[0]);
-            if (remainder == 0UL)
+            var exponentStepper = new ExponentRemainderStepper(cachedData);
+            if (!exponentStepper.IsValidModulus)
             {
-                // Reusing remainder to hold the Montgomery residue when the cycle remainder hits zero so we avoid
-                // introducing another temporary. The reduced exponent is 0 in this branch, therefore the powmod helper
-                // returns 1 immediately.
-                remainder = remainder.Pow2MontgomeryModFromCycleRemainderCpu(cachedData);
-                hits[0] = remainder == 1UL ? (byte)1 : (byte)0;
-            }
-            else
-            {
-                hits[0] = 0;
+                hits.Clear();
+                return;
             }
 
-            for (int i = 1; i < length; i++)
+            for (int i = 0; i < length; i++)
             {
-                remainder = cycleStepper.ComputeNext(primes[i]);
-                if (remainder != 0UL)
-                {
-                    hits[i] = 0;
-                    continue;
-                }
-
-                // Reusing remainder to capture the reduced powmod result so the loop avoids another local. The previous
-                // zero remainder guarantees that Pow2MontgomeryModFromCycleRemainderCpu returns 1 for admissible primes.
-                remainder = remainder.Pow2MontgomeryModFromCycleRemainderCpu(cachedData);
-                hits[i] = remainder == 1UL ? (byte)1 : (byte)0;
+                hits[i] = exponentStepper.ComputeNextIsUnity(primes[i]) ? (byte)1 : (byte)0;
             }
         }
 
