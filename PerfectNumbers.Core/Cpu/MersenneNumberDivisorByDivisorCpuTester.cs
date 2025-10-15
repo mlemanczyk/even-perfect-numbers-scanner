@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System;
 using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core.Cpu;
@@ -6,7 +6,9 @@ namespace PerfectNumbers.Core.Cpu;
 public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDivisorByDivisorTester
 {
     private readonly object _sync = new();
-    private readonly ConcurrentBag<DivisorScanSession> _sessionPool = [];
+    [ThreadStatic]
+    private static DivisorScanSession? _threadLocalSession; // The nested session type stays private, so pool it here.
+
     private ulong _divisorLimit;
     private ulong _lastStatusDivisor;
     private int _batchSize = 1_024;
@@ -20,23 +22,23 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     public void ConfigureFromMaxPrime(ulong maxPrime)
     {
-		_divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
-		_lastStatusDivisor = 0UL;
+        _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
+        _lastStatusDivisor = 0UL;
     }
 
     public ulong DivisorLimit
-	{
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-			return _divisorLimit;
+            return _divisorLimit;
         }
     }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public ulong GetAllowedMaxDivisor(ulong prime) => ComputeAllowedMaxDivisor(prime, _divisorLimit);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ulong GetAllowedMaxDivisor(ulong prime) => ComputeAllowedMaxDivisor(prime, _divisorLimit);
 
-	public bool IsPrime(ulong prime, out bool divisorsExhausted)
+    public bool IsPrime(ulong prime, out bool divisorsExhausted)
     {
         ulong allowedMax = ComputeAllowedMaxDivisor(prime, _divisorLimit);
 
@@ -76,8 +78,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     public void PrepareCandidates(in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)
     {
         ulong divisorLimit = _divisorLimit;
-		int length = primes.Length;
-		for (int index = 0; index < length; index++)
+        int length = primes.Length;
+        for (int index = 0; index < length; index++)
         {
             allowedMaxValues[index] = ComputeAllowedMaxDivisor(primes[index], divisorLimit);
         }
@@ -85,18 +87,49 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession()
     {
-		if (_sessionPool.TryTake(out DivisorScanSession? session))
-		{
-			session.Reset();
-			return session;
-		}
+        DivisorScanSession? session = _threadLocalSession;
+        if (session is not null)
+        {
+            _threadLocalSession = null;
+            session.Reset();
+            return session;
+        }
 
-		return new DivisorScanSession(this);
+        return new DivisorScanSession(this);
     }
 
     private void ReturnSession(DivisorScanSession session)
     {
-        _sessionPool.Add(session);
+        _threadLocalSession = session;
+    }
+
+    private struct FactorCacheLease
+    {
+        private Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? _cache;
+
+        public void EnsureInitialized(ref Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? cache)
+        {
+            Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? current = cache;
+            if (current is null)
+            {
+                current = ThreadStaticPools.TakeMersenneFactorCacheDictionary();
+                cache = current;
+            }
+
+            _cache = current;
+        }
+
+        public void Dispose()
+        {
+            Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? cache = _cache;
+            if (cache is null)
+            {
+                return;
+            }
+
+            ThreadStaticPools.ReturnMersenneFactorCacheDictionary(cache);
+            _cache = null;
+        }
     }
 
     private bool CheckDivisors(
@@ -108,10 +141,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         processedCount = 0UL;
         processedAll = false;
 
-        if (allowedMax < 3UL)
-        {
-            return false;
-        }
+        // The EvenPerfectBitScanner feeds primes >= 138,000,000 here, so allowedMax >= 3 in production runs.
+        // Keeping the guard commented out documents the reasoning for benchmarks and tests.
+        // if (allowedMax < 3UL)
+        // {
+        //     return false;
+        // }
 
         UInt128 step = (UInt128)prime << 1;
         if (step == UInt128.Zero)
@@ -128,8 +163,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             return false;
         }
 
+        FactorCacheLease factorCacheLease = new FactorCacheLease();
         Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? factorCache = null;
-        DivisorCycleCache cycleCache = DivisorCycleCache.Shared;
+        bool foundDivisor = false;
 
         byte step10 = (byte)(step % 10UL);
         byte step8 = (byte)(step % 8UL);
@@ -161,28 +197,22 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             if (admissible && (remainder8 == 1 || remainder8 == 7) && remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0)
             {
                 MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(candidate);
-                ulong divisorCycle;
-
-                if (candidate <= PerfectNumberConstants.MaxQForDivisorCycles)
+                Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? cacheForCycle = null;
+                if (candidate > PerfectNumberConstants.MaxQForDivisorCycles)
                 {
-                    divisorCycle = cycleCache.GetCycleLength(candidate);
+                    factorCacheLease.EnsureInitialized(ref factorCache);
+                    cacheForCycle = factorCache;
                 }
-                else
+
+                if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(candidate, prime, divisorData, cacheForCycle, out ulong divisorCycle))
                 {
-                    factorCache ??= new Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>(8);
-                    if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(candidate, prime, divisorData, factorCache, out divisorCycle) || divisorCycle == 0UL)
-                    {
-                        divisorCycle = cycleCache.GetCycleLength(candidate);
-                    }
+                    divisorCycle = 0UL;
                 }
 
                 if (divisorCycle == prime)
                 {
-                    // A cycle equal to the tested exponent (which is prime in this path)
-                    // guarantees that the candidate divides the corresponding Mersenne
-                    // number because the order of 2 modulo the divisor is exactly p.
-                    processedAll = true;
-                    return true;
+                    foundDivisor = true;
+                    break;
                 }
 
                 if (divisorCycle == 0UL)
@@ -198,6 +228,15 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             remainder3 = AddMod(remainder3, step3, (byte)3);
             remainder7 = AddMod(remainder7, step7, (byte)7);
             remainder11 = AddMod(remainder11, step11, (byte)11);
+        }
+
+        factorCacheLease.Dispose();
+        factorCache = null; // The pooled dictionary was returned to the thread-static slot.
+
+        if (foundDivisor)
+        {
+            processedAll = true;
+            return true;
         }
 
         processedAll = divisor > limit;

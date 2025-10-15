@@ -17,11 +17,30 @@ public class MersenneDivisorCycles
     private List<(ulong divisor, ulong cycleLength)> _table = [];
     // Lightweight read-mostly cache for small divisors (<= 4,000,000). 0 => unknown
     private ulong[]? _smallCycles;
-
     public static MersenneDivisorCycles Shared { get; } = new MersenneDivisorCycles();
 
     public MersenneDivisorCycles()
     {
+    }
+
+    private static Dictionary<ulong, int> RentFactorCountDictionary()
+    {
+        return ThreadStaticPools.TakeFactorCountDictionary();
+    }
+
+    private static void ReturnFactorCountDictionary(Dictionary<ulong, int> dictionary)
+    {
+        ThreadStaticPools.ReturnFactorCountDictionary(dictionary);
+    }
+
+    private static Dictionary<ulong, int> RentFactorScratchDictionary()
+    {
+        return ThreadStaticPools.TakeFactorScratchDictionary();
+    }
+
+    private static void ReturnFactorScratchDictionary(Dictionary<ulong, int> dictionary)
+    {
+        ThreadStaticPools.ReturnFactorScratchDictionary(dictionary);
     }
 
     public void LoadFrom(string path)
@@ -316,19 +335,27 @@ public class MersenneDivisorCycles
             return false;
         }
 
-        Dictionary<ulong, int> factorCounts = new(8);
-        if (twoCount > 0)
-        {
-            factorCounts[2UL] = twoCount;
-        }
+        Dictionary<ulong, int> factorCounts = RentFactorCountDictionary();
 
-        if (!AccumulateFactors(exponent, factorCache, factorCounts, cacheResult: true) || !AccumulateFactors(k, factorCache, factorCounts, cacheResult: false))
+        try
         {
-            return false;
-        }
+            if (twoCount > 0)
+            {
+                factorCounts[2UL] = twoCount;
+            }
 
-        cycleLength = ReduceOrder(divisorData, phi, factorCounts);
-        return true;
+            if (!AccumulateFactors(exponent, factorCache, factorCounts, cacheResult: true) || !AccumulateFactors(k, factorCache, factorCounts, cacheResult: false))
+            {
+                return false;
+            }
+
+            cycleLength = ReduceOrder(divisorData, phi, factorCounts);
+            return true;
+        }
+        finally
+        {
+            ReturnFactorCountDictionary(factorCounts);
+        }
     }
 
     private static bool AccumulateFactors(
@@ -370,37 +397,46 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        Dictionary<ulong, int> scratch = new(8);
-        if (!TryFactorIntoCountsInternal(value, scratch))
+        Dictionary<ulong, int> scratch = RentFactorScratchDictionary();
+
+        try
         {
-            factorization = default!;
-            return false;
-        }
+            if (!TryFactorIntoCountsInternal(value, scratch))
+            {
+                factorization = default!;
+                return false;
+            }
 
-        int count = scratch.Count;
-        ulong[] primes = new ulong[count];
-        byte[] exponents = new byte[count];
-        int index = 0;
-        foreach (KeyValuePair<ulong, int> entry in scratch)
+            int count = scratch.Count;
+            ulong[] primes = new ulong[count];
+            byte[] exponents = new byte[count];
+            int index = 0;
+            foreach (KeyValuePair<ulong, int> entry in scratch)
+            {
+                primes[index] = entry.Key;
+                exponents[index] = checked((byte)entry.Value);
+                index++;
+            }
+
+            Array.Sort(primes, exponents);
+            factorization = new FactorCacheEntry(primes, exponents, count);
+
+            if (cache is not null && cacheResult)
+            {
+                cache[value] = factorization;
+            }
+
+            return true;
+        }
+        finally
         {
-            primes[index] = entry.Key;
-            exponents[index] = checked((byte)entry.Value);
-            index++;
+            ReturnFactorScratchDictionary(scratch);
         }
-
-        Array.Sort(primes, exponents);
-        factorization = new FactorCacheEntry(primes, exponents, count);
-
-        if (cache is not null && cacheResult)
-        {
-            cache[value] = factorization;
-        }
-
-        return true;
     }
 
     private static bool TryFactorIntoCountsInternal(ulong value, Dictionary<ulong, int> counts)
     {
+        // This guard terminates the recursion once Pollard-Rho factorization has reduced the input to 1.
         if (value <= 1UL)
         {
             return true;
