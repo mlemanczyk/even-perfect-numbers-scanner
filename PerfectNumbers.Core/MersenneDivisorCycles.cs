@@ -96,7 +96,7 @@ public class MersenneDivisorCycles
             factorCache = cache;
         }
 
-        if (TryCalculateCycleLengthForExponent(divisor, exponent, divisorData, cache, out ulong cycleLength) && cycleLength != 0UL)
+        if (TryCalculateCycleLengthForExponent(divisor, exponent, divisorData, cache, usePooledCache: false, out ulong cycleLength) && cycleLength != 0UL)
         {
             return cycleLength == exponent;
         }
@@ -261,22 +261,6 @@ public class MersenneDivisorCycles
         }
 
         return order;
-    }
-
-    public static bool TryCalculateCycleLengthForExponent(
-        ulong divisor,
-        ulong exponent,
-        in MontgomeryDivisorData divisorData,
-        Dictionary<ulong, FactorCacheEntry>? factorCache,
-        out ulong cycleLength)
-    {
-        return TryCalculateCycleLengthForExponent(
-            divisor,
-            exponent,
-            divisorData,
-            factorCache,
-            usePooledCache: false,
-            out cycleLength);
     }
 
     public static bool TryCalculateCycleLengthForExponent(
@@ -517,7 +501,14 @@ public class MersenneDivisorCycles
         }
 
         ulong quotient = remaining / factor;
-        if (factor > 1UL && !TryFactorIntoCountsInternal(factor, counts))
+        // Pollard-Rho never returns factors <= 1 on the EvenPerfectBitScanner path; keep the old guard documented
+        // for completeness without branching in the hot path.
+        // if (factor > 1UL && !TryFactorIntoCountsInternal(factor, counts))
+        // {
+        //     return false;
+        // }
+
+        if (!TryFactorIntoCountsInternal(factor, counts))
         {
             return false;
         }
@@ -714,6 +705,15 @@ public class MersenneDivisorCycles
         internal int Count;
         private bool _fromPool;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void Reset()
+        {
+            Entries = null;
+            Count = 0;
+            _fromPool = false;
+            Next = null;
+        }
+
         internal void Initialize(FactorEntry[]? entries, int count, bool fromPool)
         {
             Entries = entries;
@@ -731,10 +731,7 @@ public class MersenneDivisorCycles
                 ThreadStaticPools.FactorEntryPool.Return(entries, clearArray: false);
             }
 
-            Entries = null;
-            Count = 0;
-            _fromPool = false;
-            Next = null;
+            Reset();
             ThreadStaticPools.ReturnFactorCacheEntry(this);
         }
     }

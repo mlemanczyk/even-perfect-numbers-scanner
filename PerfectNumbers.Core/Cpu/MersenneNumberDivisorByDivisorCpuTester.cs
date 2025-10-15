@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core.Cpu;
@@ -6,8 +7,6 @@ namespace PerfectNumbers.Core.Cpu;
 public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDivisorByDivisorTester
 {
     private readonly object _sync = new();
-    [ThreadStatic]
-    private static DivisorScanSession? _threadLocalSession; // The nested session type stays private, so pool it here.
 
     private ulong _divisorLimit;
     private ulong _lastStatusDivisor;
@@ -44,6 +43,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         if (allowedMax < 3UL)
         {
+            // EvenPerfectBitScanner routes primes below the small-divisor cutoff to the GPU path, so the CPU path still sees
+            // trivial candidates during targeted tests. Short-circuit here to keep those runs aligned with the production flow.
             divisorsExhausted = true;
             return true;
         }
@@ -87,49 +88,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession()
     {
-        DivisorScanSession? session = _threadLocalSession;
+        MersenneCpuDivisorScanSession? session = ThreadStaticPools.RentMersenneCpuDivisorSession();
         if (session is not null)
         {
-            _threadLocalSession = null;
-            session.Reset();
             return session;
         }
 
-        return new DivisorScanSession(this);
-    }
-
-    private void ReturnSession(DivisorScanSession session)
-    {
-        _threadLocalSession = session;
-    }
-
-    private struct FactorCacheLease
-    {
-        private Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? _cache;
-
-        public void EnsureInitialized(ref Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? cache)
-        {
-            Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? current = cache;
-            if (current is null)
-            {
-                current = ThreadStaticPools.RentMersenneFactorCacheDictionary();
-                cache = current;
-            }
-
-            _cache = current;
-        }
-
-        public void Dispose()
-        {
-            Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? cache = _cache;
-            if (cache is null)
-            {
-                return;
-            }
-
-            ThreadStaticPools.ReturnMersenneFactorCacheDictionary(cache);
-            _cache = null;
-        }
+        return new MersenneCpuDivisorScanSession();
     }
 
     private bool CheckDivisors(
@@ -188,7 +153,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         byte remainder7 = (byte)(divisor % 7UL);
         byte remainder11 = (byte)(divisor % 11UL);
 
-        // DivisorCycleCache cycleCache = DivisorCycleCache.Shared; // Preserve the reference for easy restoration if the fallback cache is re-enabled.
+        // DivisorCycleCache cycleCache = DivisorCycleCache.Shared; // Do not restore the fallback cache; divisors do not repeat on this path.
 
         // Keep the divisibility filters aligned with the divisor-cycle generator so the
         // CPU path never requests cycles that were skipped during cache creation.
@@ -320,85 +285,5 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
     }
 
-    private sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
-    {
-        private readonly MersenneNumberDivisorByDivisorCpuTester _owner;
-        private bool _disposed;
 
-        internal DivisorScanSession(MersenneNumberDivisorByDivisorCpuTester owner)
-        {
-            _owner = owner;
-        }
-
-        internal void Reset()
-        {
-            _disposed = false;
-        }
-
-        public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes, Span<byte> hits)
-        {
-            int length = primes.Length;
-            if (length == 0)
-            {
-                return;
-            }
-
-            MontgomeryDivisorData cachedData = divisorData;
-            if (cachedData.Modulus != divisor)
-            {
-                cachedData = MontgomeryDivisorDataCache.Get(divisor);
-            }
-
-            if (divisorCycle == 0UL)
-            {
-                divisorCycle = DivisorCycleCache.Shared.GetCycleLength(divisor);
-                if (divisorCycle == 0UL)
-                {
-                    hits.Clear();
-                    return;
-                }
-            }
-
-            // Keep these remainder steppers in place so future updates continue reusing the previously computed residues.
-            // They are critical for avoiding repeated full Montgomery exponentiation work when scanning divisors.
-            var exponentStepper = new ExponentRemainderStepper(cachedData);
-            if (!exponentStepper.IsValidModulus)
-            {
-                hits.Clear();
-                return;
-            }
-
-            var cycleStepper = new CycleRemainderStepper(divisorCycle);
-
-            ulong remainder = cycleStepper.Initialize(primes[0]);
-            hits[0] = remainder == 0UL
-                ? (exponentStepper.ComputeNextIsUnity(primes[0]) ? (byte)1 : (byte)0)
-                : (byte)0;
-
-            for (int i = 1; i < length; i++)
-            {
-                remainder = cycleStepper.ComputeNext(primes[i]);
-                if (remainder != 0UL)
-                {
-                    hits[i] = 0;
-                    continue;
-                }
-
-                hits[i] = exponentStepper.ComputeNextIsUnity(primes[i]) ? (byte)1 : (byte)0;
-            }
-        }
-
-        public void Dispose()
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _disposed = true;
-            _owner.ReturnSession(this);
-        }
-    }
 }
-
-

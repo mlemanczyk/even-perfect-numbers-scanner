@@ -2,10 +2,11 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using PerfectNumbers.Core.Cpu;
 
 namespace PerfectNumbers.Core
 {
-    public static class ThreadStaticPools
+    public readonly struct ThreadStaticPools
     {
         [ThreadStatic]
         private static ArrayPool<FactorEntry>? _factorEntryPool;
@@ -29,6 +30,29 @@ namespace PerfectNumbers.Core
             {
                 return _factorEntry128Pool ??= ArrayPool<FactorEntry128>.Create();
             }
+        }
+
+        [ThreadStatic]
+        private static MersenneCpuDivisorScanSession? _mersenneCpuDivisorSession;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static MersenneCpuDivisorScanSession? RentMersenneCpuDivisorSession()
+        {
+            MersenneCpuDivisorScanSession? session = _mersenneCpuDivisorSession;
+            if (session is null)
+            {
+                return null;
+            }
+
+            _mersenneCpuDivisorSession = null;
+            session.Reset();
+            return session;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void ReturnMersenneCpuDivisorSession(MersenneCpuDivisorScanSession session)
+        {
+            _mersenneCpuDivisorSession = session;
         }
 
         [ThreadStatic]
@@ -81,11 +105,14 @@ namespace PerfectNumbers.Core
             MersenneDivisorCycles.FactorCacheEntry? entry = _factorCacheEntryPoolHead;
             if (entry is null)
             {
-                return new MersenneDivisorCycles.FactorCacheEntry();
+                entry = new MersenneDivisorCycles.FactorCacheEntry();
+            }
+            else
+            {
+                _factorCacheEntryPoolHead = entry.Next;
             }
 
-            _factorCacheEntryPoolHead = entry.Next;
-            entry.Next = null;
+            entry.Reset();
             return entry;
         }
 

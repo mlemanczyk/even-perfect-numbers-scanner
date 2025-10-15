@@ -112,6 +112,10 @@ Keep the divisor cycle cache limited to a single block in memory (only the on-di
 
 All code, comments, commit messages, branch names and PR descriptions must be written in American English.
 
+- When modifying existing files, preserve all relevant TODO notes and explanatory comments unless they are no longer valid.
+- Prefer defining data holders as structs or classes with public fields over auto-properties when performance on the hot path is a concern.
+- Do not add or keep methods that simply wrap another method call without adding any logic; inline those calls or extend the wrapper with meaningful work.
+
 ## Performance implementation checklist
 
 - Prefer dedicated kernels over flag-controlled or parameterized kernels. Avoid conditional branches in kernels and tight loops by creating separate kernels when necessary.
