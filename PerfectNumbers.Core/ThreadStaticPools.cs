@@ -73,6 +73,30 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
+        private static MersenneDivisorCycles.FactorCacheEntry? _factorCacheEntryPoolHead;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static MersenneDivisorCycles.FactorCacheEntry RentFactorCacheEntry()
+        {
+            MersenneDivisorCycles.FactorCacheEntry? entry = _factorCacheEntryPoolHead;
+            if (entry is null)
+            {
+                return new MersenneDivisorCycles.FactorCacheEntry();
+            }
+
+            _factorCacheEntryPoolHead = entry.Next;
+            entry.Next = null;
+            return entry;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void ReturnFactorCacheEntry(MersenneDivisorCycles.FactorCacheEntry entry)
+        {
+            entry.Next = _factorCacheEntryPoolHead;
+            _factorCacheEntryPoolHead = entry;
+        }
+
+        [ThreadStatic]
         private static Dictionary<ulong, int>? _factorCountDictionary;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

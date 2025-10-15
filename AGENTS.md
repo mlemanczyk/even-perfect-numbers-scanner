@@ -106,6 +106,7 @@ There is only one agents file - this one. Don't search for another one.
 
 Always use indentation with four space characters in source code files, even if a file currently uses tabs or appears to rely on eight-space indentation. Increase indentation level by exactly one indentation unit (four spaces) per nested block. When parameters or long expressions wrap, indent the continuation with two indentation units for clarity.
 Explicitly prefer reusing existing variables once their previous values are no longer required instead of declaring new locals of the same type. Call out the variable reuse in comments when its meaning changes so the intent stays clear and register pressure remains minimal.
+Do not introduce try/finally blocks solely to release pooled resources. Restructure the code so that every return path releases the resources without relying on finally unless the control flow would become unclear or unmaintainable.
 
 Keep the divisor cycle cache limited to a single block in memory (only the on-disk snapshot). When a lookup misses, compute the required cycle on the configured device and discard the transient result instead of scheduling background generation or caching additional blocks.
 

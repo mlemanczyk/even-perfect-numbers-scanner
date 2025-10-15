@@ -314,6 +314,12 @@ public class MersenneDivisorCycles
         }
 
         ulong phi = divisor - 1UL;
+        // A zero totient would imply divisor == 0, which never occurs on the tested path. Keep the guard documented without
+        // branching in the hot loop.
+        // if (phi == 0UL)
+        // {
+        //     return false;
+        // }
 
         int twoCount = BitOperations.TrailingZeroCount(phi);
         ulong reducedPhi = phi >> twoCount;
@@ -323,30 +329,33 @@ public class MersenneDivisorCycles
         }
 
         ulong k = reducedPhi / exponent;
+        // k == 0 would indicate reducedPhi < exponent, which the EvenPerfectBitScanner call flow prevents. Document the
+        // assumption instead of branching.
+        // if (k == 0UL)
+        // {
+        //     return false;
+        // }
 
         Dictionary<ulong, int> factorCounts = ThreadStaticPools.RentFactorCountDictionary();
+        bool success = false;
 
-        try
+        if (twoCount > 0)
         {
-            if (twoCount > 0)
-            {
-                factorCounts[2UL] = twoCount;
-            }
+            factorCounts[2UL] = twoCount;
+        }
 
-            bool poolExponentFactors = usePooledCache || factorCache is null;
+        bool poolExponentFactors = usePooledCache || factorCache is null;
+        bool exponentAccumulated = AccumulateFactors(exponent, factorCache, factorCounts, cacheResult: true, allowPooledStorage: poolExponentFactors);
+        bool factorsAccumulated = exponentAccumulated && AccumulateFactors(k, factorCache, factorCounts, cacheResult: false, allowPooledStorage: true);
 
-            if (!AccumulateFactors(exponent, factorCache, factorCounts, cacheResult: true, poolExponentFactors) || !AccumulateFactors(k, factorCache, factorCounts, cacheResult: false, allowPooledStorage: true))
-            {
-                return false;
-            }
-
+        if (factorsAccumulated)
+        {
             cycleLength = ReduceOrder(divisorData, phi, factorCounts);
-            return true;
+            success = true;
         }
-        finally
-        {
-            ThreadStaticPools.ReturnFactorCountDictionary(factorCounts);
-        }
+
+        ThreadStaticPools.ReturnFactorCountDictionary(factorCounts);
+        return success;
     }
 
     private static bool AccumulateFactors(
@@ -363,15 +372,16 @@ public class MersenneDivisorCycles
 
         bool poolStorage = allowPooledStorage || cache is null || !cacheResult;
 
-        if (!TryGetFactorization(value, cache, cacheResult, poolStorage, out FactorCacheEntry factorization))
+        if (!TryGetFactorization(value, cache, cacheResult, poolStorage, out FactorCacheEntry? factorization, out bool releaseAfterUse) || factorization is null)
         {
             return false;
         }
 
-        FactorEntry[]? entries = factorization.Entries;
+        FactorCacheEntry actualFactorization = factorization;
+        FactorEntry[]? entries = actualFactorization.Entries;
         if (entries is not null)
         {
-            int length = factorization.Count;
+            int length = actualFactorization.Count;
 
             for (int i = 0; i < length; i++)
             {
@@ -380,9 +390,9 @@ public class MersenneDivisorCycles
             }
         }
 
-        if (cache is null || !cacheResult)
+        if (releaseAfterUse)
         {
-            factorization.ReturnToPool();
+            actualFactorization.ReturnToPool();
         }
 
         return true;
@@ -393,60 +403,82 @@ public class MersenneDivisorCycles
         Dictionary<ulong, FactorCacheEntry>? cache,
         bool cacheResult,
         bool allowPooledStorage,
-        out FactorCacheEntry factorization)
+        out FactorCacheEntry? factorization,
+        out bool releaseAfterUse)
     {
-        if (cache is not null && cache.TryGetValue(value, out factorization))
+        releaseAfterUse = false;
+
+        if (cache is not null && cache.TryGetValue(value, out FactorCacheEntry? cachedEntry))
         {
+            factorization = cachedEntry;
             return true;
         }
 
         Dictionary<ulong, int> scratch = ThreadStaticPools.RentFactorScratchDictionary();
-
-        try
-        {
-            if (!TryFactorIntoCountsInternal(value, scratch))
-            {
-                factorization = default!;
-                return false;
-            }
-
-            int count = scratch.Count;
-            if (count == 0)
-            {
-                factorization = default!;
-                return true;
-            }
-
-            bool fromPool = allowPooledStorage;
-            FactorEntry[] entries = fromPool
-                ? ThreadStaticPools.FactorEntryPool.Rent(count)
-                : new FactorEntry[count];
-
-            int index = 0;
-            foreach (KeyValuePair<ulong, int> entry in scratch)
-            {
-                entries[index] = new FactorEntry(entry.Key, entry.Value);
-                index++;
-            }
-
-            Array.Sort(entries, 0, count, FactorEntryValueComparer.Instance);
-            factorization = new FactorCacheEntry(entries, count, fromPool);
-
-            if (cache is not null && cacheResult)
-            {
-                cache[value] = factorization;
-            }
-
-            return true;
-        }
-        finally
+        bool factored = TryFactorIntoCountsInternal(value, scratch);
+        if (!factored)
         {
             ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
+            factorization = null;
+            return false;
         }
+
+        int count = scratch.Count;
+        FactorCacheEntry entry = ThreadStaticPools.RentFactorCacheEntry();
+        if (count == 0)
+        {
+            entry.Initialize(null, 0, fromPool: false);
+            factorization = entry;
+            releaseAfterUse = cache is null || !cacheResult;
+            if (cache is not null && cacheResult)
+            {
+                cache[value] = entry;
+            }
+
+            ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
+            return true;
+        }
+
+        bool fromPool = allowPooledStorage;
+        FactorEntry[] entries = fromPool
+            ? ThreadStaticPools.FactorEntryPool.Rent(count)
+            : new FactorEntry[count];
+
+        Dictionary<ulong, int>.Enumerator enumerator = scratch.GetEnumerator();
+        int index = 0;
+        while (enumerator.MoveNext())
+        {
+            KeyValuePair<ulong, int> current = enumerator.Current;
+            entries[index] = new FactorEntry(current.Key, current.Value);
+            index++;
+        }
+
+        ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
+        Array.Sort(entries, 0, count, FactorEntryValueComparer.Instance);
+
+        entry.Initialize(entries, count, fromPool);
+        factorization = entry;
+
+        if (cache is not null && cacheResult)
+        {
+            cache[value] = entry;
+        }
+        else
+        {
+            releaseAfterUse = true;
+        }
+
+        return true;
     }
 
     private static bool TryFactorIntoCountsInternal(ulong value, Dictionary<ulong, int> counts)
     {
+        // The EvenPerfectBitScanner only requests factors for values >= 2 here. Leave the guard documented without executing it.
+        // if (value <= 1UL)
+        // {
+        //     return true;
+        // }
+
         ulong remaining = value;
         uint[] smallPrimes = PrimesGenerator.SmallPrimes;
         ulong[] smallPrimesSquared = PrimesGenerator.SmallPrimesPow2;
@@ -675,36 +707,35 @@ public class MersenneDivisorCycles
         }
     }
 
-    public readonly struct FactorCacheEntry
+    public sealed class FactorCacheEntry
     {
-        private readonly bool _fromPool;
+        internal FactorCacheEntry? Next;
+        internal FactorEntry[]? Entries;
+        internal int Count;
+        private bool _fromPool;
 
-        internal FactorCacheEntry(FactorEntry[] entries, int count, bool fromPool)
+        internal void Initialize(FactorEntry[]? entries, int count, bool fromPool)
         {
             Entries = entries;
             Count = count;
             _fromPool = fromPool;
+            Next = null;
         }
-
-        internal FactorEntry[]? Entries { get; }
-
-        public int Count { get; }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void ReturnToPool()
         {
-            if (!_fromPool)
-            {
-                return;
-            }
-
             FactorEntry[]? entries = Entries;
-            if (entries is null)
+            if (_fromPool && entries is not null)
             {
-                return;
+                ThreadStaticPools.FactorEntryPool.Return(entries, clearArray: false);
             }
 
-            ThreadStaticPools.FactorEntryPool.Return(entries, clearArray: false);
+            Entries = null;
+            Count = 0;
+            _fromPool = false;
+            Next = null;
+            ThreadStaticPools.ReturnFactorCacheEntry(this);
         }
     }
 

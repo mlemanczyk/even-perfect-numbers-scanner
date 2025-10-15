@@ -149,6 +149,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         // }
 
         UInt128 step = (UInt128)prime << 1;
+        // The EvenPerfectBitScanner advances primes far below the overflow boundary, so a zero step here would indicate
+        // a corrupted input. Keeping the guard commented out documents the intent without putting a branch on the hot path.
+        // if (step == UInt128.Zero)
+        // {
+        //     processedAll = true;
+        //     return false;
+        // }
 
         UInt128 limit = allowedMax;
         UInt128 divisor = step + UInt128.One;
@@ -161,6 +168,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         FactorCacheLease factorCacheLease = new FactorCacheLease();
         Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? factorCache = null;
         bool foundDivisor = false;
+        bool requireLargeCycleCache = allowedMax > PerfectNumberConstants.MaxQForDivisorCycles;
+        if (requireLargeCycleCache)
+        {
+            factorCacheLease.EnsureInitialized(ref factorCache);
+        }
 
         byte step10 = (byte)(step % 10UL);
         byte step8 = (byte)(step % 8UL);
@@ -175,6 +187,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         byte remainder3 = (byte)(divisor % 3UL);
         byte remainder7 = (byte)(divisor % 7UL);
         byte remainder11 = (byte)(divisor % 11UL);
+
+        // DivisorCycleCache cycleCache = DivisorCycleCache.Shared; // Preserve the reference for easy restoration if the fallback cache is re-enabled.
 
         // Keep the divisibility filters aligned with the divisor-cycle generator so the
         // CPU path never requests cycles that were skipped during cache creation.
@@ -193,9 +207,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             {
                 MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(candidate);
                 Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? cacheForCycle = null;
-                if (candidate > PerfectNumberConstants.MaxQForDivisorCycles)
+                if (requireLargeCycleCache && candidate > PerfectNumberConstants.MaxQForDivisorCycles)
                 {
-                    factorCacheLease.EnsureInitialized(ref factorCache);
                     cacheForCycle = factorCache;
                 }
 
@@ -206,6 +219,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
                 if (divisorCycle == prime)
                 {
+                    // A cycle equal to the tested exponent (which is prime in this path) guarantees that the candidate divides
+                    // the corresponding Mersenne number because the order of 2 modulo the divisor is exactly p.
                     foundDivisor = true;
                     break;
                 }
