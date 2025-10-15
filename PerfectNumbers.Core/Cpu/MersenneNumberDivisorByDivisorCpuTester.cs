@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core.Cpu;
 
@@ -12,6 +13,15 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     private ulong _lastStatusDivisor;
     private int _batchSize = 1_024;
 
+    [ThreadStatic]
+    private static GpuUInt128WorkSet _divisorScanGpuWorkSet;
+
+    private struct GpuUInt128WorkSet
+    {
+        public GpuUInt128 Step;
+        public GpuUInt128 Divisor;
+        public GpuUInt128 Limit;
+    }
 
     public int BatchSize
     {
@@ -113,20 +123,30 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         //     return false;
         // }
 
-        UInt128 step = (UInt128)prime << 1;
-        // The EvenPerfectBitScanner advances primes far below the overflow boundary, so a zero step here would indicate
-        // a corrupted input. Keeping the guard commented out documents the intent without putting a branch on the hot path.
-        // if (step == UInt128.Zero)
-        // {
-        //     processedAll = true;
-        //     return false;
-        // }
+        ref GpuUInt128WorkSet workSet = ref _divisorScanGpuWorkSet;
 
-        UInt128 limit = allowedMax;
-        UInt128 divisor = step + UInt128.One;
-        if (divisor > limit)
+        ref GpuUInt128 step = ref workSet.Step;
+        step.High = 0UL;
+        step.Low = prime;
+        step.ShiftLeft(1);
+
+        ref GpuUInt128 limit = ref workSet.Limit;
+        limit.High = 0UL;
+        limit.Low = allowedMax;
+
+        ref GpuUInt128 divisor = ref workSet.Divisor;
+        divisor.High = step.High;
+        divisor.Low = step.Low;
+        divisor.Add(1UL);
+        if (divisor.CompareTo(limit) > 0)
         {
             processedAll = true;
+            divisor.High = 0UL;
+            divisor.Low = 0UL;
+            step.High = 0UL;
+            step.Low = 0UL;
+            limit.High = 0UL;
+            limit.Low = 0UL;
             return false;
         }
 
@@ -135,27 +155,31 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         DivisorCycleCache cycleCache = DivisorCycleCache.Shared;
 
-        byte step10 = (byte)(step % 10UL);
-        byte step8 = (byte)(step % 8UL);
-        byte step5 = (byte)(step % 5UL);
-        byte step3 = (byte)(step % 3UL);
-        byte step7 = (byte)(step % 7UL);
-        byte step11 = (byte)(step % 11UL);
+        ulong stepHigh = step.High;
+        ulong stepLow = step.Low;
+        byte step10 = (byte)((((stepHigh % 10UL) * 6UL) + (stepLow % 10UL)) % 10UL);
+        byte step8 = (byte)(stepLow % 8UL);
+        byte step5 = (byte)(((stepHigh % 5UL) + (stepLow % 5UL)) % 5UL);
+        byte step3 = (byte)(((stepHigh % 3UL) + (stepLow % 3UL)) % 3UL);
+        byte step7 = (byte)((((stepHigh % 7UL) * 2UL) + (stepLow % 7UL)) % 7UL);
+        byte step11 = (byte)((((stepHigh % 11UL) * 5UL) + (stepLow % 11UL)) % 11UL);
 
-        byte remainder10 = (byte)(divisor % 10UL);
-        byte remainder8 = (byte)(divisor % 8UL);
-        byte remainder5 = (byte)(divisor % 5UL);
-        byte remainder3 = (byte)(divisor % 3UL);
-        byte remainder7 = (byte)(divisor % 7UL);
-        byte remainder11 = (byte)(divisor % 11UL);
+        ulong divisorHigh = divisor.High;
+        ulong divisorLow = divisor.Low;
+        byte remainder10 = (byte)((((divisorHigh % 10UL) * 6UL) + (divisorLow % 10UL)) % 10UL);
+        byte remainder8 = (byte)(divisorLow % 8UL);
+        byte remainder5 = (byte)(((divisorHigh % 5UL) + (divisorLow % 5UL)) % 5UL);
+        byte remainder3 = (byte)(((divisorHigh % 3UL) + (divisorLow % 3UL)) % 3UL);
+        byte remainder7 = (byte)((((divisorHigh % 7UL) * 2UL) + (divisorLow % 7UL)) % 7UL);
+        byte remainder11 = (byte)((((divisorHigh % 11UL) * 5UL) + (divisorLow % 11UL)) % 11UL);
 
         // Keep the divisibility filters aligned with the divisor-cycle generator so the
         // CPU path never requests cycles that were skipped during cache creation.
         bool lastIsSeven = (prime & 3UL) == 3UL;
 
-        while (divisor <= limit)
+        while (divisor.CompareTo(limit) <= 0)
         {
-            ulong candidate = (ulong)divisor;
+            ulong candidate = divisor.Low;
             processedCount++;
 
             bool admissible = lastIsSeven
@@ -198,6 +222,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                     // the corresponding Mersenne number because the order of 2 modulo the divisor is exactly p.
                     factorCacheLease.Dispose();
                     factorCache = null;
+                    divisor.High = 0UL;
+                    divisor.Low = 0UL;
+                    step.High = 0UL;
+                    step.Low = 0UL;
+                    limit.High = 0UL;
+                    limit.Low = 0UL;
                     processedAll = true;
                     return true;
                 }
@@ -208,7 +238,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 }
             }
 
-            divisor += step;
+            divisor.Add(step);
             remainder10 = AddMod(remainder10, step10, (byte)10);
             remainder8 = AddMod(remainder8, step8, (byte)8);
             remainder5 = AddMod(remainder5, step5, (byte)5);
@@ -220,7 +250,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         factorCacheLease.Dispose();
         factorCache = null; // The pooled dictionary was returned to the thread-static slot.
 
-        processedAll = divisor > limit;
+        processedAll = divisor.CompareTo(limit) > 0;
+        divisor.High = 0UL;
+        divisor.Low = 0UL;
+        step.High = 0UL;
+        step.Low = 0UL;
+        limit.High = 0UL;
+        limit.Low = 0UL;
         return false;
     }
 
