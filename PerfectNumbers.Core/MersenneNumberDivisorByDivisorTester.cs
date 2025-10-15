@@ -26,8 +26,6 @@ public static class MersenneNumberDivisorByDivisorTester
 			return;
 		}
 
-		_ = threadCount;
-
 		candidates.Sort();
 		Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
 		int candidateCount = candidateSpan.Length;
