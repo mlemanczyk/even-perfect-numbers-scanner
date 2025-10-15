@@ -873,12 +873,12 @@ internal static partial class PrimeOrderCalculator
 
 			if (config.PollardRhoMilliseconds > 0 && pending.Count > 0)
 			{
-				Stopwatch stopwatch = Stopwatch.StartNew();
-				long budgetTicks = TimeSpan.FromMilliseconds(config.PollardRhoMilliseconds).Ticks;
+				long deadlineTimestamp = CreateDeadlineTimestamp(config.PollardRhoMilliseconds);
 				compositeStack = AcquireCompositeStack(Math.Max(pending.Count * 2, 4));
 				compositeStack.Push(remaining);
 				pending.Clear();
 
+				long timestamp = 0L; // reused for deadline checks.
 				while (compositeStack.Count > 0)
 				{
 					ulong composite = compositeStack.Pop();
@@ -894,13 +894,14 @@ internal static partial class PrimeOrderCalculator
 						continue;
 					}
 
-					if (stopwatch.ElapsedTicks > budgetTicks)
+					timestamp = Stopwatch.GetTimestamp();
+					if (timestamp > deadlineTimestamp)
 					{
 						pending.Add(composite);
 						continue;
 					}
 
-					if (!TryPollardRho(composite, stopwatch, budgetTicks, out ulong factor))
+					if (!TryPollardRho(composite, deadlineTimestamp, out ulong factor))
 					{
 						pending.Add(composite);
 						continue;
@@ -1143,48 +1144,77 @@ internal static partial class PrimeOrderCalculator
 
 		return true;
 	}
-	private static bool TryPollardRho(ulong n, Stopwatch stopwatch, long budgetTicks, out ulong factor)
-	{
-		factor = 0UL;
-		if ((n & 1UL) == 0UL)
-		{
-			factor = 2UL;
-			return true;
-		}
+        private static long CreateDeadlineTimestamp(int milliseconds)
+        {
+                if (milliseconds <= 0)
+                {
+                        return long.MaxValue;
+                }
 
-		while (true)
-		{
-			if (stopwatch.ElapsedTicks > budgetTicks)
-			{
-				return false;
-			}
+                long stopwatchTicks = ConvertMillisecondsToStopwatchTicks(milliseconds);
+                long startTimestamp = Stopwatch.GetTimestamp();
+                long deadline = startTimestamp + stopwatchTicks;
+                if (deadline < startTimestamp)
+                {
+                        return long.MaxValue;
+                }
 
-			ulong c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
-			ulong x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
-			ulong y = x;
-			ulong d = 1UL;
+                return deadline;
+        }
 
-			while (d == 1UL)
-			{
-				if (stopwatch.ElapsedTicks > budgetTicks)
-				{
-					return false;
-				}
+        private static long ConvertMillisecondsToStopwatchTicks(int milliseconds)
+        {
+                long frequency = Stopwatch.Frequency;
+                long baseTicks = (frequency / 1000L) * milliseconds;
+                long remainder = (frequency % 1000L) * milliseconds;
+                return baseTicks + (remainder / 1000L);
+        }
 
-				x = AdvancePolynomial(x, c, n);
-				y = AdvancePolynomial(y, c, n);
-				y = AdvancePolynomial(y, c, n);
-				ulong diff = x > y ? x - y : y - x;
-				d = BinaryGcd(diff, n);
-			}
+        private static bool TryPollardRho(ulong n, long deadlineTimestamp, out ulong factor)
+        {
+                factor = 0UL;
+                if ((n & 1UL) == 0UL)
+                {
+                        factor = 2UL;
+                        return true;
+                }
 
-			if (d != n)
-			{
-				factor = d;
-				return true;
-			}
-		}
-	}
+                long timestamp = 0L; // reused for deadline checks.
+                while (true)
+                {
+                        timestamp = Stopwatch.GetTimestamp();
+                        if (timestamp > deadlineTimestamp)
+                        {
+                                return false;
+                        }
+
+                        ulong c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
+                        ulong x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
+                        ulong y = x;
+                        ulong d = 1UL;
+
+                        while (d == 1UL)
+                        {
+                                timestamp = Stopwatch.GetTimestamp();
+                                if (timestamp > deadlineTimestamp)
+                                {
+                                        return false;
+                                }
+
+                                x = AdvancePolynomial(x, c, n);
+                                y = AdvancePolynomial(y, c, n);
+                                y = AdvancePolynomial(y, c, n);
+                                ulong diff = x > y ? x - y : y - x;
+                                d = BinaryGcd(diff, n);
+                        }
+
+                        if (d != n)
+                        {
+                                factor = d;
+                                return true;
+                        }
+                }
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static ulong AdvancePolynomial(ulong x, ulong c, ulong modulus)

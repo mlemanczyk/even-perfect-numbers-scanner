@@ -603,12 +603,12 @@ internal static partial class PrimeOrderCalculator
 
         if (config.PollardRhoMilliseconds > 0 && pending.Count > 0)
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            long budgetTicks = TimeSpan.FromMilliseconds(config.PollardRhoMilliseconds).Ticks;
+            long deadlineTimestamp = CreateDeadlineTimestamp(config.PollardRhoMilliseconds);
             Stack<UInt128> stack = new();
             stack.Push(remaining);
             pending.Clear();
 
+            long timestamp = 0L; // reused for deadline checks.
             while (stack.Count > 0)
             {
                 UInt128 composite = stack.Pop();
@@ -623,13 +623,14 @@ internal static partial class PrimeOrderCalculator
                     continue;
                 }
 
-                if (stopwatch.ElapsedTicks > budgetTicks)
+                timestamp = Stopwatch.GetTimestamp();
+                if (timestamp > deadlineTimestamp)
                 {
                     pending.Add(composite);
                     continue;
                 }
 
-                if (!TryPollardRhoWide(composite, stopwatch, budgetTicks, out UInt128 factor))
+                if (!TryPollardRhoWide(composite, deadlineTimestamp, out UInt128 factor))
                 {
                     pending.Add(composite);
                     continue;
@@ -728,7 +729,7 @@ internal static partial class PrimeOrderCalculator
 
         return remaining;
     }
-    private static bool TryPollardRhoWide(in UInt128 n, Stopwatch stopwatch, long budgetTicks, out UInt128 factor)
+    private static bool TryPollardRhoWide(in UInt128 n, long deadlineTimestamp, out UInt128 factor)
     {
         factor = UInt128.Zero;
         if ((n & UInt128.One) == UInt128.Zero)
@@ -740,10 +741,12 @@ internal static partial class PrimeOrderCalculator
         UInt128 c = UInt128.One;
         UInt128 x = (UInt128)2UL;
         UInt128 y = x;
+        long timestamp = 0L; // reused for deadline checks.
 
         while (true)
         {
-            if (stopwatch.ElapsedTicks > budgetTicks)
+            timestamp = Stopwatch.GetTimestamp();
+            if (timestamp > deadlineTimestamp)
             {
                 return false;
             }
