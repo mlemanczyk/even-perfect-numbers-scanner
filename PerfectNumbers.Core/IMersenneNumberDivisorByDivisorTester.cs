@@ -16,10 +16,10 @@ public interface IMersenneNumberDivisorByDivisorTester
 
     IDivisorScanSession CreateDivisorSession();
 
-    void PrepareCandidates(ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues);
+    void PrepareCandidates(in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues);
 
     public interface IDivisorScanSession : IDisposable
     {
-        void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits);
+        void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes, Span<byte> hits);
     }
 }

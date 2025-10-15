@@ -38,8 +38,8 @@ namespace PerfectNumbers.Core
             return instance;
         }
 
-        public static readonly PartialFactorResult Empty = new PartialFactorResult
-        {
+        public static readonly PartialFactorResult Empty = new()
+		{
             Cofactor = 1UL,
             FullyFactored = true,
         };
@@ -70,7 +70,7 @@ namespace PerfectNumbers.Core
                 if (factors is not null)
                 {
                     Factors = null;
-                    ArrayPool<FactorEntry>.Shared.Return(factors, clearArray: false);
+                    ThreadStaticPools.FactorEntryPool.Return(factors, clearArray: false);
                 }
 
                 _next = s_poolHead;

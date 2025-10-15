@@ -70,7 +70,7 @@ public class MersenneNumberDivisorByDivisorTesterTests
             return new DummySession();
         }
 
-        public void PrepareCandidates(ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)
+        public void PrepareCandidates(in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)
         {
             for (int i = 0; i < primes.Length; i++)
             {
@@ -80,7 +80,7 @@ public class MersenneNumberDivisorByDivisorTesterTests
 
         private sealed class DummySession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
         {
-            public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
+            public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes, Span<byte> hits)
             {
                 throw new NotSupportedException();
             }

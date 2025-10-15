@@ -10,129 +10,126 @@ namespace PerfectNumbers.Core;
 
 public static class MersenneNumberDivisorByDivisorTester
 {
-    public static void Run(
-            List<ulong> candidates,
-            IMersenneNumberDivisorByDivisorTester tester,
-            Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
-            ulong startPrime,
-            Action markComposite,
-            Action clearComposite,
-            Action<ulong, bool, bool, bool> printResult,
-            int threadCount)
-    {
-        if (candidates.Count == 0)
-        {
-            Console.WriteLine("No candidates were provided for --mersenne=bydivisor.");
-            return;
-        }
+	public static void Run(
+			List<ulong> candidates,
+			IMersenneNumberDivisorByDivisorTester tester,
+			Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
+			ulong startPrime,
+			Action markComposite,
+			Action clearComposite,
+			Action<ulong, bool, bool, bool> printResult,
+			int threadCount)
+	{
+		if (candidates.Count == 0)
+		{
+			Console.WriteLine("No candidates were provided for --mersenne=bydivisor.");
+			return;
+		}
 
-        _ = threadCount;
+		_ = threadCount;
 
-        candidates.Sort();
-        Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
-        int candidateCount = candidateSpan.Length;
+		candidates.Sort();
+		Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
+		int candidateCount = candidateSpan.Length;
 
-        bool applyStartPrime = startPrime > 0UL;
-        int skippedByPreviousResults = 0;
+		bool applyStartPrime = startPrime > 0UL;
+		int skippedByPreviousResults = 0;
 
-        if (previousResults is not null && previousResults.Count > 0)
-        {
-            int recordedCount = previousResults.Count;
-            ulong[] recordedCandidates = ArrayPool<ulong>.Shared.Rent(recordedCount);
-            try
-            {
-                Span<ulong> recordedSpan = recordedCandidates.AsSpan(0, recordedCount);
-                int recordedIndex = 0;
-                foreach (ulong value in previousResults.Keys)
-                {
-                    recordedSpan[recordedIndex++] = value;
-                }
+		ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
+		if (previousResults is not null && previousResults.Count > 0)
+		{
+			int recordedCount = previousResults.Count;
+			ulong[] recordedCandidates = pool.Rent(recordedCount);
 
-                recordedSpan.Sort();
+			Span<ulong> recordedSpan = recordedCandidates.AsSpan(0, recordedCount);
+			int recordedIndex = 0;
+			foreach (ulong value in previousResults.Keys)
+			{
+				recordedSpan[recordedIndex++] = value;
+			}
 
-                int writeIndex = 0;
-                int skipIndex = 0;
+			recordedSpan.Sort();
 
-                for (int readIndex = 0; readIndex < candidateCount; readIndex++)
-                {
-                    ulong candidate = candidateSpan[readIndex];
+			int writeIndex = 0;
+			int skipIndex = 0;
 
-                    while (skipIndex < recordedCount && recordedSpan[skipIndex] < candidate)
-                    {
-                        skipIndex++;
-                    }
+			for (int readIndex = 0; readIndex < candidateCount; readIndex++)
+			{
+				ulong candidate = candidateSpan[readIndex];
 
-                    if (skipIndex < recordedCount && recordedSpan[skipIndex] == candidate)
-                    {
-                        skippedByPreviousResults++;
-                        skipIndex++;
-                        continue;
-                    }
+				while (skipIndex < recordedCount && recordedSpan[skipIndex] < candidate)
+				{
+					skipIndex++;
+				}
 
-                    candidateSpan[writeIndex++] = candidate;
-                }
+				if (skipIndex < recordedCount && recordedSpan[skipIndex] == candidate)
+				{
+					skippedByPreviousResults++;
+					skipIndex++;
+					continue;
+				}
 
-                if (writeIndex < candidateCount)
-                {
-                    candidates.RemoveRange(writeIndex, candidateCount - writeIndex);
-                    candidateSpan = CollectionsMarshal.AsSpan(candidates);
-                    candidateCount = candidateSpan.Length;
-                }
-            }
-            finally
-            {
-                ArrayPool<ulong>.Shared.Return(recordedCandidates, clearArray: true);
-            }
-        }
+				candidateSpan[writeIndex++] = candidate;
+			}
 
-        if (skippedByPreviousResults > 0)
-        {
-            Console.WriteLine($"Skipped {skippedByPreviousResults.ToString(CultureInfo.InvariantCulture)} candidates excluded by previous results.");
-        }
+			if (writeIndex < candidateCount)
+			{
+				candidates.RemoveRange(writeIndex, candidateCount - writeIndex);
+				candidateSpan = CollectionsMarshal.AsSpan(candidates);
+				candidateCount = candidateSpan.Length;
+			}
 
-        int startIndex = 0;
-        if (applyStartPrime)
-        {
-            startIndex = candidates.BinarySearch(startPrime);
-            if (startIndex < 0)
-            {
-                startIndex = ~startIndex;
-            }
-            else
-            {
-                while (startIndex > 0 && candidates[startIndex - 1] >= startPrime)
-                {
-                    startIndex--;
-                }
-            }
-        }
+			pool.Return(recordedCandidates, clearArray: true);
+		}
 
-        List<ulong> primesToTest = candidates;
-        Span<ulong> primesSpan = CollectionsMarshal.AsSpan(primesToTest);
-        ulong maxPrime = 0UL;
-        int primeWriteIndex = 0;
+		if (skippedByPreviousResults > 0)
+		{
+			Console.WriteLine($"Skipped {skippedByPreviousResults.ToString(CultureInfo.InvariantCulture)} candidates excluded by previous results.");
+		}
+
+		int startIndex = 0;
+		if (applyStartPrime)
+		{
+			startIndex = candidates.BinarySearch(startPrime);
+			if (startIndex < 0)
+			{
+				startIndex = ~startIndex;
+			}
+			else
+			{
+				while (startIndex > 0 && candidates[startIndex - 1] >= startPrime)
+				{
+					startIndex--;
+				}
+			}
+		}
+
+		List<ulong> primesToTest = candidates;
+		Span<ulong> primesSpan = CollectionsMarshal.AsSpan(primesToTest);
+		ulong maxPrime = 0UL;
+		int primeWriteIndex = 0;
 
 		// This implementation is terribly slow, while this method expect prime p given as --filter-p input already.
 		// We don't need to additionally check it.
 
-        // using IEnumerator<ulong> primeEnumerator = Prime.Numbers.GetEnumerator();
-        // bool hasPrime = primeEnumerator.MoveNext();
-        // ulong currentPrime = hasPrime ? primeEnumerator.Current : 0UL;
+		// using IEnumerator<ulong> primeEnumerator = Prime.Numbers.GetEnumerator();
+		// bool hasPrime = primeEnumerator.MoveNext();
+		// ulong currentPrime = hasPrime ? primeEnumerator.Current : 0UL;
 
-        for (int index = startIndex; index < candidateCount; index++)
-        {
-            ulong candidate = primesSpan[index];
+		for (int index = startIndex; index < candidateCount; index++)
+		{
+			ulong candidate = primesSpan[index];
 
-            if (candidate <= 1UL)
-            {
-                markComposite();
-                printResult(candidate, false, false, false);
-                continue;
-            }
+			if (candidate <= 1UL)
+			{
+				markComposite();
+				printResult(candidate, false, false, false);
+				continue;
+			}
 
 			// This implementation is terribly slow, while this method expect prime p given as --filter-p input already.
 			// We don't need to additionally check it.
-			
+
 			// while (hasPrime && currentPrime < candidate)
 			// {
 			//     hasPrime = primeEnumerator.MoveNext();
@@ -154,123 +151,118 @@ public static class MersenneNumberDivisorByDivisorTester
 
 			primesSpan[primeWriteIndex++] = candidate;
 
-            if (candidate > maxPrime)
-            {
-                maxPrime = candidate;
-            }
-        }
+			if (candidate > maxPrime)
+			{
+				maxPrime = candidate;
+			}
+		}
 
-        if (primeWriteIndex < primesToTest.Count)
-        {
-            primesToTest.RemoveRange(primeWriteIndex, primesToTest.Count - primeWriteIndex);
-        }
+		if (primeWriteIndex < primesToTest.Count)
+		{
+			primesToTest.RemoveRange(primeWriteIndex, primesToTest.Count - primeWriteIndex);
+		}
 
-        if (primesToTest.Count == 0)
-        {
-            if (applyStartPrime)
-            {
-                Console.WriteLine($"No primes greater than or equal to {startPrime.ToString(CultureInfo.InvariantCulture)} were found for --mersenne=bydivisor.");
-            }
-            else
-            {
-                Console.WriteLine("No prime candidates remain for --mersenne=bydivisor after filtering.");
-            }
+		if (primesToTest.Count == 0)
+		{
+			if (applyStartPrime)
+			{
+				Console.WriteLine($"No primes greater than or equal to {startPrime.ToString(CultureInfo.InvariantCulture)} were found for --mersenne=bydivisor.");
+			}
+			else
+			{
+				Console.WriteLine("No prime candidates remain for --mersenne=bydivisor after filtering.");
+			}
 
-            return;
-        }
+			return;
+		}
 
-        if (maxPrime <= 1UL)
-        {
-            Console.WriteLine("The filter specified by --filter-p must contain at least one prime exponent greater than 1 for --mersenne=bydivisor.");
-            return;
-        }
+		if (maxPrime <= 1UL)
+		{
+			Console.WriteLine("The filter specified by --filter-p must contain at least one prime exponent greater than 1 for --mersenne=bydivisor.");
+			return;
+		}
 
-        tester.ConfigureFromMaxPrime(maxPrime);
+		tester.ConfigureFromMaxPrime(maxPrime);
 
-        int primeCount = primesToTest.Count;
-        ulong[] primeBatch = ArrayPool<ulong>.Shared.Rent(primeCount);
-        ulong[] allowedMaxBatch = ArrayPool<ulong>.Shared.Rent(primeCount);
-        List<ulong> filteredPrimes = new(primeCount);
+		int primeCount = primesToTest.Count;
+		ulong[] primeBatch = pool.Rent(primeCount);
+		ulong[] allowedMaxBatch = pool.Rent(primeCount);
+		List<ulong> filteredPrimes = new(primeCount);
 
-        try
-        {
-            Span<ulong> primeSpan = primeBatch.AsSpan(0, primeCount);
-            Span<ulong> allowedMaxSpan = allowedMaxBatch.AsSpan(0, primeCount);
+		Span<ulong> primeSpan = primeBatch.AsSpan(0, primeCount);
+		Span<ulong> allowedMaxSpan = allowedMaxBatch.AsSpan(0, primeCount);
 
-            for (int i = 0; i < primeCount; i++)
-            {
-                primeSpan[i] = primesToTest[i];
-            }
+		for (int i = 0; i < primeCount; i++)
+		{
+			primeSpan[i] = primesToTest[i];
+		}
 
-            tester.PrepareCandidates(primeSpan, allowedMaxSpan);
+		tester.PrepareCandidates(primeSpan, allowedMaxSpan);
 
-            for (int i = 0; i < primeCount; i++)
-            {
-                ulong prime = primeSpan[i];
-                ulong allowedMax = allowedMaxSpan[i];
+		for (int i = 0; i < primeCount; i++)
+		{
+			ulong prime = primeSpan[i];
+			ulong allowedMax = allowedMaxSpan[i];
 
-                if (allowedMax < 3UL)
-                {
-                    clearComposite();
-                    printResult(prime, true, true, true);
-                    continue;
-                }
+			if (allowedMax < 3UL)
+			{
+				clearComposite();
+				printResult(prime, true, true, true);
+				continue;
+			}
 
-                filteredPrimes.Add(prime);
-            }
-        }
-        finally
-        {
-            ArrayPool<ulong>.Shared.Return(allowedMaxBatch, clearArray: true);
-            ArrayPool<ulong>.Shared.Return(primeBatch, clearArray: true);
-        }
+			filteredPrimes.Add(prime);
+		}
 
-        if (filteredPrimes.Count == 0)
-        {
-            if (applyStartPrime)
-            {
-                Console.WriteLine($"No primes greater than or equal to {startPrime.ToString(CultureInfo.InvariantCulture)} were found for --mersenne=bydivisor.");
-            }
+		pool.Return(allowedMaxBatch, clearArray: true);
+		pool.Return(primeBatch, clearArray: true);
 
-            return;
-        }
+		if (filteredPrimes.Count == 0)
+		{
+			if (applyStartPrime)
+			{
+				Console.WriteLine($"No primes greater than or equal to {startPrime.ToString(CultureInfo.InvariantCulture)} were found for --mersenne=bydivisor.");
+			}
 
-        int workerCount = threadCount <= 0 ? Environment.ProcessorCount : threadCount;
-        if (workerCount < 1)
-        {
-            workerCount = 1;
-        }
+			return;
+		}
 
-        void ProcessPrime(ulong prime)
-        {
-            bool isPrime = tester.IsPrime(prime, out bool divisorsExhausted);
+		int workerCount = threadCount <= 0 ? Environment.ProcessorCount : threadCount;
+		if (workerCount < 1)
+		{
+			workerCount = 1;
+		}
 
-            if (!isPrime)
-            {
-                markComposite();
-                printResult(prime, true, true, false);
-                return;
-            }
+		void ProcessPrime(ulong prime)
+		{
+			bool isPrime = tester.IsPrime(prime, out bool divisorsExhausted);
 
-            clearComposite();
-            printResult(prime, true, divisorsExhausted, true);
-        }
+			if (!isPrime)
+			{
+				markComposite();
+				printResult(prime, true, true, false);
+				return;
+			}
 
-        if (workerCount == 1)
-        {
-            foreach (ulong prime in filteredPrimes)
-            {
-                ProcessPrime(prime);
-            }
-        }
-        else
-        {
-            ParallelOptions options = new()
-            {
-                MaxDegreeOfParallelism = workerCount
-            };
+			clearComposite();
+			printResult(prime, true, divisorsExhausted, true);
+		}
 
-            Parallel.ForEach(filteredPrimes, options, ProcessPrime);
-        }
-    }
+		if (workerCount == 1)
+		{
+			foreach (ulong prime in filteredPrimes)
+			{
+				ProcessPrime(prime);
+			}
+		}
+		else
+		{
+			ParallelOptions options = new()
+			{
+				MaxDegreeOfParallelism = workerCount
+			};
+
+			Parallel.ForEach(filteredPrimes, options, ProcessPrime);
+		}
+	}
 }

@@ -1,18 +1,14 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Numerics;
-using PerfectNumbers.Core;
+using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core.Cpu;
 
 public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDivisorByDivisorTester
 {
     private readonly object _sync = new();
-    private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
+    private readonly ConcurrentBag<DivisorScanSession> _sessionPool = [];
     private ulong _divisorLimit;
     private ulong _lastStatusDivisor;
-    private bool _isConfigured;
     private int _batchSize = 1_024;
 
 
@@ -24,55 +20,25 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     public void ConfigureFromMaxPrime(ulong maxPrime)
     {
-        lock (_sync)
-        {
-            _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
-            _lastStatusDivisor = 0UL;
-            _isConfigured = true;
-        }
+		_divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
+		_lastStatusDivisor = 0UL;
     }
 
     public ulong DivisorLimit
-    {
+	{
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            lock (_sync)
-            {
-                if (!_isConfigured)
-                {
-                    throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-                }
-
-                return _divisorLimit;
-            }
+			return _divisorLimit;
         }
     }
 
-    public ulong GetAllowedMaxDivisor(ulong prime)
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public ulong GetAllowedMaxDivisor(ulong prime) => ComputeAllowedMaxDivisor(prime, _divisorLimit);
+
+	public bool IsPrime(ulong prime, out bool divisorsExhausted)
     {
-        lock (_sync)
-        {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            return ComputeAllowedMaxDivisor(prime, _divisorLimit);
-        }
-    }
-
-    public bool IsPrime(ulong prime, out bool divisorsExhausted)
-    {
-        ulong allowedMax;
-        lock (_sync)
-        {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            allowedMax = ComputeAllowedMaxDivisor(prime, _divisorLimit);
-        }
+        ulong allowedMax = ComputeAllowedMaxDivisor(prime, _divisorLimit);
 
         if (allowedMax < 3UL)
         {
@@ -81,13 +47,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         }
 
         ulong processedCount;
-        ulong lastProcessed;
         bool processedAll;
 
         bool composite = CheckDivisors(
             prime,
             allowedMax,
-            out lastProcessed,
             out processedAll,
             out processedCount);
 
@@ -109,26 +73,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         return true;
     }
 
-    public void PrepareCandidates(ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)
+    public void PrepareCandidates(in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)
     {
-        if (allowedMaxValues.Length < primes.Length)
-        {
-            throw new ArgumentException("allowedMaxValues span must be at least as long as primes span.", nameof(allowedMaxValues));
-        }
-
-        ulong divisorLimit;
-
-        lock (_sync)
-        {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
-
-            divisorLimit = _divisorLimit;
-        }
-
-        for (int index = 0; index < primes.Length; index++)
+        ulong divisorLimit = _divisorLimit;
+		int length = primes.Length;
+		for (int index = 0; index < length; index++)
         {
             allowedMaxValues[index] = ComputeAllowedMaxDivisor(primes[index], divisorLimit);
         }
@@ -136,21 +85,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession()
     {
-        lock (_sync)
-        {
-            if (!_isConfigured)
-            {
-                throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-            }
+		if (_sessionPool.TryTake(out DivisorScanSession? session))
+		{
+			session.Reset();
+			return session;
+		}
 
-            if (_sessionPool.TryTake(out DivisorScanSession? session))
-            {
-                session.Reset();
-                return session;
-            }
-
-            return new DivisorScanSession(this);
-        }
+		return new DivisorScanSession(this);
     }
 
     private void ReturnSession(DivisorScanSession session)
@@ -161,11 +102,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     private bool CheckDivisors(
         ulong prime,
         ulong allowedMax,
-        out ulong lastProcessed,
         out bool processedAll,
         out ulong processedCount)
     {
-        lastProcessed = 0UL;
         processedCount = 0UL;
         processedAll = false;
 
@@ -214,7 +153,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         {
             ulong candidate = (ulong)divisor;
             processedCount++;
-            lastProcessed = candidate;
 
             bool admissible = lastIsSeven
                 ? (remainder10 == 3 || remainder10 == 7 || remainder10 == 9)
@@ -348,13 +286,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             _disposed = false;
         }
 
-        public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, ReadOnlySpan<ulong> primes, Span<byte> hits)
+        public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes, Span<byte> hits)
         {
-            if (_disposed)
-            {
-                throw new ObjectDisposedException(nameof(DivisorScanSession));
-            }
-
             int length = primes.Length;
             if (length == 0)
             {

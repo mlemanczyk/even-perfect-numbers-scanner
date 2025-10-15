@@ -10,10 +10,10 @@ namespace PerfectNumbers.Core;
 internal static partial class PrimeOrderCalculator
 {
     public static UInt128 Calculate(
-        UInt128 prime,
-        UInt128? previousOrder,
-        PrimeOrderSearchConfig config,
-        PrimeOrderHeuristicDevice device)
+        in UInt128 prime,
+        in UInt128? previousOrder,
+        in PrimeOrderSearchConfig config,
+        in PrimeOrderHeuristicDevice device)
     {
         var scope = UsePow2Mode(device);
         MontgomeryDivisorData divisorData;
@@ -49,7 +49,7 @@ internal static partial class PrimeOrderCalculator
         return result;
     }
 
-    private static UInt128 CalculateWideInternal(UInt128 prime, UInt128? previousOrder, in MontgomeryDivisorData divisorData, PrimeOrderSearchConfig config)
+    private static UInt128 CalculateWideInternal(in UInt128 prime, in UInt128? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
     {
         if (prime <= UInt128.One)
         {
@@ -79,12 +79,12 @@ internal static partial class PrimeOrderCalculator
     }
 
     private static UInt128 RunHeuristicPipelineWide(
-        UInt128 prime,
-        UInt128? previousOrder,
+        in UInt128 prime,
+        in UInt128? previousOrder,
         in MontgomeryDivisorData divisorData,
-        PrimeOrderSearchConfig config,
-        UInt128 phi,
-        PartialFactorResult128 phiFactors)
+        in PrimeOrderSearchConfig config,
+        in UInt128 phi,
+        in PartialFactorResult128 phiFactors)
     {
         if (phiFactors.FullyFactored && TrySpecialMaxWide(phi, prime, divisorData, phiFactors))
         {
@@ -112,12 +112,12 @@ internal static partial class PrimeOrderCalculator
         return candidateOrder;
     }
 
-    private static UInt128 FinishStrictlyWide(UInt128 prime, in MontgomeryDivisorData divisorData)
+    private static UInt128 FinishStrictlyWide(in UInt128 prime, in MontgomeryDivisorData divisorData)
     {
         return CalculateByFactorizationWide(prime, divisorData);
     }
 
-    private static bool TrySpecialMaxWide(UInt128 phi, UInt128 prime, in MontgomeryDivisorData divisorData, PartialFactorResult128 factors)
+    private static bool TrySpecialMaxWide(in UInt128 phi, in UInt128 prime, in MontgomeryDivisorData divisorData, in PartialFactorResult128 factors)
     {
         ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
         int length = factors.Count;
@@ -134,7 +134,7 @@ internal static partial class PrimeOrderCalculator
         return true;
     }
 
-    private static UInt128 InitializeStartingOrderWide(UInt128 prime, UInt128 phi, in MontgomeryDivisorData divisorData)
+    private static UInt128 InitializeStartingOrderWide(in UInt128 prime, in UInt128 phi, in MontgomeryDivisorData divisorData)
     {
         UInt128 order = phi;
         UInt128 mod8 = prime & (UInt128)7UL;
@@ -150,19 +150,20 @@ internal static partial class PrimeOrderCalculator
         return order;
     }
 
-    private static UInt128 ExponentLoweringWide(UInt128 order, UInt128 prime, in MontgomeryDivisorData divisorData, PartialFactorResult128 factors)
+    private static UInt128 ExponentLoweringWide(UInt128 order, in UInt128 prime, in MontgomeryDivisorData divisorData, in PartialFactorResult128 factors)
     {
-        FactorEntry128[]? tempArray = null;
+		ArrayPool<FactorEntry128> pool = ThreadStaticPools.FactorEntry128Pool;
+		ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
+		int length = factors.Count;
+		// TODO: This should never trigger from production code - check
+		// if (length == 0)
+		// {
+		//     return order;
+		// }
+		FactorEntry128[]? tempArray = pool.Rent(length + 1);
         try
         {
-            ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
-            int length = factors.Count;
-            if (length == 0)
-            {
-                return order;
-            }
 
-            tempArray = ArrayPool<FactorEntry128>.Shared.Rent(length + 1);
             Span<FactorEntry128> buffer = tempArray.AsSpan(0, length);
             factorSpan.CopyTo(buffer);
 
@@ -198,14 +199,11 @@ internal static partial class PrimeOrderCalculator
         }
         finally
         {
-            if (tempArray is not null)
-            {
-                ArrayPool<FactorEntry128>.Shared.Return(tempArray, clearArray: false);
-            }
+			pool.Return(tempArray, clearArray: false);
         }
     }
 
-    private static bool TryConfirmOrderWide(UInt128 prime, UInt128 order, in MontgomeryDivisorData divisorData, PrimeOrderSearchConfig config)
+    private static bool TryConfirmOrderWide(in UInt128 prime, in UInt128 order, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
     {
         if (order == UInt128.Zero)
         {
@@ -263,11 +261,11 @@ internal static partial class PrimeOrderCalculator
     }
 
     private static bool TryHeuristicFinishWide(
-        UInt128 prime,
-        UInt128 order,
-        UInt128? previousOrder,
+        in UInt128 prime,
+        in UInt128 order,
+        in UInt128? previousOrder,
         in MontgomeryDivisorData divisorData,
-        PrimeOrderSearchConfig config,
+        in PrimeOrderSearchConfig config,
         out UInt128 result)
     {
         result = UInt128.Zero;
@@ -339,7 +337,7 @@ internal static partial class PrimeOrderCalculator
         return false;
     }
 
-    private static void SortCandidatesWide(UInt128 prime, UInt128? previousOrder, List<UInt128> candidates)
+    private static void SortCandidatesWide(UInt128 prime, in UInt128? previousOrder, List<UInt128> candidates)
     {
         UInt128 previous = previousOrder ?? UInt128.Zero;
         int previousGroup = previousOrder.HasValue ? GetGroupWide(previousOrder.Value, prime) : 1;
@@ -367,9 +365,9 @@ internal static partial class PrimeOrderCalculator
     }
 
     private static CandidateKey128 BuildKeyWide(
-        UInt128 value,
-        UInt128 prime,
-        UInt128 previous,
+        in UInt128 value,
+        in UInt128 prime,
+        in UInt128 previous,
         int previousGroup,
         bool hasPrevious)
     {
@@ -391,7 +389,7 @@ internal static partial class PrimeOrderCalculator
         return new CandidateKey128(primary, false, distance, false, value);
     }
 
-    private static int CompareComponents(bool descendingX, UInt128 valueX, bool descendingY, UInt128 valueY)
+    private static int CompareComponents(bool descendingX, in UInt128 valueX, bool descendingY, in UInt128 valueY)
     {
         if (descendingX == descendingY)
         {
@@ -416,7 +414,7 @@ internal static partial class PrimeOrderCalculator
         return valueX > valueY ? 1 : -1;
     }
 
-    private static int GetGroupWide(UInt128 value, UInt128 prime)
+    private static int GetGroupWide(in UInt128 value, in UInt128 prime)
     {
         UInt128 threshold1 = prime >> 3;
         if (value <= threshold1)
@@ -439,7 +437,7 @@ internal static partial class PrimeOrderCalculator
         return 0;
     }
 
-    private static void BuildCandidatesWide(UInt128 order, FactorEntry128[] factors, int count, List<UInt128> candidates, int limit)
+    private static void BuildCandidatesWide(in UInt128 order, FactorEntry128[] factors, int count, List<UInt128> candidates, int limit)
     {
         if (count == 0)
         {
@@ -452,10 +450,10 @@ internal static partial class PrimeOrderCalculator
     }
 
     private static void BuildCandidatesRecursiveWide(
-        UInt128 order,
-        ReadOnlySpan<FactorEntry128> factors,
+        in UInt128 order,
+        in ReadOnlySpan<FactorEntry128> factors,
         int index,
-        UInt128 divisorProduct,
+        in UInt128 divisorProduct,
         List<UInt128> candidates,
         int limit)
     {
@@ -511,7 +509,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static bool TryConfirmCandidateWide(UInt128 prime, UInt128 candidate, PrimeOrderSearchConfig config, ref int powUsed, int powBudget, in MontgomeryDivisorData divisorData)
+    private static bool TryConfirmCandidateWide(in UInt128 prime, in UInt128 candidate, in PrimeOrderSearchConfig config, ref int powUsed, int powBudget, in MontgomeryDivisorData divisorData)
     {
         PartialFactorResult128 factorization = PartialFactorWide(candidate, config);
         if (factorization.Factors is null)
@@ -564,7 +562,7 @@ internal static partial class PrimeOrderCalculator
         return true;
     }
 
-    private static PartialFactorResult128 PartialFactorWide(UInt128 value, PrimeOrderSearchConfig config)
+    private static PartialFactorResult128 PartialFactorWide(in UInt128 value, in PrimeOrderSearchConfig config)
     {
         if (value <= UInt128.One)
         {
@@ -664,7 +662,8 @@ internal static partial class PrimeOrderCalculator
             return new PartialFactorResult128(null, value, false, 0);
         }
 
-        FactorEntry128[]? rented = counts.Count > 0 ? ArrayPool<FactorEntry128>.Shared.Rent(counts.Count) : null;
+		ArrayPool<FactorEntry128>? pool = null;
+		FactorEntry128[]? rented = counts.Count > 0 ?  (pool = ThreadStaticPools.FactorEntry128Pool).Rent(counts.Count) : null;
         int index = 0;
         if (rented is not null)
         {
@@ -676,20 +675,20 @@ internal static partial class PrimeOrderCalculator
         }
 
         FactorEntry128[]? resultArray = null;
-        if (rented is not null)
+        if (pool is not null)
         {
             Span<FactorEntry128> span = rented.AsSpan(0, index);
             span.Sort(static (a, b) => a.Value.CompareTo(b.Value));
             resultArray = new FactorEntry128[index];
             span.CopyTo(resultArray);
-            ArrayPool<FactorEntry128>.Shared.Return(rented, clearArray: false);
+            pool.Return(rented!, clearArray: false);
         }
 
         bool fullyFactored = cofactor == UInt128.One;
         return new PartialFactorResult128(resultArray, cofactor, fullyFactored, index);
     }
 
-    private static UInt128 PopulateSmallPrimeFactorsCpuWide(UInt128 value, uint limit, Dictionary<UInt128, int> counts)
+    private static UInt128 PopulateSmallPrimeFactorsCpuWide(in UInt128 value, uint limit, Dictionary<UInt128, int> counts)
     {
         UInt128 remaining = value;
         uint[] primes = PrimesGenerator.SmallPrimes;
@@ -729,7 +728,7 @@ internal static partial class PrimeOrderCalculator
 
         return remaining;
     }
-    private static bool TryPollardRhoWide(UInt128 n, Stopwatch stopwatch, long budgetTicks, out UInt128 factor)
+    private static bool TryPollardRhoWide(in UInt128 n, Stopwatch stopwatch, long budgetTicks, out UInt128 factor)
     {
         factor = UInt128.Zero;
         if ((n & UInt128.One) == UInt128.Zero)
@@ -771,7 +770,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static UInt128 AdvancePolynomialWide(UInt128 x, UInt128 c, UInt128 modulus)
+    private static UInt128 AdvancePolynomialWide(in UInt128 x, in UInt128 c, in UInt128 modulus)
     {
         BigInteger value = (BigInteger)x;
         value = (value * value + (BigInteger)c) % (BigInteger)modulus;
@@ -809,7 +808,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static int TrailingZeroCountWide(UInt128 value)
+    private static int TrailingZeroCountWide(in UInt128 value)
     {
         if (value == UInt128.Zero)
         {
@@ -865,7 +864,7 @@ internal static partial class PrimeOrderCalculator
         return order;
     }
 
-    private static void FactorCompletelyWide(UInt128 value, Dictionary<UInt128, int> counts)
+    private static void FactorCompletelyWide(in UInt128 value, Dictionary<UInt128, int> counts)
     {
         if (value <= UInt128.One)
         {
@@ -883,7 +882,7 @@ internal static partial class PrimeOrderCalculator
         FactorCompletelyWide(value / factor, counts);
     }
 
-    private static UInt128 PollardRhoWide(UInt128 n)
+    private static UInt128 PollardRhoWide(in UInt128 n)
     {
         if ((n & UInt128.One) == UInt128.Zero)
         {
@@ -916,7 +915,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static bool IsPrimeWide(UInt128 value)
+    private static bool IsPrimeWide(in UInt128 value)
     {
         if (value <= ulong.MaxValue)
         {
@@ -996,7 +995,7 @@ internal static partial class PrimeOrderCalculator
         return true;
     }
 
-    private static UInt128 Pow2ModWide(UInt128 exponent, in UInt128 modulus, in MontgomeryDivisorData divisorData)
+    private static UInt128 Pow2ModWide(in UInt128 exponent, in UInt128 modulus, in MontgomeryDivisorData divisorData)
     {
         if (modulus == UInt128.One)
         {
@@ -1026,7 +1025,7 @@ internal static partial class PrimeOrderCalculator
         return exponent.Pow2MontgomeryModWindowed(modulus);
     }
 
-    private static void AddFactor(Dictionary<UInt128, int> counts, UInt128 prime, int exponent)
+    private static void AddFactor(Dictionary<UInt128, int> counts, in UInt128 prime, int exponent)
     {
         if (counts.TryGetValue(prime, out int existing))
         {
@@ -1038,60 +1037,30 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private readonly struct CandidateKey128
-    {
-        public CandidateKey128(int primary, bool secondaryDescending, UInt128 secondary, bool tertiaryDescending, UInt128 tertiary)
-        {
-            Primary = primary;
-            SecondaryDescending = secondaryDescending;
-            Secondary = secondary;
-            TertiaryDescending = tertiaryDescending;
-            Tertiary = tertiary;
-        }
+    private readonly struct CandidateKey128(int primary, bool secondaryDescending, in UInt128 secondary, bool tertiaryDescending, in UInt128 tertiary)
+	{
+		public int Primary { get; } = primary;
 
-        public int Primary { get; }
+		public bool SecondaryDescending { get; } = secondaryDescending;
 
-        public bool SecondaryDescending { get; }
+		public UInt128 Secondary { get; } = secondary;
 
-        public UInt128 Secondary { get; }
+		public bool TertiaryDescending { get; } = tertiaryDescending;
 
-        public bool TertiaryDescending { get; }
+		public UInt128 Tertiary { get; } = tertiary;
+	}
 
-        public UInt128 Tertiary { get; }
-    }
+    private readonly struct PartialFactorResult128(FactorEntry128[]? factors, UInt128 cofactor, bool fullyFactored, int count)
+	{
+		public FactorEntry128[]? Factors { get; } = factors;
 
-    private readonly struct FactorEntry128
-    {
-        public FactorEntry128(UInt128 value, int exponent)
-        {
-            Value = value;
-            Exponent = exponent;
-        }
+		public UInt128 Cofactor { get; } = cofactor;
 
-        public UInt128 Value { get; }
+		public bool FullyFactored { get; } = fullyFactored;
 
-        public int Exponent { get; }
-    }
+		public int Count { get; } = count;
 
-    private readonly struct PartialFactorResult128
-    {
-        public PartialFactorResult128(FactorEntry128[]? factors, UInt128 cofactor, bool fullyFactored, int count)
-        {
-            Factors = factors;
-            Cofactor = cofactor;
-            FullyFactored = fullyFactored;
-            Count = count;
-        }
-
-        public FactorEntry128[]? Factors { get; }
-
-        public UInt128 Cofactor { get; }
-
-        public bool FullyFactored { get; }
-
-        public int Count { get; }
-
-        public static PartialFactorResult128 Empty => new(null, UInt128.One, true, 0);
+		public static PartialFactorResult128 Empty => new(null, UInt128.One, true, 0);
 
         public PartialFactorResult128 WithAdditionalPrime(UInt128 prime)
         {
