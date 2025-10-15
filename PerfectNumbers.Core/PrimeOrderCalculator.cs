@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Generic;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
@@ -55,6 +56,9 @@ internal static partial class PrimeOrderCalculator
 
 	[ThreadStatic]
 	private static Dictionary<ulong, int>? s_partialFactorCounts;
+
+	[ThreadStatic]
+	private static List<ulong>? s_heuristicCandidateList;
 
 	private static bool IsGpuHeuristicDevice => s_pow2ModeInitialized && s_deviceMode == PrimeOrderHeuristicDevice.Gpu;
 
@@ -402,124 +406,131 @@ internal static partial class PrimeOrderCalculator
 			}
 
 			int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks * 4;
-			List<ulong> candidates = new(capacity);
-			FactorEntry[] factorArray = orderFactors.Factors!;
-			// DebugLog("Building candidates list");
-			BuildCandidates(order, factorArray, orderFactors.Count, candidates, capacity);
-			if (candidates.Count == 0)
+			List<ulong> candidates = AcquireHeuristicCandidateList(capacity);
+			try
 			{
-				return false;
-			}
-
-			// DebugLog("Sorting candidates");
-			SortCandidates(prime, previousOrder, candidates);
-
-			int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
-			int powUsed = 0;
-			int candidateCount = candidates.Count;
-			bool allowGpuBatch = true;
-			Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
-
-			// DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
-			int index = 0;
-			const int MaxGpuBatchSize = 256;
-			const int StackGpuBatchSize = 64;
-			Span<ulong> stackGpuRemainders = stackalloc ulong[StackGpuBatchSize];
-			ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
-			while (index < candidateCount && powUsed < powBudget)
-			{
-				int remaining = candidateCount - index;
-				int budgetRemaining = powBudget - powUsed;
-				int batchSize = Math.Min(remaining, Math.Min(budgetRemaining, MaxGpuBatchSize));
-				if (batchSize <= 0)
+				FactorEntry[] factorArray = orderFactors.Factors!;
+				// DebugLog("Building candidates list");
+				BuildCandidates(order, factorArray, orderFactors.Count, candidates, capacity);
+				if (candidates.Count == 0)
 				{
-					break;
+					return false;
 				}
-
-				ReadOnlySpan<ulong> batch = candidateSpan.Slice(index, batchSize);
-				ulong[]? gpuPool = null;
-				Span<ulong> pooledGpuRemainders = default;
-				bool gpuSuccess = false;
-				bool gpuStackRemainders = false;
-				GpuPow2ModStatus status = GpuPow2ModStatus.Unavailable;
-
-				if (allowGpuBatch && IsGpuPow2Allowed)
+	
+				// DebugLog("Sorting candidates");
+				SortCandidates(prime, previousOrder, candidates);
+	
+				int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
+				int powUsed = 0;
+				int candidateCount = candidates.Count;
+				bool allowGpuBatch = true;
+				Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
+	
+				// DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
+				int index = 0;
+				const int MaxGpuBatchSize = 256;
+				const int StackGpuBatchSize = 64;
+				Span<ulong> stackGpuRemainders = stackalloc ulong[StackGpuBatchSize];
+				ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
+				while (index < candidateCount && powUsed < powBudget)
 				{
-					if (batchSize <= StackGpuBatchSize)
+					int remaining = candidateCount - index;
+					int budgetRemaining = powBudget - powUsed;
+					int batchSize = Math.Min(remaining, Math.Min(budgetRemaining, MaxGpuBatchSize));
+					if (batchSize <= 0)
 					{
-						Span<ulong> localRemainders = stackGpuRemainders.Slice(0, batchSize);
-						status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, localRemainders, divisorData);
-						if (status == GpuPow2ModStatus.Success)
-						{
-							gpuSuccess = true;
-							gpuStackRemainders = true;
-						}
+						break;
 					}
-					else
+	
+					ReadOnlySpan<ulong> batch = candidateSpan.Slice(index, batchSize);
+					ulong[]? gpuPool = null;
+					Span<ulong> pooledGpuRemainders = default;
+					bool gpuSuccess = false;
+					bool gpuStackRemainders = false;
+					GpuPow2ModStatus status = GpuPow2ModStatus.Unavailable;
+	
+					if (allowGpuBatch && IsGpuPow2Allowed)
 					{
-						gpuPool = pool.Rent(batchSize);
-						Span<ulong> pooledRemainders = gpuPool.AsSpan(0, batchSize);
-						status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, pooledRemainders, divisorData);
-						if (status == GpuPow2ModStatus.Success)
+						if (batchSize <= StackGpuBatchSize)
 						{
-							pooledGpuRemainders = pooledRemainders;
-							gpuSuccess = true;
+							Span<ulong> localRemainders = stackGpuRemainders.Slice(0, batchSize);
+							status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, localRemainders, divisorData);
+							if (status == GpuPow2ModStatus.Success)
+							{
+								gpuSuccess = true;
+								gpuStackRemainders = true;
+							}
 						}
 						else
 						{
-							pool.Return(gpuPool, clearArray: false);
-							gpuPool = null;
+							gpuPool = pool.Rent(batchSize);
+							Span<ulong> pooledRemainders = gpuPool.AsSpan(0, batchSize);
+							status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, pooledRemainders, divisorData);
+							if (status == GpuPow2ModStatus.Success)
+							{
+								pooledGpuRemainders = pooledRemainders;
+								gpuSuccess = true;
+							}
+							else
+							{
+								pool.Return(gpuPool, clearArray: false);
+								gpuPool = null;
+							}
+						}
+	
+						if (!gpuSuccess && (status == GpuPow2ModStatus.Overflow || status == GpuPow2ModStatus.Unavailable))
+						{
+							allowGpuBatch = false;
 						}
 					}
-
-					if (!gpuSuccess && (status == GpuPow2ModStatus.Overflow || status == GpuPow2ModStatus.Unavailable))
+	
+					for (int i = 0; i < batchSize && powUsed < powBudget; i++)
 					{
-						allowGpuBatch = false;
+						ulong candidate = batch[i];
+						powUsed++;
+	
+						bool equalsOne;
+						if (gpuSuccess)
+						{
+							ulong remainderValue = gpuStackRemainders ? stackGpuRemainders[i] : pooledGpuRemainders[i];
+							equalsOne = remainderValue == 1UL;
+						}
+						else
+						{
+							equalsOne = Pow2EqualsOneCpu(candidate, prime, divisorData);
+						}
+						if (!equalsOne)
+						{
+							continue;
+						}
+	
+						if (!TryConfirmCandidateCpu(prime, candidate, divisorData, config, ref powUsed, powBudget))
+						{
+							continue;
+						}
+	
+						if (gpuPool is not null)
+						{
+							pool.Return(gpuPool, clearArray: false);
+						}
+	
+						result = candidate;
+						return true;
 					}
-				}
-
-				for (int i = 0; i < batchSize && powUsed < powBudget; i++)
-				{
-					ulong candidate = batch[i];
-					powUsed++;
-
-					bool equalsOne;
-					if (gpuSuccess)
-					{
-						ulong remainderValue = gpuStackRemainders ? stackGpuRemainders[i] : pooledGpuRemainders[i];
-						equalsOne = remainderValue == 1UL;
-					}
-					else
-					{
-						equalsOne = Pow2EqualsOneCpu(candidate, prime, divisorData);
-					}
-					if (!equalsOne)
-					{
-						continue;
-					}
-
-					if (!TryConfirmCandidateCpu(prime, candidate, divisorData, config, ref powUsed, powBudget))
-					{
-						continue;
-					}
-
+	
 					if (gpuPool is not null)
 					{
 						pool.Return(gpuPool, clearArray: false);
 					}
-
-					result = candidate;
-					return true;
+	
+					index += batchSize;
 				}
-
-				if (gpuPool is not null)
-				{
-					pool.Return(gpuPool, clearArray: false);
-				}
-
-				index += batchSize;
+	
 			}
-
+			finally
+			{
+				candidates.Clear();
+			}
 			// DebugLog("No candidate confirmed");
 			return false;
 		}
@@ -821,6 +832,21 @@ internal static partial class PrimeOrderCalculator
 		dictionary.Clear();
 		dictionary.EnsureCapacity(capacityHint);
 		return dictionary;
+	}
+
+	private static List<ulong> AcquireHeuristicCandidateList(int capacityHint)
+	{
+		List<ulong>? list = s_heuristicCandidateList;
+		if (list is null)
+		{
+			list = new List<ulong>(capacityHint);
+			s_heuristicCandidateList = list;
+			return list;
+		}
+
+		list.Clear();
+		list.EnsureCapacity(capacityHint);
+		return list;
 	}
 
 	private static PartialFactorResult PartialFactor(ulong value, in PrimeOrderSearchConfig config)
