@@ -81,6 +81,8 @@ internal static class Program
         int scanBatchSize = 2_097_152, sliceSize = 32;
         ulong residueKMax = 5_000_000UL;
         string filterFile = string.Empty;
+        UInt128 maxPrimeLimit = UInt128.MaxValue;
+        bool maxPrimeConfigured = false;
         string cyclesPath = DefaultCyclesPath;
         int cyclesBatchSize = 512;
         bool continueCyclesGeneration = false;
@@ -108,6 +110,20 @@ internal static class Program
                 // adopts the zero-allocation fast path proven fastest in the parser benchmarks.
                 currentP = ulong.Parse(arg.AsSpan(arg.IndexOf('=') + 1));
                 startPrimeProvided = true;
+            }
+            else if (arg.StartsWith("--max-prime=", StringComparison.OrdinalIgnoreCase))
+            {
+                ReadOnlySpan<char> value = arg.AsSpan(arg.IndexOf('=') + 1);
+                if (UInt128.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out UInt128 parsedMaxPrime))
+                {
+                    maxPrimeLimit = parsedMaxPrime;
+                    maxPrimeConfigured = true;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid value for --max-prime.");
+                    return;
+                }
             }
             else if (arg.Equals("--increment=bit", StringComparison.OrdinalIgnoreCase))
             {
@@ -615,7 +631,21 @@ internal static class Program
             Console.WriteLine("Loading filter...");
             if (_useByDivisorMode)
             {
-                byDivisorCandidates = LoadByDivisorCandidates(filterFile);
+                int skippedByLimit = 0;
+                byDivisorCandidates = LoadByDivisorCandidates(filterFile, maxPrimeLimit, maxPrimeConfigured, out skippedByLimit);
+                if (maxPrimeConfigured)
+                {
+                    if (skippedByLimit > 0)
+                    {
+                        Console.WriteLine($"Skipped {skippedByLimit} by-divisor candidate(s) above --max-prime limit.");
+                    }
+
+                    if (byDivisorCandidates.Count == 0)
+                    {
+                        Console.WriteLine("No by-divisor candidates fall within the --max-prime limit.");
+                        return;
+                    }
+                }
             }
             else
             {
@@ -623,28 +653,53 @@ internal static class Program
                 // we do not allocate fresh arrays while replaying large result filters.
                 localFilter = new ulong[1024];
                 filterCount = 0;
+                bool addedWithinLimit = false;
+                int skippedByLimit = 0;
                 LoadResultsFile(filterFile, (p, detailedCheck, passedAllTests) =>
                 {
-                    if (passedAllTests)
+                    if (!passedAllTests)
                     {
-                        localFilter[filterCount++] = p;
-                        if (p > maxP)
-                        {
-                            maxP = p;
-                        }
+                        return;
+                    }
 
-                        if (filterCount == 1024)
-                        {
-                            filter.AddRange(localFilter[..filterCount]);
-                            filterCount = 0;
-                            Console.WriteLine($"Added {p}");
-                        }
+                    if (maxPrimeConfigured && (UInt128)p > maxPrimeLimit)
+                    {
+                        skippedByLimit++;
+                        return;
+                    }
+
+                    localFilter[filterCount++] = p;
+                    addedWithinLimit = true;
+                    if (p > maxP)
+                    {
+                        maxP = p;
+                    }
+
+                    if (filterCount == 1024)
+                    {
+                        filter.AddRange(localFilter[..filterCount]);
+                        filterCount = 0;
+                        Console.WriteLine($"Added {p}");
                     }
                 });
 
                 if (filterCount > 0)
                 {
                     filter.AddRange(localFilter[..filterCount]);
+                }
+
+                if (maxPrimeConfigured)
+                {
+                    if (!addedWithinLimit)
+                    {
+                        Console.WriteLine("No filter candidates fall within the --max-prime limit.");
+                        return;
+                    }
+
+                    if (skippedByLimit > 0)
+                    {
+                        Console.WriteLine($"Skipped {skippedByLimit} filter candidate(s) above --max-prime limit.");
+                    }
                 }
             }
         }
@@ -756,9 +811,10 @@ internal static class Program
         StringBuilderPool.Return(_outputBuilder!);
     }
 
-    private static List<ulong> LoadByDivisorCandidates(string candidateFile)
+    private static List<ulong> LoadByDivisorCandidates(string candidateFile, UInt128 maxPrimeLimit, bool maxPrimeConfigured, out int skippedByLimit)
     {
         List<ulong> candidates = [];
+        skippedByLimit = 0;
         using FileStream readStream = new(candidateFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         using StreamReader reader = new(readStream);
         string? line;
@@ -798,7 +854,14 @@ internal static class Program
                 // arrive so by-divisor candidate loading avoids per-value string allocations.
                 if (ulong.TryParse(span[start..index], NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsed))
                 {
-                    candidates.Add(parsed);
+                    if (!maxPrimeConfigured || (UInt128)parsed <= maxPrimeLimit)
+                    {
+                        candidates.Add(parsed);
+                    }
+                    else
+                    {
+                        skippedByLimit++;
+                    }
                 }
             }
         }
@@ -896,6 +959,7 @@ internal static class Program
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  --prime=<value>        starting exponent (p)");
+        Console.WriteLine("  --max-prime=<value>    inclusive upper bound for primes from filter files");
         Console.WriteLine("  --increment=bit|add    exponent increment method");
         Console.WriteLine("  --threads=<value>      number of worker threads");
         Console.WriteLine("  --block-size=<value>   values processed per thread batch");
