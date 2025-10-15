@@ -63,6 +63,11 @@ namespace PerfectNumbers.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void ReturnMersenneFactorCacheDictionary(Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry> cache)
         {
+            foreach (KeyValuePair<ulong, MersenneDivisorCycles.FactorCacheEntry> entry in cache)
+            {
+                entry.Value.ReturnToPool();
+            }
+
             cache.Clear();
             _mersenneFactorCacheDictionary = cache;
         }

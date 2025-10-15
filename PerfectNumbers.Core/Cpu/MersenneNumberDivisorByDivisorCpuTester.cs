@@ -199,7 +199,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                     cacheForCycle = factorCache;
                 }
 
-                if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(candidate, prime, divisorData, cacheForCycle, out ulong divisorCycle))
+                if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(candidate, prime, divisorData, cacheForCycle, cacheForCycle is not null, out ulong divisorCycle))
                 {
                     divisorCycle = 0UL;
                 }

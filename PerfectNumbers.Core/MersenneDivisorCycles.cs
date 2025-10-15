@@ -264,10 +264,27 @@ public class MersenneDivisorCycles
     }
 
     public static bool TryCalculateCycleLengthForExponent(
-        ulong divisor,        
+        ulong divisor,
         ulong exponent,
         in MontgomeryDivisorData divisorData,
         Dictionary<ulong, FactorCacheEntry>? factorCache,
+        out ulong cycleLength)
+    {
+        return TryCalculateCycleLengthForExponent(
+            divisor,
+            exponent,
+            divisorData,
+            factorCache,
+            usePooledCache: false,
+            out cycleLength);
+    }
+
+    public static bool TryCalculateCycleLengthForExponent(
+        ulong divisor,
+        ulong exponent,
+        in MontgomeryDivisorData divisorData,
+        Dictionary<ulong, FactorCacheEntry>? factorCache,
+        bool usePooledCache,
         out ulong cycleLength)
     {
         cycleLength = 0UL;
@@ -316,7 +333,9 @@ public class MersenneDivisorCycles
                 factorCounts[2UL] = twoCount;
             }
 
-            if (!AccumulateFactors(exponent, factorCache, factorCounts, cacheResult: true) || !AccumulateFactors(k, factorCache, factorCounts, cacheResult: false))
+            bool poolExponentFactors = usePooledCache || factorCache is null;
+
+            if (!AccumulateFactors(exponent, factorCache, factorCounts, cacheResult: true, poolExponentFactors) || !AccumulateFactors(k, factorCache, factorCounts, cacheResult: false, allowPooledStorage: true))
             {
                 return false;
             }
@@ -334,25 +353,36 @@ public class MersenneDivisorCycles
         ulong value,
         Dictionary<ulong, FactorCacheEntry>? cache,
         Dictionary<ulong, int> counts,
-        bool cacheResult)
+        bool cacheResult,
+        bool allowPooledStorage)
     {
         if (value <= 1UL)
         {
             return true;
         }
 
-        if (!TryGetFactorization(value, cache, cacheResult, out FactorCacheEntry factorization))
+        bool poolStorage = allowPooledStorage || cache is null || !cacheResult;
+
+        if (!TryGetFactorization(value, cache, cacheResult, poolStorage, out FactorCacheEntry factorization))
         {
             return false;
         }
 
-        ulong[] primes = factorization.Primes;
-        byte[] exponents = factorization.Exponents;
-        int length = factorization.Count;
-
-        for (int i = 0; i < length; i++)
+        FactorEntry[]? entries = factorization.Entries;
+        if (entries is not null)
         {
-            AddFactor(counts, primes[i], exponents[i]);
+            int length = factorization.Count;
+
+            for (int i = 0; i < length; i++)
+            {
+                FactorEntry entry = entries[i];
+                AddFactor(counts, entry.Value, entry.Exponent);
+            }
+        }
+
+        if (cache is null || !cacheResult)
+        {
+            factorization.ReturnToPool();
         }
 
         return true;
@@ -362,6 +392,7 @@ public class MersenneDivisorCycles
         ulong value,
         Dictionary<ulong, FactorCacheEntry>? cache,
         bool cacheResult,
+        bool allowPooledStorage,
         out FactorCacheEntry factorization)
     {
         if (cache is not null && cache.TryGetValue(value, out factorization))
@@ -380,18 +411,26 @@ public class MersenneDivisorCycles
             }
 
             int count = scratch.Count;
-            ulong[] primes = new ulong[count];
-            byte[] exponents = new byte[count];
+            if (count == 0)
+            {
+                factorization = default!;
+                return true;
+            }
+
+            bool fromPool = allowPooledStorage;
+            FactorEntry[] entries = fromPool
+                ? ThreadStaticPools.FactorEntryPool.Rent(count)
+                : new FactorEntry[count];
+
             int index = 0;
             foreach (KeyValuePair<ulong, int> entry in scratch)
             {
-                primes[index] = entry.Key;
-                exponents[index] = checked((byte)entry.Value);
+                entries[index] = new FactorEntry(entry.Key, entry.Value);
                 index++;
             }
 
-            Array.Sort(primes, exponents);
-            factorization = new FactorCacheEntry(primes, exponents, count);
+            Array.Sort(entries, 0, count, FactorEntryValueComparer.Instance);
+            factorization = new FactorCacheEntry(entries, count, fromPool);
 
             if (cache is not null && cacheResult)
             {
@@ -612,19 +651,61 @@ public class MersenneDivisorCycles
         return BinaryPrimitives.ReadUInt64LittleEndian(buffer);
     }
 
+    private sealed class FactorEntryValueComparer : IComparer<FactorEntry>
+    {
+        public static readonly FactorEntryValueComparer Instance = new FactorEntryValueComparer();
+
+        private FactorEntryValueComparer()
+        {
+        }
+
+        public int Compare(FactorEntry x, FactorEntry y)
+        {
+            if (x.Value < y.Value)
+            {
+                return -1;
+            }
+
+            if (x.Value > y.Value)
+            {
+                return 1;
+            }
+
+            return 0;
+        }
+    }
+
     public readonly struct FactorCacheEntry
     {
-        public FactorCacheEntry(ulong[] primes, byte[] exponents, int count)
-        {
-            Primes = primes;
-            Exponents = exponents;
-            Count = count;
-        }
-        public ulong[] Primes { get; }
+        private readonly bool _fromPool;
 
-        public byte[] Exponents { get; }
+        internal FactorCacheEntry(FactorEntry[] entries, int count, bool fromPool)
+        {
+            Entries = entries;
+            Count = count;
+            _fromPool = fromPool;
+        }
+
+        internal FactorEntry[]? Entries { get; }
 
         public int Count { get; }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void ReturnToPool()
+        {
+            if (!_fromPool)
+            {
+                return;
+            }
+
+            FactorEntry[]? entries = Entries;
+            if (entries is null)
+            {
+                return;
+            }
+
+            ThreadStaticPools.FactorEntryPool.Return(entries, clearArray: false);
+        }
     }
 
     public static (long nextPosition, long completeCount) FindLast(string path)
