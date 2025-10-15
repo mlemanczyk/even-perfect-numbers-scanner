@@ -96,7 +96,7 @@ public class MersenneDivisorCycles
             factorCache = cache;
         }
 
-        if (TryCalculateCycleLengthForExponent(divisor, exponent, divisorData, cache, usePooledCache: false, out ulong cycleLength) && cycleLength != 0UL)
+        if (TryCalculateCycleLengthForExponent(divisor, exponent, divisorData, cache, out ulong cycleLength) && cycleLength != 0UL)
         {
             return cycleLength == exponent;
         }
@@ -268,7 +268,6 @@ public class MersenneDivisorCycles
         ulong exponent,
         in MontgomeryDivisorData divisorData,
         Dictionary<ulong, FactorCacheEntry>? factorCache,
-        bool usePooledCache,
         out ulong cycleLength)
     {
         cycleLength = 0UL;
@@ -328,9 +327,8 @@ public class MersenneDivisorCycles
             factorCounts[2UL] = twoCount;
         }
 
-        bool poolExponentFactors = usePooledCache || factorCache is null;
-        bool exponentAccumulated = AccumulateFactors(exponent, factorCache, factorCounts, cacheResult: true, allowPooledStorage: poolExponentFactors);
-        bool factorsAccumulated = exponentAccumulated && AccumulateFactors(k, factorCache, factorCounts, cacheResult: false, allowPooledStorage: true);
+        bool exponentAccumulated = AccumulateFactors(exponent, factorCache, factorCounts, cacheResult: true);
+        bool factorsAccumulated = exponentAccumulated && AccumulateFactors(k, factorCache, factorCounts, cacheResult: false);
 
         if (factorsAccumulated)
         {
@@ -346,31 +344,28 @@ public class MersenneDivisorCycles
         ulong value,
         Dictionary<ulong, FactorCacheEntry>? cache,
         Dictionary<ulong, int> counts,
-        bool cacheResult,
-        bool allowPooledStorage)
+        bool cacheResult)
     {
         if (value <= 1UL)
         {
             return true;
         }
 
-        bool poolStorage = allowPooledStorage || cache is null || !cacheResult;
-
-        if (!TryGetFactorization(value, cache, cacheResult, poolStorage, out FactorCacheEntry? factorization, out bool releaseAfterUse) || factorization is null)
+        if (!TryGetFactorization(value, cache, cacheResult, out FactorCacheEntry? factorization, out bool releaseAfterUse) || factorization is null)
         {
             return false;
         }
 
         FactorCacheEntry actualFactorization = factorization;
-        FactorEntry[]? entries = actualFactorization.Entries;
-        if (entries is not null)
+        KeyValuePair<ulong, int>[]? pairs = actualFactorization.Pairs;
+        if (pairs is not null)
         {
             int length = actualFactorization.Count;
 
             for (int i = 0; i < length; i++)
             {
-                FactorEntry entry = entries[i];
-                AddFactor(counts, entry.Value, entry.Exponent);
+                KeyValuePair<ulong, int> pair = pairs[i];
+                AddFactor(counts, pair.Key, pair.Value);
             }
         }
 
@@ -386,7 +381,6 @@ public class MersenneDivisorCycles
         ulong value,
         Dictionary<ulong, FactorCacheEntry>? cache,
         bool cacheResult,
-        bool allowPooledStorage,
         out FactorCacheEntry? factorization,
         out bool releaseAfterUse)
     {
@@ -423,24 +417,12 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        bool fromPool = allowPooledStorage;
-        FactorEntry[] entries = fromPool
-            ? ThreadStaticPools.FactorEntryPool.Rent(count)
-            : new FactorEntry[count];
-
-        Dictionary<ulong, int>.Enumerator enumerator = scratch.GetEnumerator();
-        int index = 0;
-        while (enumerator.MoveNext())
-        {
-            KeyValuePair<ulong, int> current = enumerator.Current;
-            entries[index] = new FactorEntry(current.Key, current.Value);
-            index++;
-        }
-
+        KeyValuePair<ulong, int>[] pairs = ThreadStaticPools.FactorKeyValuePairPool.Rent(count);
+        ((ICollection<KeyValuePair<ulong, int>>)scratch).CopyTo(pairs, 0);
         ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
-        Array.Sort(entries, 0, count, FactorEntryValueComparer.Instance);
+        Array.Sort(pairs, 0, count, FactorPairValueComparer.Instance);
 
-        entry.Initialize(entries, count, fromPool);
+        entry.Initialize(pairs, count, fromPool: true);
         factorization = entry;
 
         if (cache is not null && cacheResult)
@@ -476,6 +458,7 @@ public class MersenneDivisorCycles
                 break;
             }
 
+            // TODO: Reuse the remainder-tracking update from the cycle heuristic so repeated divisions disappear from this loop.
             while ((remaining % prime) == 0UL)
             {
                 AddFactor(counts, prime);
@@ -488,18 +471,23 @@ public class MersenneDivisorCycles
             return true;
         }
 
+        // TODO: Benchmark PrimeTester.IsPrimeInternal against Open.Numeric.Primes on the EvenPerfectBitScanner workloads to confirm the faster option for wide composites.
         if (PrimeTester.IsPrimeInternal(remaining, CancellationToken.None))
         {
             AddFactor(counts, remaining);
             return true;
         }
 
+        // TODO: Evaluate folding the remainder-tracking mechanism into PollardRho64 so the walk leverages previously computed residues.
         ulong factor = PollardRho64(remaining);
         if (factor == 0UL || factor == remaining)
         {
+            // Pollard-Rho can still stall on rare stubborn composites during test and benchmark runs, so keep the failure guard in place
+            // and let the caller fall back to the cached cycle calculator.
             return false;
         }
 
+        // TODO: Investigate computing this quotient via remainder tracking or reciprocal multiplication to avoid the division.
         ulong quotient = remaining / factor;
         // Pollard-Rho never returns factors <= 1 on the EvenPerfectBitScanner path; keep the old guard documented
         // for completeness without branching in the hot path.
@@ -674,22 +662,22 @@ public class MersenneDivisorCycles
         return BinaryPrimitives.ReadUInt64LittleEndian(buffer);
     }
 
-    private sealed class FactorEntryValueComparer : IComparer<FactorEntry>
+    private sealed class FactorPairValueComparer : IComparer<KeyValuePair<ulong, int>>
     {
-        public static readonly FactorEntryValueComparer Instance = new FactorEntryValueComparer();
+        public static readonly FactorPairValueComparer Instance = new FactorPairValueComparer();
 
-        private FactorEntryValueComparer()
+        private FactorPairValueComparer()
         {
         }
 
-        public int Compare(FactorEntry x, FactorEntry y)
+        public int Compare(KeyValuePair<ulong, int> x, KeyValuePair<ulong, int> y)
         {
-            if (x.Value < y.Value)
+            if (x.Key < y.Key)
             {
                 return -1;
             }
 
-            if (x.Value > y.Value)
+            if (x.Key > y.Key)
             {
                 return 1;
             }
@@ -701,22 +689,22 @@ public class MersenneDivisorCycles
     public sealed class FactorCacheEntry
     {
         internal FactorCacheEntry? Next;
-        internal FactorEntry[]? Entries;
+        internal KeyValuePair<ulong, int>[]? Pairs;
         internal int Count;
         private bool _fromPool;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void Reset()
         {
-            Entries = null;
+            Pairs = null;
             Count = 0;
             _fromPool = false;
             Next = null;
         }
 
-        internal void Initialize(FactorEntry[]? entries, int count, bool fromPool)
+        internal void Initialize(KeyValuePair<ulong, int>[]? pairs, int count, bool fromPool)
         {
-            Entries = entries;
+            Pairs = pairs;
             Count = count;
             _fromPool = fromPool;
             Next = null;
@@ -725,10 +713,10 @@ public class MersenneDivisorCycles
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void ReturnToPool()
         {
-            FactorEntry[]? entries = Entries;
-            if (_fromPool && entries is not null)
+            KeyValuePair<ulong, int>[]? pairs = Pairs;
+            if (_fromPool && pairs is not null)
             {
-                ThreadStaticPools.FactorEntryPool.Return(entries, clearArray: false);
+                ThreadStaticPools.FactorKeyValuePairPool.Return(pairs, clearArray: false);
             }
 
             Reset();

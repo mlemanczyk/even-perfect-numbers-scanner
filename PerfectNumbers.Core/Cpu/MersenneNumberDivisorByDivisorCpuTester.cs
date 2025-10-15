@@ -184,7 +184,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                             prime,
                             divisorData,
                             cacheForCycle,
-                            cacheForCycle is not null,
                             out ulong computedCycle) || computedCycle == 0UL)
                     {
                         divisorCycle = cycleCache.GetCycleLength(candidate);

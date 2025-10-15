@@ -32,6 +32,18 @@ namespace PerfectNumbers.Core
             }
         }
 
+
+        [ThreadStatic]
+        private static ArrayPool<KeyValuePair<ulong, int>>? _factorKeyValuePairPool;
+
+        public static ArrayPool<KeyValuePair<ulong, int>> FactorKeyValuePairPool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _factorKeyValuePairPool ??= ArrayPool<KeyValuePair<ulong, int>>.Create();
+            }
+        }
         [ThreadStatic]
         private static MersenneCpuDivisorScanSession? _mersenneCpuDivisorSession;
 
@@ -87,9 +99,9 @@ namespace PerfectNumbers.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void ReturnMersenneFactorCacheDictionary(Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry> cache)
         {
-            foreach (KeyValuePair<ulong, MersenneDivisorCycles.FactorCacheEntry> entry in cache)
+            for (Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>.Enumerator enumerator = cache.GetEnumerator(); enumerator.MoveNext();)
             {
-                entry.Value.ReturnToPool();
+                enumerator.Current.Value.ReturnToPool();
             }
 
             cache.Clear();
