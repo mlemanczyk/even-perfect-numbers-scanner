@@ -1,5 +1,4 @@
 using System;
-using System.Buffers;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using ILGPU.Algorithms;
@@ -347,24 +346,7 @@ public static class ULongExtensions
         ulong result = divisor.MontgomeryOne;
         ulong nPrime = divisor.NPrime;
 
-        const int StackOddPowerThreshold = PerfectNumberConstants.PooledArrayThreshold;
-        Span<ulong> oddPowersSpan = oddPowerCount <= StackOddPowerThreshold
-            ? stackalloc ulong[StackOddPowerThreshold]
-            : default;
-
-        Span<ulong> oddPowers;
-        ulong[]? oddPowersArray = null;
-
-        if (!oddPowersSpan.IsEmpty)
-        {
-            oddPowers = oddPowersSpan.Slice(0, oddPowerCount);
-        }
-        else
-        {
-            oddPowersArray = ThreadStaticPools.UlongPool.Rent(oddPowerCount);
-            oddPowers = oddPowersArray.AsSpan(0, oddPowerCount);
-        }
-
+        Span<ulong> oddPowers = stackalloc ulong[oddPowerCount];
         InitializeMontgomeryOddPowersCpu(divisor, modulus, nPrime, oddPowers);
 
         int index = bitLength - 1;
@@ -403,10 +385,6 @@ public static class ULongExtensions
             index = windowStart - 1;
         }
 
-        if (oddPowersArray is not null)
-        {
-            ThreadStaticPools.UlongPool.Return(oddPowersArray, clearArray: false);
-        }
 
         if (keepMontgomery)
         {
