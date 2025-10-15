@@ -139,6 +139,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             factorCacheLease.EnsureInitialized(ref factorCache);
         }
 
+        DivisorCycleCache cycleCache = DivisorCycleCache.Shared;
+
         byte step10 = (byte)(step % 10UL);
         byte step8 = (byte)(step % 8UL);
         byte step5 = (byte)(step % 5UL);
@@ -152,8 +154,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         byte remainder3 = (byte)(divisor % 3UL);
         byte remainder7 = (byte)(divisor % 7UL);
         byte remainder11 = (byte)(divisor % 11UL);
-
-        // DivisorCycleCache cycleCache = DivisorCycleCache.Shared; // Do not restore the fallback cache; divisors do not repeat on this path.
 
         // Keep the divisibility filters aligned with the divisor-cycle generator so the
         // CPU path never requests cycles that were skipped during cache creation.
@@ -171,15 +171,28 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             if (admissible && (remainder8 == 1 || remainder8 == 7) && remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0)
             {
                 MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(candidate);
-                Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? cacheForCycle = null;
-                if (requireLargeCycleCache && candidate > PerfectNumberConstants.MaxQForDivisorCycles)
+                ulong divisorCycle;
+                if (candidate <= PerfectNumberConstants.MaxQForDivisorCycles)
                 {
-                    cacheForCycle = factorCache;
+                    divisorCycle = cycleCache.GetCycleLength(candidate);
                 }
-
-                if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(candidate, prime, divisorData, cacheForCycle, cacheForCycle is not null, out ulong divisorCycle))
+                else
                 {
-                    divisorCycle = 0UL;
+                    Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? cacheForCycle = requireLargeCycleCache ? factorCache : null;
+                    if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(
+                            candidate,
+                            prime,
+                            divisorData,
+                            cacheForCycle,
+                            cacheForCycle is not null,
+                            out ulong computedCycle) || computedCycle == 0UL)
+                    {
+                        divisorCycle = cycleCache.GetCycleLength(candidate);
+                    }
+                    else
+                    {
+                        divisorCycle = computedCycle;
+                    }
                 }
 
                 if (divisorCycle == prime)

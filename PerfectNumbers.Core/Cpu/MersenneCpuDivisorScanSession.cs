@@ -19,10 +19,12 @@ internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDi
         Span<byte> hits)
     {
         int length = primes.Length;
-        if (length == 0)
-        {
-            return;
-        }
+        // EvenPerfectBitScanner always provides at least one exponent on this path.
+        // Keep the guard commented out for tests that might reuse the session differently.
+        // if (length == 0)
+        // {
+        //     return;
+        // }
 
         MontgomeryDivisorData cachedData = divisorData;
         if (cachedData.Modulus != divisor)
@@ -73,7 +75,7 @@ internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDi
     {
         if (_disposed)
         {
-            return;
+            throw new ObjectDisposedException(nameof(MersenneCpuDivisorScanSession), "Divisor scan session disposed twice.");
         }
 
         _disposed = true;
