@@ -112,7 +112,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? current = cache;
             if (current is null)
             {
-                current = ThreadStaticPools.TakeMersenneFactorCacheDictionary();
+                current = ThreadStaticPools.RentMersenneFactorCacheDictionary();
                 cache = current;
             }
 
@@ -149,11 +149,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         // }
 
         UInt128 step = (UInt128)prime << 1;
-        if (step == UInt128.Zero)
-        {
-            processedAll = true;
-            return false;
-        }
 
         UInt128 limit = allowedMax;
         UInt128 divisor = step + UInt128.One;

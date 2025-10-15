@@ -47,7 +47,7 @@ namespace PerfectNumbers.Core
         private static Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? _mersenneFactorCacheDictionary;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry> TakeMersenneFactorCacheDictionary()
+        public static Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry> RentMersenneFactorCacheDictionary()
         {
             Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? cache = _mersenneFactorCacheDictionary;
             if (cache is null)
@@ -71,7 +71,7 @@ namespace PerfectNumbers.Core
         private static Dictionary<ulong, int>? _factorCountDictionary;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static Dictionary<ulong, int> TakeFactorCountDictionary()
+        public static Dictionary<ulong, int> RentFactorCountDictionary()
         {
             Dictionary<ulong, int>? dictionary = _factorCountDictionary;
             if (dictionary is null)
@@ -95,7 +95,7 @@ namespace PerfectNumbers.Core
         private static Dictionary<ulong, int>? _factorScratchDictionary;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static Dictionary<ulong, int> TakeFactorScratchDictionary()
+        public static Dictionary<ulong, int> RentFactorScratchDictionary()
         {
             Dictionary<ulong, int>? dictionary = _factorScratchDictionary;
             if (dictionary is null)

@@ -23,26 +23,6 @@ public class MersenneDivisorCycles
     {
     }
 
-    private static Dictionary<ulong, int> RentFactorCountDictionary()
-    {
-        return ThreadStaticPools.TakeFactorCountDictionary();
-    }
-
-    private static void ReturnFactorCountDictionary(Dictionary<ulong, int> dictionary)
-    {
-        ThreadStaticPools.ReturnFactorCountDictionary(dictionary);
-    }
-
-    private static Dictionary<ulong, int> RentFactorScratchDictionary()
-    {
-        return ThreadStaticPools.TakeFactorScratchDictionary();
-    }
-
-    private static void ReturnFactorScratchDictionary(Dictionary<ulong, int> dictionary)
-    {
-        ThreadStaticPools.ReturnFactorScratchDictionary(dictionary);
-    }
-
     public void LoadFrom(string path)
     {
         EnsureSmallBuffer();
@@ -317,10 +297,6 @@ public class MersenneDivisorCycles
         }
 
         ulong phi = divisor - 1UL;
-        if (phi == 0UL)
-        {
-            return false;
-        }
 
         int twoCount = BitOperations.TrailingZeroCount(phi);
         ulong reducedPhi = phi >> twoCount;
@@ -330,12 +306,8 @@ public class MersenneDivisorCycles
         }
 
         ulong k = reducedPhi / exponent;
-        if (k == 0UL)
-        {
-            return false;
-        }
 
-        Dictionary<ulong, int> factorCounts = RentFactorCountDictionary();
+        Dictionary<ulong, int> factorCounts = ThreadStaticPools.RentFactorCountDictionary();
 
         try
         {
@@ -354,7 +326,7 @@ public class MersenneDivisorCycles
         }
         finally
         {
-            ReturnFactorCountDictionary(factorCounts);
+            ThreadStaticPools.ReturnFactorCountDictionary(factorCounts);
         }
     }
 
@@ -397,7 +369,7 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        Dictionary<ulong, int> scratch = RentFactorScratchDictionary();
+        Dictionary<ulong, int> scratch = ThreadStaticPools.RentFactorScratchDictionary();
 
         try
         {
@@ -430,18 +402,12 @@ public class MersenneDivisorCycles
         }
         finally
         {
-            ReturnFactorScratchDictionary(scratch);
+            ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
         }
     }
 
     private static bool TryFactorIntoCountsInternal(ulong value, Dictionary<ulong, int> counts)
     {
-        // This guard terminates the recursion once Pollard-Rho factorization has reduced the input to 1.
-        if (value <= 1UL)
-        {
-            return true;
-        }
-
         ulong remaining = value;
         uint[] smallPrimes = PrimesGenerator.SmallPrimes;
         ulong[] smallPrimesSquared = PrimesGenerator.SmallPrimesPow2;
@@ -480,7 +446,18 @@ public class MersenneDivisorCycles
         }
 
         ulong quotient = remaining / factor;
-        return TryFactorIntoCountsInternal(factor, counts) && TryFactorIntoCountsInternal(quotient, counts);
+        if (factor > 1UL && !TryFactorIntoCountsInternal(factor, counts))
+        {
+            return false;
+        }
+
+        // Guard the recursive calls to terminate once Pollard-Rho reduces either branch to 1.
+        if (quotient > 1UL && !TryFactorIntoCountsInternal(quotient, counts))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private static void AddFactor(Dictionary<ulong, int> counts, ulong factor)
