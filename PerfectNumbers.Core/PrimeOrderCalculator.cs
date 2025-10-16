@@ -47,17 +47,17 @@ internal static partial class PrimeOrderCalculator
 
 	[ThreadStatic]
 	private static bool s_debugLoggingEnabled;
-        [ThreadStatic]
-        private static CycleRemainderStepper[]? s_smallPrimeCycleSteppers;
+	[ThreadStatic]
+	private static CycleRemainderStepper[]? s_smallPrimeCycleSteppers;
 
-        [ThreadStatic]
-        private static ulong[]? s_smallPrimeStepperPreviousValues;
+	[ThreadStatic]
+	private static ulong[]? s_smallPrimeStepperPreviousValues;
 
-        [ThreadStatic]
-        private static ulong[]? s_smallPrimeStepperRemainders;
+	[ThreadStatic]
+	private static ulong[]? s_smallPrimeStepperRemainders;
 
-        [ThreadStatic]
-        private static bool[]? s_smallPrimeStepperHasState;
+	[ThreadStatic]
+	private static bool[]? s_smallPrimeStepperHasState;
 
 
 
@@ -531,7 +531,7 @@ internal static partial class PrimeOrderCalculator
 			}
 
 			ThreadStaticPools.ReturnUlongList(candidates);
-                        // DebugLog("No candidate confirmed");
+			// DebugLog("No candidate confirmed");
 			return false;
 		}
 		finally
@@ -786,374 +786,387 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	private static PartialFactorResult PartialFactor(ulong value, in PrimeOrderSearchConfig config)
-        {
-                if (value <= 1UL)
-                {
-                        return PartialFactorResult.Empty;
-                }
+	{
+		if (value <= 1UL)
+		{
+			return PartialFactorResult.Empty;
+		}
 
-                const int FactorSlotCount = GpuSmallPrimeFactorSlots;
-                ulong[] primeSlotsArray = ThreadStaticPools.UlongPool.Rent(FactorSlotCount);
-                int[] exponentSlotsArray = ThreadStaticPools.IntPool.Rent(FactorSlotCount);
-                Span<ulong> primeSlots = primeSlotsArray.AsSpan(0, FactorSlotCount);
-                Span<int> exponentSlots = exponentSlotsArray.AsSpan(0, FactorSlotCount);
-				// We don't need to worry about leftovers, because we always use indexes within the calculated counts
-                // primeSlots.Clear();
-                // exponentSlots.Clear();
+		const int FactorSlotCount = GpuSmallPrimeFactorSlots;
 
-                int factorCount = 0;
-                Dictionary<ulong, int>? counts = null;
-                bool useDictionary = false;
+		// stackalloc is faster than pooling
+		// ulong[] primeSlotsArray = ThreadStaticPools.UlongPool.Rent(FactorSlotCount);
+		// int[] exponentSlotsArray = ThreadStaticPools.IntPool.Rent(FactorSlotCount);
+		// Span<ulong> primeSlots = primeSlotsArray.AsSpan(0, FactorSlotCount);
+		// Span<int> exponentSlots = exponentSlotsArray.AsSpan(0, FactorSlotCount);
+		Span<ulong> primeSlots = stackalloc ulong[FactorSlotCount];
+		Span<int> exponentSlots = stackalloc int[FactorSlotCount];
+		// We don't need to worry about leftovers, because we always use indexes within the calculated counts
+		// primeSlots.Clear();
+		// exponentSlots.Clear();
 
-                uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
-                ulong remaining = value;
+		int factorCount = 0;
+		Dictionary<ulong, int>? counts = null;
+		bool useDictionary = false;
 
-                bool gpuFactored = false;
-                if (IsGpuHeuristicDevice)
-                {
-                        gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(value, limit, primeSlots, exponentSlots, out factorCount, out remaining, out _);
-                }
+		uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
+		ulong remaining = value;
 
-                List<ulong> pending = ThreadStaticPools.RentUlongList(2);
-                Stack<ulong>? compositeStack = null;
-                PartialFactorResult result;
+		bool gpuFactored = false;
+		if (IsGpuHeuristicDevice)
+		{
+			gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(value, limit, primeSlots, exponentSlots, out factorCount, out remaining, out _);
+		}
 
-                if (!gpuFactored)
-                {
-						// We don't need to worry about leftovers, because we always use indexes within the calculated counts
-                        // primeSlots.Clear();
-                        // exponentSlots.Clear();
-                        if (!TryPopulateSmallPrimeFactorsCpu(value, limit, primeSlots, exponentSlots, out factorCount, out remaining))
-                        {
-                                useDictionary = true;
-                                counts = ThreadStaticPools.RentUlongIntDictionary(Math.Max(factorCount, 8));
-                                remaining = PopulateSmallPrimeFactorsCpu(value, limit, counts);
-                        }
-                }
+		List<ulong> pending = ThreadStaticPools.RentUlongList(2);
+		Stack<ulong>? compositeStack = null;
+		PartialFactorResult result;
 
-                if (remaining > 1UL)
-                {
-                        pending.Add(remaining);
-                }
+		if (!gpuFactored)
+		{
+			// We don't need to worry about leftovers, because we always use indexes within the calculated counts
+			// primeSlots.Clear();
+			// exponentSlots.Clear();
+			if (!TryPopulateSmallPrimeFactorsCpu(value, limit, primeSlots, exponentSlots, out factorCount, out remaining))
+			{
+				useDictionary = true;
+				counts = ThreadStaticPools.RentUlongIntDictionary(Math.Max(factorCount, 8));
+				remaining = PopulateSmallPrimeFactorsCpu(value, limit, counts);
+			}
+		}
 
-                if (config.PollardRhoMilliseconds > 0 && pending.Count > 0)
-                {
-                        long deadlineTimestamp = CreateDeadlineTimestamp(config.PollardRhoMilliseconds);
-                        compositeStack = ThreadStaticPools.RentUlongStack(Math.Max(pending.Count * 2, 4));
-                        compositeStack.Push(remaining);
-                        pending.Clear();
+		if (remaining > 1UL)
+		{
+			pending.Add(remaining);
+		}
 
-                        long timestamp = 0L;
-                        while (compositeStack.Count > 0)
-                        {
-                                ulong composite = compositeStack.Pop();
-                                if (composite <= 1UL)
-                                {
-                                        continue;
-                                }
+		if (config.PollardRhoMilliseconds > 0 && pending.Count > 0)
+		{
+			long deadlineTimestamp = CreateDeadlineTimestamp(config.PollardRhoMilliseconds);
+			compositeStack = ThreadStaticPools.RentUlongStack(Math.Max(pending.Count << 1, 4));
+			compositeStack.Push(remaining);
+			pending.Clear();
 
-                                bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
-                                if (isPrime)
-                                {
-                                        AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
-                                        continue;
-                                }
+			long timestamp = 0L;
+			while (compositeStack.Count > 0)
+			{
+				ulong composite = compositeStack.Pop();
+				// composite will never be smaller than 1 on the execution path
+				// if (composite <= 1UL)
+				// {
+				// 	continue;
+				// }
 
-                                timestamp = Stopwatch.GetTimestamp();
-                                if (timestamp > deadlineTimestamp)
-                                {
-                                        pending.Add(composite);
-                                        continue;
-                                }
+				bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
+				if (isPrime)
+				{
+					AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
+					continue;
+				}
 
-                                if (!TryPollardRho(composite, deadlineTimestamp, out ulong factor))
-                                {
-                                        pending.Add(composite);
-                                        continue;
-                                }
+				timestamp = Stopwatch.GetTimestamp();
+				if (timestamp > deadlineTimestamp)
+				{
+					pending.Add(composite);
+					continue;
+				}
 
-                                ulong quotient = composite / factor;
-                                compositeStack.Push(factor);
-                                compositeStack.Push(quotient);
-                        }
-                }
+				if (!TryPollardRho(composite, deadlineTimestamp, out ulong factor))
+				{
+					pending.Add(composite);
+					continue;
+				}
 
-                ulong cofactor = 1UL;
-                int pendingCount = pending.Count;
-                for (int i = 0; i < pendingCount; i++)
-                {
-                        ulong composite = pending[i];
-                        bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
-                        if (isPrime)
-                        {
-                                AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
-                        }
-                        else if (composite > 1UL)
-                        {
-                                cofactor = checked(cofactor * composite);
-                        }
-                }
+				ulong quotient = composite / factor;
+				compositeStack.Push(factor);
+				compositeStack.Push(quotient);
+			}
+		}
 
-                ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
-                if (useDictionary)
-                {
-                        if ((counts is null || counts.Count == 0) && cofactor == value)
-                        {
-                                result = PartialFactorResult.Rent(null, value, false, 0);
-                                goto ReturnResult;
-                        }
+		ulong cofactor = 1UL;
+		int pendingCount = pending.Count;
+		for (int i = 0; i < pendingCount; i++)
+		{
+			ulong composite = pending[i];
+			bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
+			if (isPrime)
+			{
+				AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
+			}
+			// composite is never smaller on the execution path
+			// else if (composite > 1UL)
+			else
+			{
+				cofactor = checked(cofactor * composite);
+			}
+		}
 
-                        if (counts is null || counts.Count == 0)
-                        {
-                                result = PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0);
-                                goto ReturnResult;
-                        }
+		ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
+		if (useDictionary)
+		{
+			if ((counts is null || counts.Count == 0) && cofactor == value)
+			{
+				result = PartialFactorResult.Rent(null, value, false, 0);
+				goto ReturnResult;
+			}
 
-                        FactorEntry[] factors = pool.Rent(counts.Count);
-                        int index = 0;
-                        foreach (KeyValuePair<ulong, int> entry in counts)
-                        {
-                                factors[index] = new FactorEntry(entry.Key, entry.Value);
-                                index++;
-                        }
+			if (counts is null || counts.Count == 0)
+			{
+				result = PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0);
+				goto ReturnResult;
+			}
 
-                        Span<FactorEntry> span = factors.AsSpan(0, index);
-                        span.Sort(static (a, b) => a.Value.CompareTo(b.Value));
+			FactorEntry[] factors = pool.Rent(counts.Count);
+			int index = 0;
+			foreach (KeyValuePair<ulong, int> entry in counts)
+			{
+				factors[index] = new FactorEntry(entry.Key, entry.Value);
+				index++;
+			}
 
-                        bool fullyFactored = cofactor == 1UL;
-                        result = PartialFactorResult.Rent(factors, cofactor, fullyFactored, index);
-                        goto ReturnResult;
-                }
+			Span<FactorEntry> span = factors.AsSpan(0, index);
+			span.Sort(static (a, b) => a.Value.CompareTo(b.Value));
 
-                int actualCount = 0;
-                for (int i = 0; i < factorCount; i++)
-                {
-                        if (primeSlots[i] != 0UL && exponentSlots[i] != 0)
-                        {
-                                actualCount++;
-                        }
-                }
+			bool fullyFactored = cofactor == 1UL;
+			result = PartialFactorResult.Rent(factors, cofactor, fullyFactored, index);
+			goto ReturnResult;
+		}
 
-                if (actualCount == 0)
-                {
-                        if (cofactor == value)
-                        {
-                                result = PartialFactorResult.Rent(null, value, false, 0);
-                                goto ReturnResult;
-                        }
+		int actualCount = 0;
+		for (int i = 0; i < factorCount; i++)
+		{
+			if (primeSlots[i] != 0UL && exponentSlots[i] != 0)
+			{
+				actualCount++;
+			}
+		}
 
-                        result = PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0);
-                        goto ReturnResult;
-                }
+		if (actualCount == 0)
+		{
+			if (cofactor == value)
+			{
+				result = PartialFactorResult.Rent(null, value, false, 0);
+				goto ReturnResult;
+			}
 
-                FactorEntry[] array = pool.Rent(actualCount);
-                int arrayIndex = 0;
-                for (int i = 0; i < factorCount; i++)
-                {
-                        ulong primeValue = primeSlots[i];
-                        int exponentValue = exponentSlots[i];
-                        if (primeValue == 0UL || exponentValue == 0)
-                        {
-                                continue;
-                        }
+			result = PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0);
+			goto ReturnResult;
+		}
 
-                        array[arrayIndex] = new FactorEntry(primeValue, exponentValue);
-                        arrayIndex++;
-                }
+		FactorEntry[] array = pool.Rent(actualCount);
+		int arrayIndex = 0;
+		for (int i = 0; i < factorCount; i++)
+		{
+			ulong primeValue = primeSlots[i];
+			int exponentValue = exponentSlots[i];
+			if (primeValue == 0UL || exponentValue == 0)
+			{
+				continue;
+			}
 
-                Span<FactorEntry> arraySpan = array.AsSpan(0, arrayIndex);
-                arraySpan.Sort(static (a, b) => a.Value.CompareTo(b.Value));
-                bool fullyFactoredArray = cofactor == 1UL;
-                result = PartialFactorResult.Rent(array, cofactor, fullyFactoredArray, arrayIndex);
+			array[arrayIndex] = new FactorEntry(primeValue, exponentValue);
+			arrayIndex++;
+		}
 
-        ReturnResult:
-                ThreadStaticPools.UlongPool.Return(primeSlotsArray);
-                ThreadStaticPools.IntPool.Return(exponentSlotsArray);
+		Span<FactorEntry> arraySpan = array.AsSpan(0, arrayIndex);
+		arraySpan.Sort(static (a, b) => a.Value.CompareTo(b.Value));
+		bool fullyFactoredArray = cofactor == 1UL;
+		result = PartialFactorResult.Rent(array, cofactor, fullyFactoredArray, arrayIndex);
 
-                if (counts is not null)
-                {
-                        ThreadStaticPools.ReturnUlongIntDictionary(counts);
-                }
+	ReturnResult:
+		// ThreadStaticPools.UlongPool.Return(primeSlotsArray);
+		// ThreadStaticPools.IntPool.Return(exponentSlotsArray);
 
-                if (compositeStack is not null)
-                {
-                        compositeStack.Clear();
-                        ThreadStaticPools.ReturnUlongStack(compositeStack);
-                }
+		if (counts is not null)
+		{
+			ThreadStaticPools.ReturnUlongIntDictionary(counts);
+		}
 
-                pending.Clear();
-                ThreadStaticPools.ReturnUlongList(pending);
-                return result;
-        }
+		if (compositeStack is not null)
+		{
+			compositeStack.Clear();
+			ThreadStaticPools.ReturnUlongStack(compositeStack);
+		}
 
-        private static CycleRemainderStepper[] EnsureSmallPrimeCycleSteppers(uint[] primes)
-        {
-                int primeCount = primes.Length;
-                CycleRemainderStepper[]? steppers = s_smallPrimeCycleSteppers;
-                if (steppers is null || steppers.Length < primeCount)
-                {
-                        int length = primeCount;
-                        steppers = new CycleRemainderStepper[length];
-                        for (int i = 0; i < length; i++)
-                        {
-                                steppers[i] = new CycleRemainderStepper(primes[i]);
-                        }
+		pending.Clear();
+		ThreadStaticPools.ReturnUlongList(pending);
+		return result;
+	}
 
-                        s_smallPrimeCycleSteppers = steppers;
-                        s_smallPrimeStepperPreviousValues = new ulong[length];
-                        s_smallPrimeStepperRemainders = new ulong[length];
-                        s_smallPrimeStepperHasState = new bool[length];
-                        return steppers;
-                }
+	private static CycleRemainderStepper[] EnsureSmallPrimeCycleSteppers(uint[] primes)
+	{
+		int primeCount = primes.Length;
+		CycleRemainderStepper[]? steppers = s_smallPrimeCycleSteppers;
+		if (steppers is null || steppers.Length < primeCount)
+		{
+			int length = primeCount;
+			steppers = new CycleRemainderStepper[length];
+			for (int i = 0; i < length; i++)
+			{
+				steppers[i] = new CycleRemainderStepper(primes[i]);
+			}
 
-                if (s_smallPrimeStepperPreviousValues is null || s_smallPrimeStepperPreviousValues.Length != steppers.Length)
-                {
-                        var previousValues = new ulong[steppers.Length];
-                        if (s_smallPrimeStepperPreviousValues is { } existingPrevious)
-                        {
-                                System.Array.Copy(existingPrevious, previousValues, Math.Min(existingPrevious.Length, previousValues.Length));
-                        }
+			s_smallPrimeCycleSteppers = steppers;
+			s_smallPrimeStepperPreviousValues = new ulong[length];
+			s_smallPrimeStepperRemainders = new ulong[length];
+			s_smallPrimeStepperHasState = new bool[length];
+			return steppers;
+		}
 
-                        s_smallPrimeStepperPreviousValues = previousValues;
-                }
+		if (s_smallPrimeStepperPreviousValues is null || s_smallPrimeStepperPreviousValues.Length != steppers.Length)
+		{
+			var previousValues = new ulong[steppers.Length];
+			if (s_smallPrimeStepperPreviousValues is { } existingPrevious)
+			{
+				System.Array.Copy(existingPrevious, previousValues, Math.Min(existingPrevious.Length, previousValues.Length));
+			}
 
-                if (s_smallPrimeStepperRemainders is null || s_smallPrimeStepperRemainders.Length != steppers.Length)
-                {
-                        var remainders = new ulong[steppers.Length];
-                        if (s_smallPrimeStepperRemainders is { } existingRemainders)
-                        {
-                                System.Array.Copy(existingRemainders, remainders, Math.Min(existingRemainders.Length, remainders.Length));
-                        }
+			s_smallPrimeStepperPreviousValues = previousValues;
+		}
 
-                        s_smallPrimeStepperRemainders = remainders;
-                }
+		if (s_smallPrimeStepperRemainders is null || s_smallPrimeStepperRemainders.Length != steppers.Length)
+		{
+			var remainders = new ulong[steppers.Length];
+			if (s_smallPrimeStepperRemainders is { } existingRemainders)
+			{
+				System.Array.Copy(existingRemainders, remainders, Math.Min(existingRemainders.Length, remainders.Length));
+			}
 
-                if (s_smallPrimeStepperHasState is null || s_smallPrimeStepperHasState.Length != steppers.Length)
-                {
-                        var hasState = new bool[steppers.Length];
-                        if (s_smallPrimeStepperHasState is { } existingHasState)
-                        {
-                                System.Array.Copy(existingHasState, hasState, Math.Min(existingHasState.Length, hasState.Length));
-                        }
+			s_smallPrimeStepperRemainders = remainders;
+		}
 
-                        s_smallPrimeStepperHasState = hasState;
-                }
+		if (s_smallPrimeStepperHasState is null || s_smallPrimeStepperHasState.Length != steppers.Length)
+		{
+			var hasState = new bool[steppers.Length];
+			if (s_smallPrimeStepperHasState is { } existingHasState)
+			{
+				System.Array.Copy(existingHasState, hasState, Math.Min(existingHasState.Length, hasState.Length));
+			}
 
-                return steppers;
-        }
+			s_smallPrimeStepperHasState = hasState;
+		}
 
-        private const int GpuSmallPrimeFactorSlots = 64;
+		return steppers;
+	}
 
-        private static bool TryPopulateSmallPrimeFactorsCpu(
-                ulong value,
-                uint limit,
-                Span<ulong> primeTargets,
-                Span<int> exponentTargets,
-                out int factorCount,
-                out ulong remaining)
-        {
-                factorCount = 0;
-                remaining = value;
+	private const int GpuSmallPrimeFactorSlots = 64;
 
-                if (value <= 1UL)
-                {
-                        return true;
-                }
+	private static bool TryPopulateSmallPrimeFactorsCpu(
+			ulong value,
+			uint limit,
+			Span<ulong> primeTargets,
+			Span<int> exponentTargets,
+			out int factorCount,
+			out ulong remaining)
+	{
+		factorCount = 0;
+		remaining = value;
 
-                int capacity = Math.Min(primeTargets.Length, exponentTargets.Length);
-                if (capacity == 0)
-                {
-                        return false;
-                }
+		// value will never <= 1 in production code
+		// if (value <= 1UL)
+		// {
+		// 	return true;
+		// }
 
-                uint[] primes = PrimesGenerator.SmallPrimes;
-                ulong[] squares = PrimesGenerator.SmallPrimesPow2;
-                int primeCount = primes.Length;
-                ulong remainingLocal = value;
-                uint effectiveLimit = limit == 0 ? uint.MaxValue : limit;
-                CycleRemainderStepper[] cycleSteppers = EnsureSmallPrimeCycleSteppers(primes);
-                ulong[] stepperPreviousValues = s_smallPrimeStepperPreviousValues!;
-                ulong[] stepperRemainders = s_smallPrimeStepperRemainders!;
-                bool[] stepperHasState = s_smallPrimeStepperHasState!;
-                ulong valueForSteppers = value;
+		int capacity = Math.Min(primeTargets.Length, exponentTargets.Length);
+		// capacity will never equal 0 in production code
+		// if (capacity == 0)
+		// {
+		// 	return false;
+		// }
 
-                for (int i = 0; i < primeCount && remainingLocal > 1UL; i++)
-                {
-                        uint primeCandidate = primes[i];
-                        if (primeCandidate > effectiveLimit)
-                        {
-                                break;
-                        }
+		uint[] primes = PrimesGenerator.SmallPrimes;
+		ulong[] squares = PrimesGenerator.SmallPrimesPow2;
+		int primeCount = primes.Length;
+		ulong remainingLocal = value;
+		uint effectiveLimit = limit == 0 ? uint.MaxValue : limit;
+		CycleRemainderStepper[] cycleSteppers = EnsureSmallPrimeCycleSteppers(primes);
+		ulong[] stepperPreviousValues = s_smallPrimeStepperPreviousValues!;
+		ulong[] stepperRemainders = s_smallPrimeStepperRemainders!;
+		bool[] stepperHasState = s_smallPrimeStepperHasState!;
+		ulong valueForSteppers = value;
 
-                        ulong primeSquare = squares[i];
-                        if (primeSquare != 0UL && primeSquare > remainingLocal)
-                        {
-                                break;
-                        }
+		for (int i = 0; i < primeCount && remainingLocal > 1UL; i++)
+		{
+			uint primeCandidate = primes[i];
+			if (primeCandidate > effectiveLimit)
+			{
+				break;
+			}
 
-                        ulong primeValue = primeCandidate;
-                        if (primeValue == 0UL)
-                        {
-                                continue;
-                        }
+			ulong primeSquare = squares[i];
+			// primeSquare will never == 0 in production code
+			// if (primeSquare != 0 && primeSquare > remainingLocal)
+			if (primeSquare > remainingLocal)
+			{
+				break;
+			}
 
-                        ref CycleRemainderStepper stepper = ref cycleSteppers[i];
-                        ulong remainder;
+			// primeCandidate will never equal 0 in production code
+			// if (primeCandidate == 0UL)
+			// {
+			// 	continue;
+			// }
 
-                        if (!stepperHasState[i])
-                        {
-                                stepper.Reset();
-                                remainder = stepper.Initialize(valueForSteppers);
-                                stepperHasState[i] = true;
-                        }
-                        else
-                        {
-                                ulong previousValue = stepperPreviousValues[i];
-                                if (valueForSteppers > previousValue)
-                                {
-                                        remainder = stepper.ComputeNext(valueForSteppers);
-                                }
-                                else if (valueForSteppers < previousValue)
-                                {
-                                        stepper.Reset();
-                                        remainder = stepper.Initialize(valueForSteppers);
-                                }
-                                else
-                                {
-                                        remainder = stepperRemainders[i];
-                                }
-                        }
+			ref CycleRemainderStepper stepper = ref cycleSteppers[i];
+			ulong remainder;
 
-                        stepperPreviousValues[i] = valueForSteppers;
-                        stepperRemainders[i] = remainder;
+			if (!stepperHasState[i])
+			{
+				stepper.Reset();
+				remainder = stepper.Initialize(valueForSteppers);
+				stepperHasState[i] = true;
+			}
+			else
+			{
+				ulong previousValue = stepperPreviousValues[i];
+				if (valueForSteppers > previousValue)
+				{
+					remainder = stepper.ComputeNext(valueForSteppers);
+				}
+				else if (valueForSteppers < previousValue)
+				{
+					stepper.Reset();
+					remainder = stepper.Initialize(valueForSteppers);
+				}
+				else
+				{
+					remainder = stepperRemainders[i];
+				}
+			}
 
-                        if (remainder != 0UL)
-                        {
-                                continue;
-                        }
-                        int exponent = 0;
-                        do
-                        {
-                                remainingLocal /= primeValue;
-                                exponent++;
-                        }
-                        while ((remainingLocal % primeValue) == 0UL);
+			stepperPreviousValues[i] = valueForSteppers;
+			stepperRemainders[i] = remainder;
 
-                        if (factorCount >= capacity)
-                        {
-                                return false;
-                        }
+			if (remainder != 0UL)
+			{
+				continue;
+			}
 
-                        primeTargets[factorCount] = primeValue;
-                        exponentTargets[factorCount] = exponent;
-                        factorCount++;
-                }
+			// TODO: Can we calculate this using residue steppers? We can try reusing modulo calculation for division result or the other way around
+			int exponent = 0;
+			do
+			{
+				remainingLocal /= primeCandidate;
+				exponent++;
+			}
+			while ((remainingLocal % primeCandidate) == 0UL);
 
-                remaining = remainingLocal;
-                return true;
-        }
+			if (factorCount >= capacity)
+			{
+				throw new InvalidOperationException($"Capacity is smaller than factor count");
+			}
 
-        private static ulong PopulateSmallPrimeFactorsCpu(ulong value, uint limit, Dictionary<ulong, int> counts)
+			primeTargets[factorCount] = primeCandidate;
+			exponentTargets[factorCount] = exponent;
+			factorCount++;
+		}
+
+		remaining = remainingLocal;
+		return true;
+	}
+
+	private static ulong PopulateSmallPrimeFactorsCpu(ulong value, uint limit, Dictionary<ulong, int> counts)
 	{
 		ulong remaining = value;
 		uint[] primes = PrimesGenerator.SmallPrimes;
@@ -1193,111 +1206,111 @@ internal static partial class PrimeOrderCalculator
 		return remaining;
 	}
 
-        private static bool TryPopulateSmallPrimeFactorsGpu(ulong value, uint limit, Dictionary<ulong, int> counts, out ulong remaining)
-        {
-                ulong[] primeBufferArray = ThreadStaticPools.UlongPool.Rent(GpuSmallPrimeFactorSlots);
-                int[] exponentBufferArray = ThreadStaticPools.IntPool.Rent(GpuSmallPrimeFactorSlots);
-                Span<ulong> primeBuffer = primeBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
-                Span<int> exponentBuffer = exponentBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
-                primeBuffer.Clear();
-                exponentBuffer.Clear();
+	private static bool TryPopulateSmallPrimeFactorsGpu(ulong value, uint limit, Dictionary<ulong, int> counts, out ulong remaining)
+	{
+		ulong[] primeBufferArray = ThreadStaticPools.UlongPool.Rent(GpuSmallPrimeFactorSlots);
+		int[] exponentBufferArray = ThreadStaticPools.IntPool.Rent(GpuSmallPrimeFactorSlots);
+		Span<ulong> primeBuffer = primeBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
+		Span<int> exponentBuffer = exponentBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
+		primeBuffer.Clear();
+		exponentBuffer.Clear();
 
-                if (!PrimeOrderGpuHeuristics.TryPartialFactor(value, limit, primeBuffer, exponentBuffer, out int factorCount, out ulong gpuRemaining, out _))
-                {
-                        remaining = value;
-                        ThreadStaticPools.UlongPool.Return(primeBufferArray);
-                        ThreadStaticPools.IntPool.Return(exponentBufferArray);
-                        return false;
-                }
+		if (!PrimeOrderGpuHeuristics.TryPartialFactor(value, limit, primeBuffer, exponentBuffer, out int factorCount, out ulong gpuRemaining, out _))
+		{
+			remaining = value;
+			ThreadStaticPools.UlongPool.Return(primeBufferArray);
+			ThreadStaticPools.IntPool.Return(exponentBufferArray);
+			return false;
+		}
 
-                remaining = gpuRemaining;
-                for (int i = 0; i < factorCount; i++)
-                {
-                        ulong primeValue = primeBuffer[i];
-                        int exponent = exponentBuffer[i];
-                        if (primeValue == 0UL || exponent == 0)
-                        {
-                                continue;
-                        }
+		remaining = gpuRemaining;
+		for (int i = 0; i < factorCount; i++)
+		{
+			ulong primeValue = primeBuffer[i];
+			int exponent = exponentBuffer[i];
+			if (primeValue == 0UL || exponent == 0)
+			{
+				continue;
+			}
 
-                        counts[primeValue] = exponent;
-                }
+			counts[primeValue] = exponent;
+		}
 
-                ThreadStaticPools.UlongPool.Return(primeBufferArray);
-                ThreadStaticPools.IntPool.Return(exponentBufferArray);
-                return true;
-        }
-        private static long CreateDeadlineTimestamp(int milliseconds)
-        {
-                if (milliseconds <= 0)
-                {
-                        return long.MaxValue;
-                }
+		ThreadStaticPools.UlongPool.Return(primeBufferArray);
+		ThreadStaticPools.IntPool.Return(exponentBufferArray);
+		return true;
+	}
+	private static long CreateDeadlineTimestamp(int milliseconds)
+	{
+		if (milliseconds <= 0)
+		{
+			return long.MaxValue;
+		}
 
-                long stopwatchTicks = ConvertMillisecondsToStopwatchTicks(milliseconds);
-                long startTimestamp = Stopwatch.GetTimestamp();
-                long deadline = startTimestamp + stopwatchTicks;
-                if (deadline < startTimestamp)
-                {
-                        return long.MaxValue;
-                }
+		long stopwatchTicks = ConvertMillisecondsToStopwatchTicks(milliseconds);
+		long startTimestamp = Stopwatch.GetTimestamp();
+		long deadline = startTimestamp + stopwatchTicks;
+		if (deadline < startTimestamp)
+		{
+			return long.MaxValue;
+		}
 
-                return deadline;
-        }
+		return deadline;
+	}
 
-        private static long ConvertMillisecondsToStopwatchTicks(int milliseconds)
-        {
-                long frequency = Stopwatch.Frequency;
-                long baseTicks = (frequency / 1000L) * milliseconds;
-                long remainder = (frequency % 1000L) * milliseconds;
-                return baseTicks + (remainder / 1000L);
-        }
+	private static long ConvertMillisecondsToStopwatchTicks(int milliseconds)
+	{
+		long frequency = Stopwatch.Frequency;
+		long baseTicks = (frequency / 1000L) * milliseconds;
+		long remainder = (frequency % 1000L) * milliseconds;
+		return baseTicks + (remainder / 1000L);
+	}
 
-        private static bool TryPollardRho(ulong n, long deadlineTimestamp, out ulong factor)
-        {
-                factor = 0UL;
-                if ((n & 1UL) == 0UL)
-                {
-                        factor = 2UL;
-                        return true;
-                }
+	private static bool TryPollardRho(ulong n, long deadlineTimestamp, out ulong factor)
+	{
+		factor = 0UL;
+		if ((n & 1UL) == 0UL)
+		{
+			factor = 2UL;
+			return true;
+		}
 
-                long timestamp = 0L; // reused for deadline checks.
-                while (true)
-                {
-                        timestamp = Stopwatch.GetTimestamp();
-                        if (timestamp > deadlineTimestamp)
-                        {
-                                return false;
-                        }
+		long timestamp = 0L; // reused for deadline checks.
+		while (true)
+		{
+			timestamp = Stopwatch.GetTimestamp();
+			if (timestamp > deadlineTimestamp)
+			{
+				return false;
+			}
 
-                        ulong c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
-                        ulong x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
-                        ulong y = x;
-                        ulong d = 1UL;
+			ulong c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
+			ulong x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
+			ulong y = x;
+			ulong d = 1UL;
 
-                        while (d == 1UL)
-                        {
-                                timestamp = Stopwatch.GetTimestamp();
-                                if (timestamp > deadlineTimestamp)
-                                {
-                                        return false;
-                                }
+			while (d == 1UL)
+			{
+				timestamp = Stopwatch.GetTimestamp();
+				if (timestamp > deadlineTimestamp)
+				{
+					return false;
+				}
 
-                                x = AdvancePolynomial(x, c, n);
-                                y = AdvancePolynomial(y, c, n);
-                                y = AdvancePolynomial(y, c, n);
-                                ulong diff = x > y ? x - y : y - x;
-                                d = BinaryGcd(diff, n);
-                        }
+				x = AdvancePolynomial(x, c, n);
+				y = AdvancePolynomial(y, c, n);
+				y = AdvancePolynomial(y, c, n);
+				ulong diff = x > y ? x - y : y - x;
+				d = BinaryGcd(diff, n);
+			}
 
-                        if (d != n)
-                        {
-                                factor = d;
-                                return true;
-                        }
-                }
-        }
+			if (d != n)
+			{
+				factor = d;
+				return true;
+			}
+		}
+	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static ulong AdvancePolynomial(ulong x, ulong c, ulong modulus)
