@@ -47,6 +47,18 @@ internal static partial class PrimeOrderCalculator
 
 	[ThreadStatic]
 	private static bool s_debugLoggingEnabled;
+        [ThreadStatic]
+        private static CycleRemainderStepper[]? s_smallPrimeCycleSteppers;
+
+        [ThreadStatic]
+        private static ulong[]? s_smallPrimeStepperPreviousValues;
+
+        [ThreadStatic]
+        private static ulong[]? s_smallPrimeStepperRemainders;
+
+        [ThreadStatic]
+        private static bool[]? s_smallPrimeStepperHasState;
+
 
 
 
@@ -972,6 +984,62 @@ internal static partial class PrimeOrderCalculator
                 return result;
         }
 
+        private static CycleRemainderStepper[] EnsureSmallPrimeCycleSteppers(uint[] primes)
+        {
+                int primeCount = primes.Length;
+                CycleRemainderStepper[]? steppers = s_smallPrimeCycleSteppers;
+                if (steppers is null || steppers.Length < primeCount)
+                {
+                        int length = primeCount;
+                        steppers = new CycleRemainderStepper[length];
+                        for (int i = 0; i < length; i++)
+                        {
+                                steppers[i] = new CycleRemainderStepper(primes[i]);
+                        }
+
+                        s_smallPrimeCycleSteppers = steppers;
+                        s_smallPrimeStepperPreviousValues = new ulong[length];
+                        s_smallPrimeStepperRemainders = new ulong[length];
+                        s_smallPrimeStepperHasState = new bool[length];
+                        return steppers;
+                }
+
+                if (s_smallPrimeStepperPreviousValues is null || s_smallPrimeStepperPreviousValues.Length != steppers.Length)
+                {
+                        var previousValues = new ulong[steppers.Length];
+                        if (s_smallPrimeStepperPreviousValues is { } existingPrevious)
+                        {
+                                System.Array.Copy(existingPrevious, previousValues, Math.Min(existingPrevious.Length, previousValues.Length));
+                        }
+
+                        s_smallPrimeStepperPreviousValues = previousValues;
+                }
+
+                if (s_smallPrimeStepperRemainders is null || s_smallPrimeStepperRemainders.Length != steppers.Length)
+                {
+                        var remainders = new ulong[steppers.Length];
+                        if (s_smallPrimeStepperRemainders is { } existingRemainders)
+                        {
+                                System.Array.Copy(existingRemainders, remainders, Math.Min(existingRemainders.Length, remainders.Length));
+                        }
+
+                        s_smallPrimeStepperRemainders = remainders;
+                }
+
+                if (s_smallPrimeStepperHasState is null || s_smallPrimeStepperHasState.Length != steppers.Length)
+                {
+                        var hasState = new bool[steppers.Length];
+                        if (s_smallPrimeStepperHasState is { } existingHasState)
+                        {
+                                System.Array.Copy(existingHasState, hasState, Math.Min(existingHasState.Length, hasState.Length));
+                        }
+
+                        s_smallPrimeStepperHasState = hasState;
+                }
+
+                return steppers;
+        }
+
         private const int GpuSmallPrimeFactorSlots = 64;
 
         private static bool TryPopulateSmallPrimeFactorsCpu(
@@ -1001,6 +1069,11 @@ internal static partial class PrimeOrderCalculator
                 int primeCount = primes.Length;
                 ulong remainingLocal = value;
                 uint effectiveLimit = limit == 0 ? uint.MaxValue : limit;
+                CycleRemainderStepper[] cycleSteppers = EnsureSmallPrimeCycleSteppers(primes);
+                ulong[] stepperPreviousValues = s_smallPrimeStepperPreviousValues!;
+                ulong[] stepperRemainders = s_smallPrimeStepperRemainders!;
+                bool[] stepperHasState = s_smallPrimeStepperHasState!;
+                ulong valueForSteppers = value;
 
                 for (int i = 0; i < primeCount && remainingLocal > 1UL; i++)
                 {
@@ -1017,11 +1090,45 @@ internal static partial class PrimeOrderCalculator
                         }
 
                         ulong primeValue = primeCandidate;
-                        if ((remainingLocal % primeValue) != 0UL)
+                        if (primeValue == 0UL)
                         {
                                 continue;
                         }
 
+                        ref CycleRemainderStepper stepper = ref cycleSteppers[i];
+                        ulong remainder;
+
+                        if (!stepperHasState[i])
+                        {
+                                stepper.Reset();
+                                remainder = stepper.Initialize(valueForSteppers);
+                                stepperHasState[i] = true;
+                        }
+                        else
+                        {
+                                ulong previousValue = stepperPreviousValues[i];
+                                if (valueForSteppers > previousValue)
+                                {
+                                        remainder = stepper.ComputeNext(valueForSteppers);
+                                }
+                                else if (valueForSteppers < previousValue)
+                                {
+                                        stepper.Reset();
+                                        remainder = stepper.Initialize(valueForSteppers);
+                                }
+                                else
+                                {
+                                        remainder = stepperRemainders[i];
+                                }
+                        }
+
+                        stepperPreviousValues[i] = valueForSteppers;
+                        stepperRemainders[i] = remainder;
+
+                        if (remainder != 0UL)
+                        {
+                                continue;
+                        }
                         int exponent = 0;
                         do
                         {
