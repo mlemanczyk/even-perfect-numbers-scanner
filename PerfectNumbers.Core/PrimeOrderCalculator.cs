@@ -787,50 +787,27 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	// [ThreadStatic]
-	private static Dictionary<ulong, bool>? _primalityCache;
+	private static readonly Dictionary<ulong, bool> _primalityCache = [];
 	private static readonly ReaderWriterLockSlim _primalityCacheLock = new(LockRecursionPolicy.NoRecursion);
 
 	// [ThreadStatic]
 	// private static UInt128 _isPrimeHits;
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static bool TryGetCachedPrimality(ulong value, out bool isPrime)
 	{
 		_primalityCacheLock.EnterReadLock();
-		try
-		{
-			Dictionary<ulong, bool>? cache = _primalityCache;
-			if (cache is null)
-			{
-				isPrime = default;
-				return false;
-			}
-
-			return cache.TryGetValue(value, out isPrime);
-		}
-		finally
-		{
-			_primalityCacheLock.ExitReadLock();
-		}
+		bool result = _primalityCache.TryGetValue(value, out isPrime);
+		_primalityCacheLock.ExitReadLock();
+		return result;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void CachePrimalityResult(ulong value, bool isPrime)
 	{
 		_primalityCacheLock.EnterWriteLock();
-		try
-		{
-			Dictionary<ulong, bool>? cache = _primalityCache;
-			if (cache is null)
-			{
-				cache = new Dictionary<ulong, bool>();
-				_primalityCache = cache;
-			}
-
-			cache[value] = isPrime;
-		}
-		finally
-		{
-			_primalityCacheLock.ExitWriteLock();
-		}
+		_primalityCache[value] = isPrime;
+		_primalityCacheLock.ExitWriteLock();
 	}
 
 	private static bool GetOrComputePrimality(ulong value)
@@ -1220,6 +1197,7 @@ internal static partial class PrimeOrderCalculator
 				exponent++;
 			}
 
+			//Console.WriteLine($"Exponent: {exponent}");
 			if (factorCount >= capacity)
 			{
 				throw new InvalidOperationException($"Capacity is smaller than factor count");
