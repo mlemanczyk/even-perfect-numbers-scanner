@@ -781,8 +781,10 @@ internal static partial class PrimeOrderCalculator
                 }
 
                 const int FactorSlotCount = GpuSmallPrimeFactorSlots;
-                Span<ulong> primeSlots = stackalloc ulong[FactorSlotCount];
-                Span<int> exponentSlots = stackalloc int[FactorSlotCount];
+                ulong[] primeSlotsArray = ThreadStaticPools.UlongPool.Rent(FactorSlotCount);
+                int[] exponentSlotsArray = ThreadStaticPools.IntPool.Rent(FactorSlotCount);
+                Span<ulong> primeSlots = primeSlotsArray.AsSpan(0, FactorSlotCount);
+                Span<int> exponentSlots = exponentSlotsArray.AsSpan(0, FactorSlotCount);
                 primeSlots.Clear();
                 exponentSlots.Clear();
 
@@ -951,6 +953,9 @@ internal static partial class PrimeOrderCalculator
                 result = PartialFactorResult.Rent(array, cofactor, fullyFactoredArray, arrayIndex);
 
         ReturnResult:
+                ThreadStaticPools.UlongPool.Return(primeSlotsArray);
+                ThreadStaticPools.IntPool.Return(exponentSlotsArray);
+
                 if (counts is not null)
                 {
                         ThreadStaticPools.ReturnUlongIntDictionary(counts);
@@ -1079,34 +1084,40 @@ internal static partial class PrimeOrderCalculator
 		return remaining;
 	}
 
-	private static bool TryPopulateSmallPrimeFactorsGpu(ulong value, uint limit, Dictionary<ulong, int> counts, out ulong remaining)
-	{
-		Span<ulong> primeBuffer = stackalloc ulong[GpuSmallPrimeFactorSlots];
-		Span<int> exponentBuffer = stackalloc int[GpuSmallPrimeFactorSlots];
-		primeBuffer.Clear();
-		exponentBuffer.Clear();
+        private static bool TryPopulateSmallPrimeFactorsGpu(ulong value, uint limit, Dictionary<ulong, int> counts, out ulong remaining)
+        {
+                ulong[] primeBufferArray = ThreadStaticPools.UlongPool.Rent(GpuSmallPrimeFactorSlots);
+                int[] exponentBufferArray = ThreadStaticPools.IntPool.Rent(GpuSmallPrimeFactorSlots);
+                Span<ulong> primeBuffer = primeBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
+                Span<int> exponentBuffer = exponentBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
+                primeBuffer.Clear();
+                exponentBuffer.Clear();
 
-		if (!PrimeOrderGpuHeuristics.TryPartialFactor(value, limit, primeBuffer, exponentBuffer, out int factorCount, out ulong gpuRemaining, out _))
-		{
-			remaining = value;
-			return false;
-		}
+                if (!PrimeOrderGpuHeuristics.TryPartialFactor(value, limit, primeBuffer, exponentBuffer, out int factorCount, out ulong gpuRemaining, out _))
+                {
+                        remaining = value;
+                        ThreadStaticPools.UlongPool.Return(primeBufferArray);
+                        ThreadStaticPools.IntPool.Return(exponentBufferArray);
+                        return false;
+                }
 
-		remaining = gpuRemaining;
-		for (int i = 0; i < factorCount; i++)
-		{
-			ulong primeValue = primeBuffer[i];
-			int exponent = exponentBuffer[i];
-			if (primeValue == 0UL || exponent == 0)
-			{
-				continue;
-			}
+                remaining = gpuRemaining;
+                for (int i = 0; i < factorCount; i++)
+                {
+                        ulong primeValue = primeBuffer[i];
+                        int exponent = exponentBuffer[i];
+                        if (primeValue == 0UL || exponent == 0)
+                        {
+                                continue;
+                        }
 
-			counts[primeValue] = exponent;
-		}
+                        counts[primeValue] = exponent;
+                }
 
-		return true;
-	}
+                ThreadStaticPools.UlongPool.Return(primeBufferArray);
+                ThreadStaticPools.IntPool.Return(exponentBufferArray);
+                return true;
+        }
         private static long CreateDeadlineTimestamp(int milliseconds)
         {
                 if (milliseconds <= 0)
