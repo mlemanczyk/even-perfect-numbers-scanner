@@ -797,8 +797,9 @@ internal static partial class PrimeOrderCalculator
                 int[] exponentSlotsArray = ThreadStaticPools.IntPool.Rent(FactorSlotCount);
                 Span<ulong> primeSlots = primeSlotsArray.AsSpan(0, FactorSlotCount);
                 Span<int> exponentSlots = exponentSlotsArray.AsSpan(0, FactorSlotCount);
-                primeSlots.Clear();
-                exponentSlots.Clear();
+				// We don't need to worry about leftovers, because we always use indexes within the calculated counts
+                // primeSlots.Clear();
+                // exponentSlots.Clear();
 
                 int factorCount = 0;
                 Dictionary<ulong, int>? counts = null;
@@ -819,8 +820,9 @@ internal static partial class PrimeOrderCalculator
 
                 if (!gpuFactored)
                 {
-                        primeSlots.Clear();
-                        exponentSlots.Clear();
+						// We don't need to worry about leftovers, because we always use indexes within the calculated counts
+                        // primeSlots.Clear();
+                        // exponentSlots.Clear();
                         if (!TryPopulateSmallPrimeFactorsCpu(value, limit, primeSlots, exponentSlots, out factorCount, out remaining))
                         {
                                 useDictionary = true;
