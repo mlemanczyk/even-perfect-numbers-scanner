@@ -795,48 +795,37 @@ internal static partial class PrimeOrderCalculator
 
 	private static bool TryGetCachedPrimality(ulong value, out bool isPrime)
 	{
-		Dictionary<ulong, bool>? cache = Volatile.Read(ref _primalityCache);
-		if (cache is null)
+		_primalityCacheLock.EnterReadLock();
+		try
 		{
-			isPrime = default;
-			return false;
-		}
+			Dictionary<ulong, bool>? cache = _primalityCache;
+			if (cache is null)
+			{
+				isPrime = default;
+				return false;
+			}
 
-		return cache.TryGetValue(value, out isPrime);
+			return cache.TryGetValue(value, out isPrime);
+		}
+		finally
+		{
+			_primalityCacheLock.ExitReadLock();
+		}
 	}
 
 	private static void CachePrimalityResult(ulong value, bool isPrime)
 	{
-		Dictionary<ulong, bool>? cache = Volatile.Read(ref _primalityCache);
-		if (cache is not null && cache.TryGetValue(value, out bool existing) && existing == isPrime)
-		{
-			return;
-		}
-
 		_primalityCacheLock.EnterWriteLock();
 		try
 		{
-			Dictionary<ulong, bool>? current = _primalityCache;
-			if (current is null)
+			Dictionary<ulong, bool>? cache = _primalityCache;
+			if (cache is null)
 			{
-				Dictionary<ulong, bool> newCache = new()
-				{
-					[value] = isPrime,
-				};
-				Volatile.Write(ref _primalityCache, newCache);
-				return;
+				cache = new Dictionary<ulong, bool>();
+				_primalityCache = cache;
 			}
 
-			if (current.TryGetValue(value, out bool existingValue) && existingValue == isPrime)
-			{
-				return;
-			}
-
-			Dictionary<ulong, bool> updated = new(current)
-			{
-				[value] = isPrime,
-			};
-			Volatile.Write(ref _primalityCache, updated);
+			cache[value] = isPrime;
 		}
 		finally
 		{
