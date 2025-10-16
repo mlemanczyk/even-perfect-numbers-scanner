@@ -940,45 +940,38 @@ internal static partial class PrimeOrderCalculator
 				index++;
 			}
 
-			Span<FactorEntry> span = factors.AsSpan(0, index);
-			span.Sort(static (a, b) => a.Value.CompareTo(b.Value));
+			Array.Sort(factors, static (a, b) => a.Value.CompareTo(b.Value));
 
 			bool fullyFactored = cofactor == 1UL;
 			result = PartialFactorResult.Rent(factors, cofactor, fullyFactored, index);
 			goto ReturnResult;
 		}
 
-		int actualCount = 0;
-		for (int i = 0; i < factorCount; i++)
-		{
-			if (primeSlots[i] != 0UL && exponentSlots[i] != 0)
-			{
-				actualCount++;
-			}
-		}
+		// This will never happen in production code. We'll always get at least 1 factor
+		// if (factorCount == 0)
+		// {
+		// 	if (cofactor == value)
+		// 	{
+		// 		result = PartialFactorResult.Rent(null, value, false, 0);
+		// 		goto ReturnResult;
+		// 	}
 
-		if (actualCount == 0)
-		{
-			if (cofactor == value)
-			{
-				result = PartialFactorResult.Rent(null, value, false, 0);
-				goto ReturnResult;
-			}
+		// 	result = PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0);
+		// 	goto ReturnResult;
+		// }
 
-			result = PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0);
-			goto ReturnResult;
-		}
-
-		FactorEntry[] array = pool.Rent(actualCount);
+		FactorEntry[] array = pool.Rent(factorCount);
 		int arrayIndex = 0;
 		for (int i = 0; i < factorCount; i++)
 		{
 			ulong primeValue = primeSlots[i];
 			int exponentValue = exponentSlots[i];
-			if (primeValue == 0UL || exponentValue == 0)
-			{
-				continue;
-			}
+			// This will never happen on the execution path from production code
+			// if (primeValue == 0UL || exponentValue == 0)
+			// {
+			// 	throw new Exception("Prime value or exponent equals zero");
+			// 	continue;
+			// }
 
 			array[arrayIndex] = new FactorEntry(primeValue, exponentValue);
 			arrayIndex++;
