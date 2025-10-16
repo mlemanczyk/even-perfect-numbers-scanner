@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -44,6 +45,11 @@ internal static class Program
     private static string? _resultsPrefix;
     private static readonly Optimized PrimeIterator = new();
     private static ulong _byDivisorStartPrime;
+
+    private static bool _testMode;
+    private static int _testTargetPrimeCount;
+    private static int _testProcessedPrimeCount;
+    private const string TestTimeFileName = "even_perfect_test_time.txt";
 
     [ThreadStatic]
     private static bool _lastCompositeP;
@@ -94,6 +100,10 @@ internal static class Program
         ulong parsedResidueMax = 0UL;
         ulong remainder = 0UL;
         bool startPrimeProvided = false;
+
+        _testMode = false;
+        _testTargetPrimeCount = 0;
+        _testProcessedPrimeCount = 0;
 
         // NTT backend selection (GPU): reference vs staged
         for (; argIndex < args.Length; argIndex++)
@@ -200,6 +210,10 @@ internal static class Program
             else if (arg.Equals("--workaround-mod", StringComparison.OrdinalIgnoreCase))
             {
                 useModuloWorkaround = true;
+            }
+            else if (arg.Equals("--test", StringComparison.OrdinalIgnoreCase))
+            {
+                _testMode = true;
             }
             else if (arg.Equals("--use-order", StringComparison.OrdinalIgnoreCase))
             {
@@ -393,6 +407,19 @@ internal static class Program
             }
         }
 
+        int testPrimeCandidateLimit = 0;
+
+        if (_testMode)
+        {
+            currentP = 31UL;
+            remainder = currentP % 6UL;
+            filterFile = string.Empty;
+            maxPrimeLimit = UInt128.MaxValue;
+            maxPrimeConfigured = false;
+            startPrimeProvided = true;
+            testPrimeCandidateLimit = Math.Max(1, threadCount) * 3;
+        }
+
         if (useByDivisor)
         {
             _byDivisorStartPrime = startPrimeProvided ? currentP : 0UL;
@@ -402,7 +429,7 @@ internal static class Program
             _byDivisorStartPrime = 0UL;
         }
 
-        if (useByDivisor && string.IsNullOrEmpty(filterFile))
+        if (useByDivisor && !_testMode && string.IsNullOrEmpty(filterFile))
         {
             Console.WriteLine("--mersenne=bydivisor requires --filter-p=<path>.");
             return;
@@ -620,17 +647,22 @@ internal static class Program
             File.WriteAllText(ResultsFileName, $"p,searchedMersenne,detailedCheck,passedAllTests{Environment.NewLine}");
         }
 
-        bool useFilter = !string.IsNullOrEmpty(filterFile);
+        bool useFilter = !_testMode && !string.IsNullOrEmpty(filterFile);
         HashSet<ulong> filter = [];
         List<ulong> byDivisorCandidates = [];
         ulong maxP = 0UL;
         ulong[] localFilter = Array.Empty<ulong>();
         int filterCount = 0;
-        if (useFilter)
+
+        if (_useByDivisorMode)
         {
-            Console.WriteLine("Loading filter...");
-            if (_useByDivisorMode)
+            if (_testMode)
             {
+                byDivisorCandidates = BuildTestPrimeCandidates(testPrimeCandidateLimit);
+            }
+            else
+            {
+                Console.WriteLine("Loading filter...");
                 int skippedByLimit = 0;
                 byDivisorCandidates = LoadByDivisorCandidates(filterFile, maxPrimeLimit, maxPrimeConfigured, out skippedByLimit);
                 if (maxPrimeConfigured)
@@ -647,61 +679,68 @@ internal static class Program
                     }
                 }
             }
-            else
+        }
+        else if (useFilter)
+        {
+            Console.WriteLine("Loading filter...");
+            // TODO: Rent this filter buffer from ArrayPool<ulong> and reuse it across reload batches so
+            // we do not allocate fresh arrays while replaying large result filters.
+            localFilter = new ulong[1024];
+            filterCount = 0;
+            bool addedWithinLimit = false;
+            int skippedByLimit = 0;
+            LoadResultsFile(filterFile, (p, detailedCheck, passedAllTests) =>
             {
-                // TODO: Rent this filter buffer from ArrayPool<ulong> and reuse it across reload batches so
-                // we do not allocate fresh arrays while replaying large result filters.
-                localFilter = new ulong[1024];
-                filterCount = 0;
-                bool addedWithinLimit = false;
-                int skippedByLimit = 0;
-                LoadResultsFile(filterFile, (p, detailedCheck, passedAllTests) =>
+                if (!passedAllTests)
                 {
-                    if (!passedAllTests)
-                    {
-                        return;
-                    }
+                    return;
+                }
 
-                    if (maxPrimeConfigured && (UInt128)p > maxPrimeLimit)
-                    {
-                        skippedByLimit++;
-                        return;
-                    }
+                if (maxPrimeConfigured && (UInt128)p > maxPrimeLimit)
+                {
+                    skippedByLimit++;
+                    return;
+                }
 
-                    localFilter[filterCount++] = p;
-                    addedWithinLimit = true;
-                    if (p > maxP)
-                    {
-                        maxP = p;
-                    }
+                localFilter[filterCount++] = p;
+                addedWithinLimit = true;
+                if (p > maxP)
+                {
+                    maxP = p;
+                }
 
-                    if (filterCount == 1024)
-                    {
-                        filter.AddRange(localFilter[..filterCount]);
-                        filterCount = 0;
-                        Console.WriteLine($"Added {p}");
-                    }
-                });
-
-                if (filterCount > 0)
+                if (filterCount == 1024)
                 {
                     filter.AddRange(localFilter[..filterCount]);
+                    filterCount = 0;
+                    Console.WriteLine($"Added {p}");
+                }
+            });
+
+            if (filterCount > 0)
+            {
+                filter.AddRange(localFilter[..filterCount]);
+            }
+
+            if (maxPrimeConfigured)
+            {
+                if (!addedWithinLimit)
+                {
+                    Console.WriteLine("No filter candidates fall within the --max-prime limit.");
+                    return;
                 }
 
-                if (maxPrimeConfigured)
+                if (skippedByLimit > 0)
                 {
-                    if (!addedWithinLimit)
-                    {
-                        Console.WriteLine("No filter candidates fall within the --max-prime limit.");
-                        return;
-                    }
-
-                    if (skippedByLimit > 0)
-                    {
-                        Console.WriteLine($"Skipped {skippedByLimit} filter candidate(s) above --max-prime limit.");
-                    }
+                    Console.WriteLine($"Skipped {skippedByLimit} filter candidate(s) above --max-prime limit.");
                 }
             }
+        }
+
+
+        if (_testMode)
+        {
+            _testTargetPrimeCount = testPrimeCandidateLimit;
         }
 
         if (_primeCount >= 2)
@@ -716,6 +755,12 @@ internal static class Program
         // Configure batch size for GPU primality sieve
         PrimeTester.GpuBatchSize = gpuPrimeBatch;
 
+        Stopwatch? stopwatch = null;
+        if (_testMode)
+        {
+            stopwatch = Stopwatch.StartNew();
+        }
+
         Console.WriteLine("Starting scan...");
 
         if (_useByDivisorMode)
@@ -723,6 +768,12 @@ internal static class Program
             RunByDivisorMode(byDivisorCandidates, threadCount);
             FlushBuffer();
             StringBuilderPool.Return(_outputBuilder!);
+            if (stopwatch is not null)
+            {
+                stopwatch.Stop();
+                ReportTestTime(stopwatch.Elapsed);
+            }
+
             return;
         }
 
@@ -737,7 +788,14 @@ internal static class Program
             }
         }
 
+        if (_testMode)
+        {
+            testPrimeCandidateLimit = Math.Max(1, threadCount) * 3;
+            _testTargetPrimeCount = testPrimeCandidateLimit;
+        }
+
         _state = ((long)currentP << 3) | (long)remainder;
+
         Task[] tasks = new Task[threadCount];
 
         int taskIndex = 0;
@@ -807,8 +865,65 @@ internal static class Program
         }
 
         Task.WaitAll(tasks);
+
+        TimeSpan testElapsed = default;
+        bool reportTestTime = false;
+        if (stopwatch is not null)
+        {
+            stopwatch.Stop();
+            testElapsed = stopwatch.Elapsed;
+            reportTestTime = true;
+        }
+
         FlushBuffer();
         StringBuilderPool.Return(_outputBuilder!);
+
+        if (reportTestTime)
+        {
+            ReportTestTime(testElapsed);
+        }
+    }
+
+    private static List<ulong> BuildTestPrimeCandidates(int targetCount)
+    {
+        if (targetCount <= 0)
+        {
+            return [];
+        }
+
+        List<ulong> candidates = new(targetCount);
+        ulong previous = 29UL;
+        int remaining = targetCount;
+        ulong nextPrime = 0UL;
+
+        while (remaining > 0)
+        {
+            try
+            {
+                nextPrime = PrimeIterator.Next(in previous);
+            }
+            catch (InvalidOperationException)
+            {
+                break;
+            }
+
+            if (nextPrime < 31UL)
+            {
+                previous = nextPrime;
+                continue;
+            }
+
+            candidates.Add(nextPrime);
+            remaining--;
+            previous = nextPrime;
+        }
+
+        if (remaining > 0)
+        {
+            Console.WriteLine("Unable to populate the requested number of test primes before reaching the 64-bit limit.");
+        }
+
+        return candidates;
     }
 
     private static List<ulong> LoadByDivisorCandidates(string candidateFile, UInt128 maxPrimeLimit, bool maxPrimeConfigured, out int skippedByLimit)
@@ -1054,6 +1169,21 @@ internal static class Program
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OnPrimeCandidateConfirmed()
+    {
+        if (!_testMode)
+        {
+            return;
+        }
+
+        int processed = Interlocked.Increment(ref _testProcessedPrimeCount);
+        if (processed == _testTargetPrimeCount)
+        {
+            Volatile.Write(ref _limitReached, true);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryAcquireConsoleSlot(bool primeCandidate, out bool primeFlag)
     {
         int consoleInterval = PerfectNumberConstants.ConsoleInterval;
@@ -1187,6 +1317,75 @@ internal static class Program
             builderToFlush.Clear();
             StringBuilderPool.Return(builderToFlush);
         }
+    }
+
+    private static void ReportTestTime(TimeSpan elapsed)
+    {
+        double elapsedSeconds = elapsed.TotalSeconds;
+        double elapsedMilliseconds = elapsed.TotalMilliseconds;
+        Console.WriteLine($"Test elapsed time: {elapsedSeconds:F3} s");
+
+        string filePath = GetTestTimeFilePath();
+        bool hasPrevious = TryReadTestTime(filePath, out double previousMilliseconds);
+        string elapsedText = elapsedMilliseconds.ToString("F3", CultureInfo.InvariantCulture);
+
+        if (!hasPrevious)
+        {
+            WriteTestTime(filePath, elapsedMilliseconds);
+            Console.WriteLine($"FIRST TIME: {elapsedText} ms");
+            return;
+        }
+
+        string previousText = previousMilliseconds.ToString("F3", CultureInfo.InvariantCulture);
+        if (elapsedMilliseconds < previousMilliseconds)
+        {
+            WriteTestTime(filePath, elapsedMilliseconds);
+            Console.WriteLine($"BETTER TIME: {elapsedText} ms (previous {previousText} ms)");
+        }
+        else
+        {
+            Console.WriteLine($"WORSE TIME: {elapsedText} ms (best {previousText} ms)");
+        }
+    }
+
+    private static string GetTestTimeFilePath()
+    {
+        if (string.IsNullOrEmpty(_resultsDir))
+        {
+            return TestTimeFileName;
+        }
+
+        return Path.Combine(_resultsDir!, TestTimeFileName);
+    }
+
+    private static bool TryReadTestTime(string filePath, out double milliseconds)
+    {
+        if (!File.Exists(filePath))
+        {
+            milliseconds = 0.0;
+            return false;
+        }
+
+        string content = File.ReadAllText(filePath).Trim();
+        if (content.Length == 0)
+        {
+            milliseconds = 0.0;
+            return false;
+        }
+
+        return double.TryParse(content, NumberStyles.Float, CultureInfo.InvariantCulture, out milliseconds);
+    }
+
+    private static void WriteTestTime(string filePath, double milliseconds)
+    {
+        string? directory = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        string formatted = milliseconds.ToString("F6", CultureInfo.InvariantCulture);
+        File.WriteAllText(filePath, formatted);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1419,6 +1618,8 @@ internal static class Program
                 _lastCompositeP = true;
                 return false;
             }
+
+            OnPrimeCandidateConfirmed();
         }
 
         searchedMersenne = true;

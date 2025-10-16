@@ -80,6 +80,142 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
+        private static ArrayPool<int>? _intPool;
+
+        public static ArrayPool<int> IntPool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _intPool ??= ArrayPool<int>.Create();
+            }
+        }
+
+
+        [ThreadStatic]
+        private static List<List<ulong>>? _ulongListPool;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static List<ulong> RentUlongList(int capacityHint)
+        {
+            List<List<ulong>>? pool = _ulongListPool;
+            if (pool is not null && pool.Count > 0)
+            {
+                int lastIndex = pool.Count - 1;
+                List<ulong> list = pool[lastIndex];
+                pool.RemoveAt(lastIndex);
+                if (list.Count > 0)
+                {
+                    list.Clear();
+                }
+
+                if (list.Capacity < capacityHint)
+                {
+                    list.Capacity = capacityHint;
+                }
+
+                return list;
+            }
+
+            return new List<ulong>(capacityHint);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void ReturnUlongList(List<ulong> list)
+        {
+            List<List<ulong>>? pool = _ulongListPool;
+            if (pool is null)
+            {
+                pool = new List<List<ulong>>(4);
+                _ulongListPool = pool;
+            }
+
+            pool.Add(list);
+        }
+
+        [ThreadStatic]
+        private static List<Stack<ulong>>? _ulongStackPool;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Stack<ulong> RentUlongStack(int capacityHint)
+        {
+            List<Stack<ulong>>? pool = _ulongStackPool;
+            if (pool is not null && pool.Count > 0)
+            {
+                int lastIndex = pool.Count - 1;
+                Stack<ulong> stack = pool[lastIndex];
+                pool.RemoveAt(lastIndex);
+                if (stack.Count > 0)
+                {
+                    stack.Clear();
+                }
+
+                if (stack.Count < capacityHint)
+                {
+                    stack.EnsureCapacity(capacityHint);
+                }
+
+                return stack;
+            }
+
+            return new Stack<ulong>(capacityHint);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void ReturnUlongStack(Stack<ulong> stack)
+        {
+            List<Stack<ulong>>? pool = _ulongStackPool;
+            if (pool is null)
+            {
+                pool = new List<Stack<ulong>>(4);
+                _ulongStackPool = pool;
+            }
+
+            pool.Add(stack);
+        }
+
+        [ThreadStatic]
+        private static List<Dictionary<ulong, int>>? _ulongIntDictionaryPool;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Dictionary<ulong, int> RentUlongIntDictionary(int capacityHint)
+        {
+            List<Dictionary<ulong, int>>? pool = _ulongIntDictionaryPool;
+            if (pool is not null && pool.Count > 0)
+            {
+                int lastIndex = pool.Count - 1;
+                Dictionary<ulong, int> dictionary = pool[lastIndex];
+                pool.RemoveAt(lastIndex);
+                if (dictionary.Count > 0)
+                {
+                    dictionary.Clear();
+                }
+
+                if (dictionary.Count < capacityHint)
+                {
+                    dictionary.EnsureCapacity(capacityHint);
+                }
+
+                return dictionary;
+            }
+
+            return new Dictionary<ulong, int>(capacityHint);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void ReturnUlongIntDictionary(Dictionary<ulong, int> dictionary)
+        {
+            List<Dictionary<ulong, int>>? pool = _ulongIntDictionaryPool;
+            if (pool is null)
+            {
+                pool = new List<Dictionary<ulong, int>>(4);
+                _ulongIntDictionaryPool = pool;
+            }
+
+            pool.Add(dictionary);
+        }
+
+        [ThreadStatic]
         private static Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? _mersenneFactorCacheDictionary;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
