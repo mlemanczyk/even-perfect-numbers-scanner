@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -44,6 +45,11 @@ internal static class Program
     private static string? _resultsPrefix;
     private static readonly Optimized PrimeIterator = new();
     private static ulong _byDivisorStartPrime;
+
+    private static bool _testMode;
+    private static int _testTargetPrimeCount;
+    private static int _testProcessedPrimeCount;
+    private const string TestTimeFileName = "even_perfect_test_time.txt";
 
     [ThreadStatic]
     private static bool _lastCompositeP;
@@ -94,6 +100,10 @@ internal static class Program
         ulong parsedResidueMax = 0UL;
         ulong remainder = 0UL;
         bool startPrimeProvided = false;
+
+        _testMode = false;
+        _testTargetPrimeCount = 0;
+        _testProcessedPrimeCount = 0;
 
         // NTT backend selection (GPU): reference vs staged
         for (; argIndex < args.Length; argIndex++)
@@ -200,6 +210,10 @@ internal static class Program
             else if (arg.Equals("--workaround-mod", StringComparison.OrdinalIgnoreCase))
             {
                 useModuloWorkaround = true;
+            }
+            else if (arg.Equals("--test", StringComparison.OrdinalIgnoreCase))
+            {
+                _testMode = true;
             }
             else if (arg.Equals("--use-order", StringComparison.OrdinalIgnoreCase))
             {
@@ -391,6 +405,20 @@ internal static class Program
             {
                 continueCyclesGeneration = true;
             }
+        }
+
+        if (_testMode)
+        {
+            currentP = 31UL;
+            remainder = currentP % 6UL;
+            useDivisor = false;
+            useByDivisor = false;
+            useResidue = false;
+            useLucas = false;
+            filterFile = string.Empty;
+            maxPrimeLimit = UInt128.MaxValue;
+            maxPrimeConfigured = false;
+            startPrimeProvided = true;
         }
 
         if (useByDivisor)
@@ -620,7 +648,7 @@ internal static class Program
             File.WriteAllText(ResultsFileName, $"p,searchedMersenne,detailedCheck,passedAllTests{Environment.NewLine}");
         }
 
-        bool useFilter = !string.IsNullOrEmpty(filterFile);
+        bool useFilter = !_testMode && !string.IsNullOrEmpty(filterFile);
         HashSet<ulong> filter = [];
         List<ulong> byDivisorCandidates = [];
         ulong maxP = 0UL;
@@ -737,7 +765,19 @@ internal static class Program
             }
         }
 
+        if (_testMode)
+        {
+            _testTargetPrimeCount = Math.Max(1, threadCount) * 3;
+        }
+
         _state = ((long)currentP << 3) | (long)remainder;
+
+        Stopwatch? stopwatch = null;
+        if (_testMode)
+        {
+            stopwatch = Stopwatch.StartNew();
+        }
+
         Task[] tasks = new Task[threadCount];
 
         int taskIndex = 0;
@@ -807,8 +847,23 @@ internal static class Program
         }
 
         Task.WaitAll(tasks);
+
+        TimeSpan testElapsed = default;
+        bool reportTestTime = false;
+        if (stopwatch is not null)
+        {
+            stopwatch.Stop();
+            testElapsed = stopwatch.Elapsed;
+            reportTestTime = true;
+        }
+
         FlushBuffer();
         StringBuilderPool.Return(_outputBuilder!);
+
+        if (reportTestTime)
+        {
+            ReportTestTime(testElapsed);
+        }
     }
 
     private static List<ulong> LoadByDivisorCandidates(string candidateFile, UInt128 maxPrimeLimit, bool maxPrimeConfigured, out int skippedByLimit)
@@ -1054,6 +1109,21 @@ internal static class Program
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OnPrimeCandidateConfirmed()
+    {
+        if (!_testMode)
+        {
+            return;
+        }
+
+        int processed = Interlocked.Increment(ref _testProcessedPrimeCount);
+        if (processed == _testTargetPrimeCount)
+        {
+            Volatile.Write(ref _limitReached, true);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryAcquireConsoleSlot(bool primeCandidate, out bool primeFlag)
     {
         int consoleInterval = PerfectNumberConstants.ConsoleInterval;
@@ -1187,6 +1257,75 @@ internal static class Program
             builderToFlush.Clear();
             StringBuilderPool.Return(builderToFlush);
         }
+    }
+
+    private static void ReportTestTime(TimeSpan elapsed)
+    {
+        double elapsedSeconds = elapsed.TotalSeconds;
+        double elapsedMilliseconds = elapsed.TotalMilliseconds;
+        Console.WriteLine($"Test elapsed time: {elapsedSeconds:F3} s");
+
+        string filePath = GetTestTimeFilePath();
+        bool hasPrevious = TryReadTestTime(filePath, out double previousMilliseconds);
+        string elapsedText = elapsedMilliseconds.ToString("F3", CultureInfo.InvariantCulture);
+
+        if (!hasPrevious)
+        {
+            WriteTestTime(filePath, elapsedMilliseconds);
+            Console.WriteLine($"FIRST TIME: {elapsedText} ms");
+            return;
+        }
+
+        string previousText = previousMilliseconds.ToString("F3", CultureInfo.InvariantCulture);
+        if (elapsedMilliseconds < previousMilliseconds)
+        {
+            WriteTestTime(filePath, elapsedMilliseconds);
+            Console.WriteLine($"BETTER TIME: {elapsedText} ms (previous {previousText} ms)");
+        }
+        else
+        {
+            Console.WriteLine($"WORSE TIME: {elapsedText} ms (best {previousText} ms)");
+        }
+    }
+
+    private static string GetTestTimeFilePath()
+    {
+        if (string.IsNullOrEmpty(_resultsDir))
+        {
+            return TestTimeFileName;
+        }
+
+        return Path.Combine(_resultsDir!, TestTimeFileName);
+    }
+
+    private static bool TryReadTestTime(string filePath, out double milliseconds)
+    {
+        if (!File.Exists(filePath))
+        {
+            milliseconds = 0.0;
+            return false;
+        }
+
+        string content = File.ReadAllText(filePath).Trim();
+        if (content.Length == 0)
+        {
+            milliseconds = 0.0;
+            return false;
+        }
+
+        return double.TryParse(content, NumberStyles.Float, CultureInfo.InvariantCulture, out milliseconds);
+    }
+
+    private static void WriteTestTime(string filePath, double milliseconds)
+    {
+        string? directory = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        string formatted = milliseconds.ToString("F6", CultureInfo.InvariantCulture);
+        File.WriteAllText(filePath, formatted);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1419,6 +1558,8 @@ internal static class Program
                 _lastCompositeP = true;
                 return false;
             }
+
+            OnPrimeCandidateConfirmed();
         }
 
         searchedMersenne = true;
