@@ -852,44 +852,50 @@ internal static partial class PrimeOrderCalculator
 			compositeStack.Push(remaining);
 			pending.Clear();
 
-			long timestamp = 0L;
-			while (compositeStack.Count > 0)
+			bool pollardRhoDeadlineReached = Stopwatch.GetTimestamp() > deadlineTimestamp;
+			if (!pollardRhoDeadlineReached)
 			{
-				ulong composite = compositeStack.Pop();
-				// composite will never be smaller than 1 on the execution path
-				// if (composite <= 1UL)
-				// {
-				// 	continue;
-				// }
-
-				if (!cache.TryGetValue(composite, out bool isPrime))
+				while (compositeStack.Count > 0)
 				{
-					isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
-					cache.Add(composite, isPrime);
+					ulong composite = compositeStack.Pop();
+					// composite will never be smaller than 1 on the execution path
+					// if (composite <= 1UL)
+					// {
+					// 	continue;
+					// }
+
+					if (!cache.TryGetValue(composite, out bool isPrime))
+					{
+						isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
+						cache.Add(composite, isPrime);
+					}
+
+					if (isPrime)
+					{
+						AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
+						continue;
+					}
+
+					if (!TryPollardRho(composite, deadlineTimestamp, out ulong factor))
+					{
+						pending.Add(composite);
+						continue;
+					}
+
+					ulong quotient = composite / factor;
+					compositeStack.Push(factor);
+					compositeStack.Push(quotient);
 				}
 
-				if (isPrime)
-				{
-					AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
-					continue;
-				}
+				pollardRhoDeadlineReached = Stopwatch.GetTimestamp() > deadlineTimestamp;
+			}
 
-				timestamp = Stopwatch.GetTimestamp();
-				if (timestamp > deadlineTimestamp)
+			if (pollardRhoDeadlineReached)
+			{
+				while (compositeStack.Count > 0)
 				{
-					pending.Add(composite);
-					continue;
+					pending.Add(compositeStack.Pop());
 				}
-
-				if (!TryPollardRho(composite, deadlineTimestamp, out ulong factor))
-				{
-					pending.Add(composite);
-					continue;
-				}
-
-				ulong quotient = composite / factor;
-				compositeStack.Push(factor);
-				compositeStack.Push(quotient);
 			}
 		}
 
