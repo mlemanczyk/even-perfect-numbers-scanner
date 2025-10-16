@@ -904,7 +904,6 @@ internal static partial class PrimeOrderCalculator
 				cache.Add(composite, isPrime);
 			}
 
-
 			if (isPrime)
 			{
 				AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
