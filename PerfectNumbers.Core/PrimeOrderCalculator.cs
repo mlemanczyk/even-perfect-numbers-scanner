@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using PerfectNumbers.Core.Gpu;
+using System.Collections.Concurrent;
 
 namespace PerfectNumbers.Core;
 
@@ -785,8 +786,15 @@ internal static partial class PrimeOrderCalculator
 		return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
 	}
 
+	// [ThreadStatic]
+	private static ConcurrentDictionary<ulong, bool>? _primalityCache = [];
+
+	// [ThreadStatic]
+	// private static UInt128 _isPrimeHits;
+
 	private static PartialFactorResult PartialFactor(ulong value, in PrimeOrderSearchConfig config)
 	{
+		var primalityCache = _primalityCache;// ??= [];
 		if (value <= 1UL)
 		{
 			return PartialFactorResult.Empty;
@@ -857,7 +865,17 @@ internal static partial class PrimeOrderCalculator
 				// 	continue;
 				// }
 
-				bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
+				if (!primalityCache!.TryGetValue(composite, out bool isPrime))
+				{
+					// Console.WriteLine($"Checking composite {composite}");				
+					isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
+					_ = primalityCache.TryAdd(composite, isPrime);
+				}
+				// else
+				// {
+				// 	Console.WriteLine($"isPrimeHits = {++_isPrimeHits}");
+				// }
+				
 				if (isPrime)
 				{
 					AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
@@ -1143,7 +1161,7 @@ internal static partial class PrimeOrderCalculator
 				continue;
 			}
 
-			// TODO: Can we calculate this using residue steppers? We can try reusing modulo calculation for division result or the other way around
+			// TODO: Can we calculate this using residue stepping? We can try reusing modulo calculation for division result or the other way around
 			int exponent = 0;
 			do
 			{
