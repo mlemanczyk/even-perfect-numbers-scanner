@@ -1182,34 +1182,90 @@ internal static partial class PrimeOrderCalculator
 				continue;
 			}
 
-			// Derive the remainder from the quotient to avoid an extra division.
-			int exponent = 0;
-			while (true)
+			ulong primeValue = primeCandidate;
+			int exponent = ExtractSmallPrimeExponent(ref remainingLocal, primeValue);
+			if (exponent == 0)
 			{
-				ulong quotient = remainingLocal / primeCandidate;
-				ulong divisionRemainder = remainingLocal - (quotient * primeCandidate);
-				if (divisionRemainder != 0UL)
-				{
-					break;
-				}
-
-				remainingLocal = quotient;
-				exponent++;
+				continue;
 			}
 
-			//Console.WriteLine($"Exponent: {exponent}");
 			if (factorCount >= capacity)
 			{
 				throw new InvalidOperationException($"Capacity is smaller than factor count");
 			}
 
-			primeTargets[factorCount] = primeCandidate;
+			primeTargets[factorCount] = primeValue;
 			exponentTargets[factorCount] = exponent;
 			factorCount++;
 		}
 
 		remaining = remainingLocal;
 		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	// Unroll the initial divisions because small exponents dominate in practice.
+	private static int ExtractSmallPrimeExponent(ref ulong value, ulong primeValue)
+	{
+		ulong dividend = value;
+		ulong quotient = dividend / primeValue;
+		ulong remainder = dividend - (quotient * primeValue);
+		if (remainder != 0UL)
+		{
+			return 0;
+		}
+
+		dividend = quotient;
+		int exponent = 1;
+
+		quotient = dividend / primeValue;
+		remainder = dividend - (quotient * primeValue);
+		if (remainder != 0UL)
+		{
+			value = dividend;
+			return exponent;
+		}
+
+		dividend = quotient;
+		exponent++;
+
+		quotient = dividend / primeValue;
+		remainder = dividend - (quotient * primeValue);
+		if (remainder != 0UL)
+		{
+			value = dividend;
+			return exponent;
+		}
+
+		dividend = quotient;
+		exponent++;
+
+		quotient = dividend / primeValue;
+		remainder = dividend - (quotient * primeValue);
+		if (remainder != 0UL)
+		{
+			value = dividend;
+			return exponent;
+		}
+
+		dividend = quotient;
+		exponent++;
+
+		while (true)
+		{
+			quotient = dividend / primeValue;
+			remainder = dividend - (quotient * primeValue);
+			if (remainder != 0UL)
+			{
+				break;
+			}
+
+			dividend = quotient;
+			exponent++;
+		}
+
+		value = dividend;
+		return exponent;
 	}
 
 	private static ulong PopulateSmallPrimeFactorsCpu(ulong value, uint limit, Dictionary<ulong, int> counts)
