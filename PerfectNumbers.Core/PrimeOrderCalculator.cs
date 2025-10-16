@@ -906,7 +906,12 @@ internal static partial class PrimeOrderCalculator
 		for (int i = 0; i < pendingCount; i++)
 		{
 			ulong composite = pending[i];
-			bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
+			if (!primalityCache!.TryGetValue(composite, out bool isPrime))
+			{
+				// Console.WriteLine($"Checking composite {composite}");				
+				isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
+				_ = primalityCache.TryAdd(composite, isPrime);
+			}
 			if (isPrime)
 			{
 				AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
