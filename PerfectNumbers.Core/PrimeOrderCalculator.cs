@@ -5,8 +5,8 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using PerfectNumbers.Core.Gpu;
-using System.Collections.Concurrent;
 
 namespace PerfectNumbers.Core;
 
@@ -787,14 +787,66 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	// [ThreadStatic]
-	private static ConcurrentDictionary<ulong, bool>? _primalityCache = [];
+	private static Dictionary<ulong, bool>? _primalityCache;
+	private static readonly ReaderWriterLockSlim _primalityCacheLock = new(LockRecursionPolicy.NoRecursion);
 
 	// [ThreadStatic]
 	// private static UInt128 _isPrimeHits;
 
+	private static bool TryGetCachedPrimality(ulong value, out bool isPrime)
+	{
+		_primalityCacheLock.EnterReadLock();
+		try
+		{
+			Dictionary<ulong, bool>? cache = _primalityCache;
+			if (cache is null)
+			{
+				isPrime = default;
+				return false;
+			}
+
+			return cache.TryGetValue(value, out isPrime);
+		}
+		finally
+		{
+			_primalityCacheLock.ExitReadLock();
+		}
+	}
+
+	private static void CachePrimalityResult(ulong value, bool isPrime)
+	{
+		_primalityCacheLock.EnterWriteLock();
+		try
+		{
+			Dictionary<ulong, bool>? cache = _primalityCache;
+			if (cache is null)
+			{
+				cache = new Dictionary<ulong, bool>();
+				_primalityCache = cache;
+			}
+
+			cache[value] = isPrime;
+		}
+		finally
+		{
+			_primalityCacheLock.ExitWriteLock();
+		}
+	}
+
+	private static bool GetOrComputePrimality(ulong value)
+	{
+		if (TryGetCachedPrimality(value, out bool isPrime))
+		{
+			return isPrime;
+		}
+
+		isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(value);
+		CachePrimalityResult(value, isPrime);
+		return isPrime;
+	}
+
 	private static PartialFactorResult PartialFactor(ulong value, in PrimeOrderSearchConfig config)
 	{
-		var primalityCache = _primalityCache;// ??= [];
 		if (value <= 1UL)
 		{
 			return PartialFactorResult.Empty;
@@ -865,17 +917,8 @@ internal static partial class PrimeOrderCalculator
 				// 	continue;
 				// }
 
-				if (!primalityCache!.TryGetValue(composite, out bool isPrime))
-				{
-					// Console.WriteLine($"Checking composite {composite}");				
-					isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
-					_ = primalityCache.TryAdd(composite, isPrime);
-				}
-				// else
-				// {
-				// 	Console.WriteLine($"isPrimeHits = {++_isPrimeHits}");
-				// }
-				
+				bool isPrime = GetOrComputePrimality(composite);
+
 				if (isPrime)
 				{
 					AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
@@ -906,12 +949,8 @@ internal static partial class PrimeOrderCalculator
 		for (int i = 0; i < pendingCount; i++)
 		{
 			ulong composite = pending[i];
-			if (!primalityCache!.TryGetValue(composite, out bool isPrime))
-			{
-				// Console.WriteLine($"Checking composite {composite}");				
-				isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
-				_ = primalityCache.TryAdd(composite, isPrime);
-			}
+			bool isPrime = GetOrComputePrimality(composite);
+
 			if (isPrime)
 			{
 				AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
@@ -1166,14 +1205,19 @@ internal static partial class PrimeOrderCalculator
 				continue;
 			}
 
-			// TODO: Can we calculate this using residue stepping? We can try reusing modulo calculation for division result or the other way around
+			// Use DivRem to reuse a single division for the quotient and remainder.
 			int exponent = 0;
-			do
+			while (true)
 			{
-				remainingLocal /= primeCandidate;
+				ulong quotient = Math.DivRem(remainingLocal, primeCandidate, out ulong divisionRemainder);
+				if (divisionRemainder != 0UL)
+				{
+					break;
+				}
+
+				remainingLocal = quotient;
 				exponent++;
 			}
-			while ((remainingLocal % primeCandidate) == 0UL);
 
 			if (factorCount >= capacity)
 			{
