@@ -1205,11 +1205,12 @@ internal static partial class PrimeOrderCalculator
 				continue;
 			}
 
-			// Use DivRem to reuse a single division for the quotient and remainder.
+			// Derive the remainder from the quotient to avoid an extra division.
 			int exponent = 0;
 			while (true)
 			{
-				ulong quotient = Math.DivRem(remainingLocal, primeCandidate, out ulong divisionRemainder);
+				ulong quotient = remainingLocal / primeCandidate;
+				ulong divisionRemainder = remainingLocal - (quotient * primeCandidate);
 				if (divisionRemainder != 0UL)
 				{
 					break;
