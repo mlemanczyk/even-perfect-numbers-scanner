@@ -346,7 +346,8 @@ public static class ULongExtensions
         ulong result = divisor.MontgomeryOne;
         ulong nPrime = divisor.NPrime;
 
-        Span<ulong> oddPowers = stackalloc ulong[oddPowerCount];
+        ulong[] oddPowersArray = ThreadStaticPools.UlongPool.Rent(oddPowerCount);
+        Span<ulong> oddPowers = oddPowersArray.AsSpan(0, oddPowerCount);
         InitializeMontgomeryOddPowersCpu(divisor, modulus, nPrime, oddPowers);
 
         int index = bitLength - 1;
@@ -385,13 +386,14 @@ public static class ULongExtensions
             index = windowStart - 1;
         }
 
+        ThreadStaticPools.UlongPool.Return(oddPowersArray);
 
-        if (keepMontgomery)
+        if (!keepMontgomery)
         {
-            return result;
+            result = result.MontgomeryMultiply(1UL, modulus, nPrime);
         }
 
-        return result.MontgomeryMultiply(1UL, modulus, nPrime);
+        return result;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
