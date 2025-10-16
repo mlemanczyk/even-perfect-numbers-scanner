@@ -786,41 +786,8 @@ internal static partial class PrimeOrderCalculator
 		return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
 	}
 
-	// [ThreadStatic]
-	private static readonly Dictionary<ulong, bool> _primalityCache = [];
-	private static readonly ReaderWriterLockSlim _primalityCacheLock = new(LockRecursionPolicy.NoRecursion);
-
-	// [ThreadStatic]
-	// private static UInt128 _isPrimeHits;
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static bool TryGetCachedPrimality(ulong value, out bool isPrime)
-	{
-		_primalityCacheLock.EnterReadLock();
-		bool result = _primalityCache.TryGetValue(value, out isPrime);
-		_primalityCacheLock.ExitReadLock();
-		return result;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void CachePrimalityResult(ulong value, bool isPrime)
-	{
-		_primalityCacheLock.EnterWriteLock();
-		_primalityCache[value] = isPrime;
-		_primalityCacheLock.ExitWriteLock();
-	}
-
-	private static bool GetOrComputePrimality(ulong value)
-	{
-		if (TryGetCachedPrimality(value, out bool isPrime))
-		{
-			return isPrime;
-		}
-
-		isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(value);
-		CachePrimalityResult(value, isPrime);
-		return isPrime;
-	}
+	[ThreadStatic]
+	private static Dictionary<ulong, bool>? _primalityCache;
 
 	private static PartialFactorResult PartialFactor(ulong value, in PrimeOrderSearchConfig config)
 	{
@@ -858,6 +825,7 @@ internal static partial class PrimeOrderCalculator
 		List<ulong> pending = ThreadStaticPools.RentUlongList(2);
 		Stack<ulong>? compositeStack = null;
 		PartialFactorResult result;
+		var cache = _primalityCache ??= [];
 
 		if (!gpuFactored)
 		{
@@ -894,7 +862,11 @@ internal static partial class PrimeOrderCalculator
 				// 	continue;
 				// }
 
-				bool isPrime = GetOrComputePrimality(composite);
+				if (!cache.TryGetValue(composite, out bool isPrime))
+				{
+					isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
+					cache.Add(composite, isPrime);
+				}
 
 				if (isPrime)
 				{
@@ -926,7 +898,12 @@ internal static partial class PrimeOrderCalculator
 		for (int i = 0; i < pendingCount; i++)
 		{
 			ulong composite = pending[i];
-			bool isPrime = GetOrComputePrimality(composite);
+			if (!cache.TryGetValue(composite, out bool isPrime))
+			{
+				isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
+				cache.Add(composite, isPrime);
+			}
+
 
 			if (isPrime)
 			{
