@@ -799,8 +799,8 @@ internal static partial class PrimeOrderCalculator
                         gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(value, limit, primeSlots, exponentSlots, out factorCount, out remaining, out _);
                 }
 
-                Span<ulong> pendingStorage = stackalloc ulong[4];
-                PendingBuffer pending = new PendingBuffer(pendingStorage);
+                List<ulong> pending = ThreadStaticPools.RentUlongList(2);
+                Stack<ulong>? compositeStack = null;
                 PartialFactorResult result;
 
                 if (!gpuFactored)
@@ -822,10 +822,8 @@ internal static partial class PrimeOrderCalculator
 
                 if (config.PollardRhoMilliseconds > 0 && pending.Count > 0)
                 {
-                        Span<ulong> compositeStorage = stackalloc ulong[8];
-                        CompositeStack compositeStack = new CompositeStack(compositeStorage);
-
                         long deadlineTimestamp = CreateDeadlineTimestamp(config.PollardRhoMilliseconds);
+                        compositeStack = ThreadStaticPools.RentUlongStack(Math.Max(pending.Count * 2, 4));
                         compositeStack.Push(remaining);
                         pending.Clear();
 
@@ -862,16 +860,13 @@ internal static partial class PrimeOrderCalculator
                                 compositeStack.Push(factor);
                                 compositeStack.Push(quotient);
                         }
-
-                        compositeStack.Dispose();
                 }
 
                 ulong cofactor = 1UL;
-                ReadOnlySpan<ulong> pendingSpan = pending.AsSpan();
-                int pendingCount = pendingSpan.Length;
+                int pendingCount = pending.Count;
                 for (int i = 0; i < pendingCount; i++)
                 {
-                        ulong composite = pendingSpan[i];
+                        ulong composite = pending[i];
                         bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
                         if (isPrime)
                         {
@@ -961,181 +956,15 @@ internal static partial class PrimeOrderCalculator
                         ThreadStaticPools.ReturnUlongIntDictionary(counts);
                 }
 
-                pending.Dispose();
+                if (compositeStack is not null)
+                {
+                        compositeStack.Clear();
+                        ThreadStaticPools.ReturnUlongStack(compositeStack);
+                }
+
+                pending.Clear();
+                ThreadStaticPools.ReturnUlongList(pending);
                 return result;
-        }
-
-	private ref struct PendingBuffer
-        {
-                private Span<ulong> _stack;
-                private ulong[]? _pooled;
-                private int _count;
-
-                public PendingBuffer(Span<ulong> stack)
-                {
-                        _stack = stack;
-                        _pooled = null;
-                        _count = 0;
-                }
-
-                public int Count => _count;
-
-                public void Add(ulong value)
-                {
-                        if (_pooled is null)
-                        {
-                                if (_count < _stack.Length)
-                                {
-                                        _stack[_count] = value;
-                                        _count++;
-                                        return;
-                                }
-
-                                int initialCapacity = _stack.Length == 0 ? 4 : _stack.Length * 2;
-                                ulong[] newArray = ArrayPool<ulong>.Shared.Rent(initialCapacity);
-                                for (int i = 0; i < _count; i++)
-                                {
-                                        newArray[i] = _stack[i];
-                                }
-
-                                _pooled = newArray;
-                        }
-
-                        EnsurePooledCapacity(_count + 1);
-                        _pooled![_count] = value;
-                        _count++;
-                }
-
-                private void EnsurePooledCapacity(int required)
-                {
-                        ulong[] array = _pooled!;
-                        if (required <= array.Length)
-                        {
-                                return;
-                        }
-
-                        int newCapacity = array.Length * 2;
-                        if (newCapacity < required)
-                        {
-                                newCapacity = required;
-                        }
-
-                        ulong[] newArray = ArrayPool<ulong>.Shared.Rent(newCapacity);
-                        Array.Copy(array, 0, newArray, 0, _count);
-                        ArrayPool<ulong>.Shared.Return(array, clearArray: false);
-                        _pooled = newArray;
-                }
-
-                public void Clear()
-                {
-                        _count = 0;
-                }
-
-                public ReadOnlySpan<ulong> AsSpan()
-                {
-                        if (_pooled is null)
-                        {
-                                return _stack.Slice(0, _count);
-                        }
-
-                        return new ReadOnlySpan<ulong>(_pooled, 0, _count);
-                }
-
-                public void Dispose()
-                {
-                        if (_pooled is not null)
-                        {
-                                ArrayPool<ulong>.Shared.Return(_pooled, clearArray: false);
-                                _pooled = null;
-                        }
-
-                        _count = 0;
-                }
-        }
-
-	private ref struct CompositeStack
-        {
-                private Span<ulong> _stack;
-                private ulong[]? _pooled;
-                private int _count;
-
-                public CompositeStack(Span<ulong> stack)
-                {
-                        _stack = stack;
-                        _pooled = null;
-                        _count = 0;
-                }
-
-                public int Count => _count;
-
-                public void Push(ulong value)
-                {
-                        if (_pooled is null)
-                        {
-                                if (_count < _stack.Length)
-                                {
-                                        _stack[_count] = value;
-                                        _count++;
-                                        return;
-                                }
-
-                                int initialCapacity = _stack.Length == 0 ? 4 : _stack.Length * 2;
-                                ulong[] newArray = ArrayPool<ulong>.Shared.Rent(initialCapacity);
-                                for (int i = 0; i < _count; i++)
-                                {
-                                        newArray[i] = _stack[i];
-                                }
-
-                                _pooled = newArray;
-                        }
-
-                        EnsurePooledCapacity(_count + 1);
-                        _pooled![_count] = value;
-                        _count++;
-                }
-
-                private void EnsurePooledCapacity(int required)
-                {
-                        ulong[] array = _pooled!;
-                        if (required <= array.Length)
-                        {
-                                return;
-                        }
-
-                        int newCapacity = array.Length * 2;
-                        if (newCapacity < required)
-                        {
-                                newCapacity = required;
-                        }
-
-                        ulong[] newArray = ArrayPool<ulong>.Shared.Rent(newCapacity);
-                        Array.Copy(array, 0, newArray, 0, _count);
-                        ArrayPool<ulong>.Shared.Return(array, clearArray: false);
-                        _pooled = newArray;
-                }
-
-                public ulong Pop()
-                {
-                        int index = _count - 1;
-                        _count = index;
-                        if (_pooled is null)
-                        {
-                                return _stack[index];
-                        }
-
-                        return _pooled[index];
-                }
-
-                public void Dispose()
-                {
-                        if (_pooled is not null)
-                        {
-                                ArrayPool<ulong>.Shared.Return(_pooled, clearArray: false);
-                                _pooled = null;
-                        }
-
-                        _count = 0;
-                }
         }
 
         private const int GpuSmallPrimeFactorSlots = 64;
