@@ -729,13 +729,39 @@ internal static partial class PrimeOrderCalculator
 			// We don't need to worry about leftovers, because we always use indexes within the calculated counts
 			// primeSlots.Clear();
 			// exponentSlots.Clear();
-			if (!TryPopulateSmallPrimeFactorsCpu(value, limit, primeSlots, exponentSlots, out factorCount, out remaining))
+
+			counts = ThreadStaticPools.RentUlongIntDictionary(Math.Max(FactorSlotCount, 8));
+			counts.Clear();
+
+			bool gpuPopulated = TryPopulateSmallPrimeFactorsGpu(value, limit, counts, out remaining);
+			if (!gpuPopulated)
 			{
-				useDictionary = true;
-				counts = ThreadStaticPools.RentUlongIntDictionary(Math.Max(factorCount, 8));
+				counts.Clear();
 				remaining = PopulateSmallPrimeFactorsCpu(value, limit, counts);
 			}
+
+			int dictionaryCount = counts.Count;
+			if (dictionaryCount <= FactorSlotCount)
+			{
+				int copyIndex = 0;
+				foreach (KeyValuePair<ulong, int> entry in counts)
+				{
+					primeSlots[copyIndex] = entry.Key;
+					exponentSlots[copyIndex] = entry.Value;
+					copyIndex++;
+				}
+
+				factorCount = copyIndex;
+				ThreadStaticPools.ReturnUlongIntDictionary(counts);
+				counts = null;
+			}
+			else
+			{
+				useDictionary = true;
+				factorCount = dictionaryCount;
+			}
 		}
+
 
 		if (remaining > 1UL)
 		{
