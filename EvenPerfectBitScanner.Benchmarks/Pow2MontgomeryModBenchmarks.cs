@@ -26,20 +26,17 @@ public class Pow2MontgomeryModBenchmarks
     private const ulong OneShiftedLeft63 = 1UL << 63;
     private const long OneShiftedLeft60 = 1L << 60;
 
-    private readonly MontgomeryDivisorData[] _smallDivisors = new MontgomeryDivisorData[SampleCount];
-    private readonly MontgomeryDivisorData[] _largeDivisors = new MontgomeryDivisorData[SampleCount];
-    private readonly MontgomeryDivisorData[] _veryLargeDivisors = new MontgomeryDivisorData[SampleCount];
-    private readonly UInt128[] _wideModuli = new UInt128[SampleCount];
-    private readonly ulong[] _smallExponents = new ulong[SampleCount];
-    private readonly ulong[] _largeExponents = new ulong[SampleCount];
-    private readonly ulong[] _veryLargeExponents = new ulong[SampleCount];
-    private readonly ulong[] _smallCycles = new ulong[SampleCount];
-    private readonly ulong[] _largeCycles = new ulong[SampleCount];
-    private readonly ulong[] _veryLargeCycles = new ulong[SampleCount];
-    private readonly UInt128[] _wideCycles = new UInt128[SampleCount];
-
-    private readonly Random _random = new(13);
-    private readonly Random _heuristicRandom = new(113);
+    private MontgomeryDivisorData[] _smallDivisors = Array.Empty<MontgomeryDivisorData>();
+    private MontgomeryDivisorData[] _largeDivisors = Array.Empty<MontgomeryDivisorData>();
+    private MontgomeryDivisorData[] _veryLargeDivisors = Array.Empty<MontgomeryDivisorData>();
+    private UInt128[] _wideModuli = Array.Empty<UInt128>();
+    private ulong[] _smallExponents = Array.Empty<ulong>();
+    private ulong[] _largeExponents = Array.Empty<ulong>();
+    private ulong[] _veryLargeExponents = Array.Empty<ulong>();
+    private ulong[] _smallCycles = Array.Empty<ulong>();
+    private ulong[] _largeCycles = Array.Empty<ulong>();
+    private ulong[] _veryLargeCycles = Array.Empty<ulong>();
+    private UInt128[] _wideCycles = Array.Empty<UInt128>();
     private ulong? _previousPrimeOrder;
     private UInt128? _previousWidePrimeOrder;
 
@@ -56,34 +53,18 @@ public class Pow2MontgomeryModBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        for (int i = 0; i < SampleCount; i++)
-        {
-#if DEBUG
-            Console.WriteLine($"Generating sample {i}");
-#endif
-            ulong smallModulus = NextSmallOddModulus();
-            _smallDivisors[i] = CreateMontgomeryDivisorData(smallModulus);
-            _smallExponents[i] = NextSmallExponent();
-            _smallCycles[i] = MersenneDivisorCycles.CalculateCycleLength(smallModulus, MontgomeryDivisorData.FromModulus(smallModulus));
-
-            (ulong largeModulus, ulong largeCycle) = NextLargeModulusAndCycle();
-            _largeDivisors[i] = CreateMontgomeryDivisorData(largeModulus);
-            _largeExponents[i] = NextLargeExponent();
-            _largeCycles[i] = largeCycle;
-
-            ulong veryLargeModulus = NextVeryLargeOddModulus();
-            _veryLargeDivisors[i] = CreateMontgomeryDivisorData(veryLargeModulus);
-            _veryLargeExponents[i] = NextVeryLargeExponent();
-#if DEBUG
-            Console.WriteLine($"Calculating cycle length {veryLargeModulus}");
-#endif
-            _veryLargeCycles[i] = CalculateCycleLengthWithHeuristics(veryLargeModulus);
-
-            Console.WriteLine($"Generating wide sample {i}");
-            UInt128 wideModulus = NextWideOddModulus();
-            _wideModuli[i] = wideModulus;
-            _wideCycles[i] = CalculateCycleLengthWithHeuristics(wideModulus);
-        }
+        SampleCollections cache = SampleCollectionsProvider.Instance;
+        _smallDivisors = cache.SmallDivisors;
+        _largeDivisors = cache.LargeDivisors;
+        _veryLargeDivisors = cache.VeryLargeDivisors;
+        _wideModuli = cache.WideModuli;
+        _smallExponents = cache.SmallExponents;
+        _largeExponents = cache.LargeExponents;
+        _veryLargeExponents = cache.VeryLargeExponents;
+        _smallCycles = cache.SmallCycles;
+        _largeCycles = cache.LargeCycles;
+        _veryLargeCycles = cache.VeryLargeCycles;
+        _wideCycles = cache.WideCycles;
     }
 
     /// <summary>
@@ -230,7 +211,6 @@ public class Pow2MontgomeryModBenchmarks
         for (int i = 0; i < SampleCount; i++)
         {
             UInt128 cycle = CalculateCycleLengthWithHeuristics(_wideModuli[i]);
-            _wideCycles[i] = cycle;
             checksum ^= cycle;
         }
 
@@ -363,50 +343,199 @@ public class Pow2MontgomeryModBenchmarks
         }
     }
 
-    private ulong NextSmallExponent() => (ulong)_random.NextInt64(1L, 1_000_000L);
-
-    private ulong NextLargeExponent() => (ulong)_random.NextInt64(OneShiftedLeft60, long.MaxValue);
-
-    private ulong NextVeryLargeExponent()
+    private sealed class SampleCollections
     {
-        Span<byte> buffer = stackalloc byte[8];
-        _heuristicRandom.NextBytes(buffer);
-        ulong value = checked(BinaryPrimitives.ReadUInt64LittleEndian(buffer) | OneShiftedLeft63);
-        return value;
+        public SampleCollections(
+            MontgomeryDivisorData[] smallDivisors,
+            MontgomeryDivisorData[] largeDivisors,
+            MontgomeryDivisorData[] veryLargeDivisors,
+            UInt128[] wideModuli,
+            ulong[] smallExponents,
+            ulong[] largeExponents,
+            ulong[] veryLargeExponents,
+            ulong[] smallCycles,
+            ulong[] largeCycles,
+            ulong[] veryLargeCycles,
+            UInt128[] wideCycles)
+        {
+            SmallDivisors = smallDivisors;
+            LargeDivisors = largeDivisors;
+            VeryLargeDivisors = veryLargeDivisors;
+            WideModuli = wideModuli;
+            SmallExponents = smallExponents;
+            LargeExponents = largeExponents;
+            VeryLargeExponents = veryLargeExponents;
+            SmallCycles = smallCycles;
+            LargeCycles = largeCycles;
+            VeryLargeCycles = veryLargeCycles;
+            WideCycles = wideCycles;
+        }
+
+        public MontgomeryDivisorData[] SmallDivisors { get; }
+        public MontgomeryDivisorData[] LargeDivisors { get; }
+        public MontgomeryDivisorData[] VeryLargeDivisors { get; }
+        public UInt128[] WideModuli { get; }
+        public ulong[] SmallExponents { get; }
+        public ulong[] LargeExponents { get; }
+        public ulong[] VeryLargeExponents { get; }
+        public ulong[] SmallCycles { get; }
+        public ulong[] LargeCycles { get; }
+        public ulong[] VeryLargeCycles { get; }
+        public UInt128[] WideCycles { get; }
     }
 
-    private ulong NextSmallOddModulus()
+    private static class SampleCollectionsProvider
     {
-        ulong value = (ulong)_random.NextInt64(3L, 1_000_000L);
-        return value | 1UL;
-    }
+        private static readonly Lazy<SampleCollections> Cache = new(Create);
 
-    private (ulong modulus, ulong cycleLength) NextLargeModulusAndCycle()
-    {
-        int bitLength = _random.Next(48, 64);
-        ulong modulus = (1UL << bitLength) - 1UL;
-        return (modulus, (ulong)bitLength);
-    }
+        public static SampleCollections Instance => Cache.Value;
 
-    private ulong NextVeryLargeOddModulus()
-    {
-        Span<byte> buffer = stackalloc byte[8];
-        _heuristicRandom.NextBytes(buffer);
-        ulong value = BinaryPrimitives.ReadUInt64LittleEndian(buffer) | OneShiftedLeft63 | 1UL;
-        return value;
-    }
+        private static SampleCollections Create()
+        {
+            Random random = new(13);
+            Random heuristicRandom = new(113);
 
-    private UInt128 NextWideOddModulus()
-    {
-        Span<byte> buffer = stackalloc byte[16];
-        _heuristicRandom.NextBytes(buffer);
+            var smallDivisors = new MontgomeryDivisorData[SampleCount];
+            var largeDivisors = new MontgomeryDivisorData[SampleCount];
+            var veryLargeDivisors = new MontgomeryDivisorData[SampleCount];
+            var wideModuli = new UInt128[SampleCount];
+            var smallExponents = new ulong[SampleCount];
+            var largeExponents = new ulong[SampleCount];
+            var veryLargeExponents = new ulong[SampleCount];
+            var smallCycles = new ulong[SampleCount];
+            var largeCycles = new ulong[SampleCount];
+            var veryLargeCycles = new ulong[SampleCount];
+            var wideCycles = new UInt128[SampleCount];
 
-        ulong low = BinaryPrimitives.ReadUInt64LittleEndian(buffer);
-        Span<byte> highSlice = buffer.Slice(8, 8);
-        ulong high = BinaryPrimitives.ReadUInt64LittleEndian(highSlice) | (1UL << 63);
+            ulong? previousPrimeOrder = null;
+            UInt128? previousWidePrimeOrder = null;
 
-        UInt128 value = ((UInt128)high << 64) | low;
-        return value | UInt128.One;
+            for (int i = 0; i < SampleCount; i++)
+            {
+                ulong smallModulus = NextSmallOddModulus(random);
+                smallDivisors[i] = CreateMontgomeryDivisorData(smallModulus);
+                smallExponents[i] = NextSmallExponent(random);
+                smallCycles[i] = MersenneDivisorCycles.CalculateCycleLength(smallModulus, MontgomeryDivisorData.FromModulus(smallModulus));
+
+                (ulong largeModulus, ulong largeCycle) = NextLargeModulusAndCycle(random);
+                largeDivisors[i] = CreateMontgomeryDivisorData(largeModulus);
+                largeExponents[i] = NextLargeExponent(random);
+                largeCycles[i] = largeCycle;
+
+                ulong veryLargeModulus = NextVeryLargeOddModulus(heuristicRandom);
+                veryLargeDivisors[i] = CreateMontgomeryDivisorData(veryLargeModulus);
+                veryLargeExponents[i] = NextVeryLargeExponent(heuristicRandom);
+                veryLargeCycles[i] = CalculateCycleLengthWithHeuristics(veryLargeModulus, ref previousPrimeOrder);
+
+                UInt128 wideModulus = NextWideOddModulus(heuristicRandom);
+                wideModuli[i] = wideModulus;
+                wideCycles[i] = CalculateCycleLengthWithHeuristics(wideModulus, ref previousWidePrimeOrder);
+            }
+
+            return new SampleCollections(
+                smallDivisors,
+                largeDivisors,
+                veryLargeDivisors,
+                wideModuli,
+                smallExponents,
+                largeExponents,
+                veryLargeExponents,
+                smallCycles,
+                largeCycles,
+                veryLargeCycles,
+                wideCycles);
+        }
+
+        private static ulong NextSmallExponent(Random random) => (ulong)random.NextInt64(1L, 1_000_000L);
+
+        private static ulong NextLargeExponent(Random random) => (ulong)random.NextInt64(OneShiftedLeft60, long.MaxValue);
+
+        private static ulong NextVeryLargeExponent(Random random)
+        {
+            Span<byte> buffer = stackalloc byte[8];
+            random.NextBytes(buffer);
+            ulong value = checked(BinaryPrimitives.ReadUInt64LittleEndian(buffer) | OneShiftedLeft63);
+            return value;
+        }
+
+        private static ulong NextSmallOddModulus(Random random)
+        {
+            ulong value = (ulong)random.NextInt64(3L, 1_000_000L);
+            return value | 1UL;
+        }
+
+        private static (ulong Modulus, ulong CycleLength) NextLargeModulusAndCycle(Random random)
+        {
+            int bitLength = random.Next(48, 64);
+            ulong modulus = (1UL << bitLength) - 1UL;
+            return (modulus, (ulong)bitLength);
+        }
+
+        private static ulong NextVeryLargeOddModulus(Random random)
+        {
+            Span<byte> buffer = stackalloc byte[8];
+            random.NextBytes(buffer);
+            ulong value = BinaryPrimitives.ReadUInt64LittleEndian(buffer) | OneShiftedLeft63 | 1UL;
+            return value;
+        }
+
+        private static UInt128 NextWideOddModulus(Random random)
+        {
+            Span<byte> buffer = stackalloc byte[16];
+            random.NextBytes(buffer);
+            ulong low = BinaryPrimitives.ReadUInt64LittleEndian(buffer);
+            ulong high = BinaryPrimitives.ReadUInt64LittleEndian(buffer[8..]) | (1UL << 63);
+            UInt128 value = ((UInt128)high << 64) | low;
+            return value | UInt128.One;
+        }
+
+        private static ulong CalculateCycleLengthWithHeuristics(ulong modulus, ref ulong? previousPrimeOrder)
+        {
+            MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(modulus);
+            if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+            {
+                return MersenneDivisorCycles.CalculateCycleLength(modulus, divisorData);
+            }
+
+            ulong order = PrimeOrderCalculator.Calculate(
+                modulus,
+                previousPrimeOrder,
+                divisorData,
+                PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
+                PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
+
+            if (order != 0UL)
+            {
+                previousPrimeOrder = order;
+                return order;
+            }
+
+            previousPrimeOrder = null;
+            return MersenneDivisorCycles.CalculateCycleLength(modulus, divisorData);
+        }
+
+        private static UInt128 CalculateCycleLengthWithHeuristics(UInt128 modulus, ref UInt128? previousWidePrimeOrder)
+        {
+            if (modulus <= UInt128.One || (modulus & UInt128.One) == UInt128.Zero)
+            {
+                return MersenneDivisorCycles.GetCycle(modulus);
+            }
+
+            UInt128 order = PrimeOrderCalculator.Calculate(
+                modulus,
+                previousWidePrimeOrder,
+                PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
+                PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
+
+            if (order != UInt128.Zero)
+            {
+                previousWidePrimeOrder = order;
+                return order;
+            }
+
+            previousWidePrimeOrder = null;
+            return MersenneDivisorCycles.GetCycle(modulus);
+        }
     }
 
     private static MontgomeryDivisorData CreateMontgomeryDivisorData(ulong modulus)
