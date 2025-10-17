@@ -204,9 +204,10 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                             prime,
                             divisorData,
                             factorCache,
-                            out ulong computedCycle) || computedCycle == 0UL)
+                            out ulong computedCycle,
+                            out bool primeOrderFailed) || computedCycle == 0UL)
                     {
-                        divisorCycle = cycleCache.GetCycleLength(candidate);
+                        divisorCycle = cycleCache.GetCycleLength(candidate, skipPrimeOrderHeuristic: primeOrderFailed);
                     }
                     else
                     {

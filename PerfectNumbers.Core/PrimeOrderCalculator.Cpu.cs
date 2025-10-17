@@ -56,17 +56,19 @@ internal static partial class PrimeOrderCalculator
 		ulong candidateOrder = InitializeStartingOrderCpu(prime, phi, divisorData);
 		candidateOrder = ExponentLoweringCpu(candidateOrder, prime, phiFactors, divisorData);
 
-		if (TryConfirmOrderCpu(prime, candidateOrder, divisorData, config))
+		PartialFactorResult? orderFactors;
+		if (TryConfirmOrderCpu(prime, candidateOrder, divisorData, config, out orderFactors))
 		{
 			return candidateOrder;
 		}
 
 		if (config.Mode == PrimeOrderMode.Strict)
 		{
+			orderFactors?.Dispose();
 			return CalculateByFactorizationCpu(prime, divisorData);
 		}
 
-		if (TryHeuristicFinishCpu(prime, candidateOrder, previousOrder, divisorData, config, phiFactors, out ulong order))
+		if (TryHeuristicFinishCpu(prime, candidateOrder, previousOrder, divisorData, config, phiFactors, orderFactors, out ulong order))
 		{
 			return order;
 		}
@@ -160,80 +162,90 @@ internal static partial class PrimeOrderCalculator
 		return order;
 	}
 
-	private static bool TryConfirmOrderCpu(ulong prime, ulong order, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
+	private static bool TryConfirmOrderCpu(
+		ulong prime,
+		ulong order,
+		in MontgomeryDivisorData divisorData,
+		in PrimeOrderSearchConfig config,
+		out PartialFactorResult? reusableFactorization)
 	{
+		reusableFactorization = null;
+
 		if (order == 0UL)
 		{
 			return false;
 		}
 
-		// Calculating `a^order ≡ 1 (mod p)` is a prerequisite for `order` being the actual order of 2 modulo `p`.
-		// DebugLog("Verifying a^order ≡ 1 (mod p)");
 		if (!Pow2EqualsOneCpu(order, prime, divisorData))
 		{
 			return false;
 		}
 
-		// DebugLog("Partial factoring order");
-
-		// TODO: Do we do partial factoring of order multiple times?
 		PartialFactorResult factorization = PartialFactor(order, config);
-		try
+		if (factorization.Factors is null)
 		{
-			if (factorization.Factors is null)
+			factorization.Dispose();
+			return false;
+		}
+
+		if (!factorization.FullyFactored)
+		{
+			if (factorization.Cofactor <= 1UL)
 			{
+				factorization.Dispose();
 				return false;
 			}
 
-			if (!factorization.FullyFactored)
+			bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factorization.Cofactor);
+			if (!isPrime)
 			{
-				if (factorization.Cofactor <= 1UL)
-				{
-					return false;
-				}
-
-				// DebugLog("Cofactor > 1. Testing primality of cofactor");
-				bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factorization.Cofactor);
-				// bool isPrime = PrimeTester.IsPrimeInternal(factorization.Cofactor, CancellationToken.None);
-				if (!isPrime)
-				{
-					return false;
-				}
-
-				// DebugLog("Adding cofactor as prime factor");
-				PartialFactorResult extended = factorization.WithAdditionalPrime(factorization.Cofactor);
 				factorization.Dispose();
-				factorization = extended;
+				return false;
 			}
 
-			ReadOnlySpan<FactorEntry> span = factorization.Factors;
-			// DebugLog("Verifying prime-power reductions");
-			int length = factorization.Count;
-			for (int i = 0; i < length; i++)
-			{
-				ulong primeFactor = span[i].Value;
-				ulong reduced = order;
-				for (int iteration = 0; iteration < span[i].Exponent; iteration++)
-				{
-					if ((reduced % primeFactor) != 0UL)
-					{
-						break;
-					}
+			PartialFactorResult extended = factorization.WithAdditionalPrime(factorization.Cofactor);
+			factorization.Dispose();
+			factorization = extended;
+		}
 
-					reduced /= primeFactor;
-					if (Pow2EqualsOneCpu(reduced, prime, divisorData))
-					{
-						return false;
-					}
+		if (!ValidateOrderAgainstFactors(prime, order, divisorData, factorization))
+		{
+			reusableFactorization = factorization;
+			return false;
+		}
+
+		factorization.Dispose();
+		return true;
+	}
+
+	private static bool ValidateOrderAgainstFactors(
+		ulong prime,
+		ulong order,
+		in MontgomeryDivisorData divisorData,
+		PartialFactorResult factorization)
+	{
+		ReadOnlySpan<FactorEntry> span = factorization.Factors!;
+		int length = factorization.Count;
+		for (int i = 0; i < length; i++)
+		{
+			ulong primeFactor = span[i].Value;
+			ulong reduced = order;
+			for (int iteration = 0; iteration < span[i].Exponent; iteration++)
+			{
+				if ((reduced % primeFactor) != 0UL)
+				{
+					break;
+				}
+
+				reduced /= primeFactor;
+				if (Pow2EqualsOneCpu(reduced, prime, divisorData))
+				{
+					return false;
 				}
 			}
+		}
 
-			return true;
-		}
-		finally
-		{
-			factorization.Dispose();
-		}
+		return true;
 	}
 
 	private static bool TryHeuristicFinishCpu(
@@ -243,17 +255,18 @@ internal static partial class PrimeOrderCalculator
 		in MontgomeryDivisorData divisorData,
 		in PrimeOrderSearchConfig config,
 		PartialFactorResult phiFactors,
+		PartialFactorResult? cachedOrderFactors,
 		out ulong result)
 	{
 		result = 0UL;
 		if (order <= 1UL)
 		{
+			cachedOrderFactors?.Dispose();
 			return false;
 		}
 
-		// TODO: Do we do partial factoring of order multiple times?
-		// DebugLog("Trying heuristic. Partial factoring order");
-		PartialFactorResult orderFactors = PartialFactor(order, config);
+		// Reuse the partial factorization from TryConfirmOrderCpu when available.
+		PartialFactorResult orderFactors = cachedOrderFactors ?? PartialFactor(order, config);
 		try
 		{
 			if (orderFactors.Factors is null)
@@ -410,7 +423,6 @@ internal static partial class PrimeOrderCalculator
 			orderFactors.Dispose();
 		}
 	}
-
 	private static void SortCandidates(ulong prime, ulong? previousOrder, List<ulong> candidates)
 	{
 		ulong previous = previousOrder ?? 0UL;

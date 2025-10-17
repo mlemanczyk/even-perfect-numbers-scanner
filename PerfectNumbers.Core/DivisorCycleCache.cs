@@ -45,12 +45,38 @@ public sealed class DivisorCycleCache
         _snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
     }
 
-    public ulong GetCycleLength(ulong divisor)
+    public ulong GetCycleLength(ulong divisor, bool skipPrimeOrderHeuristic = false)
     {
-        Span<ulong> result = stackalloc ulong[1];
-        ReadOnlySpan<ulong> singleDivisor = stackalloc ulong[1] { divisor };
-        GetCycleLengths(singleDivisor, result);
-        return result[0];
+        if (!skipPrimeOrderHeuristic)
+        {
+            Span<ulong> result = stackalloc ulong[1];
+            ReadOnlySpan<ulong> singleDivisor = stackalloc ulong[1] { divisor };
+            GetCycleLengths(singleDivisor, result);
+            return result[0];
+        }
+
+        // The skipPrimeOrderHeuristic path is only used for divisors produced by the CPU by-divisor scanner,
+        // which always generates values greater than one. Keep this guard disabled here to avoid repeating the
+        // validation already performed by the general GetCycleLengths path.
+        // if (divisor <= 1UL)
+        // {
+        //     throw new InvalidDataException("Divisor must be > 1");
+        // }
+
+        ulong[] snapshot = _snapshot;
+        if (divisor < (ulong)snapshot.Length)
+        {
+            ulong cached = snapshot[divisor];
+            if (cached == 0UL)
+            {
+                throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
+            }
+
+            return cached;
+        }
+
+        MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
+        return MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData, skipPrimeOrderHeuristic: true);
     }
 
     public void GetCycleLengths(ReadOnlySpan<ulong> divisors, Span<ulong> cycles)
