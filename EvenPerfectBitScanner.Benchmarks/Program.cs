@@ -9,9 +9,9 @@ public static class Program
         // var config = DefaultConfig.Instance.WithOptions(ConfigOptions.JoinSummary | ConfigOptions.DisableOptimizationsValidator);
         // BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
 
-        Pow2MontgomeryModCycleComputationBenchmarks benchmarks = new()
+        Pow2MontgomeryModBenchmarks benchmarks = new()
         {
-            Scale = Pow2MontgomeryModCycleComputationBenchmarks.InputScale.Large
+            Scale = Pow2MontgomeryModBenchmarks.InputScale.Large
         };
 
         GpuPrimeWorkLimiter.SetLimit(1);
