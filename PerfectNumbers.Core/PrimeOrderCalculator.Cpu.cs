@@ -619,6 +619,7 @@ internal static partial class PrimeOrderCalculator
 				ulong reduced = candidate;
 				for (int iteration = 0; iteration < span[i].Exponent; iteration++)
 				{
+					// TODO: Measure and implement DivRem like solution or residue stepper to reuse calculation results from previous iteration
 					if ((reduced % primeFactor) != 0UL)
 					{
 						break;
