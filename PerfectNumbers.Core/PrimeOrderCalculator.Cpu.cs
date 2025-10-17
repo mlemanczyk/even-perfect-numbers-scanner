@@ -317,7 +317,7 @@ internal static partial class PrimeOrderCalculator
 				bool gpuStackRemainders = false;
 				GpuPow2ModStatus status = GpuPow2ModStatus.Unavailable;
 
-				// if (allowGpuBatch && IsGpuPow2Allowed)
+				if (allowGpuBatch && IsGpuPow2Allowed)
 				{
 					if (batchSize <= StackGpuBatchSize)
 					{
@@ -638,17 +638,17 @@ internal static partial class PrimeOrderCalculator
 
 	private static bool Pow2EqualsOneCpu(ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
 	{
-		// if (IsGpuPow2Allowed)
-		// {
-			ulong remainder = exponent.Pow2MontgomeryModWindowedGpu(divisorData, false);
-			// GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, prime, out ulong remainder, divisorData);
-			// if (status == GpuPow2ModStatus.Success)
-			// {
+		if (IsGpuPow2Allowed)
+		{
+			// ulong remainder = exponent.Pow2MontgomeryModWindowedGpu(divisorData, false);
+			GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, prime, out ulong remainder, divisorData);
+			if (status == GpuPow2ModStatus.Success)
+			{
 				return remainder == 1UL;
-			// }
-		// }
+			}
+		}
 
-		// return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
+		return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
 	}
 
 	// [ThreadStatic]
