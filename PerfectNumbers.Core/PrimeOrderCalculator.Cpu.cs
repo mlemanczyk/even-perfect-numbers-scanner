@@ -77,11 +77,17 @@ internal static partial class PrimeOrderCalculator
 
 	private static bool TrySpecialMaxCpu(ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
 	{
-		ReadOnlySpan<FactorEntry> factorSpan = factors.Factors;
 		int length = factors.Count;
+		ReadOnlySpan<FactorEntry> factorSpan = new(factors.Factors, 0, length);
 		for (int i = 0; i < length; i++)
 		{
 			ulong factor = factorSpan[i].Value;
+			// Don't uncomment this. If there is division by zero, that means something wrong.
+			// if (factor == 0UL)
+			// {
+			// 	continue;
+			// }
+
 			ulong reduced = phi / factor;
 			if (Pow2EqualsOneCpu(reduced, prime, divisorData))
 			{
@@ -638,7 +644,7 @@ internal static partial class PrimeOrderCalculator
 
 	private static bool Pow2EqualsOneCpu(ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
 	{
-		// if (IsGpuPow2Allowed)
+		if (IsGpuPow2Allowed)
 		{
 			ulong remainder = exponent.Pow2MontgomeryModWindowedGpu(divisorData, false);
 			// GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, prime, out ulong remainder, divisorData);
@@ -741,26 +747,26 @@ internal static partial class PrimeOrderCalculator
 				remaining = PopulateSmallPrimeFactorsCpu(value, limit, counts);
 			// }
 
-			// int dictionaryCount = counts.Count;
-			// if (dictionaryCount <= FactorSlotCount)
-			// {
-				// int copyIndex = 0;
-				// foreach (KeyValuePair<ulong, int> entry in counts)
-				// {
-				// 	primeSlots[copyIndex] = entry.Key;
-				// 	exponentSlots[copyIndex] = entry.Value;
-				// 	copyIndex++;
-				// }
+			int dictionaryCount = counts.Count;
+			if (dictionaryCount <= FactorSlotCount)
+			{
+				int copyIndex = 0;
+				foreach (KeyValuePair<ulong, int> entry in counts)
+				{
+					primeSlots[copyIndex] = entry.Key;
+					exponentSlots[copyIndex] = entry.Value;
+					copyIndex++;
+				}
 
-				// factorCount = copyIndex;
-				// ThreadStaticPools.ReturnUlongIntDictionary(counts);
-				// counts = null;
-			// }
-			// else
-			// {
+				factorCount = copyIndex;
+				ThreadStaticPools.ReturnUlongIntDictionary(counts);
+				counts = null;
+			}
+			else
+			{
 				useDictionary = true;
-				// factorCount = dictionaryCount;
-			// }
+				factorCount = dictionaryCount;
+			}
 		}
 
 

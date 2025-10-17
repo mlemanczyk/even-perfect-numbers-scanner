@@ -330,11 +330,12 @@ public static class ULongExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Pow2MontgomeryModWindowedCpu(this ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
     {
-        ulong modulus = divisor.Modulus;
-        if (exponent == 0UL)
-        {
-            return keepMontgomery ? divisor.MontgomeryOne : 1UL % modulus;
-        }
+		ulong modulus = divisor.Modulus;
+		// This should never happen in production code. If it does, we need to fix it.
+        // if (exponent == 0UL)
+        // {
+        //     return keepMontgomery ? divisor.MontgomeryOne : 1UL % modulus;
+        // }
 
         if (exponent <= Pow2WindowFallbackThreshold)
         {
