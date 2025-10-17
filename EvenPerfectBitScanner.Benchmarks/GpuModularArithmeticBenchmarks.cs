@@ -9,12 +9,10 @@ namespace EvenPerfectBitScanner.Benchmarks;
 public class GpuModularArithmeticBenchmarks
 {
     private const int MaxBatchSize = 512;
-    private readonly ulong[] _exponents = new ulong[MaxBatchSize];
-    private readonly ulong[] _moduli = new ulong[MaxBatchSize];
-    private readonly ulong[] _mersenneModuli = new ulong[MaxBatchSize];
-    private readonly int[] _mersenneBitWidths = new int[MaxBatchSize];
-
-    private readonly Random _random = new(7);
+    private ulong[] _exponents = Array.Empty<ulong>();
+    private ulong[] _moduli = Array.Empty<ulong>();
+    private ulong[] _mersenneModuli = Array.Empty<ulong>();
+    private int[] _mersenneBitWidths = Array.Empty<int>();
 
     [Params(32, 256)]
     public int BatchSize { get; set; }
@@ -22,14 +20,69 @@ public class GpuModularArithmeticBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        for (int i = 0; i < MaxBatchSize; i++)
-        {
-            _exponents[i] = NextExponent();
-            _moduli[i] = NextOddModulus();
+        ModularArithmeticSampleData data = ModularArithmeticSampleCache.Instance;
+        _exponents = data.Exponents;
+        _moduli = data.Moduli;
+        _mersenneModuli = data.MersenneModuli;
+        _mersenneBitWidths = data.MersenneBitWidths;
+    }
 
-            int bits = _random.Next(8, 62);
-            _mersenneBitWidths[i] = bits;
-            _mersenneModuli[i] = (1UL << bits) - 1UL;
+    private sealed class ModularArithmeticSampleData
+    {
+        public ModularArithmeticSampleData(ulong[] exponents, ulong[] moduli, ulong[] mersenneModuli, int[] mersenneBitWidths)
+        {
+            Exponents = exponents;
+            Moduli = moduli;
+            MersenneModuli = mersenneModuli;
+            MersenneBitWidths = mersenneBitWidths;
+        }
+
+        public ulong[] Exponents { get; }
+        public ulong[] Moduli { get; }
+        public ulong[] MersenneModuli { get; }
+        public int[] MersenneBitWidths { get; }
+    }
+
+    private static class ModularArithmeticSampleCache
+    {
+        private static readonly Lazy<ModularArithmeticSampleData> Cache = new(Create);
+
+        public static ModularArithmeticSampleData Instance => Cache.Value;
+
+        private static ModularArithmeticSampleData Create()
+        {
+            Random random = new(7);
+            var exponents = new ulong[MaxBatchSize];
+            var moduli = new ulong[MaxBatchSize];
+            var mersenneModuli = new ulong[MaxBatchSize];
+            var mersenneBitWidths = new int[MaxBatchSize];
+
+            for (int i = 0; i < MaxBatchSize; i++)
+            {
+                exponents[i] = NextExponent(random);
+                moduli[i] = NextOddModulus(random);
+                int bits = random.Next(8, 62);
+                mersenneBitWidths[i] = bits;
+                mersenneModuli[i] = (1UL << bits) - 1UL;
+            }
+
+            return new ModularArithmeticSampleData(exponents, moduli, mersenneModuli, mersenneBitWidths);
+        }
+
+        private static ulong NextExponent(Random random)
+        {
+            return (ulong)random.Next(24, 63);
+        }
+
+        private static ulong NextOddModulus(Random random)
+        {
+            ulong value = (ulong)random.NextInt64(5L, long.MaxValue);
+            if ((value & 1UL) == 0UL)
+            {
+                value++;
+            }
+
+            return value;
         }
     }
 
@@ -67,22 +120,6 @@ public class GpuModularArithmeticBenchmarks
         }
 
         return checksum;
-    }
-
-    private ulong NextExponent()
-    {
-        return (ulong)_random.Next(24, 63);
-    }
-
-    private ulong NextOddModulus()
-    {
-        ulong value = (ulong)_random.NextInt64(5L, long.MaxValue);
-        if ((value & 1UL) == 0UL)
-        {
-            value++;
-        }
-
-        return value;
     }
 
     private static ulong Pow2ModBaseline(ulong exponent, ulong modulus)

@@ -13,21 +13,86 @@ public class Pow2MontgomeryModUInt128Benchmarks
     private const int SampleCount = 256;
     private const ulong Pow2WindowFallbackThreshold = 32UL;
 
-    private readonly UInt128[] _moduli = new UInt128[SampleCount];
-    private readonly UInt128[] _exponents = new UInt128[SampleCount];
-
-    private readonly Random _random = new(19);
+    private UInt128[] _moduli = Array.Empty<UInt128>();
+    private UInt128[] _exponents = Array.Empty<UInt128>();
 
     [GlobalSetup]
     public void Setup()
     {
-        for (int i = 0; i < SampleCount; i++)
-        {
-            UInt128 modulus = NextWideOddModulus();
-            _moduli[i] = modulus;
+        WideSampleData cache = WideSampleDataCache.Instance;
+        _moduli = cache.Moduli;
+        _exponents = cache.Exponents;
+    }
 
-            UInt128 exponent = NextWideExponent();
-            _exponents[i] = exponent;
+    private sealed class WideSampleData
+    {
+        public WideSampleData(UInt128[] moduli, UInt128[] exponents)
+        {
+            Moduli = moduli;
+            Exponents = exponents;
+        }
+
+        public UInt128[] Moduli { get; }
+        public UInt128[] Exponents { get; }
+    }
+
+    private static class WideSampleDataCache
+    {
+        private static readonly Lazy<WideSampleData> Cache = new(Create);
+
+        public static WideSampleData Instance => Cache.Value;
+
+        private static WideSampleData Create()
+        {
+            Random random = new(19);
+            var moduli = new UInt128[SampleCount];
+            var exponents = new UInt128[SampleCount];
+
+            for (int i = 0; i < SampleCount; i++)
+            {
+                moduli[i] = NextWideOddModulus(random);
+                exponents[i] = NextWideExponent(random);
+            }
+
+            return new WideSampleData(moduli, exponents);
+        }
+
+        private static UInt128 NextWideOddModulus(Random random)
+        {
+            Span<byte> buffer = stackalloc byte[16];
+            random.NextBytes(buffer);
+
+            ulong low = BinaryPrimitives.ReadUInt64LittleEndian(buffer);
+            ulong high = BinaryPrimitives.ReadUInt64LittleEndian(buffer[8..]);
+            if (high == 0UL)
+            {
+                high = 1UL;
+            }
+
+            UInt128 modulus = ((UInt128)high << 64) | low;
+            modulus |= UInt128.One;
+
+            if (modulus <= UInt128.One)
+            {
+                modulus += 2UL;
+            }
+
+            return modulus;
+        }
+
+        private static UInt128 NextWideExponent(Random random)
+        {
+            Span<byte> buffer = stackalloc byte[16];
+            random.NextBytes(buffer);
+
+            ulong low = BinaryPrimitives.ReadUInt64LittleEndian(buffer);
+            ulong high = BinaryPrimitives.ReadUInt64LittleEndian(buffer[8..]);
+            if (high == 0UL)
+            {
+                high = 1UL;
+            }
+
+            return ((UInt128)high << 64) | low;
         }
     }
 
@@ -61,44 +126,6 @@ public class Pow2MontgomeryModUInt128Benchmarks
         }
 
         return checksum;
-    }
-
-    private UInt128 NextWideOddModulus()
-    {
-        Span<byte> buffer = stackalloc byte[16];
-        _random.NextBytes(buffer);
-
-        ulong low = BinaryPrimitives.ReadUInt64LittleEndian(buffer);
-        ulong high = BinaryPrimitives.ReadUInt64LittleEndian(buffer[8..]);
-        if (high == 0UL)
-        {
-            high = 1UL;
-        }
-
-        UInt128 modulus = ((UInt128)high << 64) | low;
-        modulus |= UInt128.One;
-
-        if (modulus <= UInt128.One)
-        {
-            modulus += 2UL;
-        }
-
-        return modulus;
-    }
-
-    private UInt128 NextWideExponent()
-    {
-        Span<byte> buffer = stackalloc byte[16];
-        _random.NextBytes(buffer);
-
-        ulong low = BinaryPrimitives.ReadUInt64LittleEndian(buffer);
-        ulong high = BinaryPrimitives.ReadUInt64LittleEndian(buffer[8..]);
-        if (high == 0UL)
-        {
-            high = 1UL;
-        }
-
-        return ((UInt128)high << 64) | low;
     }
 
     private static UInt128 Pow2MontgomeryModWindowedGpuShim(UInt128 exponent, UInt128 modulus)
