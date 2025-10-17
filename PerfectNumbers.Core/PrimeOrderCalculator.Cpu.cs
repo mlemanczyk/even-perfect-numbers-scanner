@@ -1522,4 +1522,4 @@ internal static partial class PrimeOrderCalculator
 		public readonly long Tertiary = tertiary;
 	}
 }
-}
+

@@ -1,9 +1,10 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core;
 
-internal struct CycleRemainderStepper
+public struct CycleRemainderStepper
 {
     private readonly ulong _cycleLength;
     private ulong _previousPrime;
@@ -23,15 +24,16 @@ internal struct CycleRemainderStepper
         _hasState = false;
     }
 
-    public void Reset()
-    {
-        // TODO: Inline this reset at the call sites so the hot loops reuse struct reinitialization
-        // measured fastest in MersenneDivisorCycleLengthGpuBenchmarks, avoiding the extra
-        // method call when scanners need to restart stepping.
-        _previousPrime = 0UL;
-        _currentRemainder = 0UL;
-        _hasState = false;
-    }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public void Reset()
+	{
+		// TODO: Inline this reset at the call sites so the hot loops reuse struct reinitialization
+		// measured fastest in MersenneDivisorCycleLengthGpuBenchmarks, avoiding the extra
+		// method call when scanners need to restart stepping.
+		_previousPrime = 0UL;
+		_currentRemainder = 0UL;
+		_hasState = false;
+	}
 
     public ulong Initialize(ulong prime)
     {
