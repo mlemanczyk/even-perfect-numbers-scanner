@@ -652,7 +652,7 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	// [ThreadStatic]
-	private static readonly Dictionary<ulong, bool> _primalityCache = new(16_777_216);
+	private static readonly Dictionary<ulong, bool> _primalityCache = new(134_217_728);
 	private static readonly ReaderWriterLockSlim _primalityCacheLock = new(LockRecursionPolicy.NoRecursion);
 
 	// [ThreadStatic]
