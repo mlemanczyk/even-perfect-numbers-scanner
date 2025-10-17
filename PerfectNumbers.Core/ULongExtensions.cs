@@ -1,6 +1,9 @@
+using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using ILGPU;
 using ILGPU.Algorithms;
+using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
@@ -409,13 +412,32 @@ public static class ULongExtensions
             return Pow2MontgomeryModSingleBit(exponent, divisor, keepMontgomery);
         }
 
+        if (Pow2MontgomeryGpuExecutor.TryExecute(exponent, divisor, keepMontgomery, out ulong gpuResult))
+        {
+            return gpuResult;
+        }
+
+        return Pow2MontgomeryModWindowedCpu(exponent, divisor, keepMontgomery);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong Pow2MontgomeryModWindowedKernel(ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
+    {
+        ulong modulus = divisor.Modulus;
+        if (exponent == 0UL)
+        {
+            return keepMontgomery ? divisor.MontgomeryOne : 1UL % modulus;
+        }
+
+        if (exponent <= Pow2WindowFallbackThreshold)
+        {
+            return Pow2MontgomeryModSingleBit(exponent, divisor, keepMontgomery);
+        }
+
         int bitLength = GetPortableBitLength(exponent);
         int windowSize = GetWindowSize(bitLength);
-        int oddPowerCount = 1 << (windowSize - 1);
-
         ulong result = divisor.MontgomeryOne;
         ulong nPrime = divisor.NPrime;
-        ulong[] oddPowers = InitializeMontgomeryOddPowersGpu(divisor, modulus, nPrime, oddPowerCount);
 
         int index = bitLength - 1;
         while (index >= 0)
@@ -446,19 +468,113 @@ public static class ULongExtensions
 
             ulong mask = (1UL << windowLength) - 1UL;
             ulong windowValue = (exponent >> windowStart) & mask;
-            int tableIndex = (int)((windowValue - 1UL) >> 1);
-            ulong multiplier = oddPowers[tableIndex];
+            ulong multiplier = ComputeMontgomeryOddPower(windowValue, divisor, modulus, nPrime);
             result = result.MontgomeryMultiply(multiplier, modulus, nPrime);
 
             index = windowStart - 1;
         }
 
-        if (keepMontgomery)
+        if (!keepMontgomery)
         {
-            return result;
+            result = result.MontgomeryMultiply(1UL, modulus, nPrime);
         }
 
-        return result.MontgomeryMultiply(1UL, modulus, nPrime);
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ComputeMontgomeryOddPower(ulong exponent, in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime)
+    {
+        ulong baseValue = divisor.MontgomeryTwo;
+        ulong power = divisor.MontgomeryOne;
+        ulong remaining = exponent;
+
+        while (remaining != 0UL)
+        {
+            if ((remaining & 1UL) != 0UL)
+            {
+                power = power.MontgomeryMultiply(baseValue, modulus, nPrime);
+            }
+
+            remaining >>= 1;
+            if (remaining == 0UL)
+            {
+                break;
+            }
+
+            baseValue = baseValue.MontgomeryMultiply(baseValue, modulus, nPrime);
+        }
+
+        return power;
+    }
+
+    private static class Pow2MontgomeryGpuExecutor
+    {
+        private static readonly ConcurrentDictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, byte, ArrayView1D<ulong, Stride1D.Dense>>> KernelCache = new();
+
+        public static bool TryExecute(ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery, out ulong result)
+        {
+            result = 0UL;
+
+            GpuKernelLease lease;
+            try
+            {
+                lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+
+            var execution = lease.EnterExecutionScope();
+            try
+            {
+                Accelerator accelerator = lease.Accelerator;
+                if (accelerator.AcceleratorType == AcceleratorType.CPU)
+                {
+                    return false;
+                }
+
+                var kernel = KernelCache.GetOrAdd(accelerator, static accel =>
+                {
+                    var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, byte, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernel);
+                    var launcher = KernelUtil.GetKernel(loaded);
+                    return launcher.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, byte, ArrayView1D<ulong, Stride1D.Dense>>>();
+                });
+
+                using var exponentBuffer = accelerator.Allocate1D<ulong>(1);
+                using var resultBuffer = accelerator.Allocate1D<ulong>(1);
+
+                exponentBuffer.View.CopyFromCPU(ref exponent, 1);
+                resultBuffer.MemSetToZero();
+
+                byte keepFlag = keepMontgomery ? (byte)1 : (byte)0;
+                AcceleratorStream stream = lease.Stream;
+                kernel(stream, 1, exponentBuffer.View, divisor, keepFlag, resultBuffer.View);
+                stream.Synchronize();
+
+                resultBuffer.View.CopyToCPU(ref result, 1);
+                return true;
+            }
+            catch (AcceleratorException)
+            {
+                return false;
+            }
+            catch (NotSupportedException)
+            {
+                return false;
+            }
+            finally
+            {
+                execution.Dispose();
+                lease.Dispose();
+            }
+        }
+
+        private static void Pow2MontgomeryKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> exponents, MontgomeryDivisorData divisor, byte keepMontgomery, ArrayView1D<ulong, Stride1D.Dense> results)
+        {
+            results[index] = Pow2MontgomeryModWindowedKernel(exponents[index], divisor, keepMontgomery != 0);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -547,26 +663,6 @@ public static class ULongExtensions
             previous = oddPowers[i - 1];
             oddPowers[i] = previous.MontgomeryMultiply(square, modulus, nPrime);
         }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong[] InitializeMontgomeryOddPowersGpu(in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime, int oddPowerCount)
-    {
-        ulong[] oddPowers = new ulong[PerfectNumberConstants.MaxOddPowersCount];
-        oddPowers[0] = divisor.MontgomeryTwo;
-        if (oddPowerCount == 1)
-        {
-            return oddPowers;
-        }
-
-        ulong square = divisor.MontgomeryTwoSquared;
-        for (int i = 1; i < oddPowerCount; i++)
-        {
-            ulong previous = oddPowers[i - 1];
-            oddPowers[i] = previous.MontgomeryMultiply(square, modulus, nPrime);
-        }
-
-        return oddPowers;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

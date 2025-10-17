@@ -546,7 +546,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         }
 
         ulong exponent = exponents[index];
-        hits[index] = exponent.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: false) == 1UL ? (byte)1 : (byte)0;
+        hits[index] = ULongExtensions.Pow2MontgomeryModWindowedKernel(exponent, divisor, keepMontgomery: false) == 1UL ? (byte)1 : (byte)0;
     }
 
     public sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
@@ -765,7 +765,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         ulong exponent = exponents[index];
 
-        results[index] = exponent.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: true);
+        results[index] = ULongExtensions.Pow2MontgomeryModWindowedKernel(exponent, divisor, keepMontgomery: true);
     }
 
     public ulong DivisorLimit

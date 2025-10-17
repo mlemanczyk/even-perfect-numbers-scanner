@@ -809,7 +809,7 @@ internal static partial class PrimeOrderGpuHeuristics
             }
 
             ulong reduced = phi / factor;
-            if (reduced.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: false) == 1UL)
+            if (ULongExtensions.Pow2MontgomeryModWindowedKernel(reduced, divisor, keepMontgomery: false) == 1UL)
             {
                 return false;
             }
@@ -1593,7 +1593,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
     private static bool Pow2EqualsOneKernel(ulong exponent, in MontgomeryDivisorData divisor)
     {
-        return exponent.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: false) == 1UL;
+        return ULongExtensions.Pow2MontgomeryModWindowedKernel(exponent, divisor, keepMontgomery: false) == 1UL;
     }
 
     private static ulong CalculateByDoublingKernel(ulong prime)
@@ -1793,7 +1793,7 @@ internal static partial class PrimeOrderGpuHeuristics
             return 0UL;
         }
 
-        return exponent.Pow2MontgomeryModWindowedGpu(divisorData, keepMontgomery: false);
+        return ULongExtensions.Pow2MontgomeryModWindowedKernel(exponent, divisorData, keepMontgomery: false);
     }
 
     private static Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> GetPow2ModKernel(Accelerator accelerator)
@@ -1809,7 +1809,7 @@ internal static partial class PrimeOrderGpuHeuristics
     private static void Pow2ModKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> exponents, MontgomeryDivisorData divisor, ArrayView1D<ulong, Stride1D.Dense> remainders)
     {
         ulong exponent = exponents[index];
-        remainders[index] = exponent.Pow2MontgomeryModWindowedGpu(divisor, keepMontgomery: false);
+        remainders[index] = ULongExtensions.Pow2MontgomeryModWindowedKernel(exponent, divisor, keepMontgomery: false);
     }
 
     private static Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>> GetPow2ModWideKernel(Accelerator accelerator)
