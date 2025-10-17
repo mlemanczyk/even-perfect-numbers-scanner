@@ -283,7 +283,7 @@ public class GpuKernelPool
         var gpu = RentPreferred(preferCpu: !useGpuOrder);
         var accelerator = gpu.Accelerator;
         var kernels = GetKernels(accelerator);
-        return new(limiter, gpu, kernels);
+        return GpuKernelLease.Rent(limiter, gpu, kernels);
     }
 
     /// <summary>

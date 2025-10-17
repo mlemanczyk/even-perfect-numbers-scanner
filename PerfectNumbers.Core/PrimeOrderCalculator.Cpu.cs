@@ -82,6 +82,10 @@ internal static partial class PrimeOrderCalculator
 		for (int i = 0; i < length; i++)
 		{
 			ulong factor = factorSpan[i].Value;
+			if (factor == 0UL)
+			{
+				continue;
+			}
 			ulong reduced = phi / factor;
 			if (Pow2EqualsOneCpu(reduced, prime, divisorData))
 			{
