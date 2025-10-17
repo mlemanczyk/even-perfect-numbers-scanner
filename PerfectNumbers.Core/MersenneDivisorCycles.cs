@@ -94,7 +94,7 @@ public class MersenneDivisorCycles
             factorCache = cache;
         }
 
-        if (TryCalculateCycleLengthForExponent(divisor, exponent, divisorData, cache, out ulong cycleLength) && cycleLength != 0UL)
+        if (TryCalculateCycleLengthForExponent(divisor, exponent, divisorData, cache, out ulong cycleLength, out bool _) && cycleLength != 0UL)
         {
             return cycleLength == exponent;
         }
@@ -266,9 +266,11 @@ public class MersenneDivisorCycles
         ulong exponent,
         in MontgomeryDivisorData divisorData,
         Dictionary<ulong, FactorCacheEntry>? factorCache,
-        out ulong cycleLength)
+        out ulong cycleLength,
+        out bool primeOrderFailed)
     {
         cycleLength = 0UL;
+        primeOrderFailed = false;
 
         if ((divisor & (divisor - 1UL)) == 0UL)
         {
@@ -293,6 +295,8 @@ public class MersenneDivisorCycles
             cycleLength = computedOrder;
             return true;
         }
+
+        primeOrderFailed = true;
 
         ulong phi = divisor - 1UL;
         // A zero totient would imply divisor == 0, which never occurs on the tested path. Keep the guard documented without
@@ -332,6 +336,7 @@ public class MersenneDivisorCycles
         {
             cycleLength = ReduceOrder(divisorData, phi, factorCounts);
             success = true;
+            primeOrderFailed = false;
         }
 
         ThreadStaticPools.ReturnFactorCountDictionary(factorCounts);
@@ -1024,15 +1029,15 @@ public class MersenneDivisorCycles
         return pow == 1UL;
     }
 
-    public static ulong CalculateCycleLength(ulong divisor, in MontgomeryDivisorData divisorData)
+    public static ulong CalculateCycleLength(ulong divisor, in MontgomeryDivisorData divisorData, bool skipPrimeOrderHeuristic = false)
     {
-        if (TryCalculateCycleLengthHeuristic(divisor, divisorData, out ulong cycleLength))
+        if (TryCalculateCycleLengthHeuristic(divisor, divisorData, out ulong cycleLength, skipPrimeOrderHeuristic))
             return cycleLength;
 
         return CalculateCycleLengthFallback(divisor);
     }
 
-    internal static bool TryCalculateCycleLengthHeuristic(ulong divisor, in MontgomeryDivisorData divisorData, out ulong cycleLength)
+    internal static bool TryCalculateCycleLengthHeuristic(ulong divisor, in MontgomeryDivisorData divisorData, out ulong cycleLength, bool skipPrimeOrderHeuristic = false)
     {
         if ((divisor & (divisor - 1UL)) == 0UL)
         {
@@ -1046,7 +1051,7 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        if (PrimeTester.IsPrimeInternal(divisor, CancellationToken.None))
+        if (!skipPrimeOrderHeuristic && PrimeTester.IsPrimeInternal(divisor, CancellationToken.None))
         {
             ulong computedOrder = PrimeOrderCalculator.Calculate(
                     divisor,
