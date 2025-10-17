@@ -1,54 +1,90 @@
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
-using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
 
 internal static partial class PrimeOrderCalculator
 {
-    public static UInt128 Calculate(
-        in UInt128 prime,
-        in UInt128? previousOrder,
-        in PrimeOrderSearchConfig config,
-        in PrimeOrderHeuristicDevice device)
-    {
-        var scope = UsePow2Mode(device);
-        MontgomeryDivisorData divisorData;
-        UInt128 result;
-        if (prime <= ulong.MaxValue)
+        [ThreadStatic]
+        private static bool s_pow2ModeInitialized;
+
+        [ThreadStatic]
+        private static bool s_allowGpuPow2;
+
+        [ThreadStatic]
+        private static PrimeOrderHeuristicDevice s_deviceMode;
+
+        [ThreadStatic]
+        private static bool s_debugLoggingEnabled;
+
+        private static bool IsGpuHeuristicDevice => s_pow2ModeInitialized && s_deviceMode == PrimeOrderHeuristicDevice.Gpu;
+
+        private readonly struct Pow2ModeScope
         {
-            ulong? previous = null;
-            if (previousOrder.HasValue)
-            {
-                UInt128 previousValue = previousOrder.Value;
-                if (previousValue <= ulong.MaxValue)
-                {
-                    previous = (ulong)previousValue;
-                }
-                else
-                {
-                    previous = ulong.MaxValue;
-                }
-            }
+                private readonly bool _previousInitialized;
+                private readonly bool _previousAllow;
+                private readonly PrimeOrderHeuristicDevice _previousDevice;
 
-            ulong prime64 = (ulong)prime;
-            divisorData = MontgomeryDivisorData.FromModulus(prime64);
-            ulong order64 = Calculate(prime64, previous, divisorData, config, device);
-            result = order64 == 0UL ? UInt128.Zero : (UInt128)order64;
+                public Pow2ModeScope(PrimeOrderHeuristicDevice device)
+                {
+                        _previousInitialized = s_pow2ModeInitialized;
+                        _previousAllow = s_allowGpuPow2;
+                        _previousDevice = s_deviceMode;
+                        s_pow2ModeInitialized = true;
+                        s_allowGpuPow2 = device == PrimeOrderHeuristicDevice.Gpu;
+                        s_deviceMode = device;
+                }
+
+                public void Dispose()
+                {
+                        s_allowGpuPow2 = _previousAllow;
+                        s_pow2ModeInitialized = _previousInitialized;
+                        s_deviceMode = _previousDevice;
+                }
         }
-        else
+
+        private readonly struct DebugLoggingScope
         {
-            divisorData = default;
-            result = CalculateWideInternal(prime, previousOrder, divisorData, config);
+                private readonly bool _previous;
+
+                public DebugLoggingScope(bool enabled)
+                {
+                        _previous = s_debugLoggingEnabled;
+                        s_debugLoggingEnabled = enabled;
+                }
+
+                public void Dispose()
+                {
+                        s_debugLoggingEnabled = _previous;
+                }
         }
 
-        scope.Dispose();
-        return result;
-    }
+        private static Pow2ModeScope UsePow2Mode(PrimeOrderHeuristicDevice device) => new(device);
 
+        private static DebugLoggingScope UseDebugLogging(bool enabled) => new(enabled);
+
+        [Conditional("DEBUG")]
+        private static void DebugLog(string message)
+        {
+                if (s_debugLoggingEnabled)
+                {
+                        Console.WriteLine(message);
+                }
+        }
+
+        [Conditional("DEBUG")]
+        private static void DebugLog(Func<string> messageFactory)
+        {
+                if (s_debugLoggingEnabled)
+                {
+                        Console.WriteLine(messageFactory());
+                }
+        }
     private static UInt128 CalculateWideInternal(in UInt128 prime, in UInt128? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
     {
         if (prime <= UInt128.One)
