@@ -126,11 +126,11 @@ internal static partial class PrimeOrderCalculator
 		Span<FactorEntry> buffer = tempArray;
 		factorSpan.CopyTo(buffer);
 
-		bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factors.Cofactor);
 		// bool isPrime = PrimeTester.IsPrimeInternal(factors.Cofactor, CancellationToken.None);
-		if (!factors.FullyFactored && factors.Cofactor > 1UL && isPrime)
+		// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factors.Cofactor);
+		if (!factors.FullyFactored && factors.Cofactor > 1UL && factors.CofactorIsPrime)
 		{
-			buffer[length] = new FactorEntry(factors.Cofactor, 1);
+			buffer[length] = new FactorEntry(factors.Cofactor, 1, true);
 			length++;
 		}
 
@@ -190,14 +190,7 @@ internal static partial class PrimeOrderCalculator
 
 		if (!factorization.FullyFactored)
 		{
-			if (factorization.Cofactor <= 1UL)
-			{
-				factorization.Dispose();
-				return false;
-			}
-
-			bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factorization.Cofactor);
-			if (!isPrime)
+			if (factorization.Cofactor <= 1UL || !factorization.CofactorIsPrime)
 			{
 				factorization.Dispose();
 				return false;
@@ -281,9 +274,8 @@ internal static partial class PrimeOrderCalculator
 					return false;
 				}
 
-				var isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(orderFactors.Cofactor);
 				// if (!PrimeTester.IsPrimeInternal(orderFactors.Cofactor, CancellationToken.None))
-				if (!isPrime)
+				if (!orderFactors.CofactorIsPrime)
 				{
 					return false;
 				}
@@ -607,9 +599,9 @@ internal static partial class PrimeOrderCalculator
 					return false;
 				}
 
-				bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factorization.Cofactor);
+				// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factorization.Cofactor);
 				// bool isPrime = PrimeTester.IsPrimeInternal(factorization.Cofactor, CancellationToken.None);
-				if (!isPrime)
+				if (!factorization.CofactorIsPrime)
 				{
 					return false;
 				}
@@ -839,9 +831,10 @@ internal static partial class PrimeOrderCalculator
 
 		ulong cofactor = 1UL;
 		int pendingCount = pending.Count;
-		for (int i = 0; i < pendingCount; i++)
+		int index = 0;
+		for (; index < pendingCount; index++)
 		{
-			ulong composite = pending[i];
+			ulong composite = pending[index];
 			bool isPrime = GetOrComputePrimality(composite);
 
 			if (isPrime)
@@ -856,33 +849,35 @@ internal static partial class PrimeOrderCalculator
 			}
 		}
 
+		bool cofactorIsPrime = GetOrComputePrimality(cofactor);
 		ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
+		bool temp;
 		if (useDictionary)
 		{
 			if ((counts is null || counts.Count == 0) && cofactor == value)
 			{
-				result = PartialFactorResult.Rent(null, value, false, 0);
+				result = PartialFactorResult.Rent(null, cofactor, false, 0, cofactorIsPrime);
 				goto ReturnResult;
 			}
 
 			if (counts is null || counts.Count == 0)
 			{
-				result = PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0);
+				result = PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0, cofactorIsPrime);
 				goto ReturnResult;
 			}
 
 			FactorEntry[] factors = pool.Rent(counts.Count);
-			int index = 0;
+			index = 0;
 			foreach (KeyValuePair<ulong, int> entry in counts)
 			{
-				factors[index] = new FactorEntry(entry.Key, entry.Value);
+				factors[index] = new FactorEntry(entry.Key, entry.Value, true);
 				index++;
 			}
 
 			Array.Sort(factors, static (a, b) => a.Value.CompareTo(b.Value));
 
-			bool fullyFactored = cofactor == 1UL;
-			result = PartialFactorResult.Rent(factors, cofactor, fullyFactored, index);
+			temp = cofactor == 1UL;
+			result = PartialFactorResult.Rent(factors, cofactor, temp, index, cofactorIsPrime);
 			goto ReturnResult;
 		}
 
@@ -912,14 +907,14 @@ internal static partial class PrimeOrderCalculator
 			// 	continue;
 			// }
 
-			array[arrayIndex] = new FactorEntry(primeValue, exponentValue);
+			array[arrayIndex] = new FactorEntry(primeValue, exponentValue, true);
 			arrayIndex++;
 		}
 
 		Span<FactorEntry> arraySpan = array.AsSpan(0, arrayIndex);
 		arraySpan.Sort(static (a, b) => a.Value.CompareTo(b.Value));
-		bool fullyFactoredArray = cofactor == 1UL;
-		result = PartialFactorResult.Rent(array, cofactor, fullyFactoredArray, arrayIndex);
+		temp = cofactor == 1UL;
+		result = PartialFactorResult.Rent(array, cofactor, temp, arrayIndex, cofactorIsPrime);
 
 	ReturnResult:
 		// ThreadStaticPools.UlongPool.Return(primeSlotsArray);
@@ -1372,7 +1367,8 @@ internal static partial class PrimeOrderCalculator
 			return;
 		}
 
-		if (Open.Numeric.Primes.Prime.Numbers.IsPrime(value))
+		// if (Open.Numeric.Primes.Prime.Numbers.IsPrime(value))
+		if (GetOrComputePrimality(value))
 		{
 			AddFactor(counts, value, 1);
 			return;

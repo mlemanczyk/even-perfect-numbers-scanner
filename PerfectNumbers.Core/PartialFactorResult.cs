@@ -11,13 +11,14 @@ namespace PerfectNumbers.Core
         private PartialFactorResult? _next;
         public ulong Cofactor;
         public bool FullyFactored;
-        public int Count;
+		public int Count;
+		public bool CofactorIsPrime;
 
         private PartialFactorResult()
         {
         }
 
-        public static PartialFactorResult Rent(in FactorEntry[]? factors, ulong cofactor, bool fullyFactored, int count)
+        public static PartialFactorResult Rent(in FactorEntry[]? factors, ulong cofactor, bool fullyFactored, int count, bool cofactorIsPrime)
         {
             PartialFactorResult? instance = s_poolHead;
             if (instance is null)
@@ -33,15 +34,16 @@ namespace PerfectNumbers.Core
             instance.Factors = factors;
             instance.Cofactor = cofactor;
             instance.FullyFactored = fullyFactored;
-            instance.Count = count;
+			instance.Count = count;
+			instance.CofactorIsPrime = cofactorIsPrime;
             return instance;
         }
 
         public static readonly PartialFactorResult Empty = new()
 		{
-            Cofactor = 1UL,
-            FullyFactored = true,
-        };
+			Cofactor = 1UL,
+			FullyFactored = true
+		};
 
         public PartialFactorResult WithAdditionalPrime(ulong prime)
         {
@@ -49,16 +51,16 @@ namespace PerfectNumbers.Core
             if (source is null || Count == 0)
             {
                 FactorEntry[] local = ArrayPool<FactorEntry>.Shared.Rent(1);
-                local[0] = new FactorEntry(prime, 1);
-                return Rent(local, 1UL, true, 1);
+                local[0] = new FactorEntry(prime, 1, true);
+                return Rent(local, 1UL, true, 1, false);
             }
 
             FactorEntry[] extended = ArrayPool<FactorEntry>.Shared.Rent(Count + 1);
             Array.Copy(source, 0, extended, 0, Count);
-            extended[Count] = new FactorEntry(prime, 1);
+            extended[Count] = new FactorEntry(prime, 1, true);
             Span<FactorEntry> span = extended.AsSpan(0, Count + 1);
             span.Sort(static (a, b) => a.Value.CompareTo(b.Value));
-            return Rent(extended, 1UL, true, Count + 1);
+            return Rent(extended, 1UL, true, Count + 1, false);
         }
 
         public void Dispose()
