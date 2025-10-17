@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -10,6 +11,19 @@ namespace PerfectNumbers.Core;
 
 internal static partial class PrimeOrderCalculator
 {
+
+        internal readonly struct PendingEntry
+        {
+                public readonly ulong Value;
+                public readonly bool KnownComposite;
+
+                public PendingEntry(ulong value, bool knownComposite)
+                {
+                        Value = value;
+                        KnownComposite = knownComposite;
+                }
+        }
+
 	private static ulong CalculateInternal(ulong prime, ulong? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
 	{
 		// TODO: Is this condition ever met on EvenPerfectBitScanner's execution path? If not, we can add a clarification comment and comment out the entire block. We want to support p candidates at least greater or equal to 31.
@@ -730,7 +744,7 @@ internal static partial class PrimeOrderCalculator
 			gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(value, limit, primeSlots, exponentSlots, out factorCount, out remaining, out _);
 		}
 
-		List<ulong> pending = ThreadStaticPools.RentUlongList(2);
+		List<PendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(2);
 		Stack<ulong>? compositeStack = null;
 		PartialFactorResult result;
 
@@ -776,7 +790,7 @@ internal static partial class PrimeOrderCalculator
 
 		if (remaining > 1UL)
 		{
-			pending.Add(remaining);
+			pending.Add(new PendingEntry(remaining, knownComposite: false));
 		}
 
 		if (config.PollardRhoMilliseconds > 0 && pending.Count > 0)
@@ -808,7 +822,7 @@ internal static partial class PrimeOrderCalculator
 
 					if (!TryPollardRho(composite, deadlineTimestamp, out ulong factor))
 					{
-						pending.Add(composite);
+						pending.Add(new PendingEntry(composite, knownComposite: true));
 						continue;
 					}
 
@@ -824,32 +838,55 @@ internal static partial class PrimeOrderCalculator
 			{
 				while (compositeStack.Count > 0)
 				{
-					pending.Add(compositeStack.Pop());
+					pending.Add(new PendingEntry(compositeStack.Pop(), knownComposite: false));
 				}
 			}
 		}
 
 		ulong cofactor = 1UL;
-		int pendingCount = pending.Count;
-		int index = 0;
-		for (; index < pendingCount; index++)
-		{
-			ulong composite = pending[index];
-			bool isPrime = GetOrComputePrimality(composite);
+                bool cofactorContainsComposite = false;
+                int pendingCount = pending.Count;
+                int index = 0;
+                for (; index < pendingCount; index++)
+                {
+                        PendingEntry entry = pending[index];
+                        ulong composite = entry.Value;
 
-			if (isPrime)
-			{
-				AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
-			}
-			// composite is never smaller on the execution path
-			// else if (composite > 1UL)
-			else
-			{
-				cofactor = checked(cofactor * composite);
-			}
-		}
+                        if (entry.KnownComposite)
+                        {
+                                cofactor = checked(cofactor * composite);
+                                cofactorContainsComposite = true;
+                                continue;
+                        }
 
-		bool cofactorIsPrime = GetOrComputePrimality(cofactor);
+                        bool isPrime = GetOrComputePrimality(composite);
+
+                        if (isPrime)
+                        {
+                                AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
+                        }
+                        // composite is never smaller on the execution path
+                        // else if (composite > 1UL)
+                        else
+                        {
+                                cofactor = checked(cofactor * composite);
+                                cofactorContainsComposite = true;
+                        }
+                }
+
+                bool cofactorIsPrime;
+                if (cofactor <= 1UL)
+                {
+                        cofactorIsPrime = false;
+                }
+                else if (cofactorContainsComposite)
+                {
+                        cofactorIsPrime = false;
+                }
+                else
+                {
+                        cofactorIsPrime = GetOrComputePrimality(cofactor);
+                }
 		ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
 		bool temp;
 		if (useDictionary)
@@ -932,7 +969,7 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		pending.Clear();
-		ThreadStaticPools.ReturnUlongList(pending);
+		ThreadStaticPools.ReturnPrimeOrderPendingEntryList(pending);
 		return result;
 	}
 
@@ -1361,25 +1398,70 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	private static void FactorCompletely(ulong value, Dictionary<ulong, int> counts)
-	{
-		if (value <= 1UL)
-		{
-			return;
-		}
+        {
+                FactorCompletely(value, counts, knownComposite: false);
+        }
 
-		// if (Open.Numeric.Primes.Prime.Numbers.IsPrime(value))
-		if (GetOrComputePrimality(value))
-		{
-			AddFactor(counts, value, 1);
-			return;
-		}
+        private static void FactorCompletely(ulong value, Dictionary<ulong, int> counts, bool knownComposite)
+        {
+                if (value <= 1UL)
+                {
+                        return;
+                }
 
-		ulong factor = PollardRhoStrict(value);
-		FactorCompletely(factor, counts);
-		FactorCompletely(value / factor, counts);
-	}
+                if (!knownComposite && GetOrComputePrimality(value))
+                {
+                        AddFactor(counts, value, 1);
+                        return;
+                }
 
-	private static ulong PollardRhoStrict(ulong n)
+                ulong factor = PollardRhoStrict(value);
+                ulong quotient = value / factor;
+
+                bool factorIsPrime = GetOrComputePrimality(factor);
+                if (factorIsPrime)
+                {
+                        int exponent = 1;
+                        ulong remaining = quotient;
+                        while ((remaining % factor) == 0UL)
+                        {
+                                remaining /= factor;
+                                exponent++;
+                        }
+
+                        AddFactor(counts, factor, exponent);
+
+                        if (remaining > 1UL)
+                        {
+                                FactorCompletely(remaining, counts, knownComposite: false);
+                        }
+
+                        return;
+                }
+
+                FactorCompletely(factor, counts, knownComposite: true);
+
+                bool quotientIsPrime;
+                if (quotient == factor)
+                {
+                        quotientIsPrime = false;
+                }
+                else
+                {
+                        quotientIsPrime = GetOrComputePrimality(quotient);
+                }
+
+                if (quotientIsPrime)
+                {
+                        AddFactor(counts, quotient, 1);
+                }
+                else
+                {
+                        FactorCompletely(quotient, counts, knownComposite: true);
+                }
+        }
+
+        private static ulong PollardRhoStrict(ulong n)
 	{
 		if ((n & 1UL) == 0UL)
 		{
