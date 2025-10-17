@@ -11,6 +11,18 @@ namespace PerfectNumbers.Core
         [ThreadStatic]
         private static ArrayPool<FactorEntry>? _factorEntryPool;
 
+        [ThreadStatic]
+        private static ArrayPool<CycleRemainderStepper>? _cycleRemainderStepperPool;
+
+        public static ArrayPool<CycleRemainderStepper> CycleRemainderStepperPool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _cycleRemainderStepperPool ??= ArrayPool<CycleRemainderStepper>.Create();
+            }
+        }
+
         public static ArrayPool<FactorEntry> FactorEntryPool
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -69,6 +81,18 @@ namespace PerfectNumbers.Core
 
         [ThreadStatic]
         private static ArrayPool<ulong>? _ulongPool;
+
+        [ThreadStatic]
+        private static ArrayPool<bool>? _boolPool;
+
+        public static ArrayPool<bool> BoolPool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _boolPool ??= ArrayPool<bool>.Create();
+            }
+        }
 
         public static ArrayPool<ulong> UlongPool
         {
