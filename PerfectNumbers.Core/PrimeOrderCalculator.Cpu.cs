@@ -687,13 +687,12 @@ internal static partial class PrimeOrderCalculator
 
 	private static bool GetOrComputePrimality(ulong value)
 	{
-		if (TryGetCachedPrimality(value, out bool isPrime))
+		if (!TryGetCachedPrimality(value, out bool isPrime))
 		{
-			return isPrime;
+			isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(value);
+			CachePrimalityResult(value, isPrime);
 		}
 
-		isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(value);
-		CachePrimalityResult(value, isPrime);
 		return isPrime;
 	}
 
