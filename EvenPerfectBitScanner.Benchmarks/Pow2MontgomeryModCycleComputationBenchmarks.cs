@@ -140,7 +140,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 	/// Montgomery reduction with a known cycle length (cycle lookup only); 25.81 μs on the small set (0.73× baseline) and 9.12 μs
 	/// on the large one (0.08×).
 	/// </summary>
-	[Benchmark]
+	// [Benchmark]
 	public ulong MontgomeryWithPrecomputedCycleGpu()
 	{
 		GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out ulong[] cycles);
@@ -158,7 +158,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 	/// Montgomery reduction with the cycle computed on the fly using the GPU helper; costs 54.09 ms on the small benchmark due to
 	/// cycle discovery, but drops to 12.91 μs on the large set (0.11× baseline).
 	/// </summary>
-	// [Benchmark]
+	[Benchmark]
 	public ulong MontgomeryWithGpuCycleComputationCpu()
 	{
 		GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out _);
@@ -207,7 +207,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 		return checksum;
 	}
 
-	[Benchmark]
+	// [Benchmark]
 	public ulong MontgomeryWithHeuristicCycleComputationGpu()
 	{
 		GetData(out ulong[] exponents, out MontgomeryDivisorData[] divisors, out _);
@@ -351,7 +351,7 @@ public class Pow2MontgomeryModCycleComputationBenchmarks
 			_previousPrimeOrder,
 			divisorData,
 			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
+			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
 
 		if (order != 0UL)
 		{
