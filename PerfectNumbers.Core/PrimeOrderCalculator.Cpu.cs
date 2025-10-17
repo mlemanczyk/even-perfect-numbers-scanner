@@ -317,7 +317,7 @@ internal static partial class PrimeOrderCalculator
 				bool gpuStackRemainders = false;
 				GpuPow2ModStatus status = GpuPow2ModStatus.Unavailable;
 
-				// if (allowGpuBatch && IsGpuPow2Allowed)
+				if (allowGpuBatch && IsGpuPow2Allowed)
 				{
 					if (batchSize <= StackGpuBatchSize)
 					{
