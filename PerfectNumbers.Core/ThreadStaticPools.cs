@@ -132,6 +132,47 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
+        private static List<List<PrimeOrderCalculator.PendingEntry>>? _primeOrderPendingEntryListPool;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static List<PrimeOrderCalculator.PendingEntry> RentPrimeOrderPendingEntryList(int capacityHint)
+        {
+            List<List<PrimeOrderCalculator.PendingEntry>>? pool = _primeOrderPendingEntryListPool;
+            if (pool is not null && pool.Count > 0)
+            {
+                int lastIndex = pool.Count - 1;
+                List<PrimeOrderCalculator.PendingEntry> list = pool[lastIndex];
+                pool.RemoveAt(lastIndex);
+                if (list.Count > 0)
+                {
+                    list.Clear();
+                }
+
+                if (list.Capacity < capacityHint)
+                {
+                    list.Capacity = capacityHint;
+                }
+
+                return list;
+            }
+
+            return new List<PrimeOrderCalculator.PendingEntry>(capacityHint);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void ReturnPrimeOrderPendingEntryList(List<PrimeOrderCalculator.PendingEntry> list)
+        {
+            List<List<PrimeOrderCalculator.PendingEntry>>? pool = _primeOrderPendingEntryListPool;
+            if (pool is null)
+            {
+                pool = new List<List<PrimeOrderCalculator.PendingEntry>>(4);
+                _primeOrderPendingEntryListPool = pool;
+            }
+
+            pool.Add(list);
+        }
+
+        [ThreadStatic]
         private static List<Stack<ulong>>? _ulongStackPool;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
