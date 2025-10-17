@@ -733,16 +733,17 @@ internal static partial class PrimeOrderCalculator
 			counts = ThreadStaticPools.RentUlongIntDictionary(Math.Max(FactorSlotCount, 8));
 			counts.Clear();
 
-			bool gpuPopulated = TryPopulateSmallPrimeFactorsGpu(value, limit, counts, out remaining);
-			if (!gpuPopulated)
-			{
-				counts.Clear();
+			// bool gpuPopulated = TryPopulateSmallPrimeFactorsGpu(value, limit, primeSlots, exponentSlots, out factorCount, out remaining);
+			// if (!gpuPopulated)
+			// {
+			// 	throw new InvalidOperationException($"GPU didn't populate factors for {value}");
+				// counts.Clear();
 				remaining = PopulateSmallPrimeFactorsCpu(value, limit, counts);
-			}
+			// }
 
-			int dictionaryCount = counts.Count;
-			if (dictionaryCount <= FactorSlotCount)
-			{
+			// int dictionaryCount = counts.Count;
+			// if (dictionaryCount <= FactorSlotCount)
+			// {
 				int copyIndex = 0;
 				foreach (KeyValuePair<ulong, int> entry in counts)
 				{
@@ -754,12 +755,12 @@ internal static partial class PrimeOrderCalculator
 				factorCount = copyIndex;
 				ThreadStaticPools.ReturnUlongIntDictionary(counts);
 				counts = null;
-			}
-			else
-			{
-				useDictionary = true;
-				factorCount = dictionaryCount;
-			}
+			// }
+			// else
+			// {
+				// useDictionary = true;
+				// factorCount = dictionaryCount;
+			// }
 		}
 
 

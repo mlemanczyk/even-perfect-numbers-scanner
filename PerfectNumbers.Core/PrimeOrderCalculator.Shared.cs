@@ -606,27 +606,27 @@ internal static partial class PrimeOrderCalculator
         uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
         UInt128 remaining;
 
-        if (IsGpuPow2Allowed && value <= ulong.MaxValue)
-        {
-            Dictionary<ulong, int> narrowCounts = new(capacity: 8);
-            if (TryPopulateSmallPrimeFactorsGpu((ulong)value, limit, narrowCounts, out ulong narrowRemaining))
-            {
-                foreach (KeyValuePair<ulong, int> entry in narrowCounts)
-                {
-                    counts[(UInt128)entry.Key] = entry.Value;
-                }
+        // if (IsGpuPow2Allowed && value <= ulong.MaxValue)
+        // {
+        //     Dictionary<ulong, int> narrowCounts = new(capacity: 8);
+        //     if (TryPopulateSmallPrimeFactorsGpu((ulong)value, limit, narrowCounts, out ulong narrowRemaining))
+        //     {
+        //         foreach (KeyValuePair<ulong, int> entry in narrowCounts)
+        //         {
+        //             counts[(UInt128)entry.Key] = entry.Value;
+        //         }
 
-                remaining = (UInt128)narrowRemaining;
-            }
-            else
-            {
-                remaining = PopulateSmallPrimeFactorsCpuWide(value, limit, counts);
-            }
-        }
-        else
-        {
+        //         remaining = (UInt128)narrowRemaining;
+        //     }
+        //     else
+        //     {
+        //         remaining = PopulateSmallPrimeFactorsCpuWide(value, limit, counts);
+        //     }
+        // }
+        // else
+        // {
             remaining = PopulateSmallPrimeFactorsCpuWide(value, limit, counts);
-        }
+        // }
 
         List<UInt128> pending = new();
         if (remaining > UInt128.One)
