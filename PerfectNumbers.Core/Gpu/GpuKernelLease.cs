@@ -6,7 +6,7 @@ using static PerfectNumbers.Core.Gpu.GpuContextPool;
 
 namespace PerfectNumbers.Core.Gpu;
 
-public sealed class GpuKernelLease : IDisposable
+public sealed class GpuKernelLease
 {
     private static readonly ConcurrentQueue<GpuKernelLease> Pool = new();
 
@@ -702,8 +702,7 @@ public sealed class GpuKernelLease : IDisposable
 
     public void Dispose()
     {
-        Dispose(disposing: true);
-        System.GC.SuppressFinalize(this);
+        Dispose(disposing: false);
     }
 
     public readonly struct ExecutionScope
@@ -715,7 +714,7 @@ public sealed class GpuKernelLease : IDisposable
             _lock = sync;
             if (_lock is not null)
             {
-                // Monitor.Enter(_lock);
+                Monitor.Enter(_lock);
             }
         }
 
@@ -723,7 +722,7 @@ public sealed class GpuKernelLease : IDisposable
         {
             if (_lock is not null)
             {
-                // Monitor.Exit(_lock);
+                Monitor.Exit(_lock);
             }
         }
     }

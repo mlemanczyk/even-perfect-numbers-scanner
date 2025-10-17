@@ -82,6 +82,7 @@ internal static partial class PrimeOrderCalculator
 		for (int i = 0; i < length; i++)
 		{
 			ulong factor = factorSpan[i].Value;
+
 			ulong reduced = phi / factor;
 			if (Pow2EqualsOneCpu(reduced, prime, divisorData))
 			{
@@ -639,16 +640,16 @@ internal static partial class PrimeOrderCalculator
 	private static bool Pow2EqualsOneCpu(ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
 	{
 		// if (IsGpuPow2Allowed)
-		// {
+		{
 			ulong remainder = exponent.Pow2MontgomeryModWindowedGpu(divisorData, false);
 			// GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, prime, out ulong remainder, divisorData);
 			// if (status == GpuPow2ModStatus.Success)
 			// {
 				return remainder == 1UL;
 			// }
-		// }
+		}
 
-		// return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
+		return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
 	}
 
 	// [ThreadStatic]
@@ -744,21 +745,21 @@ internal static partial class PrimeOrderCalculator
 			// int dictionaryCount = counts.Count;
 			// if (dictionaryCount <= FactorSlotCount)
 			// {
-				int copyIndex = 0;
-				foreach (KeyValuePair<ulong, int> entry in counts)
-				{
-					primeSlots[copyIndex] = entry.Key;
-					exponentSlots[copyIndex] = entry.Value;
-					copyIndex++;
-				}
+				// int copyIndex = 0;
+				// foreach (KeyValuePair<ulong, int> entry in counts)
+				// {
+				// 	primeSlots[copyIndex] = entry.Key;
+				// 	exponentSlots[copyIndex] = entry.Value;
+				// 	copyIndex++;
+				// }
 
-				factorCount = copyIndex;
-				ThreadStaticPools.ReturnUlongIntDictionary(counts);
-				counts = null;
+				// factorCount = copyIndex;
+				// ThreadStaticPools.ReturnUlongIntDictionary(counts);
+				// counts = null;
 			// }
 			// else
 			// {
-				// useDictionary = true;
+				useDictionary = true;
 				// factorCount = dictionaryCount;
 			// }
 		}
