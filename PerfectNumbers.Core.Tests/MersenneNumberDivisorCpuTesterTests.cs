@@ -1,4 +1,3 @@
-using System;
 using FluentAssertions;
 using PerfectNumbers.Core.Cpu;
 using Xunit;

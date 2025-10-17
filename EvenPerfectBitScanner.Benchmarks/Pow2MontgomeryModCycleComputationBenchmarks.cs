@@ -1,6 +1,4 @@
-using System;
 using System.Buffers.Binary;
-using System.Threading;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using PerfectNumbers.Core;

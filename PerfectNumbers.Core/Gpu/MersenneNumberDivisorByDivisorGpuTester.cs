@@ -1,14 +1,9 @@
-using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Numerics;
 using ILGPU;
 using ILGPU.Runtime;
-using MontgomeryDivisorData = PerfectNumbers.Core.MontgomeryDivisorData;
-using MontgomeryDivisorDataCache = PerfectNumbers.Core.MontgomeryDivisorDataCache;
-using CycleRemainderStepper = PerfectNumbers.Core.CycleRemainderStepper;
 
 namespace PerfectNumbers.Core.Gpu;
 

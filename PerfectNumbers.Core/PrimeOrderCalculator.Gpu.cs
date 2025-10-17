@@ -1,6 +1,3 @@
-using System;
-using System.Buffers;
-using System.Collections.Generic;
 using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;

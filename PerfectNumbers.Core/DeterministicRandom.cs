@@ -1,6 +1,3 @@
-using System;
-using System.Threading;
-
 namespace PerfectNumbers.Core;
 
 internal static class DeterministicRandom

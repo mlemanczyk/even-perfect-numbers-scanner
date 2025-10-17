@@ -1,10 +1,8 @@
-using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
 using System.Numerics;
-using PerfectNumbers.Core;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using ILGPU.Runtime.OpenCL;

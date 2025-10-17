@@ -1,10 +1,7 @@
-using System;
-using System.Collections.Generic;
 using System.Reflection;
 using FluentAssertions;
 using ILGPU;
 using ILGPU.Runtime;
-using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 using Xunit;
 

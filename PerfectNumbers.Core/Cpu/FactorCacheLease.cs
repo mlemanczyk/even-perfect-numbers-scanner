@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace PerfectNumbers.Core.Cpu;
 
 internal struct FactorCacheLease

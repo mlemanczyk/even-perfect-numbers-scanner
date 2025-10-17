@@ -1,6 +1,3 @@
-using System.Numerics;
-using PerfectNumbers.Core.Gpu;
-
 namespace PerfectNumbers.Core;
 
 internal static partial class PrimeOrderCalculator

@@ -1,9 +1,5 @@
-using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Threading.Tasks;
-using Open.Numeric.Primes;
 using System.Runtime.InteropServices;
 
 namespace PerfectNumbers.Core;

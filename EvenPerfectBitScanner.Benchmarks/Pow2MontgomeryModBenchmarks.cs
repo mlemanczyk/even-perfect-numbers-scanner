@@ -1,9 +1,7 @@
-using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using System.Numerics;
 using PerfectNumbers.Core;
-using PerfectNumbers.Core.Gpu;
 
 namespace EvenPerfectBitScanner.Benchmarks;
 

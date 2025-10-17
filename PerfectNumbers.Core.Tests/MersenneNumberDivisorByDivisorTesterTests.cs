@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
 using FluentAssertions;
-using PerfectNumbers.Core;
 using Xunit;
 
 namespace PerfectNumbers.Core.Tests;

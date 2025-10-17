@@ -1,5 +1,3 @@
-using System;
-
 namespace PerfectNumbers.Core;
 
 public interface IMersenneNumberDivisorByDivisorTester

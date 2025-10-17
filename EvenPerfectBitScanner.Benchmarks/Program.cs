@@ -1,5 +1,3 @@
-using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Running;
 using PerfectNumbers.Core.Gpu;
 
 namespace EvenPerfectBitScanner.Benchmarks;

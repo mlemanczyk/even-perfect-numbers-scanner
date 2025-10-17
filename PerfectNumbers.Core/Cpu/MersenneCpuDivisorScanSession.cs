@@ -1,5 +1,3 @@
-using System;
-
 namespace PerfectNumbers.Core.Cpu;
 
 internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
