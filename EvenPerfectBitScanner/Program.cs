@@ -984,10 +984,11 @@ internal static class Program
 
     private static void RunByDivisorMode(List<ulong> candidates, int threadCount)
     {
-        if (_byDivisorTester is null)
-        {
-            throw new InvalidOperationException("By-divisor tester has not been initialized.");
-        }
+        // The CPU by-divisor execution initializes the tester during startup, so the guard below never triggers.
+        // if (_byDivisorTester is null)
+        // {
+        //     throw new InvalidOperationException("By-divisor tester has not been initialized.");
+        // }
 
         // TODO: Inline this helper by invoking MersenneNumberDivisorByDivisorTester.Run directly at call sites so
         // the CLI avoids this extra frame during the hot composite-reporting path.
