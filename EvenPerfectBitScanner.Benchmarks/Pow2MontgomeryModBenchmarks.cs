@@ -367,9 +367,10 @@ public class Pow2MontgomeryModBenchmarks
         return result.MontgomeryMultiply(1UL, modulus, nPrime);
     }
 
+	// TODO: Update it with the latest implementations
     private static ulong Pow2MontgomeryModSlidingWindow(ulong exponent, in MontgomeryDivisorData divisor)
     {
-        ulong modulus = divisor.Modulus;
+		ulong modulus = divisor.Modulus;
         if (modulus <= 1UL || (modulus & 1UL) == 0UL)
         {
             return 0UL;
@@ -426,6 +427,7 @@ public class Pow2MontgomeryModBenchmarks
         return result.MontgomeryMultiply(1UL, modulus, nPrime);
     }
 
+	// TODO: Update it with the latest implementations, if it exists in production code. Otherwise just remove TODO
     private static ulong Pow2ModBinary(ulong exponent, ulong modulus)
     {
         if (modulus <= 1UL || (modulus & 1UL) == 0UL)
