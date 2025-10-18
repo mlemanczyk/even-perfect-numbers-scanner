@@ -1,8 +1,6 @@
-using System;
 using System.Numerics;
 using System.Reflection;
 using FluentAssertions;
-using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 using Xunit;
 

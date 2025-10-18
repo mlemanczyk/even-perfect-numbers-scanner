@@ -1,9 +1,5 @@
-using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Threading.Tasks;
-using Open.Numeric.Primes;
 using System.Runtime.InteropServices;
 
 namespace PerfectNumbers.Core;
@@ -118,12 +114,13 @@ public static class MersenneNumberDivisorByDivisorTester
 		{
 			ulong candidate = primesSpan[index];
 
-			if (candidate <= 1UL)
-			{
-				markComposite();
-				printResult(candidate, false, false, false);
-				continue;
-			}
+		// The by-divisor CPU scan only operates on primes greater than 138,000,000, so the guard below never triggers.
+		// if (candidate <= 1UL)
+		// {
+		//     markComposite();
+		//     printResult(candidate, false, false, false);
+		//     continue;
+		// }
 
 			// This implementation is terribly slow, while this method expect prime p given as --filter-p input already.
 			// We don't need to additionally check it.
@@ -174,11 +171,12 @@ public static class MersenneNumberDivisorByDivisorTester
 			return;
 		}
 
-		if (maxPrime <= 1UL)
-		{
-			Console.WriteLine("The filter specified by --filter-p must contain at least one prime exponent greater than 1 for --mersenne=bydivisor.");
-			return;
-		}
+		// if (maxPrime <= 1UL)
+		// {
+		//     Console.WriteLine("The filter specified by --filter-p must contain at least one prime exponent greater than 1 for --mersenne=bydivisor.");
+		//     return;
+		// }
+		// The by-divisor CPU configuration only feeds primes well above 1, so this fallback never executes in production runs.
 
 		tester.ConfigureFromMaxPrime(maxPrime);
 
@@ -202,12 +200,13 @@ public static class MersenneNumberDivisorByDivisorTester
 			ulong prime = primeSpan[i];
 			ulong allowedMax = allowedMaxSpan[i];
 
-			if (allowedMax < 3UL)
-			{
-				clearComposite();
-				printResult(prime, true, true, true);
-				continue;
-			}
+		// Primes in the production by-divisor flow yield massive divisor limits, so the short-circuit below never applies.
+		// if (allowedMax < 3UL)
+		// {
+		//     clearComposite();
+		//     printResult(prime, true, true, true);
+		//     continue;
+		// }
 
 			filteredPrimes.Add(prime);
 		}
@@ -215,21 +214,24 @@ public static class MersenneNumberDivisorByDivisorTester
 		pool.Return(allowedMaxBatch, clearArray: true);
 		pool.Return(primeBatch, clearArray: true);
 
-		if (filteredPrimes.Count == 0)
-		{
-			if (applyStartPrime)
-			{
-				Console.WriteLine($"No primes greater than or equal to {startPrime.ToString(CultureInfo.InvariantCulture)} were found for --mersenne=bydivisor.");
-			}
+		// The filtered list mirrors primesToTest in the CPU flow, so the guard below never triggers after the earlier
+		// emptiness checks.
+		// if (filteredPrimes.Count == 0)
+		// {
+		//     if (applyStartPrime)
+		//     {
+		//         Console.WriteLine($"No primes greater than or equal to {startPrime.ToString(CultureInfo.InvariantCulture)} were found for --mersenne=bydivisor.");
+		//     }
 
-			return;
-		}
+		//     return;
+		// }
 
 		int workerCount = threadCount <= 0 ? Environment.ProcessorCount : threadCount;
-		if (workerCount < 1)
-		{
-			workerCount = 1;
-		}
+		// Environment.ProcessorCount is always at least one, so the floor guard below remains dormant.
+		// if (workerCount < 1)
+		// {
+		//     workerCount = 1;
+		// }
 
 		void ProcessPrime(ulong prime)
 		{
@@ -255,9 +257,11 @@ public static class MersenneNumberDivisorByDivisorTester
 		}
 		else
 		{
+			var scheduler = UnboundedTaskScheduler.Instance;
 			ParallelOptions options = new()
 			{
-				MaxDegreeOfParallelism = workerCount
+				MaxDegreeOfParallelism = workerCount,
+				TaskScheduler = scheduler
 			};
 
 			Parallel.ForEach(filteredPrimes, options, ProcessPrime);

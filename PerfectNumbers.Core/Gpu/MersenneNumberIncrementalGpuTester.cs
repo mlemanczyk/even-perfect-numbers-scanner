@@ -1,8 +1,5 @@
-using System;
 using System.Buffers;
-using System.Threading;
 using System.Runtime.InteropServices;
-using ILGPU;
 using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;

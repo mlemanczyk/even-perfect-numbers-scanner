@@ -1,3 +1,6 @@
+using System;
+using System.Text;
+
 namespace PerfectNumbers.Core;
 
 /// <summary>
@@ -67,6 +70,41 @@ public sealed class TextFileWriter : IDisposable
             // millions of candidate summaries.
             TextWriter.WriteLine(line);
             TextWriter.Flush();
+        }
+    }
+
+    public void WriteLine(ReadOnlySpan<char> line)
+    {
+        lock (_lock)
+        {
+            StreamWriter writer = TextWriter;
+            writer.Write(line);
+            writer.WriteLine();
+            writer.Flush();
+        }
+    }
+
+    public void Write(ReadOnlySpan<char> text)
+    {
+        lock (_lock)
+        {
+            StreamWriter writer = TextWriter;
+            writer.Write(text);
+            writer.Flush();
+        }
+    }
+
+    public void Write(StringBuilder builder)
+    {
+        lock (_lock)
+        {
+            StreamWriter writer = TextWriter;
+            foreach (ReadOnlyMemory<char> chunk in builder.GetChunks())
+            {
+                writer.Write(chunk.Span);
+            }
+
+            writer.Flush();
         }
     }
 

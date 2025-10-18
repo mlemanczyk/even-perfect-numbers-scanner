@@ -1,9 +1,7 @@
-using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using System.Numerics;
 using PerfectNumbers.Core;
-using PerfectNumbers.Core.Gpu;
 
 namespace EvenPerfectBitScanner.Benchmarks;
 
@@ -41,34 +39,37 @@ public class Pow2MontgomeryModBenchmarks
             _smallExponents[i] = NextSmallExponent();
             _smallCycles[i] = MersenneDivisorCycles.CalculateCycleLength(smallModulus, MontgomeryDivisorData.FromModulus(smallModulus));
 
+				Console.WriteLine($"Calculating large cycle {i + 1} with heuristics");
             (ulong largeModulus, ulong largeCycle) = NextLargeModulusAndCycle();
-            _largeDivisors[i] = CreateMontgomeryDivisorData(largeModulus);
+			_largeDivisors[i] = CreateMontgomeryDivisorData(largeModulus);
             _largeExponents[i] = NextLargeExponent();
             _largeCycles[i] = largeCycle;
         }
     }
 
-    /// <summary>
-    /// Baseline right-to-left Montgomery ladder; measured 36.36 μs on the small sample set and 117.32 μs on the large one.
-    /// </summary>
-    [Benchmark(Baseline = true)]
-    public ulong BaselineCpu()
-    {
-        GetData(out var exponents, out var divisors, out _);
-        ulong checksum = 0UL;
+	/// <summary>
+	/// Baseline right-to-left Montgomery ladder; measured 36.36 μs on the small sample set and 117.32 μs on the large one.
+	/// </summary>
+	[Benchmark(Baseline = true)]
+	public ulong BaselineCpu()
+	{
+		GetData(out var exponents, out var divisors, out _);
+		ulong checksum = 0UL;
 
-        for (int i = 0; i < SampleCount; i++)
-        {
-            checksum ^= exponents[i].Pow2MontgomeryModWindowedCpu(divisors[i], keepMontgomery: false);
-        }
+		for (int i = 0; i < SampleCount; i++)
+		{
+			checksum ^= exponents[i].Pow2MontgomeryModWindowedCpu(divisors[i], keepMontgomery: false);
+		}
 
-        return checksum;
-    }
+		return checksum;
+	}
 
     /// <summary>
     /// Baseline right-to-left Montgomery ladder; measured ??.?? μs on the small sample set and ??.?? μs on the large one.
+	/// 
+	/// This benchmark failed running, hanging up early before reaching workload testing.
     /// </summary>
-    [Benchmark]
+    // [Benchmark]
     public ulong BaselineGpu()
     {
         GetData(out var exponents, out var divisors, out _);
@@ -366,9 +367,10 @@ public class Pow2MontgomeryModBenchmarks
         return result.MontgomeryMultiply(1UL, modulus, nPrime);
     }
 
+	// TODO: Update it with the latest implementations
     private static ulong Pow2MontgomeryModSlidingWindow(ulong exponent, in MontgomeryDivisorData divisor)
     {
-        ulong modulus = divisor.Modulus;
+		ulong modulus = divisor.Modulus;
         if (modulus <= 1UL || (modulus & 1UL) == 0UL)
         {
             return 0UL;
@@ -425,6 +427,7 @@ public class Pow2MontgomeryModBenchmarks
         return result.MontgomeryMultiply(1UL, modulus, nPrime);
     }
 
+	// TODO: Update it with the latest implementations, if it exists in production code. Otherwise just remove TODO
     private static ulong Pow2ModBinary(ulong exponent, ulong modulus)
     {
         if (modulus <= 1UL || (modulus & 1UL) == 0UL)
