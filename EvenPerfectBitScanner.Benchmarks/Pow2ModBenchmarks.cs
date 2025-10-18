@@ -443,6 +443,8 @@ public class Pow2ModBenchmarks
 
         private static SampleCollections Create()
         {
+            Console.WriteLine("Preparing power-of-two modulus benchmark sample collections...");
+
             Random random = new(13);
             Random heuristicRandom = new(113);
             Random wideRandom = new(19);
@@ -486,7 +488,7 @@ public class Pow2ModBenchmarks
                 wideCycles[i] = CalculateCycleLengthWithHeuristics(wideModulus, ref previousWidePrimeOrder);
             }
 
-            return new SampleCollections(
+            SampleCollections collections = new SampleCollections(
                 smallDivisors,
                 largeDivisors,
                 veryLargeDivisors,
@@ -499,6 +501,10 @@ public class Pow2ModBenchmarks
                 largeCycles,
                 veryLargeCycles,
                 wideCycles);
+
+            Console.WriteLine("Finished preparing power-of-two modulus benchmark sample collections.");
+
+            return collections;
         }
 
         private static ulong NextSmallExponent(Random random) => (ulong)random.NextInt64(1L, 1_000_000L);
