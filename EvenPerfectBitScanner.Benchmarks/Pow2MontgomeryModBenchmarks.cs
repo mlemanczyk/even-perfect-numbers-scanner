@@ -46,27 +46,29 @@ public class Pow2MontgomeryModBenchmarks
         }
     }
 
-    /// <summary>
-    /// Baseline right-to-left Montgomery ladder; measured 36.36 μs on the small sample set and 117.32 μs on the large one.
-    /// </summary>
-    [Benchmark(Baseline = true)]
-    public ulong BaselineCpu()
-    {
-        GetData(out var exponents, out var divisors, out _);
-        ulong checksum = 0UL;
+	/// <summary>
+	/// Baseline right-to-left Montgomery ladder; measured 36.36 μs on the small sample set and 117.32 μs on the large one.
+	/// </summary>
+	[Benchmark(Baseline = true)]
+	public ulong BaselineCpu()
+	{
+		GetData(out var exponents, out var divisors, out _);
+		ulong checksum = 0UL;
 
-        for (int i = 0; i < SampleCount; i++)
-        {
-            checksum ^= exponents[i].Pow2MontgomeryModWindowedCpu(divisors[i], keepMontgomery: false);
-        }
+		for (int i = 0; i < SampleCount; i++)
+		{
+			checksum ^= exponents[i].Pow2MontgomeryModWindowedCpu(divisors[i], keepMontgomery: false);
+		}
 
-        return checksum;
-    }
+		return checksum;
+	}
 
     /// <summary>
     /// Baseline right-to-left Montgomery ladder; measured ??.?? μs on the small sample set and ??.?? μs on the large one.
+	/// 
+	/// This benchmark failed running, hanging up early before reaching workload testing.
     /// </summary>
-    [Benchmark]
+    // [Benchmark]
     public ulong BaselineGpu()
     {
         GetData(out var exponents, out var divisors, out _);
