@@ -1,3 +1,4 @@
+using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 
@@ -51,6 +52,8 @@ public class MontgomeryMultiplyBenchmarks
 
         private static MontgomerySampleData Create()
         {
+            Console.WriteLine("Preparing Montgomery multiply benchmark sample data...");
+
             Random random = new(1979);
             var operandsA = new ulong[MaxBatchSize];
             var operandsB = new ulong[MaxBatchSize];
@@ -66,7 +69,11 @@ public class MontgomeryMultiplyBenchmarks
                 operandsB[i] = (ulong)random.NextInt64(0, (long)modulus);
             }
 
-            return new MontgomerySampleData(operandsA, operandsB, moduli, nPrimes);
+            MontgomerySampleData data = new MontgomerySampleData(operandsA, operandsB, moduli, nPrimes);
+
+            Console.WriteLine("Finished preparing Montgomery multiply benchmark sample data.");
+
+            return data;
         }
 
         private static ulong NextOddModulus(Random random)

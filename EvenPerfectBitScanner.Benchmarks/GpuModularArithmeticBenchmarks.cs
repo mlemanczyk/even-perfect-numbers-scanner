@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
@@ -51,6 +52,8 @@ public class GpuModularArithmeticBenchmarks
 
         private static ModularArithmeticSampleData Create()
         {
+            Console.WriteLine("Preparing modular arithmetic benchmark sample data...");
+
             Random random = new(7);
             var exponents = new ulong[MaxBatchSize];
             var moduli = new ulong[MaxBatchSize];
@@ -66,7 +69,11 @@ public class GpuModularArithmeticBenchmarks
                 mersenneModuli[i] = (1UL << bits) - 1UL;
             }
 
-            return new ModularArithmeticSampleData(exponents, moduli, mersenneModuli, mersenneBitWidths);
+            ModularArithmeticSampleData data = new ModularArithmeticSampleData(exponents, moduli, mersenneModuli, mersenneBitWidths);
+
+            Console.WriteLine("Finished preparing modular arithmetic benchmark sample data.");
+
+            return data;
         }
 
         private static ulong NextExponent(Random random)
