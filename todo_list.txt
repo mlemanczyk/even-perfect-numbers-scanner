@@ -1,591 +1,81 @@
-EvenPerfectBitScanner\Program.cs:69:                bool useModuloWorkaround = false; // TODO: Remove once the runtime defaults to the ImmediateModulo path measured fastest in GpuUInt128NativeModuloBenchmarks.
-EvenPerfectBitScanner\Program.cs:78:                bool useDivisorCycles = false; // TODO: Default this flag to true and remove the opt-out once divisor cycle lookups are mandatory per the optimized by-divisor benchmarks.
-EvenPerfectBitScanner\Program.cs:109:                                // TODO: Replace this ulong.Parse with the Utf8Parser-based span helper once CLI option parsing
-EvenPerfectBitScanner\Program.cs:124:                                // TODO: Swap int.Parse for the span-based Utf8Parser fast path to avoid transient strings when
-EvenPerfectBitScanner\Program.cs:133:                                        kernelType = GpuKernelType.Pow2Mod; // TODO: Switch this mode to the ProcessEightBitWindows kernel once Pow2Minus1Mod adopts the benchmarked faster windowed ladder.
-EvenPerfectBitScanner\Program.cs:164:                                // TODO: Replace UInt128.Parse with the benchmarked fast-path parser once we expose the
-EvenPerfectBitScanner\Program.cs:177:                                // TODO: Replace ulong.TryParse with the Utf8Parser fast-path once CLI parsing utilities expose
-EvenPerfectBitScanner\Program.cs:186:                                // TODO: Swap this TryParse for the zero-allocation Utf8Parser helper to keep residue CLI option
-EvenPerfectBitScanner\Program.cs:211:                                // TODO: Use the Utf8Parser-based reader here to eliminate the temporary substring allocation
-EvenPerfectBitScanner\Program.cs:273:                                // TODO: Replace this TryParse with the Utf8Parser span helper once shared CLI parsing utilities
-EvenPerfectBitScanner\Program.cs:288:                                // TODO: Swap to the Utf8Parser double fast-path so zero-hard parsing avoids culture-dependent
-EvenPerfectBitScanner\Program.cs:304:                                        // TODO: Replace these double/int TryParse calls with span-based Utf8Parser helpers once
-EvenPerfectBitScanner\Program.cs:338:                                // TODO: Convert this int.Parse to the Utf8Parser-based helper to keep CLI option parsing
-EvenPerfectBitScanner\Program.cs:344:                                // TODO: Swap int.Parse for Utf8Parser to align with the faster CLI numeric parsing path.
-EvenPerfectBitScanner\Program.cs:349:                                // TODO: Replace int.Parse with Utf8Parser-based parsing to eliminate temporary strings when
-EvenPerfectBitScanner\Program.cs:355:                                // TODO: Use the Utf8Parser-based fast path here to match the other CLI numeric parsing
-EvenPerfectBitScanner\Program.cs:361:                                // TODO: Inline the Utf8Parser-based int reader here once shared CLI parsing utilities land so
-EvenPerfectBitScanner\Program.cs:371:                                // TODO: Replace int.Parse with the shared Utf8Parser fast-path to keep hot CLI option parsing
-EvenPerfectBitScanner\Program.cs:385:                                // TODO: Convert this int.Parse to Utf8Parser once the optimized CLI parsing helper is shared
-EvenPerfectBitScanner\Program.cs:443:                                // TODO: Wire GenerateGpu to the unrolled-hex kernel that led the MersenneDivisorCycleLengthGpuBenchmarks once it lands.
-EvenPerfectBitScanner\Program.cs:464:                // TODO: Keep a single cached block loaded from disk and honor the configured device when
-EvenPerfectBitScanner\Program.cs:468:                // TODO: Stop reloading the full snapshot once the ad-hoc path streams results straight from
-EvenPerfectBitScanner\Program.cs:504:                                // TODO: Swap the underlying pow2mod kernels to ProcessEightBitWindows once Pow2Minus1Mod migrates to the windowed helper highlighted in GpuPow2ModBenchmarks.
-EvenPerfectBitScanner\Program.cs:539:                    _byDivisorTester.UseDivisorCycles = useDivisorCycles; // TODO: Collapse this assignment once the runtime enforces divisor-cycle acceleration for every by-divisor scan path.
-EvenPerfectBitScanner\Program.cs:621:                        // TODO: Replace this File.WriteAllText call with the pooled TextFileWriter pipeline once the
-EvenPerfectBitScanner\Program.cs:642:                                // TODO: Rent this filter buffer from ArrayPool<ulong> and reuse it across reload batches so
-EvenPerfectBitScanner\Program.cs:717:                                // TODO: Rent this buffer from ArrayPool once the pooled prime-block allocator lands so worker
-EvenPerfectBitScanner\Program.cs:800:                        // TODO: Swap this char-by-char parser for the benchmarked Utf8Parser-based fast-path once
-EvenPerfectBitScanner\Program.cs:818:                                // TODO: Swap ulong.TryParse for the Utf8Parser-based fast path once the shared span helpers
-EvenPerfectBitScanner\Program.cs:837:                // TODO: Inline this helper by invoking MersenneNumberDivisorByDivisorTester.Run directly at call sites so
-EvenPerfectBitScanner\Program.cs:885:                        // TODO: Replace this ulong.Parse call with the Utf8Parser-based span fast-path we benchmarked so results
-EvenPerfectBitScanner\Program.cs:905:                        // TODO: Replace these bool.TryParse calls with the span-based fast path once we expose the
-EvenPerfectBitScanner\Program.cs:974:            // TODO: Replace this string interpolation with the pooled ValueStringBuilder pipeline from the
-EvenPerfectBitScanner\Program.cs:997:                    // TODO: Inline the fast-path transform here once we collapse the delegate* indirection so
-EvenPerfectBitScanner\Program.cs:1076:                // TODO: Switch this StringBuilder-based formatter to a span-friendly Utf8Formatter pipeline so
-EvenPerfectBitScanner\Program.cs:1137:                                // TODO: Replace these per-flush FileStream/StreamWriter allocations with a pooled TextFileWriter-style
-EvenPerfectBitScanner\Program.cs:1155:                // TODO: Remove this wrapper once callers can invoke BitOperations.PopCount directly so the hot bit-stat path
-EvenPerfectBitScanner\Program.cs:1310:                // TODO: Remove this pass-through once callers can provide the full out parameters
-EvenPerfectBitScanner\Program.cs:1388:                        // TODO: Route by-divisor scans through the ProcessEightBitWindows pow2mod kernel once the windowed Pow2Minus1Mod helper replaces the slower single-bit ladder.
-EvenPerfectBitScanner\Program.cs:1394:                        // TODO: Adopt the windowed Pow2Minus1Mod helper here so divisor checks benefit from the ProcessEightBitWindows speedups.
-EvenPerfectBitScanner\Program.cs:1406:                // TODO: Integrate the divisor-cycle cache here so the small-prime sweep reuses precomputed remainders instead of
-EvenPerfectBitScanner\Program.cs:1462:                        // TODO: Replace this byte-by-byte scan with the lookup-table based statistics collector validated in the
-EvenPerfectBitScanner.ResultsParser\Program.cs:154:                // TODO: Replace TryParse with the Utf8Parser-based span helper once the results parser accepts ReadOnlySpan<char>
-EvenPerfectBitScanner.ResultsParser\Program.cs:166:                // TODO: Switch to the Utf8Parser-based fast path so integer arguments avoid transient strings while parsing.
-EvenPerfectBitScanner.ResultsParser\Program.cs:192:                // TODO: Swap this string slicing for ReadOnlySpan<char>-based parsing once the CLI helpers expose
-EvenPerfectBitScanner.ResultsParser\Program.cs:234:                // TODO: Replace this vanilla StreamReader with a pooled FileStreamOptions + ArrayPool-backed reader so large
-EvenPerfectBitScanner.ResultsParser\Program.cs:250:        // TODO: Stream candidates through a pooled buffer pipeline so we can filter and dispatch without allocating
-EvenPerfectBitScanner.ResultsParser\Program.cs:317:                // TODO: Replace ulong.Parse with the Utf8Parser-based span helper so CSV reload stays on the zero-allocation
-EvenPerfectBitScanner.ResultsParser\Program.cs:325:                // TODO: Swap bool.Parse for the Utf8Parser-powered boolean reader once exposed so reload avoids allocating
-EvenPerfectBitScanner.ResultsParser\Program.cs:333:                // TODO: Switch this path composition to Span<char>-based stack buffers once we expose the pooled
-EvenPerfectBitScanner.ResultsParser\Program.cs:349:        // TODO: Switch WriteCsv to a span-based Utf8Formatter pipeline backed by ArrayPool-rented buffers so
-EvenPerfectBitScanner.ResultsParser\Program.cs:358:                // TODO: Replace this per-entry WriteLine with a batched chunk writer that reuses pooled
-EvenPerfectBitScanner.ResultsParser\Program.cs:380:                // TODO: Replace the Task-based scheduling with the pooled work queue used in the scanner so candidate
-EvenPerfectBitScanner.ResultsParser\Program.cs:388:                // TODO: Rent this line buffer from ArrayPool<string> to eliminate repeated allocations when scanning
-EvenPerfectBitScanner.ResultsParser\Program.cs:452:                                // TODO: Rent this full-capacity buffer from ArrayPool<string> and reuse it between reads instead
-EvenPerfectBitScanner.ResultsParser\Program.cs:458:                                // TODO: Rent the partial chunk buffer from ArrayPool<string> instead of allocating a fresh
-EvenPerfectBitScanner.ResultsParser\Program.cs:499:                // TODO: Rent the candidate array from ArrayPool<CandidateResult> so chunk processing remains allocation-free
-EvenPerfectBitScanner.ResultsParser\Program.cs:531:                // TODO: Replace this copy with an in-place filtering pipeline that reuses pooled buffers; duplicating the list
-EvenPerfectBitScanner.ResultsParser\Program.cs:537:                // TODO: Keep using the Open.Numeric prime enumerator for the merge walk but hoist a shared instance so reloads
-EvenPerfectBitScanner.ResultsParser\Program.cs:578:                // TODO: Replace this Dictionary allocation with the pooled span-based frequency map once the ValueListBuilder
-EvenPerfectBitScanner.ResultsParser\Program.cs:593:                // TODO: Rent the raw prime accumulator from ArrayPool<List<CandidateResult>> or migrate to a pooled struct
-EvenPerfectBitScanner.ResultsParser\Program.cs:661:                // TODO: Rent these segment arrays from ArrayPool<List<CandidateResult>> so parallel splitting avoids allocating
-EvenPerfectBitScanner.ResultsParser\Program.cs:666:                // TODO: Rent the tasks array from ArrayPool<Task> so repeated reloads avoid allocating new
-EvenPerfectBitScanner.ResultsParser\Program.cs:670:                // TODO: Replace the separate division/modulo here with Math.DivRem (or the branchless chunk
-EvenPerfectBitScanner.ResultsParser\Program.cs:690:                        // TODO: Replace Task.Run with the pooled work queue from the scanner so scheduling
-EvenPerfectBitScanner.ResultsParser\Program.cs:696:                                // TODO: Rent these per-worker lists from a dedicated pool so parallel splits reuse
-EvenPerfectBitScanner.ResultsParser\Program.cs:721:                // TODO: Promote these final result lists to pooled builders so we can reuse the buffers
-PerfectNumbers.Core.Tests\AlphaCacheTests.cs:7:    [Fact(Skip = "TODO: implement test")]
-EvenPerfectBitScanner.Benchmarks\GpuUInt128Montgomery64Benchmarks.cs:50:        // TODO: Migrate remaining callers of MulModMontgomery64 to the extension helper; the struct
-PerfectNumbers.Core.Tests\AlphaCalculationsTests.cs:7:    [Fact(Skip = "TODO: implement test")]
-EvenPerfectBitScanner.Benchmarks\GpuUInt128MulModBenchmarks.cs:52:        // TODO: Switch the extension method to allocate per iteration, as it's faster. Keep the benchmarks.
-PerfectNumbers.Core\AlphaCache.cs:11:        // TODO: Replace this dictionary lookup with a lock-free cache that reuses pooled AlphaValues so alpha requests avoid
-PerfectNumbers.Core\AlphaCache.cs:26:        // TODO: Return pooled AlphaValues instances to a shared cache before clearing so repeated warm-ups do not thrash the
-PerfectNumbers.Core\AlphaCalculations.cs:11:        // TODO: Reuse pooled numerator/denominator buffers here so the alphaP computation stops allocating
-PerfectNumbers.Core\AlphaCalculations.cs:20:        // TODO: Reuse pooled ERational builders here so repeated factor computations pull precomputed
-PerfectNumbers.Core\AlphaCalculations.cs:31:            // TODO: Replace the repeated Multiply calls with a span-based aggregator that batches factors,
-EvenPerfectBitScanner.Benchmarks\GpuUInt128MulModByLimbBenchmarks.cs:59:        // TODO: Switch the extension method back to legacy method, as it's faster. Keep the benchmarks.
-PerfectNumbers.Core\AlphaMScannerCandidateStatus.cs:5:    // TODO: Store these statuses as byte-coded constants so hot-path evaluations can stay branchless when scanning candidates.
-EvenPerfectBitScanner.Benchmarks\GpuUInt128NativeModuloBenchmarks.cs:49:        // TODO: Drop MulModWithNativeModulo from production once all callers use the immediate
-PerfectNumbers.Core\CycleRemainderStepper.cs:28:        // TODO: Inline this reset at the call sites so the hot loops reuse struct reinitialization
-PerfectNumbers.Core\CycleRemainderStepper.cs:42:            // TODO: Swap this `%` for the shared divisor-cycle remainder helper so initialization reuses the cached
-PerfectNumbers.Core\CycleRemainderStepper.cs:72:            // TODO: Replace this `%` with the UInt128-aware cycle reducer so large deltas use the cached subtraction
-PerfectNumbers.Core\CycleRemainderStepper.cs:85:                // TODO: Route this `%` through the shared divisor-cycle helper so repeated wrap-arounds avoid
-PerfectNumbers.Core\CycleRemainderStepper.cs:96:        // TODO: Expose these fields directly once the residue scanners adopt the single-cycle helper
-PerfectNumbers.Core.Tests\InputParserTests.cs:7:    [Fact(Skip = "TODO: implement test")]
-PerfectNumbers.Core.Tests\KRangeFinderTests.cs:7:    [Fact(Skip = "TODO: implement test")]
-PerfectNumbers.Core\DivisorCycleCache.cs:63:    private const int CycleGenerationBatchSize = 262_144; // TODO: Remove the block-sized batch once the single-cycle generator
-PerfectNumbers.Core\DivisorCycleCache.cs:69:    private readonly object _sync = new(); // TODO: Delete the synchronization object once the cache exposes only snapshot reads and single-cycle computation so callers no longer contend on locks.
-PerfectNumbers.Core\DivisorCycleCache.cs:70:    private readonly ConcurrentDictionary<int, Task<CycleBlock>> _pending = new(); // TODO: Drop the concurrent dictionary entirely when the block pipeline is replaced with single-cycle generation; the new plan never queues background work.
-PerfectNumbers.Core\DivisorCycleCache.cs:71:    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>> _gpuKernelCache = new(AcceleratorReferenceComparer.Instance); // TODO: Swap this ConcurrentDictionary for a simple accelerator-indexed array once the single-cycle helper precompiles kernels during startup, eliminating the need for thread-safe lookups.
-PerfectNumbers.Core\DivisorCycleCache.cs:73:    private CycleBlock? _activeBlock; // TODO: Remove dynamic blocks altogether once lookups route to the snapshot or compute an individual cycle without mutating shared state.
-PerfectNumbers.Core\DivisorCycleCache.cs:74:    private CycleBlock? _prefetchedBlock; // TODO: Delete prefetch support so the cache never materializes extra blocks and callers always compute the missing cycle inline.
-PerfectNumbers.Core\DivisorCycleCache.cs:89:    // TODO: Remove the ability to reload at runtime once the cache becomes a read-only snapshot plus
-PerfectNumbers.Core\DivisorCycleCache.cs:103:        // TODO: Remove the lock once single-cycle generation eliminates shared mutable state; a simple
-PerfectNumbers.Core\DivisorCycleCache.cs:125:            // TODO: Remove the dictionary once prefetching and background block tracking disappear; with single-cycle generation we will keep only the snapshot and skip additional bookkeeping entirely.
-PerfectNumbers.Core\DivisorCycleCache.cs:139:        // TODO: Replace this block-based acquisition with a direct GetCycle API that computes the missing cycle synchronously on the configured device so the cache never hands out mutable blocks or requires disposal.
-PerfectNumbers.Core\DivisorCycleCache.cs:160:                    // TODO: Replace Task.Run with an inline single-cycle computation that runs on the configured
-PerfectNumbers.Core\DivisorCycleCache.cs:179:                // TODO: Stop promoting freshly generated blocks into the shared cache and, instead of
-PerfectNumbers.Core\DivisorCycleCache.cs:227:        StartPrefetchLocked(prefetched.Index + 1); // TODO: Remove this call once prefetching is dropped
-PerfectNumbers.Core\DivisorCycleCache.cs:253:        StartPrefetchLocked(block.Index + 1); // TODO: Remove once prefetching is removed and the cache
-PerfectNumbers.Core\DivisorCycleCache.cs:259:        // TODO: Remove prefetching entirely so the cache maintains a single snapshot block and computes
-PerfectNumbers.Core\DivisorCycleCache.cs:283:        // TODO: Delete this once prefetching is removed; single-cycle generation will happen inline and
-PerfectNumbers.Core\DivisorCycleCache.cs:292:        // TODO: Delete this callback when we remove prefetching. Single-cycle generation will run inline,
-PerfectNumbers.Core\DivisorCycleCache.cs:309:        // TODO: Remove this entire method when prefetching goes away. The single-cycle flow should never
-PerfectNumbers.Core\DivisorCycleCache.cs:391:        // TODO: Replace this block generator with a single-cycle helper that reuses shared buffers,
-PerfectNumbers.Core\DivisorCycleCache.cs:424:            // TODO: Port this CPU fallback to the unrolled-hex cycle generator once it is shared so misses outside the snapshot
-PerfectNumbers.Core\DivisorCycleCache.cs:440:            // TODO: Once single-cycle generation is in place, bypass this block-sized kernel entirely and
-PerfectNumbers.Core\EulerPrimeTester.cs:17:        // TODO: Inline this helper into callers so we skip the wrapper and pass the divisibility check directly to the optimized
-PerfectNumbers.Core\Cpu\CpuConstants.cs:9:    // TODO: Generate these masks at startup from the benchmarked Mod10 automaton tables so CPU filtering stays aligned with
-PerfectNumbers.Core\Cpu\CpuConstants.cs:11:    // TODO: Fold in the Mod6ComparisonBenchmarks stride table here so callers can merge the mod 6 skips with these masks and
-PerfectNumbers.Core\ExponentRemainderStepper.cs:47:            // TODO: Route these state resets through the ProcessEightBitWindows helper once the scalar
-PerfectNumbers.Core\ExponentRemainderStepper.cs:57:        // TODO: Once divisor cycle lengths are mandatory, pull the delta multiplier from the
-PerfectNumbers.Core\ExponentRemainderStepper.cs:60:        // TODO: Replace this per-delta powmod with the upcoming windowed ladder so incremental
-PerfectNumbers.Core\ExponentRemainderStepper.cs:78:            // TODO: Switch this reload to the shared windowed pow2 helper once available so CPU
-PerfectNumbers.Core\ExponentRemainderStepper.cs:87:        // TODO: Reuse the divisor-cycle derived Montgomery delta once the cache exposes single-cycle
-PerfectNumbers.Core\ExponentRemainderStepper.cs:89:        // TODO: Use the windowed delta pow2 helper here as well to avoid the single-bit ladder that
-PerfectNumbers.Core\ExponentRemainderStepper.cs:124:            // TODO: Replace this fallback path with the upcoming ProcessEightBitWindows helper so
-PerfectNumbers.Core\ExponentRemainderStepper.cs:133:        // TODO: Once the divisor-cycle cache exposes a direct Montgomery delta, multiply it here instead
-PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:21:        set => _useDivisorCycles = value; // TODO: Delete the toggle once divisor cycle data is always consulted so CPU scans never fall back to the slower pure-Montgomery path.
-PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:194:            // TODO: Hoist MontgomeryDivisorData acquisition into the divisor-cycle cache so we reuse the
-PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:203:                // TODO: Swap this block lease for the direct single-cycle lookup once the cache exposes it
-PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:207:                // TODO: When divisorCycle is zero (cache miss), compute only that single cycle on the device
-PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:214:                // TODO: Remove this no-cycle branch and require on-demand cycle computation (without
-PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:240:            // TODO: Replace this linear increment with the batched divisor-cycle walker validated in the
-PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:262:                : prime.Pow2MontgomeryMod(divisorData); // TODO: Switch to the upcoming ProcessEightBitWindows helper once the
-PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:283:        // TODO: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI
-PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:356:                // TODO: Replace this guard with an on-demand CPU/GPU cycle computation path that skips
-PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:396:            // TODO: Remove this no-cycle fallback once divisor cycles are mandatory; the per-prime pow2 ladder here
-PerfectNumbers.Core\IMersenneNumberDivisorByDivisorTester.cs:7:    bool UseDivisorCycles { get; set; } // TODO: Remove the setter once divisor cycle usage becomes mandatory so all implementations always leverage the cached cycles.
-PerfectNumbers.Core\Cpu\MersenneNumberLucasLehmerCpuTester.cs:11:        // TODO: Replace these `%` checks with Mod3/Mod5/Mod7/Mod11 helpers once Lucas–Lehmer CPU filtering
-PerfectNumbers.Core\Cpu\MersenneNumberLucasLehmerCpuTester.cs:34:            // TODO: Port this Lucas–Lehmer powmod to the ProcessEightBitWindows helper so the CPU
-PerfectNumbers.Core\Cpu\MersenneNumberResidueCpuTester.cs:15:                // TODO: Wire this residue scan into DivisorCycleCache so the mandatory cycle acceleration from the
-PerfectNumbers.Core\Cpu\MersenneNumberResidueCpuTester.cs:17:                // TODO: When a required cycle is missing from the snapshot, compute only that single cycle on the device
-PerfectNumbers.Core\Cpu\MersenneNumberResidueCpuTester.cs:91:                                // TODO: Once cycle data is exposed for residue scans, consult the cached divisor cycle here
-PerfectNumbers.Core\InputParser.cs:13:            // TODO: Replace Split/Parse with the span-based exponent parser so BigInteger inputs avoid allocations
-PerfectNumbers.Core\InputParser.cs:20:        // TODO: Replace BigInteger.Parse(string) with the span overload once callers provide ReadOnlySpan<char> so
-PerfectNumbers.Core\InputParser.cs:27:        // TODO: Swap decimal.Parse for the Utf8Parser-based decimal reader so callers avoid culture-aware conversions
-PerfectNumbers.Core\Cpu\MersenneNumberIncrementalCpuTester.cs:30:            // TODO: Replace this direct GetCycle call with DivisorCycleCache.Lookup so we reuse the single snapshot block
-PerfectNumbers.Core\Cpu\MersenneNumberIncrementalCpuTester.cs:43:                    // TODO: Swap these Mod3/Mod5 zero checks to the cached residue tables once the automaton exposes
-PerfectNumbers.Core\Cpu\MersenneNumberIncrementalCpuTester.cs:53:                    // TODO: Swap this PowModWithCycle call for the ProcessEightBitWindows helper once
-PerfectNumbers.Core\Cpu\MersenneNumberIncrementalCpuTester.cs:65:                        // TODO: Route the phi-based powmods through the upcoming windowed helper to
-PerfectNumbers.Core\Cpu\MersenneNumberIncrementalCpuTester.cs:70:                            // TODO: Once the windowed pow2 helper is available expose a version
-PerfectNumbers.Core\Cpu\MersenneNumberIncrementalCpuTester.cs:77:                                // TODO: Replace this divisor powmod with the shared windowed
-PerfectNumbers.Core\Gpu\GpuConstants.cs:7:                // TODO: Auto-tune these GPU constants per accelerator so batch sizing aligns with the fastest kernel
-todo_list.txt:1:EvenPerfectBitScanner\Program.cs:69:                bool useModuloWorkaround = false; // TODO: Remove once the runtime defaults to the ImmediateModulo path measured fastest in GpuUInt128NativeModuloBenchmarks.
-todo_list.txt:2:EvenPerfectBitScanner\Program.cs:78:                bool useDivisorCycles = false; // TODO: Default this flag to true and remove the opt-out once divisor cycle lookups are mandatory per the optimized by-divisor benchmarks.
-todo_list.txt:3:EvenPerfectBitScanner\Program.cs:109:                                // TODO: Replace this ulong.Parse with the Utf8Parser-based span helper once CLI option parsing
-todo_list.txt:4:EvenPerfectBitScanner\Program.cs:124:                                // TODO: Swap int.Parse for the span-based Utf8Parser fast path to avoid transient strings when
-todo_list.txt:5:EvenPerfectBitScanner\Program.cs:133:                                        kernelType = GpuKernelType.Pow2Mod; // TODO: Switch this mode to the ProcessEightBitWindows kernel once Pow2Minus1Mod adopts the benchmarked faster windowed ladder.
-todo_list.txt:6:EvenPerfectBitScanner\Program.cs:164:                                // TODO: Replace UInt128.Parse with the benchmarked fast-path parser once we expose the
-todo_list.txt:7:EvenPerfectBitScanner\Program.cs:177:                                // TODO: Replace ulong.TryParse with the Utf8Parser fast-path once CLI parsing utilities expose
-todo_list.txt:8:EvenPerfectBitScanner\Program.cs:186:                                // TODO: Swap this TryParse for the zero-allocation Utf8Parser helper to keep residue CLI option
-todo_list.txt:9:EvenPerfectBitScanner\Program.cs:211:                                // TODO: Use the Utf8Parser-based reader here to eliminate the temporary substring allocation
-todo_list.txt:10:EvenPerfectBitScanner\Program.cs:273:                                // TODO: Replace this TryParse with the Utf8Parser span helper once shared CLI parsing utilities
-todo_list.txt:11:EvenPerfectBitScanner\Program.cs:288:                                // TODO: Swap to the Utf8Parser double fast-path so zero-hard parsing avoids culture-dependent
-todo_list.txt:12:EvenPerfectBitScanner\Program.cs:304:                                        // TODO: Replace these double/int TryParse calls with span-based Utf8Parser helpers once
-todo_list.txt:13:EvenPerfectBitScanner\Program.cs:338:                                // TODO: Convert this int.Parse to the Utf8Parser-based helper to keep CLI option parsing
-todo_list.txt:14:EvenPerfectBitScanner\Program.cs:344:                                // TODO: Swap int.Parse for Utf8Parser to align with the faster CLI numeric parsing path.
-todo_list.txt:15:EvenPerfectBitScanner\Program.cs:349:                                // TODO: Replace int.Parse with Utf8Parser-based parsing to eliminate temporary strings when
-todo_list.txt:16:EvenPerfectBitScanner\Program.cs:355:                                // TODO: Use the Utf8Parser-based fast path here to match the other CLI numeric parsing
-todo_list.txt:17:EvenPerfectBitScanner\Program.cs:361:                                // TODO: Inline the Utf8Parser-based int reader here once shared CLI parsing utilities land so
-todo_list.txt:18:EvenPerfectBitScanner\Program.cs:371:                                // TODO: Replace int.Parse with the shared Utf8Parser fast-path to keep hot CLI option parsing
-todo_list.txt:19:EvenPerfectBitScanner\Program.cs:385:                                // TODO: Convert this int.Parse to Utf8Parser once the optimized CLI parsing helper is shared
-todo_list.txt:20:EvenPerfectBitScanner\Program.cs:443:                                // TODO: Wire GenerateGpu to the unrolled-hex kernel that led the MersenneDivisorCycleLengthGpuBenchmarks once it lands.
-todo_list.txt:21:EvenPerfectBitScanner\Program.cs:464:                // TODO: Keep a single cached block loaded from disk and honor the configured device when
-todo_list.txt:22:EvenPerfectBitScanner\Program.cs:468:                // TODO: Stop reloading the full snapshot once the ad-hoc path streams results straight from
-todo_list.txt:23:EvenPerfectBitScanner\Program.cs:504:                                // TODO: Swap the underlying pow2mod kernels to ProcessEightBitWindows once Pow2Minus1Mod migrates to the windowed helper highlighted in GpuPow2ModBenchmarks.
-todo_list.txt:24:EvenPerfectBitScanner\Program.cs:539:                    _byDivisorTester.UseDivisorCycles = useDivisorCycles; // TODO: Collapse this assignment once the runtime enforces divisor-cycle acceleration for every by-divisor scan path.
-todo_list.txt:25:EvenPerfectBitScanner\Program.cs:621:                        // TODO: Replace this File.WriteAllText call with the pooled TextFileWriter pipeline once the
-todo_list.txt:26:EvenPerfectBitScanner\Program.cs:642:                                // TODO: Rent this filter buffer from ArrayPool<ulong> and reuse it across reload batches so
-todo_list.txt:27:EvenPerfectBitScanner\Program.cs:717:                                // TODO: Rent this buffer from ArrayPool once the pooled prime-block allocator lands so worker
-todo_list.txt:28:EvenPerfectBitScanner\Program.cs:800:                        // TODO: Swap this char-by-char parser for the benchmarked Utf8Parser-based fast-path once
-todo_list.txt:29:EvenPerfectBitScanner\Program.cs:818:                                // TODO: Swap ulong.TryParse for the Utf8Parser-based fast path once the shared span helpers
-todo_list.txt:30:EvenPerfectBitScanner\Program.cs:837:                // TODO: Inline this helper by invoking MersenneNumberDivisorByDivisorTester.Run directly at call sites so
-todo_list.txt:31:EvenPerfectBitScanner\Program.cs:885:                        // TODO: Replace this ulong.Parse call with the Utf8Parser-based span fast-path we benchmarked so results
-todo_list.txt:32:EvenPerfectBitScanner\Program.cs:905:                        // TODO: Replace these bool.TryParse calls with the span-based fast path once we expose the
-todo_list.txt:33:EvenPerfectBitScanner\Program.cs:974:            // TODO: Replace this string interpolation with the pooled ValueStringBuilder pipeline from the
-todo_list.txt:34:EvenPerfectBitScanner\Program.cs:997:                    // TODO: Inline the fast-path transform here once we collapse the delegate* indirection so
-todo_list.txt:35:EvenPerfectBitScanner\Program.cs:1076:                // TODO: Switch this StringBuilder-based formatter to a span-friendly Utf8Formatter pipeline so
-todo_list.txt:36:EvenPerfectBitScanner\Program.cs:1137:                                // TODO: Replace these per-flush FileStream/StreamWriter allocations with a pooled TextFileWriter-style
-todo_list.txt:37:EvenPerfectBitScanner\Program.cs:1155:                // TODO: Remove this wrapper once callers can invoke BitOperations.PopCount directly so the hot bit-stat path
-todo_list.txt:38:EvenPerfectBitScanner\Program.cs:1310:                // TODO: Remove this pass-through once callers can provide the full out parameters
-todo_list.txt:39:EvenPerfectBitScanner\Program.cs:1388:                        // TODO: Route by-divisor scans through the ProcessEightBitWindows pow2mod kernel once the windowed Pow2Minus1Mod helper replaces the slower single-bit ladder.
-todo_list.txt:40:EvenPerfectBitScanner\Program.cs:1394:                        // TODO: Adopt the windowed Pow2Minus1Mod helper here so divisor checks benefit from the ProcessEightBitWindows speedups.
-todo_list.txt:41:EvenPerfectBitScanner\Program.cs:1406:                // TODO: Integrate the divisor-cycle cache here so the small-prime sweep reuses precomputed remainders instead of
-todo_list.txt:42:EvenPerfectBitScanner\Program.cs:1462:                        // TODO: Replace this byte-by-byte scan with the lookup-table based statistics collector validated in the
-todo_list.txt:43:EvenPerfectBitScanner.ResultsParser\Program.cs:154:                // TODO: Replace TryParse with the Utf8Parser-based span helper once the results parser accepts ReadOnlySpan<char>
-todo_list.txt:44:EvenPerfectBitScanner.ResultsParser\Program.cs:166:                // TODO: Switch to the Utf8Parser-based fast path so integer arguments avoid transient strings while parsing.
-todo_list.txt:45:EvenPerfectBitScanner.ResultsParser\Program.cs:192:                // TODO: Swap this string slicing for ReadOnlySpan<char>-based parsing once the CLI helpers expose
-todo_list.txt:46:EvenPerfectBitScanner.ResultsParser\Program.cs:234:                // TODO: Replace this vanilla StreamReader with a pooled FileStreamOptions + ArrayPool-backed reader so large
-todo_list.txt:47:EvenPerfectBitScanner.ResultsParser\Program.cs:250:        // TODO: Stream candidates through a pooled buffer pipeline so we can filter and dispatch without allocating
-todo_list.txt:48:EvenPerfectBitScanner.ResultsParser\Program.cs:317:                // TODO: Replace ulong.Parse with the Utf8Parser-based span helper so CSV reload stays on the zero-allocation
-todo_list.txt:49:EvenPerfectBitScanner.ResultsParser\Program.cs:325:                // TODO: Swap bool.Parse for the Utf8Parser-powered boolean reader once exposed so reload avoids allocating
-todo_list.txt:50:EvenPerfectBitScanner.ResultsParser\Program.cs:333:                // TODO: Switch this path composition to Span<char>-based stack buffers once we expose the pooled
-todo_list.txt:51:EvenPerfectBitScanner.ResultsParser\Program.cs:349:        // TODO: Switch WriteCsv to a span-based Utf8Formatter pipeline backed by ArrayPool-rented buffers so
-todo_list.txt:52:EvenPerfectBitScanner.ResultsParser\Program.cs:358:                // TODO: Replace this per-entry WriteLine with a batched chunk writer that reuses pooled
-todo_list.txt:53:EvenPerfectBitScanner.ResultsParser\Program.cs:380:                // TODO: Replace the Task-based scheduling with the pooled work queue used in the scanner so candidate
-todo_list.txt:54:EvenPerfectBitScanner.ResultsParser\Program.cs:388:                // TODO: Rent this line buffer from ArrayPool<string> to eliminate repeated allocations when scanning
-todo_list.txt:55:EvenPerfectBitScanner.ResultsParser\Program.cs:452:                                // TODO: Rent this full-capacity buffer from ArrayPool<string> and reuse it between reads instead
-todo_list.txt:56:EvenPerfectBitScanner.ResultsParser\Program.cs:458:                                // TODO: Rent the partial chunk buffer from ArrayPool<string> instead of allocating a fresh
-todo_list.txt:57:EvenPerfectBitScanner.ResultsParser\Program.cs:499:                // TODO: Rent the candidate array from ArrayPool<CandidateResult> so chunk processing remains allocation-free
-todo_list.txt:58:EvenPerfectBitScanner.ResultsParser\Program.cs:531:                // TODO: Replace this copy with an in-place filtering pipeline that reuses pooled buffers; duplicating the list
-todo_list.txt:59:EvenPerfectBitScanner.ResultsParser\Program.cs:537:                // TODO: Keep using the Open.Numeric prime enumerator for the merge walk but hoist a shared instance so reloads
-todo_list.txt:60:EvenPerfectBitScanner.ResultsParser\Program.cs:578:                // TODO: Replace this Dictionary allocation with the pooled span-based frequency map once the ValueListBuilder
-todo_list.txt:61:EvenPerfectBitScanner.ResultsParser\Program.cs:593:                // TODO: Rent the raw prime accumulator from ArrayPool<List<CandidateResult>> or migrate to a pooled struct
-todo_list.txt:62:EvenPerfectBitScanner.ResultsParser\Program.cs:661:                // TODO: Rent these segment arrays from ArrayPool<List<CandidateResult>> so parallel splitting avoids allocating
-todo_list.txt:63:EvenPerfectBitScanner.ResultsParser\Program.cs:666:                // TODO: Rent the tasks array from ArrayPool<Task> so repeated reloads avoid allocating new
-todo_list.txt:64:EvenPerfectBitScanner.ResultsParser\Program.cs:670:                // TODO: Replace the separate division/modulo here with Math.DivRem (or the branchless chunk
-todo_list.txt:65:EvenPerfectBitScanner.ResultsParser\Program.cs:690:                        // TODO: Replace Task.Run with the pooled work queue from the scanner so scheduling
-todo_list.txt:66:EvenPerfectBitScanner.ResultsParser\Program.cs:696:                                // TODO: Rent these per-worker lists from a dedicated pool so parallel splits reuse
-todo_list.txt:67:EvenPerfectBitScanner.ResultsParser\Program.cs:721:                // TODO: Promote these final result lists to pooled builders so we can reuse the buffers
-todo_list.txt:68:PerfectNumbers.Core.Tests\AlphaCacheTests.cs:7:    [Fact(Skip = "TODO: implement test")]
-todo_list.txt:69:EvenPerfectBitScanner.Benchmarks\GpuUInt128Montgomery64Benchmarks.cs:50:        // TODO: Migrate remaining callers of MulModMontgomery64 to the extension helper; the struct
-todo_list.txt:70:PerfectNumbers.Core.Tests\AlphaCalculationsTests.cs:7:    [Fact(Skip = "TODO: implement test")]
-todo_list.txt:71:EvenPerfectBitScanner.Benchmarks\GpuUInt128MulModBenchmarks.cs:52:        // TODO: Switch the extension method to allocate per iteration, as it's faster. Keep the benchmarks.
-todo_list.txt:72:PerfectNumbers.Core\AlphaCache.cs:11:        // TODO: Replace this dictionary lookup with a lock-free cache that reuses pooled AlphaValues so alpha requests avoid
-todo_list.txt:73:PerfectNumbers.Core\AlphaCache.cs:26:        // TODO: Return pooled AlphaValues instances to a shared cache before clearing so repeated warm-ups do not thrash the
-todo_list.txt:74:PerfectNumbers.Core\AlphaCalculations.cs:11:        // TODO: Reuse pooled numerator/denominator buffers here so the alphaP computation stops allocating
-todo_list.txt:75:PerfectNumbers.Core\AlphaCalculations.cs:20:        // TODO: Reuse pooled ERational builders here so repeated factor computations pull precomputed
-todo_list.txt:76:PerfectNumbers.Core\AlphaCalculations.cs:31:            // TODO: Replace the repeated Multiply calls with a span-based aggregator that batches factors,
-todo_list.txt:77:EvenPerfectBitScanner.Benchmarks\GpuUInt128MulModByLimbBenchmarks.cs:59:        // TODO: Switch the extension method back to legacy method, as it's faster. Keep the benchmarks.
-todo_list.txt:78:PerfectNumbers.Core\AlphaMScannerCandidateStatus.cs:5:    // TODO: Store these statuses as byte-coded constants so hot-path evaluations can stay branchless when scanning candidates.
-todo_list.txt:79:EvenPerfectBitScanner.Benchmarks\GpuUInt128NativeModuloBenchmarks.cs:49:        // TODO: Drop MulModWithNativeModulo from production once all callers use the immediate
-todo_list.txt:80:PerfectNumbers.Core\CycleRemainderStepper.cs:28:        // TODO: Inline this reset at the call sites so the hot loops reuse struct reinitialization
-todo_list.txt:81:PerfectNumbers.Core\CycleRemainderStepper.cs:42:            // TODO: Swap this `%` for the shared divisor-cycle remainder helper so initialization reuses the cached
-todo_list.txt:82:PerfectNumbers.Core\CycleRemainderStepper.cs:72:            // TODO: Replace this `%` with the UInt128-aware cycle reducer so large deltas use the cached subtraction
-todo_list.txt:83:PerfectNumbers.Core\CycleRemainderStepper.cs:85:                // TODO: Route this `%` through the shared divisor-cycle helper so repeated wrap-arounds avoid
-todo_list.txt:84:PerfectNumbers.Core\CycleRemainderStepper.cs:96:        // TODO: Expose these fields directly once the residue scanners adopt the single-cycle helper
-todo_list.txt:85:PerfectNumbers.Core.Tests\InputParserTests.cs:7:    [Fact(Skip = "TODO: implement test")]
-todo_list.txt:86:PerfectNumbers.Core.Tests\KRangeFinderTests.cs:7:    [Fact(Skip = "TODO: implement test")]
-todo_list.txt:87:PerfectNumbers.Core\DivisorCycleCache.cs:63:    private const int CycleGenerationBatchSize = 262_144; // TODO: Remove the block-sized batch once the single-cycle generator
-todo_list.txt:88:PerfectNumbers.Core\DivisorCycleCache.cs:69:    private readonly object _sync = new(); // TODO: Delete the synchronization object once the cache exposes only snapshot reads and single-cycle computation so callers no longer contend on locks.
-todo_list.txt:89:PerfectNumbers.Core\DivisorCycleCache.cs:70:    private readonly ConcurrentDictionary<int, Task<CycleBlock>> _pending = new(); // TODO: Drop the concurrent dictionary entirely when the block pipeline is replaced with single-cycle generation; the new plan never queues background work.
-todo_list.txt:90:PerfectNumbers.Core\DivisorCycleCache.cs:71:    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>> _gpuKernelCache = new(AcceleratorReferenceComparer.Instance); // TODO: Swap this ConcurrentDictionary for a simple accelerator-indexed array once the single-cycle helper precompiles kernels during startup, eliminating the need for thread-safe lookups.
-todo_list.txt:91:PerfectNumbers.Core\DivisorCycleCache.cs:73:    private CycleBlock? _activeBlock; // TODO: Remove dynamic blocks altogether once lookups route to the snapshot or compute an individual cycle without mutating shared state.
-todo_list.txt:92:PerfectNumbers.Core\DivisorCycleCache.cs:74:    private CycleBlock? _prefetchedBlock; // TODO: Delete prefetch support so the cache never materializes extra blocks and callers always compute the missing cycle inline.
-todo_list.txt:93:PerfectNumbers.Core\DivisorCycleCache.cs:89:    // TODO: Remove the ability to reload at runtime once the cache becomes a read-only snapshot plus
-todo_list.txt:94:PerfectNumbers.Core\DivisorCycleCache.cs:103:        // TODO: Remove the lock once single-cycle generation eliminates shared mutable state; a simple
-todo_list.txt:95:PerfectNumbers.Core\DivisorCycleCache.cs:125:            // TODO: Remove the dictionary once prefetching and background block tracking disappear; with single-cycle generation we will keep only the snapshot and skip additional bookkeeping entirely.
-todo_list.txt:96:PerfectNumbers.Core\DivisorCycleCache.cs:139:        // TODO: Replace this block-based acquisition with a direct GetCycle API that computes the missing cycle synchronously on the configured device so the cache never hands out mutable blocks or requires disposal.
-todo_list.txt:97:PerfectNumbers.Core\DivisorCycleCache.cs:160:                    // TODO: Replace Task.Run with an inline single-cycle computation that runs on the configured
-todo_list.txt:98:PerfectNumbers.Core\DivisorCycleCache.cs:179:                // TODO: Stop promoting freshly generated blocks into the shared cache and, instead of
-todo_list.txt:99:PerfectNumbers.Core\DivisorCycleCache.cs:227:        StartPrefetchLocked(prefetched.Index + 1); // TODO: Remove this call once prefetching is dropped
-todo_list.txt:100:PerfectNumbers.Core\DivisorCycleCache.cs:253:        StartPrefetchLocked(block.Index + 1); // TODO: Remove once prefetching is removed and the cache
-todo_list.txt:101:PerfectNumbers.Core\DivisorCycleCache.cs:259:        // TODO: Remove prefetching entirely so the cache maintains a single snapshot block and computes
-todo_list.txt:102:PerfectNumbers.Core\DivisorCycleCache.cs:283:        // TODO: Delete this once prefetching is removed; single-cycle generation will happen inline and
-todo_list.txt:103:PerfectNumbers.Core\DivisorCycleCache.cs:292:        // TODO: Delete this callback when we remove prefetching. Single-cycle generation will run inline,
-todo_list.txt:104:PerfectNumbers.Core\DivisorCycleCache.cs:309:        // TODO: Remove this entire method when prefetching goes away. The single-cycle flow should never
-todo_list.txt:105:PerfectNumbers.Core\DivisorCycleCache.cs:391:        // TODO: Replace this block generator with a single-cycle helper that reuses shared buffers,
-todo_list.txt:106:PerfectNumbers.Core\DivisorCycleCache.cs:424:            // TODO: Port this CPU fallback to the unrolled-hex cycle generator once it is shared so misses outside the snapshot
-todo_list.txt:107:PerfectNumbers.Core\DivisorCycleCache.cs:440:            // TODO: Once single-cycle generation is in place, bypass this block-sized kernel entirely and
-todo_list.txt:108:PerfectNumbers.Core\EulerPrimeTester.cs:17:        // TODO: Inline this helper into callers so we skip the wrapper and pass the divisibility check directly to the optimized
-todo_list.txt:109:PerfectNumbers.Core\Cpu\CpuConstants.cs:9:    // TODO: Generate these masks at startup from the benchmarked Mod10 automaton tables so CPU filtering stays aligned with
-todo_list.txt:110:PerfectNumbers.Core\Cpu\CpuConstants.cs:11:    // TODO: Fold in the Mod6ComparisonBenchmarks stride table here so callers can merge the mod 6 skips with these masks and
-todo_list.txt:111:PerfectNumbers.Core\ExponentRemainderStepper.cs:47:            // TODO: Route these state resets through the ProcessEightBitWindows helper once the scalar
-todo_list.txt:112:PerfectNumbers.Core\ExponentRemainderStepper.cs:57:        // TODO: Once divisor cycle lengths are mandatory, pull the delta multiplier from the
-todo_list.txt:113:PerfectNumbers.Core\ExponentRemainderStepper.cs:60:        // TODO: Replace this per-delta powmod with the upcoming windowed ladder so incremental
-todo_list.txt:114:PerfectNumbers.Core\ExponentRemainderStepper.cs:78:            // TODO: Switch this reload to the shared windowed pow2 helper once available so CPU
-todo_list.txt:115:PerfectNumbers.Core\ExponentRemainderStepper.cs:87:        // TODO: Reuse the divisor-cycle derived Montgomery delta once the cache exposes single-cycle
-todo_list.txt:116:PerfectNumbers.Core\ExponentRemainderStepper.cs:89:        // TODO: Use the windowed delta pow2 helper here as well to avoid the single-bit ladder that
-todo_list.txt:117:PerfectNumbers.Core\ExponentRemainderStepper.cs:124:            // TODO: Replace this fallback path with the upcoming ProcessEightBitWindows helper so
-todo_list.txt:118:PerfectNumbers.Core\ExponentRemainderStepper.cs:133:        // TODO: Once the divisor-cycle cache exposes a direct Montgomery delta, multiply it here instead
-todo_list.txt:119:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:21:        set => _useDivisorCycles = value; // TODO: Delete the toggle once divisor cycle data is always consulted so CPU scans never fall back to the slower pure-Montgomery path.
-todo_list.txt:120:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:194:            // TODO: Hoist MontgomeryDivisorData acquisition into the divisor-cycle cache so we reuse the
-todo_list.txt:121:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:203:                // TODO: Swap this block lease for the direct single-cycle lookup once the cache exposes it
-todo_list.txt:122:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:207:                // TODO: When divisorCycle is zero (cache miss), compute only that single cycle on the device
-todo_list.txt:123:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:214:                // TODO: Remove this no-cycle branch and require on-demand cycle computation (without
-todo_list.txt:124:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:240:            // TODO: Replace this linear increment with the batched divisor-cycle walker validated in the
-todo_list.txt:125:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:262:                : prime.Pow2MontgomeryMod(divisorData); // TODO: Switch to the upcoming ProcessEightBitWindows helper once the
-todo_list.txt:126:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:283:        // TODO: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI
-todo_list.txt:127:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:356:                // TODO: Replace this guard with an on-demand CPU/GPU cycle computation path that skips
-todo_list.txt:128:PerfectNumbers.Core\Cpu\MersenneNumberDivisorByDivisorCpuTester.cs:396:            // TODO: Remove this no-cycle fallback once divisor cycles are mandatory; the per-prime pow2 ladder here
-todo_list.txt:129:PerfectNumbers.Core\IMersenneNumberDivisorByDivisorTester.cs:7:    bool UseDivisorCycles { get; set; } // TODO: Remove the setter once divisor cycle usage becomes mandatory so all implementations always leverage the cached cycles.
-todo_list.txt:130:PerfectNumbers.Core\Cpu\MersenneNumberLucasLehmerCpuTester.cs:11:        // TODO: Replace these `%` checks with Mod3/Mod5/Mod7/Mod11 helpers once Lucas–Lehmer CPU filtering
-todo_list.txt:131:PerfectNumbers.Core\Cpu\MersenneNumberLucasLehmerCpuTester.cs:34:            // TODO: Port this Lucas–Lehmer powmod to the ProcessEightBitWindows helper so the CPU
-todo_list.txt:132:PerfectNumbers.Core\Cpu\MersenneNumberResidueCpuTester.cs:15:                // TODO: Wire this residue scan into DivisorCycleCache so the mandatory cycle acceleration from the
-todo_list.txt:133:PerfectNumbers.Core\Cpu\MersenneNumberResidueCpuTester.cs:17:                // TODO: When a required cycle is missing from the snapshot, compute only that single cycle on the device
-todo_list.txt:134:PerfectNumbers.Core\Cpu\MersenneNumberResidueCpuTester.cs:91:                                // TODO: Once cycle data is exposed for residue scans, consult the cached divisor cycle here
-todo_list.txt:135:PerfectNumbers.Core\InputParser.cs:13:            // TODO: Replace Split/Parse with the span-based exponent parser so BigInteger inputs avoid allocations
-todo_list.txt:136:PerfectNumbers.Core\InputParser.cs:20:        // TODO: Replace BigInteger.Parse(string) with the span overload once callers provide ReadOnlySpan<char> so
-todo_list.txt:137:PerfectNumbers.Core\InputParser.cs:27:        // TODO: Swap decimal.Parse for the Utf8Parser-based decimal reader so callers avoid culture-aware conversions
-todo_list.txt:138:PerfectNumbers.Core\Cpu\MersenneNumberIncrementalCpuTester.cs:30:            // TODO: Replace this direct GetCycle call with DivisorCycleCache.Lookup so we reuse the single snapshot block
-todo_list.txt:139:PerfectNumbers.Core\Cpu\MersenneNumberIncrementalCpuTester.cs:43:                    // TODO: Swap these Mod3/Mod5 zero checks to the cached residue tables once the automaton exposes
-todo_list.txt:140:PerfectNumbers.Core\Cpu\MersenneNumberIncrementalCpuTester.cs:53:                    // TODO: Swap this PowModWithCycle call for the ProcessEightBitWindows helper once
-todo_list.txt:141:PerfectNumbers.Core\Cpu\MersenneNumberIncrementalCpuTester.cs:65:                        // TODO: Route the phi-based powmods through the upcoming windowed helper to
-todo_list.txt:142:PerfectNumbers.Core\Cpu\MersenneNumberIncrementalCpuTester.cs:70:                            // TODO: Once the windowed pow2 helper is available expose 
-PerfectNumbers.Core\Cpu\MersenneNumberOrderCpuTester.cs:17:            // TODO: When this lookup misses the snapshot, invoke the configured device to compute the
-PerfectNumbers.Core\Cpu\MersenneNumberOrderCpuTester.cs:38:                                        // TODO: Point this CPU pow2mod check at the ProcessEightBitWindows helper once it
-PerfectNumbers.Core\Cpu\MersenneNumberOrderCpuTester.cs:52:                                                // TODO: Switch these phi-based powmods to the shared windowed helper so CPU
-PerfectNumbers.Core\Cpu\MersenneNumberOrderCpuTester.cs:56:                                                        // TODO: Reuse the windowed pow2 helper for halfPow as soon as it is
-PerfectNumbers.Core\Cpu\MersenneNumberOrderCpuTester.cs:63:                                                                // TODO: Replace this divisor powmod with the ProcessEightBitWindows
-PerfectNumbers.Core\Gpu\GpuContextPool.cs:10:        // TODO: Introduce accelerator-specific warmup so pooled contexts precompile the ProcessEightBitWindows kernels and load
-PerfectNumbers.Core\MersenneDivisorCycles.cs:115:                // TODO: Replace this naive doubling fallback with the unrolled-hex generator from
-PerfectNumbers.Core\MersenneDivisorCycles.cs:118:                // TODO: Route this miss to an ephemeral single-cycle computation on the device selected by the current
-PerfectNumbers.Core\MersenneDivisorCycles.cs:133:                // TODO: Port this UInt128 path to the unrolled-hex cycle calculator so wide
-PerfectNumbers.Core\MersenneDivisorCycles.cs:205:                                                // TODO: Replace this modulo-based filter with the cached Mod3/Mod5/Mod7/Mod11
-PerfectNumbers.Core\MersenneDivisorCycles.cs:213:						// TODO: Migrate this generation path to the shared
-PerfectNumbers.Core\MersenneDivisorCycles.cs:287:                                // TODO: Swap these modulo checks for the cached Mod3/Mod5/Mod7/Mod11 helpers so
-PerfectNumbers.Core\MersenneDivisorCycles.cs:337:                                    // TODO: Replace this modulo sieve with the cached Mod helpers once the divisor-cycle cache
-PerfectNumbers.Core\MersenneDivisorCycles.cs:459:                // TODO: Switch this scalar fallback to the unrolled-hex stepping sequence once
-PerfectNumbers.Core\MersenneDivisorCycles.cs:462:                // TODO: Expose a GPU-first branch here so high divisors leverage the ProcessEightBitWindows
-PerfectNumbers.Core\Gpu\GpuKernelPool.cs:194:	// TODO: Plumb the small-cycles device buffer into all kernels that can benefit
-PerfectNumbers.Core\Gpu\GpuKernelPool.cs:202:        // TODO: Replace these `%` computations with the precomputed Mod3/Mod5 tables so GPU kernels reuse cached residues
-PerfectNumbers.Core\Gpu\GpuKernelPool.cs:221:            // TODO: Swap these `%` filters to the shared Mod helpers so the residue automaton matches the benchmarked
-PerfectNumbers.Core\Gpu\GpuKernelPool.cs:271:        // TODO: Replace these Pow2Mod calls with the ProcessEightBitWindows helper when the shared windowed
-PerfectNumbers.Core\Gpu\GpuKernelPool.cs:308:        // TODO: Once the ProcessEightBitWindows helper is available, switch this order kernel to that faster
-PerfectNumbers.Core\Gpu\GpuKernelPool.cs:420:        // TODO: Swap Pow2Minus1Mod for the eight-bit window helper once the scalar version switches;
-PerfectNumbers.Core\Gpu\GpuKernelPool.cs:576:        // TODO: Upgrade this pow2mod order kernel to the ProcessEightBitWindows helper once available so GPU residue
-PerfectNumbers.Core\Gpu\GpuKernelPool.cs:654:        // TODO: Replace this Pow2Mod check with the ProcessEightBitWindows helper once Pow2Minus1Mod adopts it;
-PerfectNumbers.Core\Gpu\GpuKernelPool.cs:697:    private static readonly ConcurrentDictionary<Accelerator, KernelContainer> KernelCache = new(); // TODO: Replace this concurrent map with a simple accelerator-indexed lookup once kernel launchers are prewarmed during startup so we can drop the thread-safe wrapper entirely.
-PerfectNumbers.Core\Gpu\GpuKernelPool.cs:715:        lock (kernels) // TODO: Remove this lock by pre-uploading the immutable small-cycle snapshot during initialization; once no mutation happens at runtime, the pool must expose a simple reference without synchronization.
-PerfectNumbers.Core\Gpu\GpuKernelPool.cs:722:            var host = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot(); // TODO: Preload this device buffer during startup and keep it immutable so we can delete the lock above in favor of the preloaded snapshot.
-PerfectNumbers.Core\Gpu\GpuKernelPool.cs:741:        lock (kernels) // TODO: Inline these small-prime uploads into startup initialization alongside the small-cycle snapshot so we can drop runtime locking and keep the GPU pool free of synchronization.
-PerfectNumbers.Core\Gpu\GpuPrimeWorkLimiter.cs:11:        // TODO: Inline the pooled limiter guard from the GpuLimiterThroughputBenchmarks so prime-sieve
-PerfectNumbers.Core\Gpu\GpuPrimeWorkLimiter.cs:32:            // TODO: Switch to a shared limiter implementation with GpuWorkLimiter so we can coordinate CPU/GPU prime work using
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:259:        // TODO: Replace this single-bit ladder with the ProcessEightBitWindows strategy measured
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:293:        // TODO: Mirror the eight-bit window batching once the scalar helper above switches; the
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:380:        // TODO: Pre-reduce the operands via the Montgomery ladder used in MulMod64Benchmarks so the GPU
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:398:        // TODO: Fold these operands with the ImmediateModulo helper once the GPU shim exposes it, avoiding
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:539:        // TODO: Replace this scalar binary GCD with the branchless reduction from
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:698:        // TODO(MOD-OPT): Replace this bitwise long-division style reduction
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:709:        // TODO(MOD-OPT): Plumb constants through caches in NttGpuMath.SquareCacheEntry
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:735:        // TODO: Relocate this limb-based reducer to the benchmark project once the production
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:827:        // TODO: Drop this native-modulo path from production after migrating callers to MulMod,
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:864:        // TODO: Can we modify these loops to process multiple bits at a time? E.g. 64-bit chunks.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:912:        // TODO: Collapse this eight-step shift ladder into the ProcessEightBitWindows helper once it lands so
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:952:        // TODO: Retire this struct-based Montgomery path from production after adopting the extension
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:972:        // TODO: Same as above—migrate callers to the scalar extension to avoid this 6-7× slowdown.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1000:        // TODO: This should operate on the instance itself, not on a copy. Avoid creating new instances anywhere.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1003:        // TODO: Can we modify these loops to process multiple bits at a time? E.g. 64-bit chunks.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1050:        // TODO: Swap this copy-heavy path for the pooled base/exponent ladder used in
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1056:        // TODO: Replace the single-bit square-and-multiply loop with the 64-bit windowed
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1076:        // TODO: Share the pooled ladder state from GpuUInt128MulModBenchmarks here as well so
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1081:        // TODO: Upgrade this loop to the same 64-bit windowed ladder proven fastest in
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1101:        // TODO: Replace this Fermat inversion with the Montgomery ladder highlighted in
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1128:        // TODO: Reuse variables to reduce register pressure following the fused-limb layout
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1191:        // TODO: Reuse variables to reduce register pressure.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1194:        // TODO: Since we ignore the first result element, can we create a version of the function which calculates and returns only the second element?
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1198:        // TODO: Why not just modify left instance directly instead using out parameters?
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1205:        // TODO: Reuse variables to reduce register pressure.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1226:        // TODO: Reuse variables to reduce register pressure.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1272:        // TODO: Can we identify where we deal with Mersenne exponent in EvenPerfectBitScanner and directly use MulModMersenne there, removing this branch?
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1282:        // TODO: Can we modify this loop to process multiple bits at a time? E.g. 64-bit chunks.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1309:        // TODO: Reuse variables to reduce register pressure.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1330:        // TODO: Can we modify this loop to process multiple bits at a time? E.g. 64-bit chunks.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1362:        // TODO: Can we modify this loop to process multiple bits at a time? E.g. 64-bit chunks.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1406:        // TODO: Reuse variables to reduce register pressure.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1434:        // TODO: Reuse variables to reduce register pressure.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1463:    // TODO: Check if the TODO below is still relevant.
-PerfectNumbers.Core\Gpu\GpuUInt128.cs:1465:    // TODO(MOD-OPT): Montgomery/Barrett integration plan
-PerfectNumbers.Core\MersenneNumberTester.cs:39:    // TODO: Swap this ConcurrentDictionary for the pooled dictionary variant highlighted in
-PerfectNumbers.Core\MersenneNumberTester.cs:51:	// TODO: Ensure Program passes useResidue correctly and that residue-vs-incremental-vs-LL selection respects CLI flags.
-PerfectNumbers.Core\MersenneNumberTester.cs:74:                                // TODO: Replace these repeated Mod10/Mod8/Mod3/Mod5 calls with a residue automaton walk so
-PerfectNumbers.Core\MersenneNumberTester.cs:99:                                // TODO: Swap this fallback to the shared windowed order helper once CalculateOrder migrates
-PerfectNumbers.Core\MersenneNumberTester.cs:117:                        // TODO: Reuse the same residue-automaton fast path here so the GPU warmup staging avoids `%` and
-PerfectNumbers.Core\MersenneNumberTester.cs:189:                                                // TODO: Replace this CalculateOrder call with the upcoming windowed helper so
-PerfectNumbers.Core\MersenneNumberTester.cs:219:            // TODO: Replace this `% 3` check with ULongExtensions.Mod3 to align the early rejection with
-PerfectNumbers.Core\MersenneNumberTester.cs:328:                // TODO: Swap this legacy kernel over to the ProcessEightBitWindows helper so GPU order scans share the
-PerfectNumbers.Core\Gpu\GpuWorkLimiter.cs:11:        // TODO: Replace the per-call Releaser allocation with the pooled struct-based guard from the
-PerfectNumbers.Core\Gpu\GpuWorkLimiter.cs:36:            // TODO: Consolidate with GpuPrimeWorkLimiter so both limiters share a pooled SemaphoreSlim and avoid rebuilding the
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:39:        // TODO: Replace this `%` with the benchmarked Math.DivRem fast path so the hot filter avoids
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:50:    // TODO: Replace this dictionary with the divisor-cycle order cache once the benchmarks confirm the
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:56:        // TODO: Collapse this wrapper once all callers promote operands to UInt128 so we
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:62:        // TODO: Inline this shim once callers can invoke OrderOf2ModPrime directly; the extra
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:71:            // TODO: Replace this lock with the lock-free order cache once the divisor-cycle snapshot exposes
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:84:        // TODO: Pull these factor arrays from ArrayPool once the factoring helpers adopt the pooled
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:98:            // TODO: Swap this `%`/`/` loop for the Math.DivRem-based reducer highlighted in the
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:119:        // TODO: Integrate divisor-cycle data here so repeated order refinement uses cached cycle
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:134:    // TODO: Replace this duplicate powmod with ULongExtensions.ModPow64 so we inherit the optimized MulMod64 path that led the MulMod64Benchmarks on large operands.
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:166:    private static ulong MulMod64(ulong a, ulong b, ulong mod) => (ulong)((UInt128)a * b % mod); // TODO: Route this through ULongExtensions.MulMod64 so the powmod above adopts the inline UInt128 implementation that dominated the MulMod64Benchmarks.
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:169:    // TODO: Switch to UInt128Extensions.ModPow once its MulMod backend adopts the faster UInt128BuiltIn path highlighted in MulHighBenchmarks to avoid the BigInteger fallback.
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:203:        BigInteger product = (BigInteger)a * b; // TODO: Replace this BigInteger reduction with the forthcoming UInt128 intrinsic helper measured faster in Mul64Benchmarks and MulHighBenchmarks for huge operands.
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:256:        var queue = new Queue<ulong>(); // TODO: Replace this Queue with the pooled stack from the
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:296:        // TODO: Rent the result array from ArrayPool once the factoring pipeline consumes spans so we
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:315:        var queue = new Queue<UInt128>(); // TODO: Replace this with the pooled UInt128 stack once the
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:354:        var result = new UInt128[dict.Count]; // TODO: Rent this array from ArrayPool<UInt128> so
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:374:        var rng = new Random(1234567); // TODO: Replace this RNG with the deterministic span-based
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:398:                x = (MulMod64(x, x, n) + c) % n; // TODO: Swap the `% n` with the Montgomery folding
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:406:                y = (MulMod64(y, y, n) + c) % n; // TODO: Use the same Montgomery folding helper here
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:414:                y = (MulMod64(y, y, n) + c) % n; // TODO: Replace this modulo with the optimized helper
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:443:            t = a % b; // TODO: Replace this with the binary GCD helper used in the gcd benchmarks so we
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:452:    // TODO: Port this Miller–Rabin routine to UInt128 intrinsics so we avoid the BigInteger.ModPow calls that lag by orders of magnitude on the large inputs highlighted in the Pow2MontgomeryMod benchmarks.
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:526:        var rng = new Random(1234567); // TODO: Replace with the deterministic UInt128 sequence from
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:549:                x = (MulMod128(x, x, n) + c) % n; // TODO: Swap this modulo for the UInt128 Montgomery
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:556:                y = (MulMod128(y, y, n) + c) % n; // TODO: Use the same optimized reducer for the
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:563:                y = (MulMod128(y, y, n) + c) % n; // TODO: Replace with the optimized reducer so both
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:571:                d = Gcd128(diff, n, ct); // TODO: Move this to the binary GCD implementation once the
-PerfectNumbers.Core\MersennePrimeFactorTester.cs:593:            t = a % b; // TODO: Replace with the binary GCD helper once the UInt128 benchmarks land so
-PerfectNumbers.Core\MersenneResidueStepper.cs:20:        // TODO: Replace these `%` reductions with the shared ProcessEightBitWindows helper so initialization benefits from the
-PerfectNumbers.Core\MersenneResidueStepper.cs:26:    // TODO: Inline this accessor into callers so the hot residue path reads the backing fields directly
-PerfectNumbers.Core\MersenneResidueStepper.cs:42:            // TODO: Replace this repeated doubling with the shared ProcessEightBitWindows helper (or cycle-aware lookup)
-PerfectNumbers.Core\MersenneResidueStepper.cs:45:            // TODO: Once divisor cycles power the residue stepper, prefer stepping by cycle lengths instead of incrementing
-PerfectNumbers.Core\MersenneResidueStepper.cs:57:            // TODO: Once the scalar windowed pow2 helper lands, reroute this `%` path through it to avoid the slower
-PerfectNumbers.Core\MersenneResidueStepper.cs:64:            // TODO: Switch to a cached divisor-cycle remainder instead of computing a fresh modular inverse for every
-PerfectNumbers.Core\MersenneResidueStepper.cs:71:        // TODO: Use the shared pow2mod remainder cache here so this `%` becomes a subtraction-based fold instead of the
-PerfectNumbers.Core\MersenneResidueStepper.cs:80:        // TODO: Collapse this wrapper once callers can invoke Step directly; the extra indirection shows up
-PerfectNumbers.Core\MersenneResidueStepper.cs:102:            // TODO: Replace this division-heavy Euclidean loop with the binary modular inverse that reuses divisor
-PerfectNumbers.Core\KRangeFinder.cs:13:            // TODO: Pull alphaP from AlphaCache (or a pooled rational builder) so this loop reuses the
-PerfectNumbers.Core\KRangeFinder.cs:16:            // TODO: Switch this multiply to the pooled ERational span helpers identified in the scanner's
-PerfectNumbers.Core\KRangeFinder.cs:41:        // TODO: Collapse this wrapper once the callers can consume the tuple directly; the extra call adds
-PerfectNumbers.Core\KRangeFinder.cs:53:        // TODO: Replace Parallel.For with the shared low-overhead scheduler highlighted in the divisor-cycle
-PerfectNumbers.Core\KRangeFinder.cs:83:        // TODO: Remove this pass-through once the scanning CLI switches to tuple-returning APIs; flattening
-PerfectNumbers.Core\ModResidueTracker.cs:189:                                // TODO: Replace this subtraction loop with the divisor-cycle stepping helper so identity
-PerfectNumbers.Core\ModResidueTracker.cs:206:                                // TODO: Replace this PowMod128 call with the upcoming eight-bit window helper once the
-PerfectNumbers.Core\ModResidueTracker.cs:252:                                // TODO: Swap this modulo fallback for the shared divisor-cycle remainder helper so 64-bit
-PerfectNumbers.Core\ModResidueTracker.cs:257:                        // TODO: Use the Montgomery folding helper measured faster in the Pow2Montgomery benchmarks so this
-PerfectNumbers.Core\ModResidueTracker.cs:263:                // TODO: Consult MersenneDivisorCycles.Shared (or similar caches) here so we reuse precomputed cycle lengths
-PerfectNumbers.Core\ModResidueTracker.cs:295:                                // TODO: Route this through the planned UInt128 windowed powmod so the inner MulMod adopts the
-PerfectNumbers.Core\ModResidueTracker.cs:314:                // TODO: Replace this double-and-add fallback with the UInt128 intrinsic-backed multiplier once the
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:49:        set => _useDivisorCycles = value; // TODO: Remove this flag once GPU runs unconditionally fetch cycle lengths so every divisor check benefits from the measured speedups.
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:298:                // TODO: Stage MontgomeryDivisorData in a GPU-ready cache keyed by divisor so we can copy
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:372:        // TODO: Replace the block lease with a direct single-cycle lookup so the GPU path
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:395:                        // TODO: Drop this block hand-off once the cache exposes a direct
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:409:                            // TODO: Replace this `%` with the cycle-cache helper that subtracts precomputed
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:425:                        // TODO: Trigger an immediate GPU computation for the single missing cycle without storing
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:476:                    // TODO: Preload ProcessEightBitWindows-friendly divisor metadata for GPU batches so this
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:563:        hits[index] = exponent.Pow2MontgomeryMod(divisor) == 1UL ? (byte)1 : (byte)0; // TODO: Replace Pow2MontgomeryMod with the ProcessEightBitWindows helper once available so GPU by-divisor scans reuse the benchmarked fast pow2 ladder.
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:632:                // TODO: Replace this guard with an on-demand cycle computation that runs on the device selected
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:787:                        // TODO: Replace this `%` with the divisor-cycle remainder helper so we reuse cached
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorByDivisorGpuTester.cs:858:        results[index] = exponent.Pow2MontgomeryModMontgomery(divisor); // TODO: Swap this Montgomery-domain pow2 with the windowed helper slated to replace the slower ladder in Pow2Minus1Mod benchmarks.
-PerfectNumbers.Core\MersenneNumberDivisorByDivisorTester.cs:43:                // TODO: Swap this per-run enumerator creation for the shared PrimeIterator so by-divisor scans reuse the
-PerfectNumbers.Core\MersenneNumberDivisorByDivisorTester.cs:219:                        // TODO: Swap Task.Factory.StartNew for the shared low-overhead work queue once the scanner's
-PerfectNumbers.Core\MersenneNumberDivisorByDivisorTester.cs:240:                                bool useDivisorCycles = tester.UseDivisorCycles; // TODO: Remove the conditional path once all testers always enable divisor cycles to keep every divisor scan on the faster cached-length track.
-PerfectNumbers.Core\MersenneNumberDivisorByDivisorTester.cs:262:                                                                // TODO: Remove this block leasing once the cache exposes a direct
-PerfectNumbers.Core\MersenneNumberDivisorByDivisorTester.cs:266:                                                                // TODO: When divisorCycle returns zero, compute only that single cycle on the
-PerfectNumbers.Core\MersenneNumberDivisorByDivisorTester.cs:421:                // TODO: Replace this odd-only linear allocator with the divisor-cycle aware stride planner once the cache exposes
-PerfectNumbers.Core\MersenneNumberDivisorByDivisorTester.cs:498:                        // TODO: Integrate divisor-cycle skip tables here so the local allocator leaps across cached composite
-PerfectNumbers.Core\MersenneNumberDivisorByDivisorTester.cs:521:                        // TODO: Replace these `%` filters with Mod3/Mod5/Mod7/Mod11 helpers so candidate sieving reuses the
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorGpuTester.cs:78:                                // TODO: Replace this `%` check with the shared divisor-cycle divisibility helper so GPU scans
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorGpuTester.cs:114:                        // TODO: When this lookup falls outside the preloaded snapshot, invoke the single-cycle GPU helper
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorGpuTester.cs:117:                        // TODO: Feed this check through the ProcessEightBitWindows-based residue tracker so we avoid the slow
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorGpuTester.cs:150:                        // TODO: Swap Pow2Mod for the ProcessEightBitWindows helper once Pow2Minus1Mod adopts it;
-PerfectNumbers.Core\Gpu\MersenneNumberDivisorGpuTester.cs:169:                // TODO: Replace this trailing Pow2Mod call with the ProcessEightBitWindows variant once the shared
-PerfectNumbers.Core\Gpu\MersenneNumberIncrementalGpuTester.cs:23:        var pow2Kernel = gpuLease.Pow2ModKernel; // TODO: Route this binding to the ProcessEightBitWindows kernel once the scalar helper lands so GPU incremental scans inherit the windowed speedup from GpuPow2ModBenchmarks.
-PerfectNumbers.Core\Gpu\MersenneNumberIncrementalGpuTester.cs:49:                // TODO: Swap this multiply-and-add initialization for the divisor-cycle stepping helper so the GPU incremental path reuses cached offsets instead of recomputing twoP multiples every batch.
-PerfectNumbers.Core\Gpu\MersenneNumberIncrementalGpuTester.cs:82:                    // TODO: Replace this per-lane multiplication and the subsequent q += twoP stride with the shared divisor-cycle ladder so each iteration advances by cached cycle increments and automatically triggers on-demand GPU computations when the snapshot lacks the requested cycle.
-PerfectNumbers.Core\ModuloAutomata.cs:45:    // TODO: Remove this wrapper and expose the field directly once callers switch to struct-based residue
-PerfectNumbers.Core\ModuloAutomata.cs:78:        // TODO: Once divisor cycle lookups feed residue scanning, reuse the cached cycle length here to skip directly to the
-PerfectNumbers.Core\ModuloAutomata.cs:121:            // TODO: Replace the `% 10` computation with the Mod10 helper once Ending7Automaton plugs into the
-PerfectNumbers.Core\ModuloAutomata.cs:126:            // TODO: Precompute the initial residues via the divisor-cycle cache so this setup phase reuses the
-PerfectNumbers.Core\ModuloAutomata.cs:133:            // TODO: Swap this `%` check for the binary-gcd aware reducer once the automaton wiring shares the
-PerfectNumbers.Core\ModuloAutomata.cs:140:    // TODO: Inline this getter into the automaton consumers so residue scans can read the backing field
-PerfectNumbers.Core\ModuloAutomata.cs:155:        // TODO: Pre-register every modulus routed through the automaton so the fallback `%` path disappears;
-PerfectNumbers.Core\ModuloAutomata.cs:183:        // TODO: Once divisor cycles are mandatory, reuse the cached cycle offset per modulus to skip directly to valid
-PerfectNumbers.Core\ModuloAutomata.cs:201:            // TODO: Switch this to the binary GCD helper used in GpuUInt128BinaryGcdBenchmarks so we avoid `%`
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:46:        // TODO: Inline this wrapper once callers request IsPrime directly so the Lucas–Lehmer fast path
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:57:        // TODO: Replace this `% 3` guard with ULongExtensions.Mod3 once GPU LL filtering reuses the benchmarked bitmask helper.
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:85:            var modulus = new GpuUInt128(((UInt128)1 << (int)exponent) - 1UL); // TODO: Cache these Mersenne moduli per exponent so LL GPU runs skip rebuilding them every launch.
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:116:        var kernel = GetBatchKernel(accelerator); // TODO: Switch this batch path to the ProcessEightBitWindows residue kernel once Lucas–Lehmer integrates the benchmarked windowed pow2 helper for small exponents.
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:126:            // TODO: Replace this per-exponent shift with a small shared table (one entry per supported exponent < 128)
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:190:        // TODO(LL-SLICE): Slice Lucas–Lehmer iterations into short batches to
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:300:            // TODO: Replace int.TryParse with the span-based Utf8Parser helper when loading cached parameters so we avoid
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:307:            // TODO: Switch these ulong.Parse calls to the Utf8Parser-based fast-path once we expose a zero-allocation reader for
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:327:            // TODO: Replace StreamWriter with the pooled TextFileWriter pipeline so persisting NTT
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:344:        // TODO: Move this Parallel.For to the shared low-overhead work scheduler once the NTT parameter
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:395:        // TODO: Reuse the divisor-cycle cache to factor phi via the precomputed small-prime windows once
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:424:            // TODO: Replace these `%` factor checks with the shared Mod helpers (Mod3/Mod5/etc.) once the GPU
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:458:            // TODO: Swap this `%` for the divisor-cycle aware Mod helper once the residue pre-checks expose it
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:476:                // TODO: Route these powmods through the ProcessEightBitWindows helper once it lands for GPU
-PerfectNumbers.Core\Gpu\MersenneNumberLucasLehmerGpuTester.cs:490:        // TODO: Swap this UInt128 `%` reduction for the GPU-compatible MulMod helper once it adopts the faster
-PerfectNumbers.Core\MontgomeryDivisorData.cs:22:    private static readonly ConcurrentDictionary<ulong, CacheEntry> Cache = new(); // TODO: Replace this with a plain Dictionary that never mutates after startup once the divisor-cycle snapshot becomes read-only so Montgomery lookups avoid any concurrent collections.
-PerfectNumbers.Core\MontgomeryDivisorData.cs:23:    // TODO: Delete the block-membership tracking entirely when the divisor-cycle cache stops producing
-PerfectNumbers.Core\MontgomeryDivisorData.cs:36:        // TODO: Short-circuit block indices greater than zero once the cache stops prefetching future
-PerfectNumbers.Core\MontgomeryDivisorData.cs:44:        // TODO: Remove this entire release hook once the cycle cache no longer hands out dynamic blocks;
-PerfectNumbers.Core\MontgomeryDivisorData.cs:97:        // TODO: Collapse this retry loop once the cache becomes a simple snapshot dictionary. With the
-PerfectNumbers.Core\MontgomeryDivisorData.cs:104:        // TODO: Delete this method once block membership goes away; the single snapshot model must avoid
-PerfectNumbers.Core\MontgomeryDivisorData.cs:122:        // TODO: Return 0 here once the divisor-cycle cache no longer tracks additional blocks so
-PerfectNumbers.Core\MontgomeryDivisorData.cs:138:    // TODO: Replace this generic `%` reduction with the UInt128 Montgomery folding helper measured faster in
-PerfectNumbers.Core\PerfectNumberConstants.cs:10:    // TODO: Load these limits from the benchmark-driven configuration so CPU and GPU scans stay aligned with the optimal
-PerfectNumbers.Core\PerfectNumberConstants.cs:12:    // TODO: Promote these magic numbers into a runtime profile derived from EvenPerfectBitScanner.Benchmarks so we can retune
-PerfectNumbers.Core\Gpu\MersenneNumberOrderGpuTester.cs:25:                }; // TODO: Migrate the Pow2Mod branch to the ProcessEightBitWindows order kernel once the shared helper replaces the single-bit ladder so GPU order scans match benchmark wins.
-PerfectNumbers.Core\Gpu\MersenneNumberOrderGpuTester.cs:26:                // TODO: Inline the IncrementalOrderKernel call once the ProcessEightBitWindows helper lands so this wrapper stops forwarding directly to the kernel and the hot path loses one indirection.
-PerfectNumbers.Core\Gpu\MersenneNumberOrderGpuTester.cs:28:                var foundBuffer = accelerator.Allocate1D<int>(1); // TODO: Replace this allocation with the pooled device buffer from GpuOrderKernelBenchmarks so repeated scans reuse the pinned staging memory instead of allocating per run.
-PerfectNumbers.Core\Gpu\MersenneNumberOrderGpuTester.cs:42:                                // TODO: Replace these modulo recomputations with the divisor-cycle stepping deltas captured in
-PerfectNumbers.Core\Gpu\MersenneNumberResidueGpuTester.cs:11:    // TODO: Integrate MersenneDivisorCycles.Shared to consult cycle lengths for small q (<= 4M) and fast-reject
-PerfectNumbers.Core\Gpu\MersenneNumberResidueGpuTester.cs:14:    // TODO: When cycles are missing for larger q values, compute only the single required cycle on the device
-PerfectNumbers.Core\Gpu\MersenneNumberResidueGpuTester.cs:30:        var kernel = gpuLease.Pow2ModKernel; // TODO: Swap this to the ProcessEightBitWindows kernel once GpuUInt128.Pow2Minus1Mod adopts the shared windowed helper measured fastest in GpuPow2ModBenchmarks.
-PerfectNumbers.Core\Gpu\MersenneNumberResidueGpuTester.cs:48:        // TODO: Replace the direct UInt128 multiply/add updates below with the residue-cycle stepping helper so that q advances reuse cached cycle increments rather than recomputing twoP multiples on every iteration.
-PerfectNumbers.Core\Gpu\MersenneNumberResidueGpuTester.cs:98:                        q += twoP * processed; // TODO: Swap this multiplication for the shared cycle stepping helper once residue cycles are mandatory so we can reuse the cached remainder ladder instead of performing UInt128 multiply operations.
-PerfectNumbers.Core\PowerCache.cs:16:            // TODO: Rent this buffer from ArrayPool<BigInteger> (or a dedicated pooled cache) so expanding
-PerfectNumbers.Core\PowerCache.cs:27:            // TODO: Replace Array.Resize with a pooled copy so we reuse previously rented buffers instead
-PerfectNumbers.Core\PowerCache.cs:42:                    // TODO: Swap this BigInteger chain with the UInt128-based Montgomery ladder from
-PerfectNumbers.Core\PowerCache.cs:76:                    // TODO: Move the high-precision branch to the benchmark project once production
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:28:    // TODO(NTT-OPT): Consider passing backend explicitly to avoid global state.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:32:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, GpuUInt128>> MulKernelCache = new(); // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:33:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128>> StageKernelCache = new(); // TODO: Same as above – materialize staged kernels during startup so we can drop ConcurrentDictionary usage entirely per the benchmark guidance.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:34:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>> ScaleKernelCache = new(); // TODO: Promote to the static kernel table initialized alongside the GpuModularArithmeticBenchmarks fast path.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:35:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong>> StageMontKernelCache = new(); // TODO: Inline the Montgomery kernels into the startup table instead of using a concurrent cache now that we no longer mutate state at runtime.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:36:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>> StageBarrett128KernelCache = new(); // TODO: Same plan – reuse the precomputed kernels measured fastest in MontgomeryMultiplyBenchmarks rather than looking them up dynamically.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:37:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, GpuUInt128, ulong, ulong, ulong, ulong>> ScaleBarrett128KernelCache = new(); // TODO: Collapse into the startup kernel array once Barrett128 constants are preloaded.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:38:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>> SquareBarrett128KernelCache = new(); // TODO: Fold these kernels into the same startup table to avoid concurrent access overhead highlighted in GpuModularArithmeticBenchmarks.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:39:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>> ToMont64KernelCache = new(); // TODO: Prebind and reuse the Montgomery conversions from MontgomeryMultiplyBenchmarks instead of storing them in a concurrent cache.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:40:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong>> FromMont64KernelCache = new(); // TODO: As above – drop ConcurrentDictionary once startup prewarms every kernel.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:41:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong>> SquareMont64KernelCache = new(); // TODO: Inline into the static kernel table established during initialization.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:42:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>> ScaleMont64KernelCache = new(); // TODO: Move to the startup kernel table so Montgomery-scaled launches skip concurrent lookups.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:44:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128>> ForwardKernelCache = new(); // TODO: Warm these forward kernels during initialization and store them in a plain array so the LucasLehmerGpuBenchmarks launch costs disappear.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:46:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128, GpuUInt128>> InverseKernelCache = new(); // TODO: Same as above – replace with startup-prepared tables per LucasLehmerGpuBenchmarks guidance.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:48:    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int>> BitReverseKernelCache = new(); // TODO: Precompute bit-reversal kernels during boot so we can remove the concurrent lookup overhead flagged in the benchmarks.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:60:        // TODO(MOD-OPT): Precompute and store Montgomery/Barrett constants for modulus here
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:114:                // TODO: Pull these stage roots from the precomputed tables measured fastest in
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:125:                // TODO: Reuse the same precomputed tables for inverse roots so we do not repeat the
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:148:                // TODO: Preload MontNPrime64/MontR values using the MontgomeryMultiplyBenchmarks helper so
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:235:    // TODO(NTT-OPT): Add a TwiddleCache for stage-wise Cooley–Tukey NTT.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:333:            // TODO(NTT-OPT): Clear TwiddleCache once introduced.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:356:        // TODO(NTT-OPT): Remove per-accelerator twiddle buffers once added.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:398:    // TODO(NTT-OPT): Introduce stage-wise Cooley–Tukey kernels and a
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:407:    // TODO(NTT-OPT): Mirror the forward stage-wise design for the inverse
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:420:        // TODO(NTT-OPT): Consider shared-memory tiling to improve locality:
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:424:        // TODO: Replace this `%` with a bitmask when `half` is a power of two so the stage index math matches the faster
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:500:        // TODO: Use the bitmask-based remainder helper here as well to remove `%` from the butterfly stage and align with the
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:547:    // TODO(MOD-OPT): Stage kernel using 64-bit Montgomery multiplication. Requires data and twiddles in Montgomery domain.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:551:        // TODO: Apply the bitmask remainder helper to this stage too so every butterfly path drops the slower `%` operation.
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:752:        // TODO(NTT-OPT): Replace this reference O(n^2) kernel with a stage-wise
-PerfectNumbers.Core\Gpu\NttGpuMath.cs:772:        // TODO(NTT-OPT): Replace this O(n^2) inverse with stage-wise butterflies
-PerfectNumbers.Core\PrimeCache.cs:26:            // TODO: Swap the Open.Numeric enumerator for the staged sieve batches we benchmarked; the
-PerfectNumbers.Core\PrimeCache.cs:28:            // TODO: Fold in the Mod6 stride planner that topped Mod6ComparisonBenchmarks so the CPU cache
-PerfectNumbers.Core\PrimeCache.cs:93:            // TODO: Move this incremental append to the shared sieve batches so we amortize the
-PerfectNumbers.Core\PrimeCache.cs:96:            // TODO: Apply the Mod6 stride scheduler here as well so on-demand extensions mirror the
-PerfectNumbers.Core\PrimesGenerator.cs:55:                // TODO: Reuse a single squared local for `p` within this loop so we avoid recalculating
-PerfectNumbers.Core\PrimesGenerator.cs:63:                // TODO: Replace this trial-division `%` with the sieve-based generator that avoids
-PerfectNumbers.Core\PrimesGenerator.cs:78:                    // TODO: Reuse a single cached `candidateSquared` per iteration so we avoid issuing
-PerfectNumbers.Core\PrimesGenerator.cs:104:            // TODO: Switch this increment to the Mod6 stepping table identified in the Mod6ComparisonBenchmarks
-PerfectNumbers.Core\PrimesGenerator.cs:113:        // TODO: Swap the `% 10` usage for ULongExtensions.Mod10 so the hot classification path
-PerfectNumbers.Core\PrimesGenerator.cs:125:        // TODO: Route this `% 10` classification through ULongExtensions.Mod10 to match the faster
-PerfectNumbers.Core\PrimeTester.cs:14:        // TODO: Eliminate this wrapper once callers can reach IsPrimeInternal directly; the extra
-PerfectNumbers.Core\PrimeTester.cs:28:        // TODO: Inline the single-value GPU sieve fast path from GpuModularArithmeticBenchmarks so this wrapper
-PerfectNumbers.Core\PrimeTester.cs:60:            // TODO: Replace this modulo check with ULongExtensions.Mod5 so the CPU hot path
-PerfectNumbers.Core\PrimeTester.cs:82:                    // TODO: Route this small-prime filtering through the shared divisor-cycle cache once
-PerfectNumbers.Core\PrimeTester.cs:121:                // TODO: Replace this ad-hoc ArrayPool buffer with the pinned span cache from
-PerfectNumbers.Core\PrimeTester.cs:164:        // TODO: Replace this ConcurrentBag with the lock-free ring buffer variant validated in
-PerfectNumbers.Core\PrimeTester.cs:237:        // TODO: Prewarm this per-accelerator cache during startup (and reuse a simple array keyed by accelerator index)
-PerfectNumbers.Core\PrimeTester.cs:281:            // TODO: Replace the `% 5` branch with the GPU Mod5 helper once the sieve kernel can
-PerfectNumbers.Core\PrimeTester.cs:309:                // TODO: Route this modulo through the shared divisor-cycle cache once exposed to GPU kernels
-PerfectNumbers.Core\PrimeTester.cs:322:        // TODO: Replace this on-the-fly GCD probe with the cached factor table derived from
-PerfectNumbers.Core\PrimeTester.cs:331:        // TODO: Route this batch helper through the shared GPU kernel pool from
-PerfectNumbers.Core\PrimeTester.cs:357:        // TODO: Swap this handwritten binary GCD for the optimized helper measured in
-PerfectNumbers.Core\PrimeTester.cs:398:        // TODO: Replace this inline GPU binary GCD with the kernel extracted from
-PerfectNumbers.Core.Tests\TextFileWriterTests.cs:7:    [Fact(Skip = "TODO: implement test")]
-PerfectNumbers.Core\RationalHelper.cs:13:        // TODO: Replace the BigInteger-based GCD with the UInt128-friendly binary GCD helper so this rounding path avoids
-PerfectNumbers.Core\RationalHelper.cs:20:        // TODO: Cache a reusable byte buffer here so converting to EInteger no longer allocates per call when parsing alpha
-PerfectNumbers.Core\RationalHelper.cs:28:        // TODO: Inline this floor conversion with the span-based ladder that dominated
-PerfectNumbers.Core\RationalHelper.cs:39:        // TODO: Replace this ceiling branch with the branchless adjustment measured fastest
-PerfectNumbers.Core\RationalNumbers.cs:8:    // TODO: Precompute additional frequently used rationals (e.g., OneHalf, ThreeHalves) so hot alpha computations stop
-PerfectNumbers.Core.Tests\RleBlacklistTests.cs:7:    [Fact(Skip = "TODO: implement test")]
-PerfectNumbers.Core\RleBlacklist.cs:31:            // TODO: Replace this HashSet with the pooled ValueHashSet from the blacklist benchmarks so repeated
-PerfectNumbers.Core\RleBlacklist.cs:144:        // TODO: Cache BuildRleKey results per divisor cycle bucket so residue scans reuse the
-PerfectNumbers.Core\RleBlacklist.cs:154:        // TODO: Replace this per-bit loop with the lookup-table driven builder validated in the
-PerfectNumbers.Core\RleBlacklist.cs:247:                // TODO: Replace int.TryParse with the Utf8Parser-based span helper so blacklist normalization avoids
-PerfectNumbers.Core\RleBlacklist.cs:330:                // TODO: Swap this int.TryParse for the upcoming Utf8Parser fast path so nested patterns reuse the
-PerfectNumbers.Core\StringBuilderPool.cs:12:        // TODO: Ensure oversized builders remain eligible for reuse without trimming so call sites keep their full capacity.
-PerfectNumbers.Core\StringBuilderPool.cs:19:        // TODO: Preserve the builder's capacity when returning it so the pool hands the same buffer back without shrinkage.
-EvenPerfectBitScanner.Benchmarks\MulHighBenchmarks.cs:40:        // TODO: Replace ULongExtensions.MulHigh with the UInt128-based helper on CPU paths; it was
-PerfectNumbers.Core\TextFileWriter.cs:28:            // TODO: Surface a lock-free position snapshot (for example via Interlocked.Read on a cached long)
-PerfectNumbers.Core\TextFileWriter.cs:48:            // TODO: Use the pooled writer buffers planned for the TextFileWriter fast path so truncation flushes
-PerfectNumbers.Core\TextFileWriter.cs:65:            // TODO: Buffer these writes through an ArrayPool-backed accumulator so we only flush when the
-PerfectNumbers.Core\TextFileWriter.cs:80:            // TODO: Buffer binary writes with the same ArrayPool-backed accumulator planned for text so GPU result
-PerfectNumbers.Core\TextFileWriter.cs:89:        // TODO: Return the writers to a pooled wrapper once the buffered pipeline lands so disposing the
-EvenPerfectBitScanner.Benchmarks\MulMod64Benchmarks.cs:172:        // TODO: Callers in production should migrate to ULongExtensions.MulMod64 where GPU parity
-EvenPerfectBitScanner.Benchmarks\MulMod64Benchmarks.cs:188:        // TODO: Retire the deferred GPU shim from runtime paths and keep it only for benchmarks;
-PerfectNumbers.Core\UInt128Extensions.cs:11:        // TODO: Replace this hand-rolled binary GCD with the shared subtract-free ladder from
-PerfectNumbers.Core\UInt128Extensions.cs:63:    // TODO: If the cache lacks this cycle, immediately schedule the configured device
-PerfectNumbers.Core\UInt128Extensions.cs:79:        // TODO: Switch this divisor-order powmod to the ProcessEightBitWindows helper so the
-PerfectNumbers.Core\UInt128Extensions.cs:123:      // TODO: Replace this direct `%` test with the shared divisor-cycle filter once the
-PerfectNumbers.Core\UInt128Extensions.cs:138:        // TODO: Fold these reductions into the multiply-high trick captured in Mod3BenchmarkResults so
-PerfectNumbers.Core\UInt128Extensions.cs:147:        // TODO: Replace the `% 5` operations with the precomputed multiply-high constants from the Mod5
-PerfectNumbers.Core\UInt128Extensions.cs:167:        // TODO: Inline the lookup-based Mod7 reducer validated in the residue benchmarks so this helper
-PerfectNumbers.Core\UInt128Extensions.cs:191:        // TODO: Precompute the 2^64 ≡ 6 folding constants once so this path stops recomputing `% 10`
-PerfectNumbers.Core\UInt128Extensions.cs:214:        // TODO: Collapse this Mod10 switch into the shared lookup table from the CLI benchmarks so we
-PerfectNumbers.Core\UInt128Numbers.cs:9:        // TODO: Populate this table from the UInt128 residue benchmarks so GPU kernels can pull precomputed constants
-PerfectNumbers.Core\UInt128Numbers.cs:11:        // TODO: Extend the table with cached Mod3/Mod5 folding constants so both CPU and GPU residue helpers can reuse
-PerfectNumbers.Core\UIntExtensions.cs:9:    // TODO: Only add Mod7/Mod11 lookup helpers once we have a variant that beats the `%` baseline (current prototypes lose per Mod7/Mod11 benchmarks).
-PerfectNumbers.Core\ULongExtensions.cs:23:        // TODO: When the shared cycle snapshot cannot serve this divisor, trigger an on-demand
-PerfectNumbers.Core\ULongExtensions.cs:36:            // TODO: Replace this `%` driven factor peeling with the divisor-cycle aware
-PerfectNumbers.Core\ULongExtensions.cs:87:            // TODO: Swap this modulo check for the shared small-prime cycle filter once the
-PerfectNumbers.Core\ULongExtensions.cs:204:        // TODO: Investigate replacing this manual decomposition with the UInt128-based implementation
-PerfectNumbers.Core\ULongExtensions.cs:238:        // TODO: Replace this `%` with the Montgomery folding helper highlighted in MulMod64Benchmarks so the
-PerfectNumbers.Core\ULongExtensions.cs:257:    // TODO: Replace this fallback with the UInt128 Montgomery helper measured fastest in
-PerfectNumbers.Core\ULongExtensions.cs:264:        // TODO: Remove this GPU-compatible shim from production once callers migrate to MulMod64,
-PerfectNumbers.Core\ULongExtensions.cs:273:        // TODO: Move this deferred helper to the benchmark suite; the baseline MulMod64 avoids the
-PerfectNumbers.Core\ULongExtensions.cs:313:                // TODO: Switch to the ProcessEightBitWindows helper once the scalar implementation ships so CPU callers
-PerfectNumbers.Core\ULongExtensions.cs:347:                // TODO: Route this Montgomery-domain variant through the same windowed pow2 helper once available so delta
-PerfectNumbers.Core\ULongExtensions.cs:372:        // TODO: Swap this modulo with the divisor-cycle remainder helper from Pow2MontgomeryModCycleComputationBenchmarks so we
-PerfectNumbers.Core\ULongExtensions.cs:395:        // TODO: Port this scalar PowMod fallback to the ProcessEightBitWindows helper so CPU callers get the
-PerfectNumbers.Core\ULongExtensions.cs:447:        // TODO: Wire this cycle-aware overload into the ProcessEightBitWindows helper so the reduced exponent path
-PerfectNumbers.Core\ULongExtensions.cs:481:        // TODO: Replace this modulo with the cached cycle remainder produced by the divisor-cycle cache so PowModWithCycle avoids
-PerfectNumbers.Core\ULongExtensions.cs:502:        // TODO: Replace this UInt128-cycle overload with the ProcessEightBitWindows helper so large-exponent CPU scans
-PerfectNumbers.Core\ULongExtensions.cs:534:        // TODO: Swap this modulo with the upcoming UInt128 cycle remainder helper so large-exponent scans reuse cached
-PerfectNumbers.Core\ULongExtensions.cs:560:        // TODO: Migrate this UInt128 exponent overload to ProcessEightBitWindows so the large-cycle reductions drop the
-PerfectNumbers.Core\ULongExtensions.cs:592:        // TODO: Swap this modulo with the shared UInt128 cycle remainder helper once available so CRT powmods reuse cached
-PerfectNumbers.Core\ULongExtensions.cs:639:            // TODO: Replace this `% modulusCandidate` with the cached residue helper derived from Mod10_8_5_3Benchmarks so CRT
-PerfectNumbers.Core\ULongExtensions.cs:648:        // TODO: Swap this final `% modulus` with the pooled remainder cache so the CRT result write-back avoids one more division,
+Results & Output Pipelines
+- EvenPerfectBitScanner/Program.cs:615: Replace File.WriteAllText with the pooled TextFileWriter pipeline for the results header.
+- EvenPerfectBitScanner/Program.cs:1218: Swap the results filename interpolation for the pooled ValueStringBuilder pipeline.
+- EvenPerfectBitScanner/Program.cs:1335: Move PrintResult to a Utf8Formatter-based pipeline instead of renting StringBuilders per line.
+- EvenPerfectBitScanner/Program.cs:1396: Replace per-flush FileStream/StreamWriter allocations with a pooled TextFileWriter-style helper.
+
+Arithmetic Helpers & Bit Statistics
+- EvenPerfectBitScanner/Program.cs:1483: Remove the CountOnes wrapper once callers invoke BitOperations.PopCount directly.
+- EvenPerfectBitScanner/Program.cs:1785: Replace the byte-by-byte zero statistics scan with the lookup-table collector validated in the BitStats benchmarks.
+- PerfectNumbers.Core/UInt128Extensions.cs:15: Replace the hand-rolled binary GCD with the subtract-free ladder from GpuUInt128BinaryGcdBenchmarks so wide operands reuse the optimized helper.
+
+Divisor Cycle Cache & Generation
+- EvenPerfectBitScanner/Program.cs:442: Wire GenerateGpu to the unrolled-hex kernel that topped the divisor-cycle benchmarks.
+- EvenPerfectBitScanner/Program.cs:463: Keep only a single cached divisor-cycle block loaded and honor the configured device for ad-hoc work.
+- EvenPerfectBitScanner/Program.cs:467: Stop reloading the full divisor-cycle snapshot once ad-hoc computations stream directly from the selected device.
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:209: Replace the naive doubling fallback with the unrolled-hex generator from the divisor-cycle benchmarks.
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:212: Route snapshot misses to ephemeral single-cycle computations on the configured device instead of persisting results.
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:245: Port the wide UInt128 cycle calculator to the unrolled-hex implementation to avoid slow shift/subtract loops.
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:464: Reuse the remainder-tracking update in factorization so repeated divisions disappear from the loop.
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:484: Fold the remainder-tracking mechanism into PollardRho64 so it leverages cached residues.
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:493: Avoid the division when computing quotients by using remainder tracking or reciprocal multiplication.
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:786: Replace the modulo-based sieve with cached Mod3/Mod5/Mod7/Mod11 helpers in the CPU generator.
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:794: Migrate CPU divisor generation to the shared unrolled-hex calculator to match GPU performance.
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:869: Swap modulo checks during range skips for the cached mod helpers before launching GPU batches.
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:919: Replace the modulo sieve in GPU results collection with cached mod helpers once the cache is mandatory.
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:991: Switch the scalar cycle-length fallback to the unrolled-hex stepping sequence.
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:994: Expose a GPU-first fallback path so high divisors use the ProcessEightBitWindows kernel without caching.
+- PerfectNumbers.Core/UInt128Extensions.cs:372: Trigger on-demand cycle computation on the configured device when the shared snapshot cannot satisfy wide-order factoring.
+
+Primality & Order Screening
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:477: Benchmark PrimeTester.IsPrimeInternal against Open.Numeric.Primes to confirm the best option for wide composites.
+- PerfectNumbers.Core/ULongExtensions.cs:31: Trigger on-demand GPU cycle computation for divisors that fall outside the shared snapshot while keeping results uncached.
+- PerfectNumbers.Core/ULongExtensions.cs:44: Replace the modulo-based factor peeling with the divisor-cycle aware factoring helper to reuse cached remainders.
+- PerfectNumbers.Core/ULongExtensions.cs:122: Swap the small-prime modulo check for the shared cycle filter once the divisor-cycle cache is mandatory.
+- PerfectNumbers.Core/UInt128Extensions.cs:432: Replace the direct modulo test with the divisor-cycle filter once wide candidates can reuse cached residues.
+- PerfectNumbers.Core/UInt128Extensions.cs:447: Fold the Mod3 reduction into the multiply-high trick from the residue benchmarks to eliminate modulo instructions.
+- PerfectNumbers.Core/UInt128Extensions.cs:456: Replace the Mod5 reductions with the precomputed multiply-high constants from the Mod5 benchmarks.
+- PerfectNumbers.Core/UInt128Extensions.cs:476: Inline the lookup-based Mod7 reducer validated in the residue benchmarks so the helper stops relying on modulo operations.
+- PerfectNumbers.Core/UInt128Extensions.cs:500: Precompute the 2^64 ≡ 6 folding constants so Mod10 avoids recomputing modulo divisions per call.
+- PerfectNumbers.Core/UInt128Extensions.cs:523: Collapse the Mod10 switch into the pooled lookup table once the residue cache is available.
+- PerfectNumbers.Core/UInt128Numbers.cs:16: Populate the residue constant table from the UInt128 benchmarks so GPU kernels avoid re-deriving values.
+- PerfectNumbers.Core/UInt128Numbers.cs:18: Extend the residue table with cached Mod3/Mod5 folding constants for CPU and GPU helpers.
+- PerfectNumbers.Core/UIntExtensions.cs:9: Introduce Mod7/Mod11 lookup helpers once a variant outperforms the modulo baseline.
+
+Montgomery Primitives
+- PerfectNumbers.Core/ULongExtensions.cs:239: Replace the manual MulHigh decomposition with the faster UInt128-based implementation for CPU callers.
+- PerfectNumbers.Core/ULongExtensions.cs:273: Replace the initial modulo in ModPow64 with the Montgomery folding helper to remove the slow division.
+- PerfectNumbers.Core/ULongExtensions.cs:292: Swap MulMod64 to the UInt128 Montgomery helper so CPU callers stop performing triple modulo operations.
+- PerfectNumbers.Core/UInt128Extensions.cs:69: Prototype a UInt128-native Pow2MontgomeryModWindowed path that matches the GPU implementation once a faster multiplier is available.
+
+Cycle-Aware Modular Arithmetic
+- PerfectNumbers.Core/ULongExtensions.cs:699: Port the scalar PowMod fallback to ProcessEightBitWindows for faster CPU pow2 computations.
+- PerfectNumbers.Core/ULongExtensions.cs:751: Wire the cycle-aware PowModWithCycle overload into ProcessEightBitWindows for reduced exponents.
+- PerfectNumbers.Core/ULongExtensions.cs:785: Replace the rotation modulo in PowModWithCycle with the cached cycle remainder from the divisor-cycle cache.
+- PerfectNumbers.Core/ULongExtensions.cs:806: Move the UInt128-cycle PowModWithCycle overload to ProcessEightBitWindows for large-exponent scans.
+- PerfectNumbers.Core/ULongExtensions.cs:838: Swap the UInt128 rotation modulo for the upcoming cached remainder helper to avoid repeated divisions.
+- PerfectNumbers.Core/ULongExtensions.cs:864: Migrate the UInt128-exponent PowModWithCycle overload to ProcessEightBitWindows to drop the slow manual loop.
+- PerfectNumbers.Core/ULongExtensions.cs:896: Replace the UInt128 rotation modulo with the shared cycle remainder helper once it is available.
+- PerfectNumbers.Core/ULongExtensions.cs:943: Replace the modulo in PowModCrt with the cached residue helper from Mod10_8_5_3Benchmarks to avoid repeated divisions.
+- PerfectNumbers.Core/ULongExtensions.cs:952: Swap the final modulo in PowModCrt with the pooled remainder cache to eliminate the last division.
+- PerfectNumbers.Core/UInt128Extensions.cs:388: Switch the divisor-order powmod in CalculateOrder to ProcessEightBitWindows so the loop benefits from the windowed pow2 ladder.
+
+Status & Progress Reporting
+- PerfectNumbers.Core/Cpu/MersenneNumberDivisorByDivisorCpuTester.cs:296: Replace the modulo-based status counter with the ring-buffer subtract loop from the CLI status benchmarks.
+
+Cycle Remainder Steppers
+- PerfectNumbers.Core/CycleRemainderStepper.cs:28: Inline the Reset logic at call sites so hot loops reuse struct reinitialization without an extra method call.
+- PerfectNumbers.Core/CycleRemainderStepper.cs:42: Route Initialize through the shared divisor-cycle remainder helper instead of using modulo.
+- PerfectNumbers.Core/CycleRemainderStepper.cs:72: Replace the UInt128 modulo with the cached subtraction ladder for large deltas.
+- PerfectNumbers.Core/CycleRemainderStepper.cs:85: Swap the fallback modulo for the divisor-cycle helper to avoid repeated modulo operations.
+- PerfectNumbers.Core/CycleRemainderStepper.cs:96: Expose the cached state fields directly once the single-cycle helper is adopted.
+
+Exponent Remainder & Montgomery Windowing
+- PerfectNumbers.Core/ExponentRemainderStepper.cs:47: Route state resets through ProcessEightBitWindows once the scalar pow2 helper adopts it.
+- PerfectNumbers.Core/ExponentRemainderStepper.cs:57: Pull Montgomery deltas from the divisor-cycle snapshot once cycle lengths are mandatory.
+- PerfectNumbers.Core/ExponentRemainderStepper.cs:60: Replace per-delta powmods with the upcoming windowed ladder to remove single-bit costs.
+- PerfectNumbers.Core/ExponentRemainderStepper.cs:78: Switch initial reloads to the shared windowed pow2 helper for consistency with optimized residues.
+- PerfectNumbers.Core/ExponentRemainderStepper.cs:87: Reuse the divisor-cycle derived Montgomery delta once exposed by the cache.
+- PerfectNumbers.Core/ExponentRemainderStepper.cs:89: Use the windowed delta pow2 helper to avoid the slower single-bit ladder.
+- PerfectNumbers.Core/ExponentRemainderStepper.cs:124: Replace the fallback pow2 path with the ProcessEightBitWindows helper for fresh states.
+- PerfectNumbers.Core/ExponentRemainderStepper.cs:133: Multiply by the cache-provided Montgomery delta instead of the caller-supplied value once available.
