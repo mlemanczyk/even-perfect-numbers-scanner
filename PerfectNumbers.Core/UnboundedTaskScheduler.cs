@@ -1,6 +1,3 @@
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace PerfectNumbers.Core;
 
 public sealed class UnboundedTaskScheduler : TaskScheduler
@@ -10,27 +7,21 @@ public sealed class UnboundedTaskScheduler : TaskScheduler
 	private UnboundedTaskScheduler()
 	{
 		ThreadPool.SetMaxThreads(100_000, 100_000);
-		ThreadPool.SetMinThreads(10_300, 100);
+		ThreadPool.SetMinThreads(10_340, 100);
 	}
 
 	public override int MaximumConcurrencyLevel => int.MaxValue;
 
 	protected override void QueueTask(Task task)
 	{
-		ThreadPool.UnsafeQueueUserWorkItem(static state =>
+		ThreadPool.UnsafeQueueUserWorkItem( (state) =>
 		{
-			(UnboundedTaskScheduler Scheduler, Task Task) tuple = ((UnboundedTaskScheduler, Task))state!;
-			tuple.Scheduler.TryExecuteTask(tuple.Task);
+			var (scheduler, task) = ((UnboundedTaskScheduler, Task))state!;
+			scheduler.TryExecuteTask(task);
 		}, (this, task));
 	}
 
-	protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
-	{
-		return TryExecuteTask(task);
-	}
+	protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => TryExecuteTask(task);
 
-	protected override IEnumerable<Task>? GetScheduledTasks()
-	{
-		return null;
-	}
+	protected override IEnumerable<Task>? GetScheduledTasks() => null;
 }

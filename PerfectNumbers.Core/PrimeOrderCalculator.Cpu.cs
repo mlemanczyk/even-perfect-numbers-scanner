@@ -1,10 +1,8 @@
 using System.Buffers;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
@@ -12,17 +10,11 @@ namespace PerfectNumbers.Core;
 internal static partial class PrimeOrderCalculator
 {
 
-        internal readonly struct PendingEntry
-        {
-                public readonly ulong Value;
-                public readonly bool KnownComposite;
-
-                public PendingEntry(ulong value, bool knownComposite)
-                {
-                        Value = value;
-                        KnownComposite = knownComposite;
-                }
-        }
+	internal readonly struct PendingEntry(ulong value, bool knownComposite)
+	{
+		public readonly ulong Value = value;
+		public readonly bool KnownComposite = knownComposite;
+	}
 
 	private static ulong CalculateInternal(ulong prime, ulong? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
 	{
@@ -70,8 +62,7 @@ internal static partial class PrimeOrderCalculator
 		ulong candidateOrder = InitializeStartingOrderCpu(prime, phi, divisorData);
 		candidateOrder = ExponentLoweringCpu(candidateOrder, prime, phiFactors, divisorData);
 
-		PartialFactorResult? orderFactors;
-		if (TryConfirmOrderCpu(prime, candidateOrder, divisorData, config, out orderFactors))
+		if (TryConfirmOrderCpu(prime, candidateOrder, divisorData, config, out PartialFactorResult? orderFactors))
 		{
 			return candidateOrder;
 		}
@@ -104,6 +95,10 @@ internal static partial class PrimeOrderCalculator
 			// 	continue;
 			// }
 
+			// TODO: Can we optimize it thanks to knowing the factors, differences between factors, factors and / or phi
+			// being monotonically increasing etc. For example, if phi increases and factor increases, what does it tell us
+			// about the value of reduced?  Or, maybe wee can use residue stepping to calculate the residue instead of calling
+			// Pow2equalsOneCpu? Maybe we don't need to calculate it from scratch?
 			ulong reduced = phi / factor;
 			if (Pow2EqualsOneCpu(reduced, prime, divisorData))
 			{
@@ -237,8 +232,10 @@ internal static partial class PrimeOrderCalculator
 		{
 			ulong primeFactor = span[i].Value;
 			ulong reduced = order;
-			for (int iteration = 0; iteration < span[i].Exponent; iteration++)
+			int exponent = span[i].Exponent;
+			for (int iteration = 0; iteration < exponent; iteration++)
 			{
+				// TODO: Benchmark and / or implement DivRem like solution or residue stepper?
 				if ((reduced % primeFactor) != 0UL)
 				{
 					break;
@@ -299,7 +296,7 @@ internal static partial class PrimeOrderCalculator
 				orderFactors = extended;
 			}
 
-			int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks * 4;
+			int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks << 2;
 			List<ulong> candidates = ThreadStaticPools.RentUlongList(capacity);
 			FactorEntry[] factorArray = orderFactors.Factors!;
 			// DebugLog("Building candidates list");
@@ -669,7 +666,7 @@ internal static partial class PrimeOrderCalculator
 			// GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, prime, out ulong remainder, divisorData);
 			// if (status == GpuPow2ModStatus.Success)
 			// {
-				return remainder == 1UL;
+			return remainder == 1UL;
 			// }
 		}
 
@@ -755,14 +752,14 @@ internal static partial class PrimeOrderCalculator
 			// exponentSlots.Clear();
 
 			counts = ThreadStaticPools.RentUlongIntDictionary(Math.Max(FactorSlotCount, 8));
-			counts.Clear();
+			// counts.Clear();
 
 			// bool gpuPopulated = TryPopulateSmallPrimeFactorsGpu(value, limit, primeSlots, exponentSlots, out factorCount, out remaining);
 			// if (!gpuPopulated)
 			// {
 			// 	throw new InvalidOperationException($"GPU didn't populate factors for {value}");
-				// counts.Clear();
-				remaining = PopulateSmallPrimeFactorsCpu(value, limit, counts);
+			// counts.Clear();
+			remaining = PopulateSmallPrimeFactorsCpu(value, limit, counts);
 			// }
 
 			int dictionaryCount = counts.Count;
@@ -844,66 +841,68 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		ulong cofactor = 1UL;
-                bool cofactorContainsComposite = false;
-                int pendingCount = pending.Count;
-                int index = 0;
-                for (; index < pendingCount; index++)
-                {
-                        PendingEntry entry = pending[index];
-                        ulong composite = entry.Value;
+		bool cofactorContainsComposite = false;
+		int pendingCount = pending.Count;
+		int index = 0;
+		for (; index < pendingCount; index++)
+		{
+			PendingEntry entry = pending[index];
+			ulong composite = entry.Value;
 
-                        if (entry.KnownComposite)
-                        {
-                                cofactor = checked(cofactor * composite);
-                                cofactorContainsComposite = true;
-                                continue;
-                        }
+			if (entry.KnownComposite)
+			{
+				cofactor = checked(cofactor * composite);
+				cofactorContainsComposite = true;
+				continue;
+			}
 
-                        bool isPrime = GetOrComputePrimality(composite);
+			bool isPrime = GetOrComputePrimality(composite);
 
-                        if (isPrime)
-                        {
-                                AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
-                        }
-                        // composite is never smaller on the execution path
-                        // else if (composite > 1UL)
-                        else
-                        {
-                                cofactor = checked(cofactor * composite);
-                                cofactorContainsComposite = true;
-                        }
-                }
+			if (isPrime)
+			{
+				AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
+			}
+			// composite is never smaller on the execution path
+			// else if (composite > 1UL)
+			else
+			{
+				cofactor = checked(cofactor * composite);
+				cofactorContainsComposite = true;
+			}
+		}
 
-                bool cofactorIsPrime;
-                if (cofactor <= 1UL)
-                {
-                        cofactorIsPrime = false;
-                }
-                else if (cofactorContainsComposite)
-                {
-                        cofactorIsPrime = false;
-                }
-                else
-                {
-                        cofactorIsPrime = GetOrComputePrimality(cofactor);
-                }
+		bool cofactorIsPrime;
+		if (cofactor <= 1UL)
+		{
+			cofactorIsPrime = false;
+		}
+		else if (cofactorContainsComposite)
+		{
+			cofactorIsPrime = false;
+		}
+		else
+		{
+			cofactorIsPrime = GetOrComputePrimality(cofactor);
+		}
+
 		ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
 		bool temp;
 		if (useDictionary)
 		{
-			if ((counts is null || counts.Count == 0) && cofactor == value)
+			temp = counts is null || counts.Count == 0;
+			if (temp && cofactor == value)
 			{
 				result = PartialFactorResult.Rent(null, cofactor, false, 0, cofactorIsPrime);
 				goto ReturnResult;
 			}
 
-			if (counts is null || counts.Count == 0)
+			if (temp)
 			{
 				result = PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0, cofactorIsPrime);
 				goto ReturnResult;
 			}
 
-			FactorEntry[] factors = pool.Rent(counts.Count);
+			FactorEntry[] factors = pool.Rent(counts!.Count);
 			index = 0;
 			foreach (KeyValuePair<ulong, int> entry in counts)
 			{
@@ -1137,8 +1136,7 @@ internal static partial class PrimeOrderCalculator
 				break;
 			}
 
-			ulong primeValue = primeCandidate;
-			if ((remaining % primeValue) != 0UL)
+			if ((remaining % primeCandidate) != 0UL)
 			{
 				continue;
 			}
@@ -1146,12 +1144,13 @@ internal static partial class PrimeOrderCalculator
 			int exponent = 0;
 			do
 			{
-				remaining /= primeValue;
+				// TODO: Implement DivRem like solution or residue stepper to re-use previous iteration results in new calculation. Add / use method, likely to ULongExtensions
+				remaining /= primeCandidate;
 				exponent++;
 			}
-			while ((remaining % primeValue) == 0UL);
+			while ((remaining % primeCandidate) == 0UL);
 
-			counts[primeValue] = exponent;
+			counts[primeCandidate] = exponent;
 		}
 
 		return remaining;
@@ -1398,70 +1397,70 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	private static void FactorCompletely(ulong value, Dictionary<ulong, int> counts)
-        {
-                FactorCompletely(value, counts, knownComposite: false);
-        }
+	{
+		FactorCompletely(value, counts, knownComposite: false);
+	}
 
-        private static void FactorCompletely(ulong value, Dictionary<ulong, int> counts, bool knownComposite)
-        {
-                if (value <= 1UL)
-                {
-                        return;
-                }
+	private static void FactorCompletely(ulong value, Dictionary<ulong, int> counts, bool knownComposite)
+	{
+		if (value <= 1UL)
+		{
+			return;
+		}
 
-                if (!knownComposite && GetOrComputePrimality(value))
-                {
-                        AddFactor(counts, value, 1);
-                        return;
-                }
+		if (!knownComposite && GetOrComputePrimality(value))
+		{
+			AddFactor(counts, value, 1);
+			return;
+		}
 
-                ulong factor = PollardRhoStrict(value);
-                ulong quotient = value / factor;
+		ulong factor = PollardRhoStrict(value);
+		ulong quotient = value / factor;
 
-                bool factorIsPrime = GetOrComputePrimality(factor);
-                if (factorIsPrime)
-                {
-                        int exponent = 1;
-                        ulong remaining = quotient;
-                        while ((remaining % factor) == 0UL)
-                        {
-                                remaining /= factor;
-                                exponent++;
-                        }
+		bool factorIsPrime = GetOrComputePrimality(factor);
+		if (factorIsPrime)
+		{
+			int exponent = 1;
+			ulong remaining = quotient;
+			while ((remaining % factor) == 0UL)
+			{
+				remaining /= factor;
+				exponent++;
+			}
 
-                        AddFactor(counts, factor, exponent);
+			AddFactor(counts, factor, exponent);
 
-                        if (remaining > 1UL)
-                        {
-                                FactorCompletely(remaining, counts, knownComposite: false);
-                        }
+			if (remaining > 1UL)
+			{
+				FactorCompletely(remaining, counts, knownComposite: false);
+			}
 
-                        return;
-                }
+			return;
+		}
 
-                FactorCompletely(factor, counts, knownComposite: true);
+		FactorCompletely(factor, counts, knownComposite: true);
 
-                bool quotientIsPrime;
-                if (quotient == factor)
-                {
-                        quotientIsPrime = false;
-                }
-                else
-                {
-                        quotientIsPrime = GetOrComputePrimality(quotient);
-                }
+		bool quotientIsPrime;
+		if (quotient == factor)
+		{
+			quotientIsPrime = false;
+		}
+		else
+		{
+			quotientIsPrime = GetOrComputePrimality(quotient);
+		}
 
-                if (quotientIsPrime)
-                {
-                        AddFactor(counts, quotient, 1);
-                }
-                else
-                {
-                        FactorCompletely(quotient, counts, knownComposite: true);
-                }
-        }
+		if (quotientIsPrime)
+		{
+			AddFactor(counts, quotient, 1);
+		}
+		else
+		{
+			FactorCompletely(quotient, counts, knownComposite: true);
+		}
+	}
 
-        private static ulong PollardRhoStrict(ulong n)
+	private static ulong PollardRhoStrict(ulong n)
 	{
 		if ((n & 1UL) == 0UL)
 		{

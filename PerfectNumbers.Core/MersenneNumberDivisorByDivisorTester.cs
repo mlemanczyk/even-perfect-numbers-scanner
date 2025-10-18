@@ -257,10 +257,11 @@ public static class MersenneNumberDivisorByDivisorTester
 		}
 		else
 		{
+			var scheduler = UnboundedTaskScheduler.Instance;
 			ParallelOptions options = new()
 			{
 				MaxDegreeOfParallelism = workerCount,
-				TaskScheduler = UnboundedTaskScheduler.Instance
+				TaskScheduler = scheduler
 			};
 
 			Parallel.ForEach(filteredPrimes, options, ProcessPrime);
