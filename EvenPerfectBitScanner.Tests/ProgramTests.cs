@@ -4,6 +4,9 @@ using System.Reflection;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 
+using EvenPerfectBitScanner.Candidates;
+using EvenPerfectBitScanner.Candidates.Transforms;
+
 namespace EvenPerfectBitScanner.Tests;
 
 [Trait("Category", "Fast")]
@@ -30,34 +33,30 @@ public class ProgramTests
     public void TransformPAdd_moves_to_next_candidate()
     {
         ulong remainder = 3UL;
-        Program.TransformPAdd(3UL, ref remainder).Should().Be(5UL);
-        Program.TransformPAdd(5UL, ref remainder).Should().Be(7UL);
-        Program.TransformPAdd(7UL, ref remainder).Should().Be(11UL);
+        bool limit = false;
+        CandidateAddTransform.Transform(3UL, ref remainder, ref limit).Should().Be(5UL);
+        CandidateAddTransform.Transform(5UL, ref remainder, ref limit).Should().Be(7UL);
+        CandidateAddTransform.Transform(7UL, ref remainder, ref limit).Should().Be(11UL);
+        limit.Should().BeFalse();
     }
 
     [Fact]
     public void TransformPBit_appends_one_bit_and_skips_to_candidate()
     {
         ulong remainder = 5UL;
-        Program.TransformPBit(5UL, ref remainder).Should().Be(13UL);
+        bool limit = false;
+        CandidateBitTransform.Transform(5UL, ref remainder, ref limit).Should().Be(13UL);
+        limit.Should().BeFalse();
     }
 
     [Fact]
     public void TransformPBit_detects_overflow_and_stops()
     {
-        typeof(Program).GetField("_limitReached", BindingFlags.NonPublic | BindingFlags.Static)!
-            .SetValue(null, false);
-
+        bool limit = false;
         ulong start = (ulong.MaxValue >> 1) + 1UL;
         ulong remainder = start % 6UL;
-        Program.TransformPBit(start, ref remainder);
-
-        bool limit = (bool)typeof(Program).GetField("_limitReached", BindingFlags.NonPublic | BindingFlags.Static)!
-            .GetValue(null)!;
+        CandidateBitTransform.Transform(start, ref remainder, ref limit);
         limit.Should().BeTrue();
-
-        typeof(Program).GetField("_limitReached", BindingFlags.NonPublic | BindingFlags.Static)!
-            .SetValue(null, false);
     }
 
     [Fact]
