@@ -74,7 +74,7 @@
 - Use four-space indentation; increase one level per nested block.
 - Indent wrapped parameters/expressions by two indentation units.
 - Reuse existing variables when prior values are obsolete; call out meaning changes in comments to keep intent clear and register pressure low.
-- Avoid try/finally blocks solely for resource release unless omitting finally harms clarity or maintainability; ensure every path releases resources.
+- Avoid try/finally blocks solely for resource release unless omitting finally harms clarity or maintainability; ensure every path releases resources, but consider only successful execution. In case of errors the program must crash.
 - Limit the divisor cycle cache to one in-memory block plus the on-disk snapshot; recompute on misses, discard transient results, and avoid background generation or extra caches.
 - Write code, comments, commit messages, branch names, and PR descriptions in American English.
 - Preserve relevant TODO notes and explanatory comments unless invalid.
@@ -82,6 +82,7 @@
 - Pass mutable structs as parameters with the `in` modifier whenever the call site and usage allow it (skip when constraints such as lambda captures require a copy).
 - Omit the `in` modifier when passing immutable structs as parameters.
 - Remove or extend trivial wrapper methods that only call another method.
+- Use ThreadStaticPools instead of ArrayPool<T>. Add missing pieces to it, if needed.
 
 ## Performance Checklist
 
