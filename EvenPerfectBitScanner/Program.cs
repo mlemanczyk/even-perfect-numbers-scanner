@@ -1,10 +1,9 @@
 using System.Buffers;
 using System.Diagnostics;
-using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using EvenPerfectBitScanner.Candidates;
 using Open.Collections;
-using Open.Numeric.Primes;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Cpu;
 using PerfectNumbers.Core.Gpu;
@@ -20,27 +19,11 @@ internal static class Program
 	private static MersenneNumberDivisorGpuTester? _divisorTester;
 	private static IMersenneNumberDivisorByDivisorTester? _byDivisorTester;
 	private static Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? _byDivisorPreviousResults;
-	private static long _state;
 	private static bool _limitReached;
-	private static readonly Optimized PrimeIterator = new();
 	private static ulong _byDivisorStartPrime;
 	private static CliArguments _cliArguments;
 	private static int _testTargetPrimeCount;
 	private static int _testProcessedPrimeCount;
-	private const string TestTimeFileName = "even_perfect_test_time.txt";
-
-	private enum PrimeTransformMode
-	{
-		Bit,
-		Add,
-		AddPrimes,
-	}
-
-	private static PrimeTransformMode TransformMode => _cliArguments.UseBitTransform
-		? PrimeTransformMode.Bit
-		: (_cliArguments.UseResidue
-			? PrimeTransformMode.Add
-			: PrimeTransformMode.AddPrimes);
 
 	[ThreadStatic]
 	private static bool _lastCompositeP;
@@ -83,6 +66,10 @@ internal static class Program
 			bool useLucas = _cliArguments.UseLucas;
 			bool testMode = _cliArguments.TestMode;
 			bool useGpuCycles = _cliArguments.UseGpuCycles;
+			PrimeTransformMode transformMode = _cliArguments.UseBitTransform
+			        ? PrimeTransformMode.Bit
+			        : (useResidue ? PrimeTransformMode.Add : PrimeTransformMode.AddPrimes);
+			CandidatesCalculator.Configure(transformMode);
 			bool mersenneOnGpu = _cliArguments.UseMersenneOnGpu;
 			bool orderOnGpu = _cliArguments.UseOrderOnGpu;
 			int scanBatchSize = Math.Max(1, _cliArguments.ScanBatchSize);
@@ -246,7 +233,7 @@ internal static class Program
 				// Skip the already processed range below 138 million
 				while (currentP < 138_000_000UL && !Volatile.Read(ref _limitReached))
 				{
-					currentP = AdvancePrime(currentP, ref remainder);
+					currentP = CandidatesCalculator.AdvancePrime(currentP, ref remainder, ref _limitReached);
 				}
 
 				if (Volatile.Read(ref _limitReached))
@@ -327,7 +314,7 @@ internal static class Program
 			{
 				if (testMode)
 				{
-					byDivisorCandidates = BuildTestPrimeCandidates(testPrimeCandidateLimit);
+					byDivisorCandidates = CandidatesCalculator.BuildTestPrimeCandidates(testPrimeCandidateLimit);
 				}
 				else
 				{
@@ -442,7 +429,7 @@ internal static class Program
 				if (stopwatch is not null)
 				{
 					stopwatch.Stop();
-					ReportTestTime(stopwatch.Elapsed);
+					CalculationTestTime.Report(stopwatch.Elapsed, _cliArguments.ResultsDirectory);
 				}
 
 				return;
@@ -465,7 +452,7 @@ internal static class Program
 				_testTargetPrimeCount = testPrimeCandidateLimit;
 			}
 
-			_state = ((long)currentP << 3) | (long)remainder;
+			CandidatesCalculator.InitializeState(currentP, remainder);
 
 			Task[] tasks = new Task[threadCount];
 
@@ -481,7 +468,7 @@ internal static class Program
 					ulong[] buffer = pool.Rent(blockSize);
 					while (!Volatile.Read(ref _limitReached))
 					{
-						count = ReserveBlock(buffer, blockSize);
+						count = CandidatesCalculator.ReserveBlock(buffer, blockSize, ref _limitReached);
 						if (count == 0)
 						{
 							break;
@@ -551,7 +538,7 @@ internal static class Program
 
 			if (reportTestTime)
 			{
-				ReportTestTime(testElapsed);
+				CalculationTestTime.Report(testElapsed, _cliArguments.ResultsDirectory);
 			}
 		}
 		finally
@@ -560,48 +547,6 @@ internal static class Program
 		}
 	}
 
-	// TODO: Move this to a new static class called CandidatesCalculator. It should be under Candidates namespace / folder
-	private static List<ulong> BuildTestPrimeCandidates(int targetCount)
-	{
-		if (targetCount <= 0)
-		{
-			return [];
-		}
-
-		List<ulong> candidates = new(targetCount);
-		ulong previous = 29UL;
-		int remaining = targetCount;
-		ulong nextPrime;
-
-		while (remaining > 0)
-		{
-			try
-			{
-				nextPrime = PrimeIterator.Next(in previous);
-			}
-			catch (InvalidOperationException)
-			{
-				break;
-			}
-
-			if (nextPrime < 31UL)
-			{
-				previous = nextPrime;
-				continue;
-			}
-
-			candidates.Add(nextPrime);
-			remaining--;
-			previous = nextPrime;
-		}
-
-		if (remaining > 0)
-		{
-			Console.WriteLine("Unable to populate the requested number of test primes before reaching the 64-bit limit.");
-		}
-
-		return candidates;
-	}
 
 	private static List<ulong> LoadByDivisorCandidates(string candidateFile, UInt128 maxPrimeLimit, bool maxPrimeConfigured, out int skippedByLimit)
 	{
@@ -771,73 +716,6 @@ internal static class Program
 		}
 	}
 
-	// TODO: Move this to a new static class called CandidatesCalculator. It should be under Candidates namespace / folder
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static ulong AdvancePrime(ulong value, ref ulong remainder) => TransformMode switch
-	{
-		PrimeTransformMode.Bit => TransformPBit(value, ref remainder),
-		PrimeTransformMode.Add => TransformPAdd(value, ref remainder),
-		_ => TransformPAddPrimes(value, ref remainder),
-	};
-
-	// TODO: Move this to a new static class called CandidatesCalculator. It should be under Candidates namespace / folder
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static int ReserveBlock(ulong[] buffer, int blockSize)
-	{
-		Span<ulong> bufferSpan = new(buffer);
-		ulong p, remainder;
-		long state, newState, original;
-		int count;
-		while (true)
-		{
-			state = Volatile.Read(ref _state);
-			p = (ulong)state >> 3;
-			remainder = ((ulong)state) & 7UL;
-
-			count = 0;
-			switch (TransformMode)
-			{
-				case PrimeTransformMode.Bit:
-					while (count < blockSize && !Volatile.Read(ref _limitReached))
-					{
-						bufferSpan[count++] = p;
-						p = TransformPBit(p, ref remainder);
-					}
-
-					break;
-
-				case PrimeTransformMode.Add:
-					while (count < blockSize && !Volatile.Read(ref _limitReached))
-					{
-						bufferSpan[count++] = p;
-						p = TransformPAdd(p, ref remainder);
-					}
-
-					break;
-
-				default:
-					while (count < blockSize && !Volatile.Read(ref _limitReached))
-					{
-						bufferSpan[count++] = p;
-						p = TransformPAddPrimes(p, ref remainder);
-					}
-
-					break;
-			}
-
-			if (count == 0)
-			{
-				return 0;
-			}
-
-			newState = ((long)p << 3) | (long)remainder;
-			original = Interlocked.CompareExchange(ref _state, newState, state);
-			if (original == state)
-			{
-				return count;
-			}
-		}
-	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void OnPrimeCandidateConfirmed()
@@ -854,78 +732,6 @@ internal static class Program
 		}
 	}
 
-	// TODO: Move this to a new static class called CalculationTestTime. It should be under Candidates namespace / folder
-	private static void ReportTestTime(TimeSpan elapsed)
-	{
-		double elapsedSeconds = elapsed.TotalSeconds;
-		double elapsedMilliseconds = elapsed.TotalMilliseconds;
-		Console.WriteLine($"Test elapsed time: {elapsedSeconds:F3} s");
-
-		string filePath = GetTestTimeFilePath();
-		bool hasPrevious = TryReadTestTime(filePath, out double previousMilliseconds);
-		string elapsedText = elapsedMilliseconds.ToString("F3", CultureInfo.InvariantCulture);
-
-		if (!hasPrevious)
-		{
-			WriteTestTime(filePath, elapsedMilliseconds);
-			Console.WriteLine($"FIRST TIME: {elapsedText} ms");
-			return;
-		}
-
-		string previousText = previousMilliseconds.ToString("F3", CultureInfo.InvariantCulture);
-		if (elapsedMilliseconds < previousMilliseconds)
-		{
-			WriteTestTime(filePath, elapsedMilliseconds);
-			Console.WriteLine($"BETTER TIME: {elapsedText} ms (previous {previousText} ms)");
-		}
-		else
-		{
-			Console.WriteLine($"WORSE TIME: {elapsedText} ms (best {previousText} ms)");
-		}
-	}
-
-	// TODO: Move this to a new static class called CalculationTestTime. It should be under Candidates namespace / folder
-	private static string GetTestTimeFilePath()
-	{
-		if (string.IsNullOrEmpty(_cliArguments.ResultsDirectory))
-		{
-			return TestTimeFileName;
-		}
-
-		return Path.Combine(_cliArguments.ResultsDirectory!, TestTimeFileName);
-	}
-
-	// TODO: Move this to a new static class called CalculationTestTime. It should be under Candidates namespace / folder
-	private static bool TryReadTestTime(string filePath, out double milliseconds)
-	{
-		if (!File.Exists(filePath))
-		{
-			milliseconds = 0.0;
-			return false;
-		}
-
-		string content = File.ReadAllText(filePath).Trim();
-		if (content.Length == 0)
-		{
-			milliseconds = 0.0;
-			return false;
-		}
-
-		return double.TryParse(content, NumberStyles.Float, CultureInfo.InvariantCulture, out milliseconds);
-	}
-
-	// TODO: Move this to a new static class called CalculationTestTime. It should be under Candidates namespace / folder
-	private static void WriteTestTime(string filePath, double milliseconds)
-	{
-		string? directory = Path.GetDirectoryName(filePath);
-		if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-		{
-			Directory.CreateDirectory(directory);
-		}
-
-		string formatted = milliseconds.ToString("F6", CultureInfo.InvariantCulture);
-		File.WriteAllText(filePath, formatted);
-	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static ulong CountOnes(ulong value)
@@ -935,157 +741,6 @@ internal static class Program
 		return (ulong)BitOperations.PopCount(value);
 	}
 
-	// TODO: Move this to a new static class called CandidatesCalculator, converting to an extension method. Rename it to GetNextAddDiff. It should be under Candidates namespace / folder
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static ulong GetNextAddDiff(ulong remainder)
-	{
-		return remainder switch
-		{
-			0UL => 1UL,
-			1UL => 4UL,
-			2UL => 3UL,
-			3UL => 2UL,
-			4UL => 1UL,
-			_ => 2UL,
-		};
-	}
-
-	// TODO: Convert this to a static class, called CandidateBitTransform under Candidates.Transforms namespace / folders. The method should be called "Transform".
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static ulong TransformPBit(ulong value, ref ulong remainder)
-	{
-		ulong original = value;
-		if (value > (ulong.MaxValue >> 1))
-		{
-			Volatile.Write(ref _limitReached, true);
-			return value;
-		}
-
-		ulong next = (value << 1) | 1UL;
-		remainder = (remainder << 1) + 1UL;
-		// Mod6 lookup loses to `%` in the benches; stick with subtraction + modulo for correctness and speed.
-		while (remainder >= 6UL)
-		{
-			remainder -= 6UL;
-		}
-
-		value = remainder switch
-		{
-			0UL => 1UL,
-			1UL => 0UL,
-			2UL => 5UL,
-			3UL => 4UL,
-			4UL => 3UL,
-			_ => 2UL,
-		}; // 'value' now holds diff
-
-		if (next > ulong.MaxValue - value)
-		{
-			Volatile.Write(ref _limitReached, true);
-			return original;
-		}
-
-		remainder += value;
-		// `% 6` remains faster per Mod6ComparisonBenchmarks; keep this modulo fold and continue using subtraction.
-		while (remainder >= 6UL)
-		{
-			remainder -= 6UL;
-		}
-
-		return next + value;
-	}
-
-	// TODO: Convert this to a static class, called CandidateAddTransform under Candidates.Transforms namespace / folders. The method should be called "Transform".
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static ulong TransformPAdd(ulong value, ref ulong remainder)
-	{
-		ulong next = value;
-		ulong diff = GetNextAddDiff(remainder);
-
-		if (next > ulong.MaxValue - diff)
-		{
-			Volatile.Write(ref _limitReached, true);
-			return next;
-		}
-
-		remainder += diff;
-		// Retain direct modulo because the Mod6 helper underperforms on 64-bit operands.
-		while (remainder >= 6UL)
-		{
-			remainder -= 6UL;
-		}
-
-		return next + diff;
-	}
-
-	// TODO: Convert this to a static class, called CandidateAddPrimesTransform under Candidates.Transforms namespace / folders. The method should be called "Transform".
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static ulong TransformPAddPrimes(ulong value, ref ulong remainder)
-	{
-		ulong originalRemainder = remainder;
-		ulong addRemainder = remainder;
-		ulong candidate = value;
-		ulong primeCandidate = value;
-		bool advanceAdd = true;
-		bool advancePrime = true;
-		ulong diff;
-		ulong nextPrime;
-
-		while (true)
-		{
-			if (advanceAdd)
-			{
-				diff = GetNextAddDiff(addRemainder);
-				if (candidate > ulong.MaxValue - diff)
-				{
-					Volatile.Write(ref _limitReached, true);
-					remainder = originalRemainder;
-					return candidate;
-				}
-
-				candidate += diff;
-				addRemainder += diff;
-				// Skip the Mod6 lookup: benchmarked `%` stays ahead for these prime increments.
-				// benchmarked fastest remainder updates instead of looping subtraction.
-				while (addRemainder >= 6UL)
-				{
-					addRemainder -= 6UL;
-				}
-			}
-
-			if (advancePrime)
-			{
-				try
-				{
-					nextPrime = PrimeIterator.Next(in primeCandidate);
-				}
-				catch (InvalidOperationException)
-				{
-					Volatile.Write(ref _limitReached, true);
-					remainder = originalRemainder;
-					return value;
-				}
-
-				if (nextPrime <= primeCandidate)
-				{
-					Volatile.Write(ref _limitReached, true);
-					remainder = originalRemainder;
-					return value;
-				}
-
-				primeCandidate = nextPrime;
-			}
-
-			if (candidate == primeCandidate)
-			{
-				remainder = addRemainder;
-				return candidate;
-			}
-
-			advanceAdd = candidate < primeCandidate;
-			advancePrime = candidate > primeCandidate;
-		}
-	}
 
 	internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck)
 	{
