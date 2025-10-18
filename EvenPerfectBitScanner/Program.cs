@@ -67,8 +67,8 @@ internal static class Program
 			bool testMode = _cliArguments.TestMode;
 			bool useGpuCycles = _cliArguments.UseGpuCycles;
 			PrimeTransformMode transformMode = _cliArguments.UseBitTransform
-			        ? PrimeTransformMode.Bit
-			        : (useResidue ? PrimeTransformMode.Add : PrimeTransformMode.AddPrimes);
+					? PrimeTransformMode.Bit
+					: (useResidue ? PrimeTransformMode.Add : PrimeTransformMode.AddPrimes);
 			CandidatesCalculator.Configure(transformMode);
 			bool mersenneOnGpu = _cliArguments.UseMersenneOnGpu;
 			bool orderOnGpu = _cliArguments.UseOrderOnGpu;
@@ -392,7 +392,6 @@ internal static class Program
 					}
 				}
 			}
-
 
 			if (testMode)
 			{
