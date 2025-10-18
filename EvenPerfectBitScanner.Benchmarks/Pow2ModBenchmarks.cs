@@ -468,21 +468,25 @@ public class Pow2ModBenchmarks
             for (int i = 0; i < SampleCount; i++)
             {
                 ulong smallModulus = NextSmallOddModulus(random);
+				Console.WriteLine($"Calculating small cycle {smallModulus}");
                 smallDivisors[i] = CreateMontgomeryDivisorData(smallModulus);
                 smallExponents[i] = NextSmallExponent(random);
                 smallCycles[i] = MersenneDivisorCycles.CalculateCycleLength(smallModulus, MontgomeryDivisorData.FromModulus(smallModulus));
 
                 (ulong largeModulus, ulong largeCycle) = NextLargeModulusAndCycle(random);
+				Console.WriteLine($"Calculating large cycle {largeModulus}");
                 largeDivisors[i] = CreateMontgomeryDivisorData(largeModulus);
                 largeExponents[i] = NextLargeExponent(random);
                 largeCycles[i] = largeCycle;
 
                 ulong veryLargeModulus = NextVeryLargeOddModulus(heuristicRandom);
+				Console.WriteLine($"Calculating very large cycle {veryLargeModulus} with heuristics");
                 veryLargeDivisors[i] = CreateMontgomeryDivisorData(veryLargeModulus);
                 veryLargeExponents[i] = NextVeryLargeExponent(heuristicRandom);
                 veryLargeCycles[i] = CalculateCycleLengthWithHeuristics(veryLargeModulus, ref previousPrimeOrder);
 
                 UInt128 wideModulus = NextWideOddModulus(wideRandom);
+				Console.WriteLine($"Calculating wide cycle {wideModulus} with heuristics");
                 wideModuli[i] = wideModulus;
                 wideExponents[i] = NextWideExponent(wideRandom);
                 wideCycles[i] = CalculateCycleLengthWithHeuristics(wideModulus, ref previousWidePrimeOrder);
