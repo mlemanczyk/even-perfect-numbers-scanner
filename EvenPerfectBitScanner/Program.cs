@@ -276,7 +276,7 @@ internal static class Program
                 orderWarmupLimitOverride ?? 5_000_000UL,
                 NttGpuMath.ReductionMode,
                 mersenneOnGpu ? "gpu" : "cpu",
-                (GpuContextPool.ForceCpu ? "cpu" : "gpu"),
+                GpuContextPool.ForceCpu ? "cpu" : "gpu",
                 orderOnGpu ? "gpu" : "cpu");
         
                 if (!string.IsNullOrEmpty(_cliArguments.ResultsPrefix))
@@ -418,6 +418,7 @@ internal static class Program
                 GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
                 // Configure batch size for GPU primality sieve
                 PrimeTester.GpuBatchSize = gpuPrimeBatch;
+				CalculationResultHandler resultHandler = _resultHandler;
         
                 Stopwatch? stopwatch = null;
                 if (testMode)
@@ -436,7 +437,7 @@ internal static class Program
                             _byDivisorStartPrime,
                             static () => _lastCompositeP = true,
                             static () => _lastCompositeP = false,
-                            PrintResult,
+                            static (candidate, searchedMersenne, detailedCheck, passedAllTests) => _resultHandler.HandleResult(candidate, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP),
                             threadCount);
                     _resultHandler.FlushBuffer();
                     _resultHandler.ReleaseOutputBuffer();
@@ -494,7 +495,7 @@ internal static class Program
                                 {
                                     p = buffer[j];
                                     passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
-                                    PrintResult(p, searchedMersenne, detailedCheck, passedAllTests);
+									resultHandler.HandleResult(p, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP);
                                 }
         
                                 continue;
@@ -517,7 +518,7 @@ internal static class Program
                                 }
         
                                 passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
-                                PrintResult(p, searchedMersenne, detailedCheck, passedAllTests);
+								resultHandler.HandleResult(p, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP);
         
                                 if (p == maxP)
                                 {
@@ -715,47 +716,47 @@ internal static class Program
     }
 
 
-    private static void PrintHelp()
-    {
-        Console.WriteLine("Usage: EvenPerfectBitScanner [options]");
-        Console.WriteLine();
-        Console.WriteLine("Options:");
-        Console.WriteLine("  --prime=<value>        starting exponent (p)");
-        Console.WriteLine("  --max-prime=<value>    inclusive upper bound for primes from filter files");
-        Console.WriteLine("  --increment=bit|add    exponent increment method");
-        Console.WriteLine("  --threads=<value>      number of worker threads");
-        Console.WriteLine("  --block-size=<value>   values processed per thread batch");
-        Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
-        Console.WriteLine("  --residue-max-k=<value>  max k for residue Mersenne test (q = 2*p*k + 1)");
-        Console.WriteLine("  --mersenne-device=cpu|gpu  Device for Mersenne method (default gpu)");
-        Console.WriteLine("  --primes-device=cpu|gpu    Device for prime-scan kernels (default gpu)");
-        Console.WriteLine("  --gpu-prime-batch=<n>      Batch size for GPU primality sieve (default 262144)");
-        Console.WriteLine("  --order-device=cpu|gpu     Device for order computations (default gpu)");
-        Console.WriteLine("  --ntt=reference|staged GPU NTT backend (default staged)");
-        Console.WriteLine("  --mod-reduction=auto|uint128|mont64|barrett128  staged NTT reduction (default auto)");
-        Console.WriteLine("  --gpu-prime-threads=<value>  max concurrent GPU prime checks (default 1)");
-        Console.WriteLine("  --ll-slice=<value>     Lucas–Lehmer iterations per slice (default 32)");
-        Console.WriteLine("  --gpu-scan-batch=<value>  GPU q-scan batch size (default 2_097_152)");
-        Console.WriteLine("  --order-warmup-limit=<value>  Warm-up order candidates (default 5_000_000)");
-        Console.WriteLine("  --rle-blacklist=<path>  enable RLE blacklist for p (hard filter up to --rle-hard-max)");
-        Console.WriteLine("  --rle-hard-max=<p>      apply RLE blacklist only for p <= this (default ulong.MaxValue = no limit)");
-        Console.WriteLine("  --rle-only-last7=true|false  apply RLE only when p % 10 == 7 (default true)");
-        Console.WriteLine("  --zero-hard=<f>         hard reject if zero_fraction(p) > f (default off)");
-        Console.WriteLine("  --zero-conj=<f>:<r>     hard reject if zero_fraction(p) > f AND max_zero_block >= r (default off)");
-        Console.WriteLine("  --results-dir=<path>   directory for results file");
-        Console.WriteLine("  --results-prefix=<text> prefix to prepend to results filename");
-        Console.WriteLine("  --divisor-cycles=<path>       divisor cycles data file");
-        Console.WriteLine("  --divisor-cycles-device=cpu|gpu  device for cycles generation (default gpu)");
-        Console.WriteLine("  --divisor-cycles-batch=<value> batch size for cycles generation (default 512)");
-        Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
-        Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor");
-        Console.WriteLine("  --use-order            test primality via q order");
-        // mod-automaton removed
-        Console.WriteLine("  --filter-p=<path>      process only p from previous run results (required for --mersenne=bydivisor)");
-        Console.WriteLine("  --write-batch-size=<value> overwrite frequency of disk writes (default 100 lines)");
-        Console.WriteLine("  --gcd-filter           enable early sieve based on GCD");
-        Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
-    }
+	// TODO: Move this to CliArguments
+	private static void PrintHelp()
+	{
+		Console.WriteLine("Usage: EvenPerfectBitScanner [options]");
+		Console.WriteLine();
+		Console.WriteLine("Options:");
+		Console.WriteLine("  --prime=<value>        starting exponent (p)");
+		Console.WriteLine("  --max-prime=<value>    inclusive upper bound for primes from filter files");
+		Console.WriteLine("  --increment=bit|add    exponent increment method");
+		Console.WriteLine("  --threads=<value>      number of worker threads");
+		Console.WriteLine("  --block-size=<value>   values processed per thread batch");
+		Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
+		Console.WriteLine("  --residue-max-k=<value>  max k for residue Mersenne test (q = 2*p*k + 1)");
+		Console.WriteLine("  --mersenne-device=cpu|gpu  Device for Mersenne method (default gpu)");
+		Console.WriteLine("  --primes-device=cpu|gpu    Device for prime-scan kernels (default gpu)");
+		Console.WriteLine("  --gpu-prime-batch=<n>      Batch size for GPU primality sieve (default 262144)");
+		Console.WriteLine("  --order-device=cpu|gpu     Device for order computations (default gpu)");
+		Console.WriteLine("  --ntt=reference|staged GPU NTT backend (default staged)");
+		Console.WriteLine("  --mod-reduction=auto|uint128|mont64|barrett128  staged NTT reduction (default auto)");
+		Console.WriteLine("  --gpu-prime-threads=<value>  max concurrent GPU prime checks (default 1)");
+		Console.WriteLine("  --ll-slice=<value>     Lucas–Lehmer iterations per slice (default 32)");
+		Console.WriteLine("  --gpu-scan-batch=<value>  GPU q-scan batch size (default 2_097_152)");
+		Console.WriteLine("  --order-warmup-limit=<value>  Warm-up order candidates (default 5_000_000)");
+		Console.WriteLine("  --rle-blacklist=<path>  enable RLE blacklist for p (hard filter up to --rle-hard-max)");
+		Console.WriteLine("  --rle-hard-max=<p>      apply RLE blacklist only for p <= this (default ulong.MaxValue = no limit)");
+		Console.WriteLine("  --rle-only-last7=true|false  apply RLE only when p % 10 == 7 (default true)");
+		Console.WriteLine("  --zero-hard=<f>         hard reject if zero_fraction(p) > f (default off)");
+		Console.WriteLine("  --zero-conj=<f>:<r>     hard reject if zero_fraction(p) > f AND max_zero_block >= r (default off)");
+		Console.WriteLine("  --results-dir=<path>   directory for results file");
+		Console.WriteLine("  --results-prefix=<text> prefix to prepend to results filename");
+		Console.WriteLine("  --divisor-cycles=<path>       divisor cycles data file");
+		Console.WriteLine("  --divisor-cycles-device=cpu|gpu  device for cycles generation (default gpu)");
+		Console.WriteLine("  --divisor-cycles-batch=<value> batch size for cycles generation (default 512)");
+		Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
+		Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor");
+		Console.WriteLine("  --use-order            test primality via q order");
+		Console.WriteLine("  --filter-p=<path>      process only p from previous run results (required for --mersenne=bydivisor)");
+		Console.WriteLine("  --write-batch-size=<value> overwrite frequency of disk writes (default 100 lines)");
+		Console.WriteLine("  --gcd-filter           enable early sieve based on GCD");
+		Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
+	}
 
     private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool useByDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
     {
@@ -893,16 +894,6 @@ internal static class Program
         {
             Volatile.Write(ref _limitReached, true);
         }
-    }
-
-
-
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void PrintResult(ulong currentP, bool searchedMersenne, bool detailedCheck, bool passedAllTests)
-    {
-        bool lastWasComposite = _lastCompositeP;
-        _resultHandler.HandleResult(currentP, searchedMersenne, detailedCheck, passedAllTests, lastWasComposite);
     }
 
     private static void ReportTestTime(TimeSpan elapsed)
@@ -1242,6 +1233,7 @@ internal static class Program
         return false;
     }
 
+	// TODO: Convert this to extension method in ULongExtensions if one doesn't already exist. We may already calculate things like these
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ComputeBitStats(ulong value, out int bitLen, out int zeroCount, out int maxZeroBlock)
     {
@@ -1403,9 +1395,11 @@ internal static class Program
         }
     }
 
+	// TODO: Convert this to extension method in ULongExtensions if one doesn't already exist
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool IsCompositeByGcd(ulong p)
-    {
+	{
+		// TODO: Can this ever be true on Program's execution path?
         if (p < 2)
         {
             return true;
@@ -1415,9 +1409,11 @@ internal static class Program
         return BinaryGcd(p, m) > 1UL;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	// TODO: Convert this to extension method in ULongExtensions if one doesn't already exist
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong BinaryGcd(ulong a, ulong b)
-    {
+	{
+		// TODO: Are these a & b conditions ever met on Program's execution path?
         if (a == 0UL)
         {
             return b;
