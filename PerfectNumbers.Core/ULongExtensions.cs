@@ -536,7 +536,7 @@ public static class ULongExtensions
 
 				var kernel = KernelCache.GetOrAdd(accelerator, static accel =>
 				{
-					var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, byte, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernel);
+					var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, byte, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernel);
 					var launcher = KernelUtil.GetKernel(loaded);
 					return launcher.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, byte, ArrayView1D<ulong, Stride1D.Dense>>>();
 				});
@@ -573,11 +573,6 @@ public static class ULongExtensions
 			}
 		}
 
-		private static void Pow2MontgomeryKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> exponents, MontgomeryDivisorData divisor, byte keepMontgomery, ArrayView1D<ulong, Stride1D.Dense> results)
-		{
-			results[index] = Pow2MontgomeryModWindowedKernel(exponents[index], divisor, keepMontgomery != 0);
-		}
-	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static ulong Pow2MontgomeryModSingleBit(ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)

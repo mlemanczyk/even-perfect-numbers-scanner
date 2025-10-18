@@ -131,22 +131,13 @@ public class GpuKernelCompilationTests
         ?? throw new InvalidOperationException("PrimeOrderGpuHeuristics.GetPow2ModWideKernel not found.");
 
     private static readonly Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> MersenneDivisorCyclesKernel =
-        (Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>)Delegate.CreateDelegate(
-            typeof(Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>),
-            typeof(MersenneDivisorCycles).GetMethod("GpuDivisorCycleKernel", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("MersenneDivisorCycles.GpuDivisorCycleKernel not found."));
+        DivisorCycleKernels.GpuDivisorCycleKernel;
 
     private static readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>> PrimeTesterSmallPrimeKernel =
-        (Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>>)Delegate.CreateDelegate(
-            typeof(Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>>),
-            typeof(PrimeTester).GetMethod("SmallPrimeSieveKernel", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("PrimeTester.SmallPrimeSieveKernel not found."));
+        PrimeTesterKernels.SmallPrimeSieveKernel;
 
     private static readonly Action<Index1D, ArrayView<ulong>, ArrayView<byte>> PrimeTesterSharesFactorKernel =
-        (Action<Index1D, ArrayView<ulong>, ArrayView<byte>>)Delegate.CreateDelegate(
-            typeof(Action<Index1D, ArrayView<ulong>, ArrayView<byte>>),
-            typeof(PrimeTester).GetMethod("SharesFactorKernel", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("PrimeTester.SharesFactorKernel not found."));
+        PrimeTesterKernels.SharesFactorKernel;
 
     public static IEnumerable<object[]> KernelLoaders()
     {
@@ -180,9 +171,9 @@ public class GpuKernelCompilationTests
         yield return Loader("PrimeOrderGpuHeuristics.CalculateOrderKernel", CompilePrimeOrderKernel);
         yield return Loader("PrimeOrderGpuHeuristics.Pow2ModKernel", CompilePrimeOrderPow2ModKernel);
         yield return Loader("PrimeOrderGpuHeuristics.Pow2ModKernelWide", CompilePrimeOrderPow2ModWideKernel);
-        yield return Loader("MersenneDivisorCycles.GpuDivisorCycleKernel", CompileMersenneDivisorCyclesKernel);
-        yield return Loader("PrimeTester.SmallPrimeSieveKernel", CompilePrimeTesterSmallPrimeKernel);
-        yield return Loader("PrimeTester.SharesFactorKernel", CompilePrimeTesterSharesFactorKernel);
+        yield return Loader("DivisorCycleKernels.GpuDivisorCycleKernel", CompileMersenneDivisorCyclesKernel);
+        yield return Loader("PrimeTesterKernels.SmallPrimeSieveKernel", CompilePrimeTesterSmallPrimeKernel);
+        yield return Loader("PrimeTesterKernels.SharesFactorKernel", CompilePrimeTesterSharesFactorKernel);
         yield return Loader("GpuKernelPool.KernelLeaseKernels", CompileGpuKernelPoolKernels);
     }
 

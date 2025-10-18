@@ -228,6 +228,26 @@ public static class NttGpuMath
         return 0UL - inv;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Mul64Parts(ulong a, ulong b, out ulong high, out ulong low)
+    {
+        // 64x64 -> 128 using 32-bit limbs
+        ulong a0 = (uint)a;
+        ulong a1 = a >> 32;
+        ulong b0 = (uint)b;
+        ulong b1 = b >> 32;
+
+        ulong lo = a0 * b0;
+        ulong mid1 = a1 * b0;
+        ulong mid2 = a0 * b1;
+        ulong hi = a1 * b1;
+
+        ulong carry = (lo >> 32) + (uint)mid1 + (uint)mid2;
+        low = (lo & 0xFFFFFFFFUL) | (carry << 32);
+        hi += (mid1 >> 32) + (mid2 >> 32) + (carry >> 32);
+        high = hi;
+    }
+
     private readonly record struct SquareCacheKey(int Length, GpuUInt128 Modulus, GpuUInt128 PrimitiveRoot);
 
     private static readonly ConcurrentDictionary<Accelerator, ConcurrentDictionary<SquareCacheKey, SquareCacheEntry>> SquareCache = new();
@@ -357,43 +377,43 @@ public static class NttGpuMath
     }
 
     private static Action<Index1D, ArrayView<GpuUInt128>, int> GetBitReverseKernel(Accelerator accelerator) =>
-        BitReverseKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int>(BitReverseKernel));
+        BitReverseKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int>(NttTransformKernels.BitReverseKernel));
 
     private static Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, GpuUInt128> GetMulKernel(Accelerator accelerator) =>
-        MulKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, GpuUInt128>(MulKernel));
+        MulKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, GpuUInt128>(NttPointwiseKernels.MulKernel));
 
     private static Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128> GetStageKernel(Accelerator accelerator) =>
-        StageKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128>(StageKernel));
+        StageKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128>(NttButterflyKernels.StageKernel));
 
     private static Action<Index1D, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128> GetScaleKernel(Accelerator accelerator) =>
-        ScaleKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>(ScaleKernel));
+        ScaleKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>(NttPointwiseKernels.ScaleKernel));
 
     private static Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong> GetStageMontKernel(Accelerator accelerator) =>
-        StageMontKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong>(StageMontKernel));
+        StageMontKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong>(NttMontgomeryKernels.StageMontKernel));
 
     private static Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong> GetStageBarrett128Kernel(Accelerator accelerator) =>
-        StageBarrett128KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>(StageBarrett128Kernel));
+        StageBarrett128KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>(NttBarrettKernels.StageBarrett128Kernel));
 
     private static Action<Index1D, ArrayView<GpuUInt128>, GpuUInt128, ulong, ulong, ulong, ulong> GetScaleBarrett128Kernel(Accelerator accelerator) =>
-        ScaleBarrett128KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, GpuUInt128, ulong, ulong, ulong, ulong>(ScaleBarrett128Kernel));
+        ScaleBarrett128KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, GpuUInt128, ulong, ulong, ulong, ulong>(NttBarrettKernels.ScaleBarrett128Kernel));
 
     private static Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong> GetSquareBarrett128Kernel(Accelerator accelerator) =>
-        SquareBarrett128KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>(SquareBarrett128Kernel));
+        SquareBarrett128KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>(NttBarrettKernels.SquareBarrett128Kernel));
 
     private static Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong> GetToMont64Kernel(Accelerator accelerator) =>
-        ToMont64KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>(ToMont64Kernel));
+        ToMont64KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>(NttMontgomeryKernels.ToMont64Kernel));
 
     private static Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong> GetFromMont64Kernel(Accelerator accelerator) =>
-        FromMont64KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong>(FromMont64Kernel));
+        FromMont64KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong>(NttMontgomeryKernels.FromMont64Kernel));
 
     private static Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong> GetSquareMont64Kernel(Accelerator accelerator) =>
-        SquareMont64KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong>(SquareMont64Kernel));
+        SquareMont64KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong>(NttMontgomeryKernels.SquareMont64Kernel));
 
     private static Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong> GetScaleMont64Kernel(Accelerator accelerator) =>
-        ScaleMont64KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>(ScaleMont64Kernel));
+        ScaleMont64KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>(NttMontgomeryKernels.ScaleMont64Kernel));
 
     private static Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128> GetForwardKernel(Accelerator accelerator) =>
-        ForwardKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128>(ForwardKernel));
+        ForwardKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128>(NttTransformKernels.ForwardKernel));
 
     // TODO(NTT-OPT): Introduce stage-wise Cooley–Tukey kernels and a
     // per-(accelerator,length,modulus,root) twiddle cache. The plan:
@@ -402,413 +422,11 @@ public static class NttGpuMath
     // - Provide accessors like GetStageKernel(...) and GetTwiddleBuffer(...).
 
     private static Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128, GpuUInt128> GetInverseKernel(Accelerator accelerator) =>
-        InverseKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128, GpuUInt128>(InverseKernel));
+        InverseKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128, GpuUInt128>(NttTransformKernels.InverseKernel));
 
     // TODO(NTT-OPT): Mirror the forward stage-wise design for the inverse
     // transform. Precompute inverse twiddles and a normalization factor
     // (n^-1 mod m). Launch one short kernel per stage to avoid TDR.
-
-    private static void MulKernel(Index1D index, ArrayView<GpuUInt128> a, ArrayView<GpuUInt128> b, GpuUInt128 modulus)
-    {
-        var val = a[index];
-        val.MulMod(b[index], modulus);
-        a[index] = val;
-    }
-
-    private static void StageKernel(Index1D index, ArrayView<GpuUInt128> data, int len, int half, int stageOffset, ArrayView<GpuUInt128> twiddles, GpuUInt128 modulus)
-    {
-        // TODO(NTT-OPT): Consider shared-memory tiling to improve locality:
-        // load a block of size `len` into shared memory, do butterflies, write back.
-        // Requires explicit grouped kernels and chosen group size.
-        int t = index.X;
-        // TODO: Replace this `%` with a bitmask when `half` is a power of two so the stage index math matches the faster
-        // residue strategy from the GPU residue benchmarks.
-        int j = t % half;
-        int block = t / half;
-        int k = block * len;
-        int i1 = k + j;
-        int i2 = i1 + half;
-        var u = data[i1];
-        var v = data[i2];
-        var w = twiddles[stageOffset + j];
-        v.MulMod(w, modulus);
-        var sum = new GpuUInt128(u);
-        sum.AddMod(v, modulus);
-        u.SubMod(v, modulus);
-        data[i1] = sum;
-        data[i2] = u;
-    }
-
-    private static void ScaleKernel(Index1D index, ArrayView<GpuUInt128> data, GpuUInt128 scale, GpuUInt128 modulus)
-    {
-        var v = data[index];
-        v.MulMod(scale, modulus);
-        data[index] = v;
-    }
-
-    // Barrett-based scaling: v = v * scale mod n for 128-bit n
-    private static void ScaleBarrett128Kernel(Index1D index, ArrayView<GpuUInt128> data, GpuUInt128 scale, ulong modHigh, ulong modLow, ulong muHigh, ulong muLow)
-    {
-        var v = data[index];
-        // 128x128 -> 256
-        Mul128Full(v.High, v.Low, scale.High, scale.Low, out var z3, out var z2, out var z1, out var z0);
-        // q approx
-        Mul3x2Top(z3, z2, z1, muHigh, muLow, out var qHigh, out var qLow);
-        // q*n
-        Mul128Full(qHigh, qLow, modHigh, modLow, out var qq3, out var qq2, out var qq1, out var qq0);
-        // r = z - q*n
-        Sub256(z3, z2, z1, z0, qq3, qq2, qq1, qq0, out var r3, out var r2, out var r1, out var r0);
-        ulong resHigh = r1;
-        ulong resLow = r0;
-        if (Geq128(resHigh, resLow, modHigh, modLow))
-        {
-            Sub128(ref resHigh, ref resLow, modHigh, modLow);
-            if (Geq128(resHigh, resLow, modHigh, modLow))
-            {
-                Sub128(ref resHigh, ref resLow, modHigh, modLow);
-            }
-        }
-
-        data[index] = new GpuUInt128(resHigh, resLow);
-    }
-
-    // Barrett-based squaring: v = v^2 mod n for 128-bit n
-    private static void SquareBarrett128Kernel(Index1D index, ArrayView<GpuUInt128> data, ulong modHigh, ulong modLow, ulong muHigh, ulong muLow)
-    {
-        var v = data[index];
-        Mul128Full(v.High, v.Low, v.High, v.Low, out var z3, out var z2, out var z1, out var z0);
-        Mul3x2Top(z3, z2, z1, muHigh, muLow, out var qHigh, out var qLow);
-        Mul128Full(qHigh, qLow, modHigh, modLow, out var qq3, out var qq2, out var qq1, out var qq0);
-        Sub256(z3, z2, z1, z0, qq3, qq2, qq1, qq0, out var r3, out var r2, out var r1, out var r0);
-        ulong resHigh = r1;
-        ulong resLow = r0;
-        if (Geq128(resHigh, resLow, modHigh, modLow))
-        {
-            Sub128(ref resHigh, ref resLow, modHigh, modLow);
-            if (Geq128(resHigh, resLow, modHigh, modLow))
-            {
-                Sub128(ref resHigh, ref resLow, modHigh, modLow);
-            }
-        }
-        data[index] = new GpuUInt128(resHigh, resLow);
-    }
-
-    // Barrett reduction based stage for 128-bit moduli (no '%').
-    private static void StageBarrett128Kernel(Index1D index, ArrayView<GpuUInt128> data, int len, int half, int stageOffset, ArrayView<GpuUInt128> twiddles, ulong modHigh, ulong modLow, ulong muHigh, ulong muLow)
-    {
-        int t = index.X;
-        // TODO: Use the bitmask-based remainder helper here as well to remove `%` from the butterfly stage and align with the
-        // optimized kernels highlighted in the GPU pow2mod benchmarks.
-        int j = t % half;
-        int block = t / half;
-        int k = block * len;
-        int i1 = k + j;
-        int i2 = i1 + half;
-        var u = data[i1];
-        var v = data[i2];
-        var w = twiddles[stageOffset + j];
-
-        // Compute v * w (128x128) -> 256-bit z3..z0
-        Mul128Full(v.High, v.Low, w.High, w.Low, out var z3, out var z2, out var z1, out var z0);
-
-        // t = floor(z / b) where b=2^64 => take (z3,z2,z1)
-        // Compute q = floor((t * mu) / b^3). Only need top two limbs of 5-limb product.
-        Mul3x2Top(z3, z2, z1, muHigh, muLow, out var qHigh, out var qLow);
-
-        // q * n (128x128) -> 256-bit qq3..qq0
-        Mul128Full(qHigh, qLow, modHigh, modLow, out var qq3, out var qq2, out var qq1, out var qq0);
-
-        // r = z - q*n (256-bit)
-        Sub256(z3, z2, z1, z0, qq3, qq2, qq1, qq0, out var r3, out var r2, out var r1, out var r0);
-
-        // Reduce r to [0, n) by at most two subtractions
-        // Discard higher limbs (should be zero if r < 2n), keep low 128-bit
-        ulong resHigh = r1; // r1 is limb1 after subtraction (since lower two limbs are r1 (high) and r0 (low))
-        ulong resLow = r0;
-
-        // while (res >= n) res -= n; (at most twice)
-        if (Geq128(resHigh, resLow, modHigh, modLow))
-        {
-            Sub128(ref resHigh, ref resLow, modHigh, modLow);
-            if (Geq128(resHigh, resLow, modHigh, modLow))
-            {
-                Sub128(ref resHigh, ref resLow, modHigh, modLow);
-            }
-        }
-
-        var sum = new GpuUInt128(u);
-        var mulred = new GpuUInt128(resHigh, resLow);
-        sum.AddMod(mulred, new GpuUInt128(modHigh, modLow));
-        u.SubMod(mulred, new GpuUInt128(modHigh, modLow));
-        data[i1] = sum;
-        data[i2] = u;
-    }
-
-    // TODO(MOD-OPT): Stage kernel using 64-bit Montgomery multiplication. Requires data and twiddles in Montgomery domain.
-    private static void StageMontKernel(Index1D index, ArrayView<GpuUInt128> data, int len, int half, int stageOffset, ArrayView<GpuUInt128> twiddlesMont, ulong modulus, ulong nPrime)
-    {
-        int t = index.X;
-        // TODO: Apply the bitmask remainder helper to this stage too so every butterfly path drops the slower `%` operation.
-        int j = t % half;
-        int block = t / half;
-        int k = block * len;
-        int i1 = k + j;
-        int i2 = i1 + half;
-        ulong u = data[i1].Low;
-        ulong v = data[i2].Low;
-        ulong wR = twiddlesMont[stageOffset + j].Low;
-        v = MontMul64(v, wR, modulus, nPrime);
-        ulong sum = u + v;
-        if (sum >= modulus)
-        {
-            sum -= modulus;
-        }
-        ulong diff = u >= v ? u - v : unchecked(u + modulus - v);
-        data[i1] = new GpuUInt128(0UL, sum);
-        data[i2] = new GpuUInt128(0UL, diff);
-    }
-
-    // Computes Montgomery multiplication for 64-bit operands in Montgomery domain.
-    // Returns a*b*R^{-1} mod modulus, where R=2^64 and nPrime = -modulus^{-1} mod 2^64.
-    private static ulong MontMul64(ulong aR, ulong bR, ulong modulus, ulong nPrime)
-    {
-        // t = aR * bR (128-bit)
-        ulong tLow, tHigh;
-        Mul64Parts(aR, bR, out tHigh, out tLow);
-        // m = (tLow * nPrime) mod 2^64 -> just low 64 bits of the product
-        ulong mLow, mHigh;
-        Mul64Parts(tLow, nPrime, out mHigh, out mLow);
-        // u = (t + m*modulus) >> 64
-        ulong mmLow, mmHigh;
-        Mul64Parts(mLow, modulus, out mmHigh, out mmLow);
-        // add tLow + mmLow, keep carry
-        ulong carry = 0UL;
-        ulong low = tLow + mmLow;
-        if (low < tLow)
-        {
-            carry = 1UL;
-        }
-        // high = tHigh + mmHigh + carry
-        ulong high = tHigh + mmHigh + carry;
-        ulong u = high; // this is (t + m*n) >> 64
-        if (u >= modulus)
-        {
-            u -= modulus;
-        }
-        return u;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Mul64Parts(ulong a, ulong b, out ulong high, out ulong low)
-    {
-        // 64x64 -> 128 using 32-bit limbs
-        ulong a0 = (uint)a;
-        ulong a1 = a >> 32;
-        ulong b0 = (uint)b;
-        ulong b1 = b >> 32;
-
-        ulong lo = a0 * b0;
-        ulong mid1 = a1 * b0;
-        ulong mid2 = a0 * b1;
-        ulong hi = a1 * b1;
-
-        ulong carry = (lo >> 32) + (uint)mid1 + (uint)mid2;
-        low = (lo & 0xFFFFFFFFUL) | (carry << 32);
-        hi += (mid1 >> 32) + (mid2 >> 32) + (carry >> 32);
-        high = hi;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Mul128Full(ulong aHigh, ulong aLow, ulong bHigh, ulong bLow, out ulong p3, out ulong p2, out ulong p1, out ulong p0)
-    {
-        // Full 128x128 -> 256 multiply using 64-bit limbs
-        Mul64Parts(aLow, bLow, out var h0, out var l0);
-        Mul64Parts(aLow, bHigh, out var h1, out var l1);
-        Mul64Parts(aHigh, bLow, out var h2, out var l2);
-        Mul64Parts(aHigh, bHigh, out var h3, out var l3);
-
-        p0 = l0;
-        ulong carry = 0UL;
-        ulong sum = h0;
-        sum += l1; if (sum < l1) carry++;
-        sum += l2; if (sum < l2) carry++;
-        p1 = sum;
-
-        sum = h1;
-        sum += h2; ulong carry2 = sum < h2 ? 1UL : 0UL;
-        sum += l3; if (sum < l3) carry2++;
-        sum += carry; if (sum < carry) carry2++;
-        p2 = sum;
-        p3 = h3 + carry2;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Mul3x2Top(ulong t2, ulong t1, ulong t0, ulong muHigh, ulong muLow, out ulong top1, out ulong top0)
-    {
-        // Compute top two limbs of ( (t2,t1,t0) * (muHigh,muLow) ) after shifting right by 192 bits.
-        // We build full 5 limbs and return p4 (top1) and p3 (top0).
-        ulong p0 = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0;
-
-        void Add128To(ref ulong lo, ref ulong hi, ulong addLo, ulong addHi)
-        {
-            ulong s = lo + addLo;
-            ulong c = s < lo ? 1UL : 0UL;
-            lo = s;
-            ulong s2 = hi + addHi + c;
-            hi = s2;
-        }
-
-        // t0 * muLow -> contributes to p0,p1
-        Mul64Parts(t0, muLow, out var h, out var l);
-        Add128To(ref p0, ref p1, l, h);
-
-        // t0 * muHigh -> to p1,p2
-        Mul64Parts(t0, muHigh, out h, out l);
-        Add128To(ref p1, ref p2, l, h);
-
-        // t1 * muLow -> to p1,p2
-        Mul64Parts(t1, muLow, out h, out l);
-        Add128To(ref p1, ref p2, l, h);
-
-        // t1 * muHigh -> to p2,p3
-        Mul64Parts(t1, muHigh, out h, out l);
-        Add128To(ref p2, ref p3, l, h);
-
-        // t2 * muLow -> to p2,p3
-        Mul64Parts(t2, muLow, out h, out l);
-        Add128To(ref p2, ref p3, l, h);
-
-        // t2 * muHigh -> to p3,p4
-        Mul64Parts(t2, muHigh, out h, out l);
-        Add128To(ref p3, ref p4, l, h);
-
-        top1 = p4; top0 = p3;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Sub256(ulong a3, ulong a2, ulong a1, ulong a0, ulong b3, ulong b2, ulong b1, ulong b0, out ulong r3, out ulong r2, out ulong r1, out ulong r0)
-    {
-        ulong borrow = 0;
-        r0 = SubWithBorrow(a0, b0, ref borrow);
-        r1 = SubWithBorrow(a1, b1, ref borrow);
-        r2 = SubWithBorrow(a2, b2, ref borrow);
-        r3 = SubWithBorrow(a3, b3, ref borrow);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong SubWithBorrow(ulong a, ulong b, ref ulong borrow)
-    {
-        ulong res = a - b - borrow;
-        borrow = ((a ^ b) & (a ^ res) & 0x8000_0000_0000_0000UL) != 0 ? 1UL : (a < b + borrow ? 1UL : 0UL);
-        return res;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool Geq128(ulong aHigh, ulong aLow, ulong bHigh, ulong bLow)
-    {
-        return aHigh > bHigh || (aHigh == bHigh && aLow >= bLow);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Sub128(ref ulong aHigh, ref ulong aLow, ulong bHigh, ulong bLow)
-    {
-        ulong borrow = 0;
-        ulong low = aLow - bLow;
-        borrow = aLow < bLow ? 1UL : 0UL;
-        ulong high = aHigh - bHigh - borrow;
-        aHigh = high; aLow = low;
-    }
-
-    private static void ToMont64Kernel(Index1D index, ArrayView<GpuUInt128> data, ulong modulus, ulong nPrime, ulong r2)
-    {
-        ulong a = data[index].Low;
-        ulong v = MontMul64(a, r2, modulus, nPrime);
-        data[index] = new GpuUInt128(0UL, v);
-    }
-
-    private static void FromMont64Kernel(Index1D index, ArrayView<GpuUInt128> data, ulong modulus, ulong nPrime)
-    {
-        ulong aR = data[index].Low;
-        ulong v = MontMul64(aR, 1UL, modulus, nPrime);
-        data[index] = new GpuUInt128(0UL, v);
-    }
-
-    private static void SquareMont64Kernel(Index1D index, ArrayView<GpuUInt128> data, ulong modulus, ulong nPrime)
-    {
-        ulong aR = data[index].Low;
-        ulong v = MontMul64(aR, aR, modulus, nPrime);
-        data[index] = new GpuUInt128(0UL, v);
-    }
-
-    private static void ScaleMont64Kernel(Index1D index, ArrayView<GpuUInt128> data, ulong modulus, ulong nPrime, ulong scaleMont)
-    {
-        ulong aR = data[index].Low;
-        ulong v = MontMul64(aR, scaleMont, modulus, nPrime);
-        data[index] = new GpuUInt128(0UL, v);
-    }
-
-    private static void ForwardKernel(Index1D index, ArrayView<GpuUInt128> input, ArrayView<GpuUInt128> output, int length, GpuUInt128 modulus, GpuUInt128 root)
-    {
-        // TODO(NTT-OPT): Replace this reference O(n^2) kernel with a stage-wise
-        // Cooley–Tukey butterfly kernel (O(n log n)). This version uses a per-
-        // element ModPow in the hot loop which is far too slow and causes long
-        // single-kernel runtimes. After twiddle precomputation, each butterfly
-        // should perform: (u, v) -> (u+v*w, u-v*w) with a single MulMod.
-        var sum = new GpuUInt128(0UL, 0UL);
-        for (int i = 0; i < length; i++)
-        {
-            var term = input[i];
-            var power = new GpuUInt128(root);
-            power.ModPow((ulong)index.X * (ulong)i, modulus);
-            term.MulMod(power, modulus);
-            sum.AddMod(term, modulus);
-        }
-
-        output[index] = sum;
-    }
-
-    private static void InverseKernel(Index1D index, ArrayView<GpuUInt128> input, ArrayView<GpuUInt128> output, int length, GpuUInt128 modulus, GpuUInt128 rootInv, GpuUInt128 nInv)
-    {
-        // TODO(NTT-OPT): Replace this O(n^2) inverse with stage-wise butterflies
-        // using precomputed inverse twiddles. Apply final scaling by nInv after
-        // all stages, preferably in a small dedicated kernel.
-        var sum = new GpuUInt128(0UL, 0UL);
-        for (int i = 0; i < length; i++)
-        {
-            var term = input[i];
-            var power = new GpuUInt128(rootInv);
-            power.ModPow((ulong)index.X * (ulong)i, modulus);
-            term.MulMod(power, modulus);
-            sum.AddMod(term, modulus);
-        }
-
-        sum.MulMod(nInv, modulus);
-        output[index] = sum;
-    }
-
-    private static void BitReverseKernel(Index1D index, ArrayView<GpuUInt128> data, int bits)
-    {
-        int i = index.X;
-        int j = ReverseBits(i, bits);
-        if (i < j)
-        {
-            var tmp = data[i];
-            data[i] = data[j];
-            data[j] = tmp;
-        }
-    }
-
-    private static int ReverseBits(int value, int bits)
-    {
-        int result = 0;
-        for (int i = 0; i < bits; i++)
-        {
-            result = (result << 1) | (value & 1);
-            value >>= 1;
-        }
-
-        return result;
-    }
 
     public static void BitReverse(Span<GpuUInt128> values)
     {
@@ -816,7 +434,7 @@ public static class NttGpuMath
         int bits = (int)Math.Log2(n);
         for (int i = 0; i < n; i++)
         {
-            int j = ReverseBits(i, bits);
+            int j = NttTransformKernels.ReverseBits(i, bits);
             if (i < j)
             {
                 (values[j], values[i]) = (values[i], values[j]);
