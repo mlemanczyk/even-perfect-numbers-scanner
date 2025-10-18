@@ -6,6 +6,7 @@ using PerfectNumbers.Core.Gpu;
 
 using EvenPerfectBitScanner.Candidates;
 using EvenPerfectBitScanner.Candidates.Transforms;
+using System.Numerics;
 
 namespace EvenPerfectBitScanner.Tests;
 
@@ -15,7 +16,7 @@ public class ProgramTests
     [Fact]
     public void CountOnes_returns_correct_count()
     {
-        Program.CountOnes(0b101010UL).Should().Be(3UL);
+        (ulong)BitOperations.PopCount(0b101010UL).Should().Be(3UL);
     }
 
     [Theory]

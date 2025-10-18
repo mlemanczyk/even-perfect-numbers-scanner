@@ -546,7 +546,7 @@ internal static class Program
 		}
 	}
 
-
+	// TODO: Move this to a new static class CalculationResultsFile under IO namespace / folder. Rename it to LoadCandidatesWithinRange.
 	private static List<ulong> LoadByDivisorCandidates(string candidateFile, UInt128 maxPrimeLimit, bool maxPrimeConfigured, out int skippedByLimit)
 	{
 		List<ulong> candidates = [];
@@ -582,6 +582,7 @@ internal static class Program
 				{
 					index++;
 				}
+
 				if (Utf8CliParser.TryParseUInt64(span[start..index], out ulong parsed))
 				{
 					if (!maxPrimeConfigured || (UInt128)parsed <= maxPrimeLimit)
@@ -599,6 +600,7 @@ internal static class Program
 		return candidates;
 	}
 
+	// TODO: Move this to a new static class CalculationResultsFile under IO namespace / folder. Rename it to EnumerateCandidates.
 	private static void LoadResultsFile(string resultsFileName, Action<ulong, bool, bool> lineProcessorAction)
 	{
 		using FileStream readStream = new(resultsFileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
@@ -658,6 +660,7 @@ internal static class Program
 		}
 	}
 
+	// TODO: Move this to a new static class CalculationResultsFile under IO namespace / folder. Rename it to BuildFileName.
 	private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool useByDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
 	{
 		string inc = bitInc ? "bit" : "add";
@@ -730,16 +733,6 @@ internal static class Program
 			Volatile.Write(ref _limitReached, true);
 		}
 	}
-
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static ulong CountOnes(ulong value)
-	{
-		// TODO: Remove this wrapper once callers can invoke BitOperations.PopCount directly so the hot bit-stat path
-		// avoids the extra call layer.
-		return (ulong)BitOperations.PopCount(value);
-	}
-
 
 	internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck)
 	{
@@ -824,6 +817,7 @@ internal static class Program
 		return detailedCheck;
 	}
 
+	// TODO: Move this together with the tracker to existing CandidatesCalculator class in the Candidates folder.
 	// Use ModResidueTracker with a small set of primes to pre-filter composite p.
 	private static bool IsCompositeByResidues(ulong p)
 	{
