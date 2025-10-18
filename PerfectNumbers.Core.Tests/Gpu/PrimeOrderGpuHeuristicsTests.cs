@@ -38,9 +38,10 @@ public class PrimeOrderGpuHeuristicsTests
     [Fact]
     public void TryPow2Mod_returns_success_for_supported_prime()
     {
-        const ulong prime = 193UL;
+        const ulong exponent = 138_000_001UL;
+        const ulong prime = 138_000_001UL;
         MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(prime);
-        GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(1UL, prime, out ulong remainder, divisorData);
+        GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, prime, out ulong remainder, divisorData);
 
         status.Should().Be(GpuPow2ModStatus.Success);
         remainder.Should().Be(2UL);
@@ -118,14 +119,19 @@ public class PrimeOrderGpuHeuristicsTests
     public void TryPow2ModBatch_returns_success_for_supported_prime()
     {
         ulong[] remainders = { 123UL, 456UL };
-        ulong[] exponents = { 1UL, 2UL };
-        const ulong prime = 257UL;
+        ulong[] exponents = { 138_000_001UL, 138_000_011UL };
+        const ulong prime = 138_000_001UL;
         MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(prime);
         GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponents, prime, remainders, divisorData);
 
+        ulong expectedFirst = (ulong)BigInteger.ModPow(2, exponents[0], prime);
+        ulong expectedSecond = (ulong)BigInteger.ModPow(2, exponents[1], prime);
+
         status.Should().Be(GpuPow2ModStatus.Success);
-        remainders[0].Should().Be(2UL);
-        remainders[1].Should().Be(4UL);
+        expectedFirst.Should().Be(2UL);
+        expectedSecond.Should().Be(2048UL);
+        remainders[0].Should().Be(expectedFirst);
+        remainders[1].Should().Be(expectedSecond);
     }
 
     [Fact]
