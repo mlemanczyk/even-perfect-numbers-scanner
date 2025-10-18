@@ -63,8 +63,8 @@ public class ProgramTests
     [Fact]
     public void Gcd_filter_detects_some_composites()
     {
-        Program.IsCompositeByGcd(15UL).Should().BeTrue();
-        Program.IsCompositeByGcd(5UL).Should().BeFalse();
+        15UL.IsCompositeByGcd().Should().BeTrue();
+        5UL.IsCompositeByGcd().Should().BeFalse();
     }
 
     [Fact]

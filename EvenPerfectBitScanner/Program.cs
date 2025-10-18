@@ -25,7 +25,6 @@ internal static class Program
     private static readonly Optimized PrimeIterator = new();
     private static ulong _byDivisorStartPrime;
     private static CliArguments _cliArguments;
-    private static CalculationResultHandler _resultHandler;
     private static int _testTargetPrimeCount;
     private static int _testProcessedPrimeCount;
     private const string TestTimeFileName = "even_perfect_test_time.txt";
@@ -60,7 +59,7 @@ internal static class Program
 
             if (_cliArguments.ShowHelp)
             {
-                PrintHelp();
+                CliArguments.PrintHelp();
                 return;
             }
 
@@ -288,7 +287,7 @@ internal static class Program
                         ? builtName
                         : Path.Combine(_cliArguments.ResultsDirectory!, builtName);
 
-                _resultHandler = new CalculationResultHandler(resultsFileName, _cliArguments.WriteBatchSize);
+                CalculationResultHandler.Initialize(resultsFileName, _cliArguments.WriteBatchSize);
                 var dir = Path.GetDirectoryName(resultsFileName);
                 if (!string.IsNullOrEmpty(dir))
                 {
@@ -304,7 +303,7 @@ internal static class Program
                     Console.WriteLine("Processing previous results...");
                     LoadResultsFile(resultsFileName, (p, detailedCheck, passedAllTests) =>
                     {
-                        _resultHandler.RegisterExistingResult(detailedCheck, passedAllTests);
+                        CalculationResultHandler.RegisterExistingResult(detailedCheck, passedAllTests);
 
                         if (previousResults is not null)
                         {
@@ -314,7 +313,7 @@ internal static class Program
                 }
                 else
                 {
-                    _resultHandler.CreateResultsFileWithHeader();
+                    CalculationResultHandler.CreateResultsFileWithHeader();
                 }
         
                 bool useFilter = !testMode && !string.IsNullOrEmpty(filterFile);
@@ -412,13 +411,12 @@ internal static class Program
                 {
                     _testTargetPrimeCount = testPrimeCandidateLimit;
                 }
-                _resultHandler.InitializeOutputBuffer();
+                CalculationResultHandler.InitializeOutputBuffer();
         
                 // Limit GPU concurrency only for prime checks (LL/NTT & GPU order scans).
                 GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
                 // Configure batch size for GPU primality sieve
                 PrimeTester.GpuBatchSize = gpuPrimeBatch;
-				CalculationResultHandler resultHandler = _resultHandler;
         
                 Stopwatch? stopwatch = null;
                 if (testMode)
@@ -437,10 +435,10 @@ internal static class Program
                             _byDivisorStartPrime,
                             static () => _lastCompositeP = true,
                             static () => _lastCompositeP = false,
-                            static (candidate, searchedMersenne, detailedCheck, passedAllTests) => _resultHandler.HandleResult(candidate, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP),
+                            static (candidate, searchedMersenne, detailedCheck, passedAllTests) => CalculationResultHandler.HandleResult(candidate, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP),
                             threadCount);
-                    _resultHandler.FlushBuffer();
-                    _resultHandler.ReleaseOutputBuffer();
+                    CalculationResultHandler.FlushBuffer();
+                    CalculationResultHandler.ReleaseOutputBuffer();
                     if (stopwatch is not null)
                     {
                         stopwatch.Stop();
@@ -495,7 +493,7 @@ internal static class Program
                                 {
                                     p = buffer[j];
                                     passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
-									resultHandler.HandleResult(p, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP);
+									CalculationResultHandler.HandleResult(p, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP);
                                 }
         
                                 continue;
@@ -518,7 +516,7 @@ internal static class Program
                                 }
         
                                 passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
-								resultHandler.HandleResult(p, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP);
+								CalculationResultHandler.HandleResult(p, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP);
         
                                 if (p == maxP)
                                 {
@@ -548,8 +546,8 @@ internal static class Program
                     reportTestTime = true;
                 }
         
-                _resultHandler.FlushBuffer();
-                _resultHandler.ReleaseOutputBuffer();
+                CalculationResultHandler.FlushBuffer();
+                CalculationResultHandler.ReleaseOutputBuffer();
         
                 if (reportTestTime)
                 {
@@ -558,7 +556,7 @@ internal static class Program
         }
         finally
         {
-            _resultHandler.Dispose();
+            CalculationResultHandler.Dispose();
         }
     }
 
@@ -716,49 +714,7 @@ internal static class Program
     }
 
 
-	// TODO: Move this to CliArguments
-	private static void PrintHelp()
-	{
-		Console.WriteLine("Usage: EvenPerfectBitScanner [options]");
-		Console.WriteLine();
-		Console.WriteLine("Options:");
-		Console.WriteLine("  --prime=<value>        starting exponent (p)");
-		Console.WriteLine("  --max-prime=<value>    inclusive upper bound for primes from filter files");
-		Console.WriteLine("  --increment=bit|add    exponent increment method");
-		Console.WriteLine("  --threads=<value>      number of worker threads");
-		Console.WriteLine("  --block-size=<value>   values processed per thread batch");
-		Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
-		Console.WriteLine("  --residue-max-k=<value>  max k for residue Mersenne test (q = 2*p*k + 1)");
-		Console.WriteLine("  --mersenne-device=cpu|gpu  Device for Mersenne method (default gpu)");
-		Console.WriteLine("  --primes-device=cpu|gpu    Device for prime-scan kernels (default gpu)");
-		Console.WriteLine("  --gpu-prime-batch=<n>      Batch size for GPU primality sieve (default 262144)");
-		Console.WriteLine("  --order-device=cpu|gpu     Device for order computations (default gpu)");
-		Console.WriteLine("  --ntt=reference|staged GPU NTT backend (default staged)");
-		Console.WriteLine("  --mod-reduction=auto|uint128|mont64|barrett128  staged NTT reduction (default auto)");
-		Console.WriteLine("  --gpu-prime-threads=<value>  max concurrent GPU prime checks (default 1)");
-		Console.WriteLine("  --ll-slice=<value>     Lucas–Lehmer iterations per slice (default 32)");
-		Console.WriteLine("  --gpu-scan-batch=<value>  GPU q-scan batch size (default 2_097_152)");
-		Console.WriteLine("  --order-warmup-limit=<value>  Warm-up order candidates (default 5_000_000)");
-		Console.WriteLine("  --rle-blacklist=<path>  enable RLE blacklist for p (hard filter up to --rle-hard-max)");
-		Console.WriteLine("  --rle-hard-max=<p>      apply RLE blacklist only for p <= this (default ulong.MaxValue = no limit)");
-		Console.WriteLine("  --rle-only-last7=true|false  apply RLE only when p % 10 == 7 (default true)");
-		Console.WriteLine("  --zero-hard=<f>         hard reject if zero_fraction(p) > f (default off)");
-		Console.WriteLine("  --zero-conj=<f>:<r>     hard reject if zero_fraction(p) > f AND max_zero_block >= r (default off)");
-		Console.WriteLine("  --results-dir=<path>   directory for results file");
-		Console.WriteLine("  --results-prefix=<text> prefix to prepend to results filename");
-		Console.WriteLine("  --divisor-cycles=<path>       divisor cycles data file");
-		Console.WriteLine("  --divisor-cycles-device=cpu|gpu  device for cycles generation (default gpu)");
-		Console.WriteLine("  --divisor-cycles-batch=<value> batch size for cycles generation (default 512)");
-		Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
-		Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor");
-		Console.WriteLine("  --use-order            test primality via q order");
-		Console.WriteLine("  --filter-p=<path>      process only p from previous run results (required for --mersenne=bydivisor)");
-		Console.WriteLine("  --write-batch-size=<value> overwrite frequency of disk writes (default 100 lines)");
-		Console.WriteLine("  --gcd-filter           enable early sieve based on GCD");
-		Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
-	}
-
-    private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool useByDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
+	    private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool useByDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
     {
         string inc = bitInc ? "bit" : "add";
         string mers = useDivisorFlag
@@ -1127,7 +1083,7 @@ internal static class Program
         detailedCheck = false;
         _lastCompositeP = false;
 
-        if (_cliArguments.UseGcdFilter && IsCompositeByGcd(p))
+        if (_cliArguments.UseGcdFilter && p.IsCompositeByGcd())
         {
             _lastCompositeP = true;
             return false;
@@ -1151,7 +1107,7 @@ internal static class Program
             int bitLength;
             int zeroCountValue;
             int maxZeroBlockValue;
-            ComputeBitStats(p, out bitLength, out zeroCountValue, out maxZeroBlockValue);
+            p.ComputeBitStats(out bitLength, out zeroCountValue, out maxZeroBlockValue);
             zf = (double)zeroCountValue / bitLength;
             if (_cliArguments.ZeroFractionHard >= 0)
             {
@@ -1233,214 +1189,4 @@ internal static class Program
         return false;
     }
 
-	// TODO: Convert this to extension method in ULongExtensions if one doesn't already exist. We may already calculate things like these
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ComputeBitStats(ulong value, out int bitLen, out int zeroCount, out int maxZeroBlock)
-    {
-        bitLen = 64 - int.CreateChecked(ulong.LeadingZeroCount(value));
-        zeroCount = 0;
-        maxZeroBlock = 0;
-        if (bitLen <= 0)
-        {
-            return;
-        }
-
-        int msbIndex = (bitLen - 1) >> 3;                 // 0..7
-        int bitsInTopByte = ((bitLen - 1) & 7) + 1;        // 1..8
-        int currentRun = 0;
-        byte inspectedByte;
-        int zeroCountInByte;
-        int prefixZeros;
-        int suffixZeros;
-        int maxZeroRunInByte;
-        int candidate;
-        int byteIndex = msbIndex;
-
-        for (; byteIndex >= 0; byteIndex--)
-        {
-            inspectedByte = (byte)(value >> (byteIndex * 8));
-            if (byteIndex == msbIndex && bitsInTopByte < 8)
-            {
-                // Mask off leading unused bits by setting them to 1 (ignore)
-                inspectedByte |= (byte)(0xFF << bitsInTopByte);
-            }
-
-            // TODO: Replace this byte-by-byte scan with the lookup-table based statistics collector validated in the
-            // BitStats benchmarks so zero runs leverage cached results instead of recomputing per bit.
-
-            zeroCountInByte = ByteZeroCount[inspectedByte];
-            zeroCount += zeroCountInByte;
-
-            if (zeroCountInByte == 8)
-            {
-                currentRun += 8;
-                if (currentRun > maxZeroBlock)
-                {
-                    maxZeroBlock = currentRun;
-                }
-
-                continue;
-            }
-
-            prefixZeros = BytePrefixZero[inspectedByte];
-            suffixZeros = ByteSuffixZero[inspectedByte];
-            maxZeroRunInByte = ByteMaxZeroRun[inspectedByte];
-
-            candidate = currentRun + prefixZeros;
-            if (candidate > maxZeroBlock)
-            {
-                maxZeroBlock = candidate;
-            }
-
-            if (maxZeroRunInByte > maxZeroBlock)
-            {
-                maxZeroBlock = maxZeroRunInByte;
-            }
-
-            currentRun = suffixZeros;
-        }
-
-        if (currentRun > maxZeroBlock)
-        {
-            maxZeroBlock = currentRun;
-        }
-    }
-
-    // LUTs for fast per-byte zero stats (MSB-first in each byte)
-    private static readonly byte[] ByteZeroCount = new byte[256];
-    private static readonly byte[] BytePrefixZero = new byte[256];
-    private static readonly byte[] ByteSuffixZero = new byte[256];
-    private static readonly byte[] ByteMaxZeroRun = new byte[256];
-
-    static Program()
-    {
-        int valueIndex = 0;
-        int zeros;
-        int pref;
-        int suff;
-        int maxIn;
-        int run;
-        int bit;
-        bool isZero;
-        int boundaryCounter;
-        int boundaryBitIndex;
-        for (; valueIndex < 256; valueIndex++)
-        {
-            zeros = 0;
-            pref = 0;
-            suff = 0;
-            maxIn = 0;
-            run = 0;
-
-            // MSB-first within byte: bit 7 .. bit 0
-            for (bit = 7; bit >= 0; bit--)
-            {
-                isZero = ((valueIndex >> bit) & 1) == 0;
-                if (isZero)
-                {
-                    zeros++;
-                    run++;
-                    if (run > maxIn)
-                    {
-                        maxIn = run;
-                    }
-                }
-                else
-                {
-                    run = 0;
-                }
-
-                if (bit == 7)
-                {
-                    // leading zeros (prefix)
-                    boundaryCounter = 0;
-                    for (boundaryBitIndex = 7; boundaryBitIndex >= 0; boundaryBitIndex--)
-                    {
-                        if (((valueIndex >> boundaryBitIndex) & 1) == 0)
-                        {
-                            boundaryCounter++;
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                    pref = boundaryCounter;
-                }
-
-                if (bit == 0)
-                {
-                    // trailing zeros (suffix)
-                    // Reusing boundaryCounter to count trailing zeros after prefix detection above.
-                    boundaryCounter = 0;
-                    for (boundaryBitIndex = 0; boundaryBitIndex < 8; boundaryBitIndex++)
-                    {
-                        if (((valueIndex >> boundaryBitIndex) & 1) == 0)
-                        {
-                            boundaryCounter++;
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                    suff = boundaryCounter;
-                }
-            }
-
-            ByteZeroCount[valueIndex] = (byte)zeros;
-            BytePrefixZero[valueIndex] = (byte)pref;
-            ByteSuffixZero[valueIndex] = (byte)suff;
-            ByteMaxZeroRun[valueIndex] = (byte)maxIn;
-        }
-    }
-
-	// TODO: Convert this to extension method in ULongExtensions if one doesn't already exist
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool IsCompositeByGcd(ulong p)
-	{
-		// TODO: Can this ever be true on Program's execution path?
-        if (p < 2)
-        {
-            return true;
-        }
-
-        ulong m = (ulong)BitOperations.Log2(p);
-        return BinaryGcd(p, m) > 1UL;
-    }
-
-	// TODO: Convert this to extension method in ULongExtensions if one doesn't already exist
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong BinaryGcd(ulong a, ulong b)
-	{
-		// TODO: Are these a & b conditions ever met on Program's execution path?
-        if (a == 0UL)
-        {
-            return b;
-        }
-
-        if (b == 0UL)
-        {
-            return a;
-        }
-
-        int shift = BitOperations.TrailingZeroCount(a | b);
-        a >>= BitOperations.TrailingZeroCount(a);
-
-        do
-        {
-            b >>= BitOperations.TrailingZeroCount(b);
-
-            if (a > b)
-            {
-                (a, b) = (b, a);
-            }
-
-            b -= a;
-        }
-        while (b != 0UL);
-
-        return a << shift;
-    }
 }
-

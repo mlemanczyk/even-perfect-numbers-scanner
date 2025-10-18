@@ -14,6 +14,94 @@ public static class ULongExtensions
 	private const ulong Pow2WindowFallbackThreshold = 32UL;
 	private const int Pow2WindowOddPowerCount = 1 << (Pow2WindowSize - 1);
 
+	private static readonly byte[] BitStatsZeroCount = new byte[256];
+	private static readonly byte[] BitStatsPrefixZero = new byte[256];
+	private static readonly byte[] BitStatsSuffixZero = new byte[256];
+	private static readonly byte[] BitStatsMaxZeroRun = new byte[256];
+
+	static ULongExtensions()
+	{
+		int valueIndex = 0;
+		int zeros;
+		int pref;
+		int suff;
+		int maxIn;
+		int run;
+		int bit;
+		bool isZero;
+		int boundaryCounter;
+		int boundaryBitIndex;
+		for (; valueIndex < 256; valueIndex++)
+		{
+			zeros = 0;
+			pref = 0;
+			suff = 0;
+			maxIn = 0;
+			run = 0;
+
+			for (bit = 7; bit >= 0; bit--)
+			{
+				// MSB-first within each byte: bit 7 down to bit 0.
+				isZero = ((valueIndex >> bit) & 1) == 0;
+				if (isZero)
+				{
+					zeros++;
+					run++;
+					if (run > maxIn)
+					{
+						maxIn = run;
+					}
+				}
+				else
+				{
+					run = 0;
+				}
+
+				if (bit == 7)
+				{
+					// Leading zeros (prefix).
+					boundaryCounter = 0;
+					for (boundaryBitIndex = 7; boundaryBitIndex >= 0; boundaryBitIndex--)
+					{
+						if (((valueIndex >> boundaryBitIndex) & 1) == 0)
+						{
+							boundaryCounter++;
+						}
+						else
+						{
+							break;
+						}
+					}
+					pref = boundaryCounter;
+				}
+
+				if (bit == 0)
+				{
+					// Trailing zeros (suffix).
+					// Reuse boundaryCounter to count trailing zeros after the prefix detection above.
+					boundaryCounter = 0;
+					for (boundaryBitIndex = 0; boundaryBitIndex < 8; boundaryBitIndex++)
+					{
+						if (((valueIndex >> boundaryBitIndex) & 1) == 0)
+						{
+							boundaryCounter++;
+						}
+						else
+						{
+							break;
+						}
+					}
+					suff = boundaryCounter;
+				}
+			}
+
+			BitStatsZeroCount[valueIndex] = (byte)zeros;
+			BitStatsPrefixZero[valueIndex] = (byte)pref;
+			BitStatsSuffixZero[valueIndex] = (byte)suff;
+			BitStatsMaxZeroRun[valueIndex] = (byte)maxIn;
+		}
+	}
+
 	public static ulong CalculateOrder(this ulong q)
 	{
 		if (q <= 2UL)
@@ -65,6 +153,75 @@ public static class ULongExtensions
 	public static int GetBitLength(this ulong value)
 	{
 		return 64 - BitOperations.LeadingZeroCount(value);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static void ComputeBitStats(this ulong value, out int bitLen, out int zeroCount, out int maxZeroBlock)
+	{
+		bitLen = 64 - int.CreateChecked(ulong.LeadingZeroCount(value));
+		zeroCount = 0;
+		maxZeroBlock = 0;
+		if (bitLen <= 0)
+		{
+			return;
+		}
+
+		int msbIndex = (bitLen - 1) >> 3;
+		int bitsInTopByte = ((bitLen - 1) & 7) + 1;
+		int currentRun = 0;
+		int byteIndex = msbIndex;
+		int zeroCountInByte;
+		int prefixZeros;
+		int suffixZeros;
+		int maxZeroRunInByte;
+		int candidate;
+
+		for (; byteIndex >= 0; byteIndex--)
+		{
+			byte inspectedByte = (byte)(value >> (byteIndex * 8));
+			if (byteIndex == msbIndex && bitsInTopByte < 8)
+			{
+				// Mask off leading unused bits by setting them to 1 so the statistics ignore them.
+				inspectedByte |= (byte)(0xFF << bitsInTopByte);
+			}
+
+			// TODO: Replace this byte-by-byte scan with the lookup-table based statistics collector validated in the BitStats benchmarks so zero runs leverage cached results instead of recomputing per bit.
+			zeroCountInByte = BitStatsZeroCount[inspectedByte];
+			zeroCount += zeroCountInByte;
+
+			if (zeroCountInByte == 8)
+			{
+				currentRun += 8;
+				if (currentRun > maxZeroBlock)
+				{
+					maxZeroBlock = currentRun;
+				}
+
+				continue;
+			}
+
+			prefixZeros = BitStatsPrefixZero[inspectedByte];
+			suffixZeros = BitStatsSuffixZero[inspectedByte];
+			maxZeroRunInByte = BitStatsMaxZeroRun[inspectedByte];
+
+			candidate = currentRun + prefixZeros;
+			if (candidate > maxZeroBlock)
+			{
+				maxZeroBlock = candidate;
+			}
+
+			if (maxZeroRunInByte > maxZeroBlock)
+			{
+				maxZeroBlock = maxZeroRunInByte;
+			}
+
+			currentRun = suffixZeros;
+		}
+
+		if (currentRun > maxZeroBlock)
+		{
+			maxZeroBlock = currentRun;
+		}
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -129,6 +286,50 @@ public static class ULongExtensions
 		}
 
 		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool IsCompositeByGcd(this ulong value)
+	{
+		if (value < 2UL)
+		{
+			return true;
+		}
+
+		ulong exponentLog = (ulong)BitOperations.Log2(value);
+		return value.BinaryGcd(exponentLog) > 1UL;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static ulong BinaryGcd(this ulong a, ulong b)
+	{
+		if (a == 0UL)
+		{
+			return b;
+		}
+
+		if (b == 0UL)
+		{
+			return a;
+		}
+
+		int shift = BitOperations.TrailingZeroCount(a | b);
+		a >>= BitOperations.TrailingZeroCount(a);
+
+		do
+		{
+			b >>= BitOperations.TrailingZeroCount(b);
+
+			if (a > b)
+			{
+				(a, b) = (b, a);
+			}
+
+			b -= a;
+		}
+		while (b != 0UL);
+
+		return a << shift;
 	}
 
 	// Benchmarks (Mod5ULongBenchmarks) show the direct `% 5` is still cheaper (~0.26 ns vs 0.43 ns), so keep the modulo until a faster lookup is proven.
