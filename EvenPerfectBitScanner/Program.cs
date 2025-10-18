@@ -892,7 +892,7 @@ internal static class Program
         List<ulong> candidates = new(targetCount);
         ulong previous = 29UL;
         int remaining = targetCount;
-        ulong nextPrime = 0UL;
+        ulong nextPrime;
 
         while (remaining > 0)
         {
@@ -994,7 +994,7 @@ internal static class Program
         // the CLI avoids this extra frame during the hot composite-reporting path.
         MersenneNumberDivisorByDivisorTester.Run(
                 candidates,
-                _byDivisorTester,
+                _byDivisorTester!,
                 _byDivisorPreviousResults,
                 _byDivisorStartPrime,
                 static () => _lastCompositeP = true,
@@ -1484,8 +1484,8 @@ internal static class Program
         ulong primeCandidate = value;
         bool advanceAdd = true;
         bool advancePrime = true;
-        ulong diff = 0UL;
-        ulong nextPrime = 0UL;
+        ulong diff;
+        ulong nextPrime;
 
         while (true)
         {
@@ -1576,9 +1576,9 @@ internal static class Program
         if (_zeroFracHard >= 0 || (_zeroFracConj >= 0 && _maxZeroConj >= 0))
         {
             double zf;
-            int bitLength = 0;
-            int zeroCountValue = 0;
-            int maxZeroBlockValue = 0;
+            int bitLength;
+            int zeroCountValue;
+            int maxZeroBlockValue;
             ComputeBitStats(p, out bitLength, out zeroCountValue, out maxZeroBlockValue);
             zf = (double)zeroCountValue / bitLength;
             if (_zeroFracHard >= 0)
@@ -1644,7 +1644,7 @@ internal static class Program
         var primesPow2 = PrimesGenerator.SmallPrimesPow2;
         int len = primes.Length;
         int primeIndex = 0;
-        bool divisible = false;
+        bool divisible;
         for (; primeIndex < len; primeIndex++)
         {
             if (primesPow2[primeIndex] > p)
@@ -1675,12 +1675,12 @@ internal static class Program
         int msbIndex = (bitLen - 1) >> 3;                 // 0..7
         int bitsInTopByte = ((bitLen - 1) & 7) + 1;        // 1..8
         int currentRun = 0;
-        byte inspectedByte = 0;
-        int zeroCountInByte = 0;
-        int prefixZeros = 0;
-        int suffixZeros = 0;
-        int maxZeroRunInByte = 0;
-        int candidate = 0;
+        byte inspectedByte;
+        int zeroCountInByte;
+        int prefixZeros;
+        int suffixZeros;
+        int maxZeroRunInByte;
+        int candidate;
         int byteIndex = msbIndex;
 
         for (; byteIndex >= 0; byteIndex--)
@@ -1742,15 +1742,15 @@ internal static class Program
     static Program()
     {
         int valueIndex = 0;
-        int zeros = 0;
-        int pref = 0;
-        int suff = 0;
-        int maxIn = 0;
-        int run = 0;
-        int bit = 0;
-        bool isZero = false;
-        int boundaryCounter = 0;
-        int boundaryBitIndex = 0;
+        int zeros;
+        int pref;
+        int suff;
+        int maxIn;
+        int run;
+        int bit;
+        bool isZero;
+        int boundaryCounter;
+        int boundaryBitIndex;
         for (; valueIndex < 256; valueIndex++)
         {
             zeros = 0;
