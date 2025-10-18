@@ -574,6 +574,7 @@ public static class ULongExtensions
 		}
 
 
+        }
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static ulong Pow2MontgomeryModSingleBit(ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
 	{

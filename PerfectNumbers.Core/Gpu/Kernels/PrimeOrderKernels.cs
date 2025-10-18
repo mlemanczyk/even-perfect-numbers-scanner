@@ -7,7 +7,7 @@ using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
 
-internal static class PrimeOrderKernels
+internal static partial class PrimeOrderGpuHeuristics
 {
     internal static void PartialFactorKernel(
         Index1D index,
