@@ -436,6 +436,7 @@ internal static class Program
 			if (!useDivisor && !_cliArguments.UseByDivisor)
 			{
 				threadCount = Math.Max(1, threadCount);
+				// Don't remove this. It's to initialize the testers
 				_ = MersenneTesters.Value;
 				if (!useLucas)
 				{
