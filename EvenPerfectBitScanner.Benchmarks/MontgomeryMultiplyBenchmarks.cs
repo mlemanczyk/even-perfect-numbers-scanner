@@ -9,12 +9,10 @@ public class MontgomeryMultiplyBenchmarks
 {
     private const int MaxBatchSize = 1024;
 
-    private readonly ulong[] _operandsA = new ulong[MaxBatchSize];
-    private readonly ulong[] _operandsB = new ulong[MaxBatchSize];
-    private readonly ulong[] _moduli = new ulong[MaxBatchSize];
-    private readonly ulong[] _nPrimes = new ulong[MaxBatchSize];
-
-    private readonly Random _random = new(1979);
+    private ulong[] _operandsA = Array.Empty<ulong>();
+    private ulong[] _operandsB = Array.Empty<ulong>();
+    private ulong[] _moduli = Array.Empty<ulong>();
+    private ulong[] _nPrimes = Array.Empty<ulong>();
 
     [Params(64, 256, 1024)]
     public int BatchSize { get; set; }
@@ -22,13 +20,64 @@ public class MontgomeryMultiplyBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        for (int i = 0; i < MaxBatchSize; i++)
+        MontgomerySampleData data = MontgomerySampleDataCache.Instance;
+        _operandsA = data.OperandsA;
+        _operandsB = data.OperandsB;
+        _moduli = data.Moduli;
+        _nPrimes = data.NPrimes;
+    }
+
+    private sealed class MontgomerySampleData
+    {
+        public MontgomerySampleData(ulong[] operandsA, ulong[] operandsB, ulong[] moduli, ulong[] nPrimes)
         {
-            ulong modulus = NextOddModulus();
-            _moduli[i] = modulus;
-            _nPrimes[i] = ComputeMontgomeryNPrime(modulus);
-            _operandsA[i] = (ulong)_random.NextInt64(0, (long)modulus);
-            _operandsB[i] = (ulong)_random.NextInt64(0, (long)modulus);
+            OperandsA = operandsA;
+            OperandsB = operandsB;
+            Moduli = moduli;
+            NPrimes = nPrimes;
+        }
+
+        public ulong[] OperandsA { get; }
+        public ulong[] OperandsB { get; }
+        public ulong[] Moduli { get; }
+        public ulong[] NPrimes { get; }
+    }
+
+    private static class MontgomerySampleDataCache
+    {
+        private static readonly Lazy<MontgomerySampleData> Cache = new(Create);
+
+        public static MontgomerySampleData Instance => Cache.Value;
+
+        private static MontgomerySampleData Create()
+        {
+            Random random = new(1979);
+            var operandsA = new ulong[MaxBatchSize];
+            var operandsB = new ulong[MaxBatchSize];
+            var moduli = new ulong[MaxBatchSize];
+            var nPrimes = new ulong[MaxBatchSize];
+
+            for (int i = 0; i < MaxBatchSize; i++)
+            {
+                ulong modulus = NextOddModulus(random);
+                moduli[i] = modulus;
+                nPrimes[i] = ComputeMontgomeryNPrime(modulus);
+                operandsA[i] = (ulong)random.NextInt64(0, (long)modulus);
+                operandsB[i] = (ulong)random.NextInt64(0, (long)modulus);
+            }
+
+            return new MontgomerySampleData(operandsA, operandsB, moduli, nPrimes);
+        }
+
+        private static ulong NextOddModulus(Random random)
+        {
+            ulong modulus = (ulong)random.NextInt64(3, long.MaxValue);
+            if ((modulus & 1UL) == 0UL)
+            {
+                modulus++;
+            }
+
+            return modulus;
         }
     }
 
@@ -66,17 +115,6 @@ public class MontgomeryMultiplyBenchmarks
         }
 
         return checksum;
-    }
-
-    private ulong NextOddModulus()
-    {
-        ulong modulus = (ulong)_random.NextInt64(3, long.MaxValue);
-        if ((modulus & 1UL) == 0UL)
-        {
-            modulus++;
-        }
-
-        return modulus;
     }
 
     private static ulong OriginalMontgomeryMultiply(ulong a, ulong b, ulong modulus, ulong nPrime)
