@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.Numerics;
 using PerfectNumbers.Core;
@@ -559,5 +560,46 @@ internal readonly struct CliArguments
                 zeroFractionHard,
                 zeroFractionConjecture,
                 maxZeroConjecture);
+    }
+
+    internal static void PrintHelp()
+    {
+        Console.WriteLine("Usage: EvenPerfectBitScanner [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --prime=<value>        starting exponent (p)");
+        Console.WriteLine("  --max-prime=<value>    inclusive upper bound for primes from filter files");
+        Console.WriteLine("  --increment=bit|add    exponent increment method");
+        Console.WriteLine("  --threads=<value>      number of worker threads");
+        Console.WriteLine("  --block-size=<value>   values processed per thread batch");
+        Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
+        Console.WriteLine("  --residue-max-k=<value>  max k for residue Mersenne test (q = 2*p*k + 1)");
+        Console.WriteLine("  --mersenne-device=cpu|gpu  Device for Mersenne method (default gpu)");
+        Console.WriteLine("  --primes-device=cpu|gpu    Device for prime-scan kernels (default gpu)");
+        Console.WriteLine("  --gpu-prime-batch=<n>      Batch size for GPU primality sieve (default 262144)");
+        Console.WriteLine("  --order-device=cpu|gpu     Device for order computations (default gpu)");
+        Console.WriteLine("  --ntt=reference|staged GPU NTT backend (default staged)");
+        Console.WriteLine("  --mod-reduction=auto|uint128|mont64|barrett128  staged NTT reduction (default auto)");
+        Console.WriteLine("  --gpu-prime-threads=<value>  max concurrent GPU prime checks (default 1)");
+        Console.WriteLine("  --ll-slice=<value>     Lucas–Lehmer iterations per slice (default 32)");
+        Console.WriteLine("  --gpu-scan-batch=<value>  GPU q-scan batch size (default 2_097_152)");
+        Console.WriteLine("  --order-warmup-limit=<value>  Warm-up order candidates (default 5_000_000)");
+        Console.WriteLine("  --rle-blacklist=<path>  enable RLE blacklist for p (hard filter up to --rle-hard-max)");
+        Console.WriteLine("  --rle-hard-max=<p>      apply RLE blacklist only for p <= this (default ulong.MaxValue = no limit)");
+        Console.WriteLine("  --rle-only-last7=true|false  apply RLE only when p % 10 == 7 (default true)");
+        Console.WriteLine("  --zero-hard=<f>         hard reject if zero_fraction(p) > f (default off)");
+        Console.WriteLine("  --zero-conj=<f>:<r>     hard reject if zero_fraction(p) > f AND max_zero_block >= r (default off)");
+        Console.WriteLine("  --results-dir=<path>   directory for results file");
+        Console.WriteLine("  --results-prefix=<text> prefix to prepend to results filename");
+        Console.WriteLine("  --divisor-cycles=<path>       divisor cycles data file");
+        Console.WriteLine("  --divisor-cycles-device=cpu|gpu  device for cycles generation (default gpu)");
+        Console.WriteLine("  --divisor-cycles-batch=<value> batch size for cycles generation (default 512)");
+        Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
+        Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor");
+        Console.WriteLine("  --use-order            test primality via q order");
+        Console.WriteLine("  --filter-p=<path>      process only p from previous run results (required for --mersenne=bydivisor)");
+        Console.WriteLine("  --write-batch-size=<value> overwrite frequency of disk writes (default 100 lines)");
+        Console.WriteLine("  --gcd-filter           enable early sieve based on GCD");
+        Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
     }
 }
