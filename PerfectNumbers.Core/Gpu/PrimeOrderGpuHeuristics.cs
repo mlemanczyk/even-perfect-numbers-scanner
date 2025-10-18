@@ -123,7 +123,7 @@ internal static partial class PrimeOrderGpuHeuristics
     {
         return PartialFactorKernelCache.GetOrAdd(accelerator, static accel =>
         {
-            var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>(PrimeOrderKernels.PartialFactorKernel);
+            var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>(PartialFactorKernel);
             var kernel = KernelUtil.GetKernel(loaded);
             return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>>();
         });
@@ -420,15 +420,15 @@ internal static partial class PrimeOrderGpuHeuristics
         byte status = 0;
         statusBuffer.View.CopyToCPU(ref status, 1);
 
-        PrimeOrderKernels.PrimeOrderKernelStatus kernelStatus = (PrimeOrderKernels.PrimeOrderKernelStatus)status;
-        if (kernelStatus == PrimeOrderKernels.PrimeOrderKernelStatus.Fallback)
+        PrimeOrderKernelStatus kernelStatus = (PrimeOrderKernelStatus)status;
+        if (kernelStatus == PrimeOrderKernelStatus.Fallback)
         {
             DisposeResources();
             lease.Dispose();
             return false;
         }
 
-        if (kernelStatus == PrimeOrderKernels.PrimeOrderKernelStatus.PollardOverflow)
+        if (kernelStatus == PrimeOrderKernelStatus.PollardOverflow)
         {
             DisposeResources();
             lease.Dispose();
@@ -437,7 +437,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
         resultBuffer.View.CopyToCPU(ref order, 1);
 
-        if (kernelStatus == PrimeOrderKernels.PrimeOrderKernelStatus.FactoringFailure)
+        if (kernelStatus == PrimeOrderKernelStatus.FactoringFailure)
         {
             order = 0UL;
         }
@@ -467,7 +467,7 @@ internal static partial class PrimeOrderGpuHeuristics
     {
         return OrderKernelCache.GetOrAdd(accelerator, static accel =>
         {
-            var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, OrderKernelConfig, MontgomeryDivisorData, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, OrderKernelBuffers>(PrimeOrderKernels.CalculateOrderKernel);
+            var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, OrderKernelConfig, MontgomeryDivisorData, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, OrderKernelBuffers>(CalculateOrderKernel);
             var kernel = KernelUtil.GetKernel(loaded);
             return kernel.CreateLauncherDelegate<OrderKernelLauncher>();
         });
@@ -658,27 +658,14 @@ internal static partial class PrimeOrderGpuHeuristics
     {
         return Pow2ModKernelCache.GetOrAdd(accelerator, static accel =>
         {
-            var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderKernels.Pow2ModKernel);
+            var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernel);
             var kernel = KernelUtil.GetKernel(loaded);
             return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
         });
     }
 
-    private static Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>> GetPow2ModWideKernel(Accelerator accelerator)
-    {
-        return Pow2ModKernelWideCache.GetOrAdd(accelerator, static accel =>
-        {
-            var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>(PrimeOrderKernels.Pow2ModKernelWide);
-            var kernel = KernelUtil.GetKernel(loaded);
-            return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>>();
-        });
-    }
 
 
-    private static GpuUInt128 Pow2ModKernelCore(GpuUInt128 exponent, GpuUInt128 modulus)
-    {
-        return PrimeOrderKernels.Pow2ModKernelCore(exponent, modulus);
-    }
 
     internal readonly record struct PrimeOrderGpuCapability(int ModulusBits, int ExponentBits)
     {

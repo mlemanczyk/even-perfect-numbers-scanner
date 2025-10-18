@@ -335,4 +335,3 @@ public sealed class PrimeTester(bool useInternal = false)
         return u << shift;
     }
     }
-}
