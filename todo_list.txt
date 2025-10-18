@@ -1,9 +1,3 @@
-Results & Output Pipelines
-- EvenPerfectBitScanner/Program.cs:615: Replace File.WriteAllText with the pooled TextFileWriter pipeline for the results header.
-- EvenPerfectBitScanner/Program.cs:1218: Swap the results filename interpolation for the pooled ValueStringBuilder pipeline.
-- EvenPerfectBitScanner/Program.cs:1335: Move PrintResult to a Utf8Formatter-based pipeline instead of renting StringBuilders per line.
-- EvenPerfectBitScanner/Program.cs:1396: Replace per-flush FileStream/StreamWriter allocations with a pooled TextFileWriter-style helper.
-
 Arithmetic Helpers & Bit Statistics
 - EvenPerfectBitScanner/Program.cs:1483: Remove the CountOnes wrapper once callers invoke BitOperations.PopCount directly.
 - EvenPerfectBitScanner/Program.cs:1785: Replace the byte-by-byte zero statistics scan with the lookup-table collector validated in the BitStats benchmarks.

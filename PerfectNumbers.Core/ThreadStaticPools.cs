@@ -101,6 +101,18 @@ namespace PerfectNumbers.Core
             }
         }
 
+        [ThreadStatic]
+        private static ArrayPool<char>? _charPool;
+
+        public static ArrayPool<char> CharPool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _charPool ??= ArrayPool<char>.Create();
+            }
+        }
+
 
         [ThreadStatic]
         private static List<List<ulong>>? _ulongListPool;
