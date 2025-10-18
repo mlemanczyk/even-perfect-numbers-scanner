@@ -88,9 +88,9 @@ public class ProgramTests
 
         try
         {
-            Program.IsEvenPerfectCandidate(11UL, 32UL).Should().BeFalse();
-            Program.IsEvenPerfectCandidate(5UL, 32UL).Should().BeTrue();
-            Program.IsEvenPerfectCandidate(127UL, 32UL).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(11UL, 32UL, out _, out _).Should().BeFalse();
+            Program.IsEvenPerfectCandidate(5UL, 32UL, out _, out _).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(127UL, 32UL, out _, out _).Should().BeTrue();
         }
         finally
         {

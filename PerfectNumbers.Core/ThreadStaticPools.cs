@@ -78,6 +78,18 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
+        private static ArrayPool<byte>? _bytePool;
+
+        public static ArrayPool<byte> BytePool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _bytePool ??= ArrayPool<byte>.Create();
+            }
+        }
+
+        [ThreadStatic]
         private static ArrayPool<int>? _intPool;
 
         public static ArrayPool<int> IntPool

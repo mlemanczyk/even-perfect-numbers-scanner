@@ -19,19 +19,17 @@ public sealed class MersenneNumberTester(
     bool useIncremental = true,
     bool useOrderCache = false,
     GpuKernelType kernelType = GpuKernelType.Incremental,
-    bool useModuloWorkaround = false,
     bool useOrder = false,
     bool useGpuLucas = true,
     bool useGpuScan = true,
     bool useGpuOrder = true,
-        bool useResidue = true,
+    bool useResidue = true,
     ulong maxK = 5_000_000UL)
 {
     private readonly bool _useResidue = useResidue;
     private readonly bool _useIncremental = useIncremental && !useResidue;
         private readonly ulong _maxK = maxK;
 	private readonly GpuKernelType _kernelType = kernelType;
-    private readonly bool _useModuloWorkaround = useModuloWorkaround;
     private readonly bool _useGpuLucas = useGpuLucas;
     private readonly bool _useGpuScan = useGpuScan;     // device for pow2mod/incremental scanning
     private readonly bool _useGpuOrder = useGpuOrder;   // device for order computations

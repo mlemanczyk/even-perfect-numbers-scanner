@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Buffers.Text;
 using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
@@ -36,7 +38,14 @@ internal static class Program
     private static IMersenneNumberDivisorByDivisorTester? _byDivisorTester;
     private static Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? _byDivisorPreviousResults;
     private static ulong? _orderWarmupLimitOverride;
-    private static unsafe delegate*<ulong, ref ulong, ulong> _transformP;
+    private static PrimeTransformMode _transformMode;
+
+    private enum PrimeTransformMode
+    {
+        Bit,
+        Add,
+        AddPrimes,
+    }
     private static long _state;
     private static bool _limitReached;
     private static string? _resultsDir;
@@ -61,7 +70,7 @@ internal static class Program
     private static double _zeroFracConj = -1.0;                 // disabled when < 0
     private static int _maxZeroConj = -1;                       // disabled when < 0
 
-    private static unsafe void Main(string[] args)
+    private static void Main(string[] args)
     {
         ulong currentP = InitialP;
         int threadCount = Environment.ProcessorCount;
@@ -69,8 +78,7 @@ internal static class Program
         int gpuPrimeThreads = 1;
         int gpuPrimeBatch = 262_144;
         GpuKernelType kernelType = GpuKernelType.Incremental;
-        bool useModuloWorkaround = false; // TODO: Remove once the runtime defaults to the ImmediateModulo path measured fastest in GpuUInt128NativeModuloBenchmarks.
-                                          // removed: useModAutomaton
+        // removed: useModAutomaton
         bool useOrder = false;
         bool showHelp = false;
         bool useBitTransform = false;
@@ -114,9 +122,7 @@ internal static class Program
             }
             else if (arg.StartsWith("--prime=", StringComparison.OrdinalIgnoreCase))
             {
-                // TODO: Replace this ulong.Parse with the Utf8Parser-based span helper once CLI option parsing
-                // adopts the zero-allocation fast path proven fastest in the parser benchmarks.
-                currentP = ulong.Parse(arg.AsSpan(arg.IndexOf('=') + 1));
+                currentP = Utf8CliParser.ParseUInt64(arg.AsSpan(arg.IndexOf('=') + 1));
                 startPrimeProvided = true;
             }
             else if (arg.StartsWith("--max-prime=", StringComparison.OrdinalIgnoreCase))
@@ -143,9 +149,7 @@ internal static class Program
             }
             else if (arg.StartsWith("--threads=", StringComparison.OrdinalIgnoreCase))
             {
-                // TODO: Swap int.Parse for the span-based Utf8Parser fast path to avoid transient strings when
-                // processing CLI numeric options.
-                threadCount = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                threadCount = Math.Max(1, Utf8CliParser.ParseInt32(arg.AsSpan(arg.IndexOf('=') + 1)));
             }
             else if (arg.StartsWith("--mersenne=", StringComparison.OrdinalIgnoreCase))
             {
@@ -183,18 +187,14 @@ internal static class Program
             }
             else if (arg.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
             {
-                // TODO: Replace ulong.TryParse with the Utf8Parser fast-path once CLI parsing utilities expose
-                // span-based helpers for optional arguments.
-                if (ulong.TryParse(arg.AsSpan(arg.IndexOf('=') + 1), out parsedLimit))
+                if (Utf8CliParser.TryParseUInt64(arg.AsSpan(arg.IndexOf('=') + 1), out parsedLimit))
                 {
                     divisorCyclesSearchLimit = parsedLimit;
                 }
             }
             else if (arg.StartsWith("--residue-max-k=", StringComparison.OrdinalIgnoreCase))
             {
-                // TODO: Swap this TryParse for the zero-allocation Utf8Parser helper to keep residue CLI option
-                // parsing in the fast path.
-                if (ulong.TryParse(arg.AsSpan(arg.IndexOf('=') + 1), out parsedResidueMax))
+                if (Utf8CliParser.TryParseUInt64(arg.AsSpan(arg.IndexOf('=') + 1), out parsedResidueMax))
                 {
                     residueKMax = parsedResidueMax;
                 }
@@ -204,10 +204,6 @@ internal static class Program
             else if (arg.StartsWith("--mersenne-device=", StringComparison.OrdinalIgnoreCase))
             {
                 mersenneOnGpu = !arg.AsSpan(arg.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
-            }
-            else if (arg.Equals("--workaround-mod", StringComparison.OrdinalIgnoreCase))
-            {
-                useModuloWorkaround = true;
             }
             else if (arg.Equals("--test", StringComparison.OrdinalIgnoreCase))
             {
@@ -221,9 +217,7 @@ internal static class Program
             {
                 // stored and used below when initializing testers
                 // Reusing parsedLimit to capture the --order-warmup-limit argument.
-                // TODO: Use the Utf8Parser-based reader here to eliminate the temporary substring allocation
-                // when parsing warm-up limits.
-                if (ulong.TryParse(arg.AsSpan(arg.IndexOf('=') + 1), out parsedLimit))
+                if (Utf8CliParser.TryParseUInt64(arg.AsSpan(arg.IndexOf('=') + 1), out parsedLimit))
                 {
                     _orderWarmupLimitOverride = parsedLimit;
                 }
@@ -283,9 +277,7 @@ internal static class Program
             else if (arg.StartsWith("--rle-hard-max=", StringComparison.OrdinalIgnoreCase))
             {
                 ulong rleMaxP;
-                // TODO: Replace this TryParse with the Utf8Parser span helper once shared CLI parsing utilities
-                // land, mirroring the other numeric option optimizations.
-                if (ulong.TryParse(arg.AsSpan(arg.IndexOf('=') + 1), out rleMaxP))
+                if (Utf8CliParser.TryParseUInt64(arg.AsSpan(arg.IndexOf('=') + 1), out rleMaxP))
                 {
                     _rleHardMaxP = rleMaxP;
                 }
@@ -298,9 +290,7 @@ internal static class Program
             else if (arg.StartsWith("--zero-hard=", StringComparison.OrdinalIgnoreCase))
             {
                 double zeroFraction;
-                // TODO: Swap to the Utf8Parser double fast-path so zero-hard parsing avoids culture-dependent
-                // conversions in the hot CLI path.
-                if (double.TryParse(arg.AsSpan(arg.IndexOf('=') + 1), out zeroFraction))
+                if (Utf8CliParser.TryParseDouble(arg.AsSpan(arg.IndexOf('=') + 1), out zeroFraction))
                 {
                     _zeroFracHard = zeroFraction;
                 }
@@ -314,9 +304,7 @@ internal static class Program
                 {
                     double zeroFrac;
                     int maxZero;
-                    // TODO: Replace these double/int TryParse calls with span-based Utf8Parser helpers once
-                    // available so parsing zero-conj stays allocation-free.
-                    if (double.TryParse(value[..colon], out zeroFrac) && int.TryParse(value[(colon + 1)..], out maxZero))
+                    if (Utf8CliParser.TryParseDouble(value[..colon], out zeroFrac) && Utf8CliParser.TryParseInt32(value[(colon + 1)..], out maxZero))
                     {
                         _zeroFracConj = zeroFrac;
                         _maxZeroConj = maxZero;
@@ -348,32 +336,23 @@ internal static class Program
 
             else if (arg.StartsWith("--gpu-prime-threads=", StringComparison.OrdinalIgnoreCase))
             {
-                // TODO: Convert this int.Parse to the Utf8Parser-based helper to keep CLI option parsing
-                // allocation-free in the hot startup path.
-                gpuPrimeThreads = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                gpuPrimeThreads = Math.Max(1, Utf8CliParser.ParseInt32(arg.AsSpan(arg.IndexOf('=') + 1)));
             }
             else if (arg.StartsWith("--gpu-prime-batch=", StringComparison.OrdinalIgnoreCase))
             {
-                // TODO: Swap int.Parse for Utf8Parser to align with the faster CLI numeric parsing path.
-                gpuPrimeBatch = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                gpuPrimeBatch = Math.Max(1, Utf8CliParser.ParseInt32(arg.AsSpan(arg.IndexOf('=') + 1)));
             }
             else if (arg.StartsWith("--ll-slice=", StringComparison.OrdinalIgnoreCase))
             {
-                // TODO: Replace int.Parse with Utf8Parser-based parsing to eliminate temporary strings when
-                // reading slice configuration.
-                sliceSize = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                sliceSize = Math.Max(1, Utf8CliParser.ParseInt32(arg.AsSpan(arg.IndexOf('=') + 1)));
             }
             else if (arg.StartsWith("--gpu-scan-batch=", StringComparison.OrdinalIgnoreCase))
             {
-                // TODO: Use the Utf8Parser-based fast path here to match the other CLI numeric parsing
-                // optimizations we plan to adopt.
-                scanBatchSize = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                scanBatchSize = Math.Max(1, Utf8CliParser.ParseInt32(arg.AsSpan(arg.IndexOf('=') + 1)));
             }
             else if (arg.StartsWith("--block-size=", StringComparison.OrdinalIgnoreCase))
             {
-                // TODO: Inline the Utf8Parser-based int reader here once shared CLI parsing utilities land so
-                // we avoid repeated string allocations.
-                blockSize = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                blockSize = Math.Max(1, Utf8CliParser.ParseInt32(arg.AsSpan(arg.IndexOf('=') + 1)));
             }
             else if (arg.StartsWith("--filter-p=", StringComparison.OrdinalIgnoreCase))
             {
@@ -381,9 +360,7 @@ internal static class Program
             }
             else if (arg.StartsWith("--write-batch-size=", StringComparison.OrdinalIgnoreCase))
             {
-                // TODO: Replace int.Parse with the shared Utf8Parser fast-path to keep hot CLI option parsing
-                // allocation-free.
-                _writeBatchSize = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                _writeBatchSize = Math.Max(1, Utf8CliParser.ParseInt32(arg.AsSpan(arg.IndexOf('=') + 1)));
             }
             if (arg.StartsWith("--divisor-cycles="))
             {
@@ -395,9 +372,7 @@ internal static class Program
             }
             else if (arg.StartsWith("--divisor-cycles-batch=", StringComparison.OrdinalIgnoreCase))
             {
-                // TODO: Convert this int.Parse to Utf8Parser once the optimized CLI parsing helper is shared
-                // across tools.
-                cyclesBatchSize = Math.Max(1, int.Parse(arg.AsSpan(arg.IndexOf('=') + 1)));
+                cyclesBatchSize = Math.Max(1, Utf8CliParser.ParseInt32(arg.AsSpan(arg.IndexOf('=') + 1)));
             }
             else if (arg.Equals("--divisor-cycles-continue", StringComparison.OrdinalIgnoreCase))
             {
@@ -507,15 +482,15 @@ internal static class Program
         _useByDivisorMode = useByDivisor;
         if (useBitTransform)
         {
-            _transformP = &TransformPBit;
+            _transformMode = PrimeTransformMode.Bit;
         }
         else if (useResidue)
         {
-            _transformP = &TransformPAdd;
+            _transformMode = PrimeTransformMode.Add;
         }
         else
         {
-            _transformP = &TransformPAddPrimes;
+            _transformMode = PrimeTransformMode.AddPrimes;
         }
         PResidue = new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, initialNumber: currentP, initialized: true), trackAllValues: true);
         PrimeTesters = new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true);
@@ -530,7 +505,6 @@ internal static class Program
                                             useIncremental: !useLucas,
                                             useOrderCache: false,
                                             kernelType: kernelType,
-                                            useModuloWorkaround: useModuloWorkaround,
                                             useOrder: useOrder,
                                             useGpuLucas: mersenneOnGpu,
                                             useGpuScan: mersenneOnGpu,
@@ -573,7 +547,7 @@ internal static class Program
             // Skip the already processed range below 138 million
             while (currentP < 138_000_000UL && !Volatile.Read(ref _limitReached))
             {
-                currentP = _transformP(currentP, ref remainder);
+                currentP = AdvancePrime(currentP, ref remainder);
             }
 
             if (Volatile.Read(ref _limitReached))
@@ -594,7 +568,6 @@ internal static class Program
                         useByDivisor,
                         mersenneOnGpu,
         useOrder,
-        useModuloWorkaround,
         _useGcdFilter,
         NttGpuMath.GpuTransformBackend,
         gpuPrimeThreads,
@@ -763,7 +736,15 @@ internal static class Program
 
         if (_useByDivisorMode)
         {
-            RunByDivisorMode(byDivisorCandidates, threadCount);
+            MersenneNumberDivisorByDivisorTester.Run(
+                    byDivisorCandidates,
+                    _byDivisorTester!,
+                    _byDivisorPreviousResults,
+                    _byDivisorStartPrime,
+                    static () => _lastCompositeP = true,
+                    static () => _lastCompositeP = false,
+                    PrintResult,
+                    threadCount);
             FlushBuffer();
             StringBuilderPool.Return(_outputBuilder!);
             if (stopwatch is not null)
@@ -804,10 +785,8 @@ internal static class Program
                 int count, j;
                 ulong p;
                 bool passedAllTests, searchedMersenne, detailedCheck;
-                // TODO: Rent this buffer from ArrayPool once the pooled prime-block allocator lands so worker
-                // threads stop allocating fresh arrays for every reservation.
-                ulong[] buffer = new ulong[blockSize];
-                bool reachedMax = false;
+                ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
+                ulong[] buffer = pool.Rent(blockSize);
                 while (!Volatile.Read(ref _limitReached))
                 {
                     count = ReserveBlock(buffer, blockSize);
@@ -824,41 +803,43 @@ internal static class Program
                             passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
                             PrintResult(p, searchedMersenne, detailedCheck, passedAllTests);
                         }
+
+                        continue;
                     }
-                    else
+
+                    bool reachedMax = false;
+
+                    for (j = 0; j < count; j++)
                     {
-                        reachedMax = false;
+                        p = buffer[j];
 
-                        for (j = 0; j < count; j++)
+                        if (Volatile.Read(ref _limitReached) && p > maxP)
                         {
-                            p = buffer[j];
-
-                            if (Volatile.Read(ref _limitReached) && p > maxP)
-                            {
-                                break;
-                            }
-
-                            if (useFilter && !filter.Contains(p))
-                            {
-                                continue;
-                            }
-
-                            passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
-                            PrintResult(p, searchedMersenne, detailedCheck, passedAllTests);
-
-                            if (p == maxP)
-                            {
-                                reachedMax = true;
-                            }
-                        }
-
-                        if (reachedMax)
-                        {
-                            Volatile.Write(ref _limitReached, true);
                             break;
                         }
+
+                        if (!filter.Contains(p))
+                        {
+                            continue;
+                        }
+
+                        passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
+                        PrintResult(p, searchedMersenne, detailedCheck, passedAllTests);
+
+                        if (p == maxP)
+                        {
+                            reachedMax = true;
+                        }
+                    }
+
+                    if (reachedMax)
+                    {
+                        Volatile.Write(ref _limitReached, true);
+                        break;
                     }
                 }
+
+                pool.Return(buffer);
             });
         }
 
@@ -944,9 +925,6 @@ internal static class Program
             {
                 continue;
             }
-
-            // TODO: Swap this char-by-char parser for the benchmarked Utf8Parser-based fast-path once
-            // the CLI plumbing accepts spans to avoid redundant range checks while collecting primes.
             int index = 0;
             while (index < span.Length)
             {
@@ -962,10 +940,7 @@ internal static class Program
                 {
                     index++;
                 }
-
-                // TODO: Swap ulong.TryParse for the Utf8Parser-based fast path once the shared span helpers
-                // arrive so by-divisor candidate loading avoids per-value string allocations.
-                if (ulong.TryParse(span[start..index], NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsed))
+                if (Utf8CliParser.TryParseUInt64(span[start..index], out ulong parsed))
                 {
                     if (!maxPrimeConfigured || (UInt128)parsed <= maxPrimeLimit)
                     {
@@ -982,28 +957,7 @@ internal static class Program
         return candidates;
     }
 
-    private static void RunByDivisorMode(List<ulong> candidates, int threadCount)
-    {
-        // The CPU by-divisor execution initializes the tester during startup, so the guard below never triggers.
-        // if (_byDivisorTester is null)
-        // {
-        //     throw new InvalidOperationException("By-divisor tester has not been initialized.");
-        // }
-
-        // TODO: Inline this helper by invoking MersenneNumberDivisorByDivisorTester.Run directly at call sites so
-        // the CLI avoids this extra frame during the hot composite-reporting path.
-        MersenneNumberDivisorByDivisorTester.Run(
-                candidates,
-                _byDivisorTester!,
-                _byDivisorPreviousResults,
-                _byDivisorStartPrime,
-                static () => _lastCompositeP = true,
-                static () => _lastCompositeP = false,
-                PrintResult,
-                threadCount);
-    }
-
-    private static unsafe void LoadResultsFile(string resultsFileName, Action<ulong, bool, bool> lineProcessorAction)
+    private static void LoadResultsFile(string resultsFileName, Action<ulong, bool, bool> lineProcessorAction)
     {
         using FileStream readStream = new(resultsFileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         using StreamReader reader = new(readStream);
@@ -1037,10 +991,7 @@ internal static class Program
             {
                 continue;
             }
-
-            // TODO: Replace this ulong.Parse call with the Utf8Parser-based span fast-path we benchmarked so results
-            // reload skips the slower string allocation and culture-aware parsing.
-            parsedP = ulong.Parse(span[..first]);
+            parsedP = Utf8CliParser.ParseUInt64(span[..first]);
             span = span[(first + 1)..];
             second = span.IndexOf(',');
             if (second < 0)
@@ -1058,14 +1009,13 @@ internal static class Program
             detailedSpan = span[..third];
             passedAllTestsSpan = span[(third + 1)..];
 
-            // TODO: Replace these bool.TryParse calls with the span-based fast path once we expose the
-            // Utf8Parser-powered helpers so results reload avoids per-line string allocations for booleans.
-            if (bool.TryParse(detailedSpan, out detailed) && bool.TryParse(passedAllTestsSpan, out passedAllTests))
+            if (Utf8CliParser.TryParseBoolean(detailedSpan, out detailed) && Utf8CliParser.TryParseBoolean(passedAllTestsSpan, out passedAllTests))
             {
                 lineProcessorAction(parsedP, detailed, passedAllTests);
             }
         }
     }
+
 
     private static void PrintHelp()
     {
@@ -1102,7 +1052,6 @@ internal static class Program
         Console.WriteLine("  --divisor-cycles-continue  continue divisor cycles generation");
         Console.WriteLine("  --divisor-cycles-limit=<value> cycle search iterations when --mersenne=divisor");
         Console.WriteLine("  --use-order            test primality via q order");
-        Console.WriteLine("  --workaround-mod       avoid '%' operator on the GPU");
         // mod-automaton removed
         Console.WriteLine("  --filter-p=<path>      process only p from previous run results (required for --mersenne=bydivisor)");
         Console.WriteLine("  --write-batch-size=<value> overwrite frequency of disk writes (default 100 lines)");
@@ -1110,7 +1059,7 @@ internal static class Program
         Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
     }
 
-    private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool useByDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useModWorkaround, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
+    private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool useByDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
     {
         string inc = bitInc ? "bit" : "add";
         string mers = useDivisorFlag
@@ -1124,15 +1073,22 @@ internal static class Program
         string red = reduction switch { ModReductionMode.Mont64 => "mont64", ModReductionMode.Barrett128 => "barrett128", ModReductionMode.GpuUInt128 => "uint128", _ => "auto" };
         string order = useOrder ? "order-on" : "order-off";
         string gcd = useGcd ? "gcd-on" : "gcd-off";
-        string work = useModWorkaround ? "modfix-on" : "modfix-off";
         // TODO: Replace this string interpolation with the pooled ValueStringBuilder pipeline from the
         // results-writer benchmarks so filename generation reuses the zero-allocation formatter once
         // we consolidate output paths.
-        return $"even_perfect_bit_scan_inc-{inc}_thr-{threads}_blk-{block}_mers-{mers}_mersdev-{mersenneDevice}_ntt-{ntt}_red-{red}_primesdev-{primesDevice}_{order}_orderdev-{orderDevice}_{gcd}_{work}_gputh-{gpuPrimeThreads}_llslice-{llSlice}_scanb-{gpuScanBatch}_warm-{warmupLimit}.csv";
+        return $"even_perfect_bit_scan_inc-{inc}_thr-{threads}_blk-{block}_mers-{mers}_mersdev-{mersenneDevice}_ntt-{ntt}_red-{red}_primesdev-{primesDevice}_{order}_orderdev-{orderDevice}_{gcd}_gputh-{gpuPrimeThreads}_llslice-{llSlice}_scanb-{gpuScanBatch}_warm-{warmupLimit}.csv";
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe int ReserveBlock(ulong[] buffer, int blockSize)
+    private static ulong AdvancePrime(ulong value, ref ulong remainder) => _transformMode switch
+    {
+        PrimeTransformMode.Bit => TransformPBit(value, ref remainder),
+        PrimeTransformMode.Add => TransformPAdd(value, ref remainder),
+        _ => TransformPAddPrimes(value, ref remainder),
+    };
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ReserveBlock(ulong[] buffer, int blockSize)
     {
         Span<ulong> bufferSpan = new(buffer);
         ulong p, remainder;
@@ -1145,12 +1101,34 @@ internal static class Program
             remainder = ((ulong)state) & 7UL;
 
             count = 0;
-            while (count < blockSize && !Volatile.Read(ref _limitReached))
+            switch (_transformMode)
             {
-                bufferSpan[count++] = p;
-                // TODO: Inline the fast-path transform here once we collapse the delegate* indirection so
-                // block reservations stop paying the extra jump highlighted in the prime-stepping benchmarks.
-                p = _transformP(p, ref remainder);
+                case PrimeTransformMode.Bit:
+                    while (count < blockSize && !Volatile.Read(ref _limitReached))
+                    {
+                        bufferSpan[count++] = p;
+                        p = TransformPBit(p, ref remainder);
+                    }
+
+                    break;
+
+                case PrimeTransformMode.Add:
+                    while (count < blockSize && !Volatile.Read(ref _limitReached))
+                    {
+                        bufferSpan[count++] = p;
+                        p = TransformPAdd(p, ref remainder);
+                    }
+
+                    break;
+
+                default:
+                    while (count < blockSize && !Volatile.Read(ref _limitReached))
+                    {
+                        bufferSpan[count++] = p;
+                        p = TransformPAddPrimes(p, ref remainder);
+                    }
+
+                    break;
             }
 
             if (count == 0)
@@ -1542,12 +1520,6 @@ internal static class Program
             advancePrime = candidate > primeCandidate;
         }
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit) =>
-            // TODO: Remove this pass-through once callers can provide the full out parameters
-            // directly; shaving this hop keeps the hot candidate filter on the shortest path.
-            IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out _, out _);
 
     internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck)
     {
