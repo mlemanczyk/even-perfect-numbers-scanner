@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core;
@@ -9,7 +10,7 @@ public static partial class ULongExtensions
         public static ulong Pow2MontgomeryModWindowedCpu(this ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
         {
                 ulong modulus = divisor.Modulus;
-                // This should never happen in production code. If it does, we need to fix it.
+                // This should never happen in production code.
                 // if (exponent == 0UL)
                 // {
                 //     return keepMontgomery ? divisor.MontgomeryOne : 1UL % modulus;
@@ -22,8 +23,8 @@ public static partial class ULongExtensions
                 //     return Pow2MontgomeryModSingleBit(exponent, divisor, keepMontgomery);
                 // }
 
-                int bitLength = GetPortableBitLength(exponent);
-                int windowSize = GetWindowSize(bitLength);
+                int bitLength = GetPortableBitLengthCpu(exponent);
+                int windowSize = GetWindowSizeCpu(bitLength);
                 int oddPowerCount = 1 << (windowSize - 1);
 
                 ulong result = divisor.MontgomeryOne;
@@ -219,4 +220,48 @@ public static partial class ULongExtensions
                 order++;
                 return pow == 1UL;
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int GetPortableBitLengthCpu(ulong value)
+        {
+                // Keep this commented out. It will never happen in production code.
+                // if (value == 0UL)
+                // {
+                //         return 0;
+                // }
+
+                return 64 - BitOperations.LeadingZeroCount(value);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int GetWindowSizeCpu(int bitLength)
+        {
+                if (bitLength <= 6)
+                {
+                        return Math.Max(bitLength, 1);
+                }
+
+                if (bitLength <= 23)
+                {
+                        return 4;
+                }
+
+                if (bitLength <= 79)
+                {
+                        return 5;
+                }
+
+                if (bitLength <= 239)
+                {
+                        return 6;
+                }
+
+                if (bitLength <= 671)
+                {
+                        return 7;
+                }
+
+                return Pow2WindowSize;
+        }
+
 }

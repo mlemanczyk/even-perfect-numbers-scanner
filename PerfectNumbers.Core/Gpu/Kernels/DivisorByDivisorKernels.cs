@@ -1,5 +1,6 @@
 using ILGPU;
 using ILGPU.Runtime;
+using PerfectNumbers.Core;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -16,7 +17,7 @@ internal static class DivisorByDivisorKernels
         }
 
         ulong exponent = exponents[index];
-        hits[index] = ULongExtensions.Pow2MontgomeryModWindowedKernel(exponent, divisor, keepMontgomery: false) == 1UL ? (byte)1 : (byte)0;
+        hits[index] = ULongExtensions.Pow2MontgomeryModWindowedGpu(divisor, exponent, keepMontgomery: false) == 1UL ? (byte)1 : (byte)0;
     }
 
     public static void ComputeRemainderDeltasKernel(Index1D index, ArrayView<ulong> gaps, ArrayView<byte> deltas, byte modulus)
@@ -148,6 +149,6 @@ internal static class DivisorByDivisorKernels
 
         ulong exponent = exponents[index];
 
-        results[index] = ULongExtensions.Pow2MontgomeryModWindowedKernel(exponent, divisor, keepMontgomery: true);
+        results[index] = ULongExtensions.Pow2MontgomeryModWindowedGpu(divisor, exponent, keepMontgomery: true);
     }
 }

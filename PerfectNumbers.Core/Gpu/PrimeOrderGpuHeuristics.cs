@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
 using System.Numerics;
+using PerfectNumbers.Core;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using ILGPU.Runtime.OpenCL;
@@ -651,7 +652,7 @@ internal static partial class PrimeOrderGpuHeuristics
             return 0UL;
         }
 
-        return ULongExtensions.Pow2MontgomeryModWindowedKernel(exponent, divisorData, keepMontgomery: false);
+        return ULongExtensions.Pow2MontgomeryModWindowedGpu(divisorData, exponent, keepMontgomery: false);
     }
 
     private static Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> GetPow2ModKernel(Accelerator accelerator)
