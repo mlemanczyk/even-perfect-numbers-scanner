@@ -40,6 +40,7 @@ public sealed class UnboundedTaskScheduler : TaskScheduler
         lock (InstanceLock)
         {
             Volatile.Write(ref _configuredThreadCount, normalizedThreadCount);
+            PrimeOrderCalculator.PrimeOrderSearchConfig.ConfigureHeuristicDefault(normalizedThreadCount);
 
             if (_instance is null)
             {
