@@ -858,13 +858,13 @@ internal static partial class PrimeOrderCalculator
 					if (currentTimestamp > deadlineTimestamp)
 					{
 						pollardRhoDeadlineReached = true;
-						pending.Add(new PendingEntry(composite, knownComposite: false).WithPrimality(false));
+						pending.Add(new PendingEntry(composite, knownComposite: true));
 						continue;
 					}
 
 					if (!TryPollardRho(composite, deadlineTimestamp, out ulong factor))
 					{
-						pending.Add(new PendingEntry(composite, knownComposite: false).WithPrimality(false));
+						pending.Add(new PendingEntry(composite, knownComposite: true));
 						continue;
 					}
 

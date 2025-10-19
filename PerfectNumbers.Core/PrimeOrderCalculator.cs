@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace PerfectNumbers.Core;
 
 internal static partial class PrimeOrderCalculator
@@ -14,10 +16,8 @@ internal static partial class PrimeOrderCalculator
 
 		public static PrimeOrderSearchConfig HeuristicDefault
 		{
-				get
-				{
-					return _heuristicDefault;
-				}
+				[MethodImpl(MethodImplOptions.AggressiveInlining)]
+				get => _heuristicDefault;
 		}
 
 		public static readonly PrimeOrderSearchConfig StrictDefault = new(smallFactorLimit: 1_000_000, pollardRhoMilliseconds: 0, maxPowChecks: 0, PrimeOrderMode.Strict);
