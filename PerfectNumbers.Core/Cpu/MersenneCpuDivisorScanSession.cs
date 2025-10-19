@@ -27,7 +27,7 @@ internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDi
         MontgomeryDivisorData cachedData = divisorData;
         if (cachedData.Modulus != divisor)
         {
-            cachedData = MontgomeryDivisorDataCache.Get(divisor);
+            cachedData = MontgomeryDivisorData.FromModulus(divisor);
         }
 
         if (divisorCycle == 0UL)

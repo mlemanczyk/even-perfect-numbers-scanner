@@ -187,7 +187,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
             if (admissible && (remainder8 == 1 || remainder8 == 7) && remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0)
             {
-                MontgomeryDivisorData divisorData = MontgomeryDivisorDataCache.Get(candidate);
+                MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(candidate);
                 ulong divisorCycle;
                 // Divisors generated from 2 * k * p + 1 exceed the small-cycle snapshot when p >= 138,000,000, so the short path below never runs.
                 // if (candidate <= PerfectNumberConstants.MaxQForDivisorCycles)
@@ -209,7 +209,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                             out ulong computedCycle,
                             out bool primeOrderFailed) || computedCycle == 0UL)
                     {
-                        divisorCycle = cycleCache.GetCycleLength(candidate, skipPrimeOrderHeuristic: primeOrderFailed);
+                        // Divisors produced by 2 * k * p + 1 always exceed PerfectNumberConstants.MaxQForDivisorCycles
+                        // for the exponents scanned here, so skip the unused cache fallback and compute directly.
+                        divisorCycle = MersenneDivisorCycles.CalculateCycleLength(
+                            candidate,
+                            divisorData,
+                            skipPrimeOrderHeuristic: primeOrderFailed);
                     }
                     else
                     {
