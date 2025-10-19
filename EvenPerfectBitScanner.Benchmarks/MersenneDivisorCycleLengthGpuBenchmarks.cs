@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
+using PerfectNumbers.Core;
 using BenchmarkDotNet.Jobs;
 
 namespace EvenPerfectBitScanner.Benchmarks;
@@ -183,10 +184,11 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong CalculateCycleLengthGpu_Current(ulong divisor)
     {
-        if ((divisor & (divisor - 1UL)) == 0UL)
-        {
-            return 1UL;
-        }
+        // EvenPerfectBitScanner never routes power-of-two divisors here; keep the guard disabled outside tests and benchmarks.
+        // if ((divisor & (divisor - 1UL)) == 0UL)
+        // {
+        //     return 1UL;
+        // }
 
         ulong order = 1UL;
         ulong pow = 2UL;
@@ -208,10 +210,11 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong CalculateCycleLengthGpu_DoWhile(ulong divisor)
     {
-        if ((divisor & (divisor - 1UL)) == 0UL)
-        {
-            return 1UL;
-        }
+        // EvenPerfectBitScanner never routes power-of-two divisors here; keep the guard disabled outside tests and benchmarks.
+        // if ((divisor & (divisor - 1UL)) == 0UL)
+        // {
+        //     return 1UL;
+        // }
 
         ulong order = 1UL;
         ulong pow = 2UL;
@@ -236,10 +239,11 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong CalculateCycleLengthGpu_DoubleSubtract(ulong divisor)
     {
-        if ((divisor & (divisor - 1UL)) == 0UL)
-        {
-            return 1UL;
-        }
+        // EvenPerfectBitScanner never routes power-of-two divisors here; keep the guard disabled outside tests and benchmarks.
+        // if ((divisor & (divisor - 1UL)) == 0UL)
+        // {
+        //     return 1UL;
+        // }
 
         ulong order = 1UL;
         ulong pow = 2UL;
@@ -265,10 +269,11 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong CalculateCycleLengthGpu_UInt128Modulo(ulong divisor)
     {
-        if ((divisor & (divisor - 1UL)) == 0UL)
-        {
-            return 1UL;
-        }
+        // EvenPerfectBitScanner never routes power-of-two divisors here; keep the guard disabled outside tests and benchmarks.
+        // if ((divisor & (divisor - 1UL)) == 0UL)
+        // {
+        //     return 1UL;
+        // }
 
         ulong order = 1UL;
         ulong pow = 2UL;
@@ -287,22 +292,23 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong CalculateCycleLengthGpu_UnrolledPair(ulong divisor)
     {
-        if ((divisor & (divisor - 1UL)) == 0UL)
-        {
-            return 1UL;
-        }
+        // EvenPerfectBitScanner never routes power-of-two divisors here; keep the guard disabled outside tests and benchmarks.
+        // if ((divisor & (divisor - 1UL)) == 0UL)
+        // {
+        //     return 1UL;
+        // }
 
         ulong order = 1UL;
         ulong pow = 2UL;
 
         while (true)
         {
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
@@ -312,32 +318,33 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong CalculateCycleLengthGpu_UnrolledQuad(ulong divisor)
     {
-        if ((divisor & (divisor - 1UL)) == 0UL)
-        {
-            return 1UL;
-        }
+        // EvenPerfectBitScanner never routes power-of-two divisors here; keep the guard disabled outside tests and benchmarks.
+        // if ((divisor & (divisor - 1UL)) == 0UL)
+        // {
+        //     return 1UL;
+        // }
 
         ulong order = 1UL;
         ulong pow = 2UL;
 
         while (true)
         {
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
@@ -347,52 +354,53 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong CalculateCycleLengthGpu_UnrolledOct(ulong divisor)
     {
-        if ((divisor & (divisor - 1UL)) == 0UL)
-        {
-            return 1UL;
-        }
+        // EvenPerfectBitScanner never routes power-of-two divisors here; keep the guard disabled outside tests and benchmarks.
+        // if ((divisor & (divisor - 1UL)) == 0UL)
+        // {
+        //     return 1UL;
+        // }
 
         ulong order = 1UL;
         ulong pow = 2UL;
 
         while (true)
         {
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
@@ -402,101 +410,101 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong CalculateCycleLengthGpu_UnrolledHex(ulong divisor)
     {
-        if ((divisor & (divisor - 1UL)) == 0UL)
-        {
-            return 1UL;
-        }
+        // EvenPerfectBitScanner never routes power-of-two divisors here; keep the guard disabled outside tests and benchmarks.
+        // if ((divisor & (divisor - 1UL)) == 0UL)
+        // {
+        //     return 1UL;
+        // }
 
         ulong order = 1UL;
         ulong pow = 2UL;
 
         while (true)
         {
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
 
-            if (Step(ref pow, divisor, ref order))
+            if (AdvanceMersenneDivisorCycleStep(ref pow, divisor, ref order))
             {
                 return order;
             }
-
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool Step(ref ulong pow, ulong divisor, ref ulong order)
+    private static bool AdvanceMersenneDivisorCycleStep(ref ulong pow, ulong divisor, ref ulong order)
     {
         pow += pow;
         if (pow >= divisor)
@@ -507,4 +515,5 @@ public class MersenneDivisorCycleLengthGpuBenchmarks
         order++;
         return pow == 1UL;
     }
+
 }
