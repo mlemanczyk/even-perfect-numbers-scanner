@@ -757,6 +757,27 @@ internal static partial class PrimeOrderCalculator
 		Stack<ulong>? compositeStack = null;
 		PartialFactorResult result;
 
+		Dictionary<ulong, bool>? localPrimalityCache = null;
+
+		bool EvaluatePrimality(ulong candidate)
+		{
+			Dictionary<ulong, bool>? cache = localPrimalityCache;
+			if (cache is not null && cache.TryGetValue(candidate, out bool cachedValue))
+			{
+				return cachedValue;
+			}
+
+			bool computed = GetOrComputePrimality(candidate);
+			if (!computed)
+			{
+				cache ??= ThreadStaticPools.RentUlongBoolDictionary(4);
+				cache[candidate] = false;
+				localPrimalityCache = cache;
+			}
+
+			return computed;
+		}
+
 		if (!gpuFactored)
 		{
 			// We don't need to worry about leftovers, because we always use indexes within the calculated counts
@@ -821,7 +842,7 @@ internal static partial class PrimeOrderCalculator
 					// 	continue;
 					// }
 
-					bool isPrime = GetOrComputePrimality(composite);
+					bool isPrime = EvaluatePrimality(composite);
 
 					if (isPrime)
 					{
@@ -868,7 +889,7 @@ internal static partial class PrimeOrderCalculator
 				continue;
 			}
 
-			bool isPrime = GetOrComputePrimality(composite);
+			bool isPrime = EvaluatePrimality(composite);
 
 			if (isPrime)
 			{
@@ -894,7 +915,7 @@ internal static partial class PrimeOrderCalculator
 		}
 		else
 		{
-			cofactorIsPrime = GetOrComputePrimality(cofactor);
+			cofactorIsPrime = EvaluatePrimality(cofactor);
 		}
 
 		ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
@@ -967,6 +988,11 @@ internal static partial class PrimeOrderCalculator
 	ReturnResult:
 		// ThreadStaticPools.UlongPool.Return(primeSlotsArray);
 		// ThreadStaticPools.IntPool.Return(exponentSlotsArray);
+
+		if (localPrimalityCache is not null)
+		{
+			ThreadStaticPools.ReturnUlongBoolDictionary(localPrimalityCache);
+		}
 
 		if (counts is not null)
 		{

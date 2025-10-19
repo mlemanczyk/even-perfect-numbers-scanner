@@ -279,6 +279,48 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
+        private static List<Dictionary<ulong, bool>>? _ulongBoolDictionaryPool;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Dictionary<ulong, bool> RentUlongBoolDictionary(int capacityHint)
+        {
+            List<Dictionary<ulong, bool>>? pool = _ulongBoolDictionaryPool;
+            if (pool is not null && pool.Count > 0)
+            {
+                int lastIndex = pool.Count - 1;
+                Dictionary<ulong, bool> dictionary = pool[lastIndex];
+                pool.RemoveAt(lastIndex);
+                if (dictionary.Count > 0)
+                {
+                    dictionary.Clear();
+                }
+
+                if (dictionary.Count < capacityHint)
+                {
+                    dictionary.EnsureCapacity(capacityHint);
+                }
+
+                return dictionary;
+            }
+
+            return new Dictionary<ulong, bool>(capacityHint);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void ReturnUlongBoolDictionary(Dictionary<ulong, bool> dictionary)
+        {
+            List<Dictionary<ulong, bool>>? pool = _ulongBoolDictionaryPool;
+            if (pool is null)
+            {
+                pool = new List<Dictionary<ulong, bool>>(4);
+                _ulongBoolDictionaryPool = pool;
+            }
+
+            dictionary.Clear();
+            pool.Add(dictionary);
+        }
+
+        [ThreadStatic]
         private static Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? _mersenneFactorCacheDictionary;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
