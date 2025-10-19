@@ -55,6 +55,7 @@ internal static class Program
 			ulong remainder = currentP % 6UL;
 			bool startPrimeProvided = _cliArguments.StartPrimeProvided;
 			int threadCount = Math.Max(1, _cliArguments.ThreadCount);
+			UnboundedTaskScheduler.ConfigureThreadCount(threadCount);
 			int blockSize = Math.Max(1, _cliArguments.BlockSize);
 			int gpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads);
 			int gpuPrimeBatch = Math.Max(1, _cliArguments.GpuPrimeBatch);
