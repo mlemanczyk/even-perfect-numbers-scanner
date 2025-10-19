@@ -1,5 +1,4 @@
 Arithmetic Helpers & Bit Statistics
-- EvenPerfectBitScanner/Program.cs:1483: Remove the CountOnes wrapper once callers invoke BitOperations.PopCount directly.
 - EvenPerfectBitScanner/Program.cs:1785: Replace the byte-by-byte zero statistics scan with the lookup-table collector validated in the BitStats benchmarks.
 - PerfectNumbers.Core/UInt128Extensions.cs:15: Replace the hand-rolled binary GCD with the subtract-free ladder from GpuUInt128BinaryGcdBenchmarks so wide operands reuse the optimized helper.
 
