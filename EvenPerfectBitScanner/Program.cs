@@ -398,6 +398,7 @@ internal static class Program
 			{
 				_testTargetPrimeCount = testPrimeCandidateLimit;
 			}
+
 			CalculationResultHandler.InitializeOutputBuffer();
 
 			// Limit GPU concurrency only for prime checks (LL/NTT & GPU order scans).
@@ -424,6 +425,7 @@ internal static class Program
 						static () => _lastCompositeP = false,
 						static (candidate, searchedMersenne, detailedCheck, passedAllTests) => CalculationResultHandler.HandleResult(candidate, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP),
 						threadCount);
+						
 				CalculationResultHandler.FlushBuffer();
 				CalculationResultHandler.ReleaseOutputBuffer();
 				if (stopwatch is not null)
@@ -653,5 +655,4 @@ internal static class Program
 		detailedCheck = MersenneTesters.Value!.IsMersennePrime(p);
 		return detailedCheck;
 	}
-
-	}
+}
