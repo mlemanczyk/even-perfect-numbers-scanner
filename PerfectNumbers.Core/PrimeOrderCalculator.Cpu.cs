@@ -36,7 +36,8 @@ internal static partial class PrimeOrderCalculator
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public PendingEntry WithPrimality(bool isPrime)
 		{
-			return new PendingEntry(Value, KnownComposite, true, isPrime);
+			bool knownComposite = KnownComposite || !isPrime;
+			return new PendingEntry(Value, knownComposite, true, isPrime);
 		}
 	}
 
@@ -857,13 +858,13 @@ internal static partial class PrimeOrderCalculator
 					if (currentTimestamp > deadlineTimestamp)
 					{
 						pollardRhoDeadlineReached = true;
-						pending.Add(new PendingEntry(composite, knownComposite: true));
+						pending.Add(new PendingEntry(composite, knownComposite: false).WithPrimality(false));
 						continue;
 					}
 
 					if (!TryPollardRho(composite, deadlineTimestamp, out ulong factor))
 					{
-						pending.Add(new PendingEntry(composite, knownComposite: true));
+						pending.Add(new PendingEntry(composite, knownComposite: false).WithPrimality(false));
 						continue;
 					}
 
