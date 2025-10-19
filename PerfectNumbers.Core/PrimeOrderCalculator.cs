@@ -10,7 +10,7 @@ internal static partial class PrimeOrderCalculator
 
 	internal readonly struct PrimeOrderSearchConfig(uint smallFactorLimit, int pollardRhoMilliseconds, int maxPowChecks, PrimeOrderMode mode)
 	{
-		public static readonly PrimeOrderSearchConfig HeuristicDefault = new(smallFactorLimit: 4_000_000, pollardRhoMilliseconds: 24 * 40960, maxPowChecks: 24, PrimeOrderMode.Heuristic);
+		public static readonly PrimeOrderSearchConfig HeuristicDefault = new(smallFactorLimit: 100_000, pollardRhoMilliseconds: 24, maxPowChecks: 24, PrimeOrderMode.Heuristic);
 		public static readonly PrimeOrderSearchConfig StrictDefault = new(smallFactorLimit: 1_000_000, pollardRhoMilliseconds: 0, maxPowChecks: 0, PrimeOrderMode.Strict);
 
 		public readonly uint SmallFactorLimit = smallFactorLimit;
