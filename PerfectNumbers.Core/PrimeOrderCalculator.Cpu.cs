@@ -10,10 +10,35 @@ namespace PerfectNumbers.Core;
 internal static partial class PrimeOrderCalculator
 {
 
-	internal readonly struct PendingEntry(ulong value, bool knownComposite)
+	internal readonly struct PendingEntry
 	{
-		public readonly ulong Value = value;
-		public readonly bool KnownComposite = knownComposite;
+		public readonly ulong Value;
+		public readonly bool KnownComposite;
+		public readonly bool HasKnownPrimality;
+		public readonly bool IsPrime;
+
+		public PendingEntry(ulong value, bool knownComposite)
+		{
+			Value = value;
+			KnownComposite = knownComposite;
+			HasKnownPrimality = knownComposite;
+			IsPrime = false;
+		}
+
+		private PendingEntry(ulong value, bool knownComposite, bool hasKnownPrimality, bool isPrime)
+		{
+			Value = value;
+			KnownComposite = knownComposite;
+			HasKnownPrimality = hasKnownPrimality;
+			IsPrime = isPrime;
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public PendingEntry WithPrimality(bool isPrime)
+		{
+			bool knownComposite = KnownComposite || !isPrime;
+			return new PendingEntry(Value, knownComposite, true, isPrime);
+		}
 	}
 
 	private static ulong CalculateInternal(ulong prime, ulong? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
@@ -720,6 +745,7 @@ internal static partial class PrimeOrderCalculator
 		return isPrime;
 	}
 
+
 	private static PartialFactorResult PartialFactor(ulong value, in PrimeOrderSearchConfig config)
 	{
 		if (value <= 1UL)
@@ -756,7 +782,6 @@ internal static partial class PrimeOrderCalculator
 		List<PendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(2);
 		Stack<ulong>? compositeStack = null;
 		PartialFactorResult result;
-
 		if (!gpuFactored)
 		{
 			// We don't need to worry about leftovers, because we always use indexes within the calculated counts
@@ -829,6 +854,14 @@ internal static partial class PrimeOrderCalculator
 						continue;
 					}
 
+					long currentTimestamp = Stopwatch.GetTimestamp();
+					if (currentTimestamp > deadlineTimestamp)
+					{
+						pollardRhoDeadlineReached = true;
+						pending.Add(new PendingEntry(composite, knownComposite: true));
+						continue;
+					}
+
 					if (!TryPollardRho(composite, deadlineTimestamp, out ulong factor))
 					{
 						pending.Add(new PendingEntry(composite, knownComposite: true));
@@ -840,7 +873,10 @@ internal static partial class PrimeOrderCalculator
 					compositeStack.Push(quotient);
 				}
 
-				pollardRhoDeadlineReached = Stopwatch.GetTimestamp() > deadlineTimestamp;
+				if (!pollardRhoDeadlineReached)
+				{
+					pollardRhoDeadlineReached = Stopwatch.GetTimestamp() > deadlineTimestamp;
+				}
 			}
 
 			if (pollardRhoDeadlineReached)
@@ -868,9 +904,14 @@ internal static partial class PrimeOrderCalculator
 				continue;
 			}
 
-			bool isPrime = GetOrComputePrimality(composite);
+			if (!entry.HasKnownPrimality)
+			{
+				bool isPrime = GetOrComputePrimality(composite);
+				entry = entry.WithPrimality(isPrime);
+				pending[index] = entry;
+			}
 
-			if (isPrime)
+			if (entry.IsPrime)
 			{
 				AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
 			}
@@ -967,6 +1008,7 @@ internal static partial class PrimeOrderCalculator
 	ReturnResult:
 		// ThreadStaticPools.UlongPool.Return(primeSlotsArray);
 		// ThreadStaticPools.IntPool.Return(exponentSlotsArray);
+
 
 		if (counts is not null)
 		{
