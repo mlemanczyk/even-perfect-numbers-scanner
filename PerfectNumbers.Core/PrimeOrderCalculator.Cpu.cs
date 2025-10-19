@@ -721,34 +721,8 @@ internal static partial class PrimeOrderCalculator
 	}
 
 
-	[ThreadStatic]
-	private static Dictionary<ulong, bool>? _partialFactorPrimalityCache;
-
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void ResetPartialFactorPrimalityCache()
-	{
-		Dictionary<ulong, bool>? cache = _partialFactorPrimalityCache;
-		if (cache is not null && cache.Count > 0)
-		{
-			cache.Clear();
-		}
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static Dictionary<ulong, bool> GetPartialFactorPrimalityCache()
-	{
-		Dictionary<ulong, bool>? cache = _partialFactorPrimalityCache;
-		if (cache is null)
-		{
-			cache = ThreadStaticPools.RentUlongBoolDictionary(4);
-			_partialFactorPrimalityCache = cache;
-		}
-
-		return cache;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static bool EvaluatePrimalityPartialFactor(ulong candidate)
+	private static bool EvaluatePrimalityPartialFactor(ref Dictionary<ulong, bool>? localCache, ulong candidate)
 	{
 		if (TryGetCachedPrimality(candidate, out bool cached))
 		{
@@ -758,7 +732,7 @@ internal static partial class PrimeOrderCalculator
 		ulong globalCacheLimit = (ulong)PerfectNumberConstants.MaxQForDivisorCycles;
 		if (candidate > globalCacheLimit)
 		{
-			Dictionary<ulong, bool>? cache = _partialFactorPrimalityCache;
+			Dictionary<ulong, bool>? cache = localCache;
 			if (cache is not null && cache.TryGetValue(candidate, out bool cachedValue))
 			{
 				return cachedValue;
@@ -770,7 +744,13 @@ internal static partial class PrimeOrderCalculator
 
 		if (candidate > globalCacheLimit)
 		{
-			Dictionary<ulong, bool> cache = GetPartialFactorPrimalityCache();
+			Dictionary<ulong, bool>? cache = localCache;
+			if (cache is null)
+			{
+				cache = ThreadStaticPools.RentUlongBoolDictionary(4);
+				localCache = cache;
+			}
+
 			cache[candidate] = isPrime;
 		}
 
@@ -813,8 +793,8 @@ internal static partial class PrimeOrderCalculator
 		List<PendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(2);
 		Stack<ulong>? compositeStack = null;
 		PartialFactorResult result;
+		Dictionary<ulong, bool>? primalityCache = null;
 
-		ResetPartialFactorPrimalityCache();
 
 		if (!gpuFactored)
 		{
@@ -887,7 +867,7 @@ internal static partial class PrimeOrderCalculator
 					// 	continue;
 					// }
 
-					bool isPrime = EvaluatePrimalityPartialFactor(composite);
+					bool isPrime = EvaluatePrimalityPartialFactor(ref primalityCache, composite);
 
 					if (isPrime)
 					{
@@ -937,7 +917,7 @@ internal static partial class PrimeOrderCalculator
 				continue;
 			}
 
-			bool isPrime = EvaluatePrimalityPartialFactor(composite);
+			bool isPrime = EvaluatePrimalityPartialFactor(ref primalityCache, composite);
 
 			if (isPrime)
 			{
@@ -963,7 +943,7 @@ internal static partial class PrimeOrderCalculator
 		}
 		else
 		{
-			cofactorIsPrime = EvaluatePrimalityPartialFactor(cofactor);
+			cofactorIsPrime = EvaluatePrimalityPartialFactor(ref primalityCache, cofactor);
 		}
 
 		ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
@@ -1037,6 +1017,11 @@ internal static partial class PrimeOrderCalculator
 		// ThreadStaticPools.UlongPool.Return(primeSlotsArray);
 		// ThreadStaticPools.IntPool.Return(exponentSlotsArray);
 
+
+		if (primalityCache is not null)
+		{
+			ThreadStaticPools.ReturnUlongBoolDictionary(primalityCache);
+		}
 
 		if (counts is not null)
 		{
