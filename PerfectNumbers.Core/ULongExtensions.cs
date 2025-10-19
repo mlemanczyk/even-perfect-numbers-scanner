@@ -1,14 +1,10 @@
-using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using ILGPU;
 using ILGPU.Algorithms;
-using ILGPU.Runtime;
-using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
 
-public static class ULongExtensions
+public static partial class ULongExtensions
 {
 	private const int Pow2WindowSize = 8;
 	private const ulong Pow2WindowFallbackThreshold = 32UL;
@@ -460,14 +456,6 @@ public static class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong MulHighGpuCompatible(this ulong x, ulong y)
-	{
-		GpuUInt128 product = new(x);
-		product.Mul64(new GpuUInt128(y));
-		return product.High;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong ModPow64(this ulong value, ulong exponent, ulong modulus)
 	{
 		ulong result = 1UL;
@@ -495,24 +483,6 @@ public static class ULongExtensions
 	public static ulong MulMod64(this ulong a, ulong b, ulong modulus) => (ulong)(UInt128)(((a % modulus) * (b % modulus)) % modulus);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong MulMod64GpuCompatible(this ulong a, ulong b, ulong modulus)
-	{
-		// TODO: Remove this GPU-compatible shim from production once callers migrate to MulMod64,
-		// which the benchmarks show is roughly 6-7× faster on dense 64-bit inputs.
-		GpuUInt128 state = new(a % modulus);
-		return state.MulMod(b, modulus);
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong MulMod64GpuCompatibleDeferred(this ulong a, ulong b, ulong modulus)
-	{
-		// TODO: Move this deferred helper to the benchmark suite; the baseline MulMod64 avoids the
-		// 5-40× slowdown seen across real-world operand distributions.
-		GpuUInt128 state = new(a);
-		return state.MulModWithNativeModulo(b, modulus);
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong MontgomeryMultiply(this ulong a, ulong b, ulong modulus, ulong nPrime)
 	{
 		ulong tLow = unchecked(a * b);
@@ -526,104 +496,6 @@ public static class ULongExtensions
 		}
 
 		return result;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Pow2MontgomeryModWindowedCpu(this ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
-	{
-		ulong modulus = divisor.Modulus;
-		// This should never happen in production code. If it does, we need to fix it.
-		// if (exponent == 0UL)
-		// {
-		//     return keepMontgomery ? divisor.MontgomeryOne : 1UL % modulus;
-		// }
-
-		// There is no point in having extra branch, because in real use-cases it'll barely ever hit.
-		// Out of all 3_358_944_545 Pow2MontgomeryModWindowedCpu calls, we hit Pow2MontgomeryModSingleBit only 772 times.
-		// if (exponent <= Pow2WindowFallbackThreshold)
-		// {
-		//     return Pow2MontgomeryModSingleBit(exponent, divisor, keepMontgomery);
-		// }
-
-		int bitLength = GetPortableBitLength(exponent);
-		int windowSize = GetWindowSize(bitLength);
-		int oddPowerCount = 1 << (windowSize - 1);
-
-		ulong result = divisor.MontgomeryOne;
-		ulong nPrime = divisor.NPrime;
-
-		ulong[] oddPowersArray = ThreadStaticPools.UlongPool.Rent(oddPowerCount);
-		Span<ulong> oddPowers = oddPowersArray.AsSpan(0, oddPowerCount);
-		InitializeMontgomeryOddPowersCpu(divisor, modulus, nPrime, oddPowers);
-
-		int index = bitLength - 1;
-		while (index >= 0)
-		{
-			if (((exponent >> index) & 1UL) == 0UL)
-			{
-				result = result.MontgomeryMultiply(result, modulus, nPrime);
-				index--;
-				continue;
-			}
-
-			int windowStart = index - windowSize + 1;
-			if (windowStart < 0)
-			{
-				windowStart = 0;
-			}
-
-			while (((exponent >> windowStart) & 1UL) == 0UL)
-			{
-				windowStart++;
-			}
-
-			int windowLength = index - windowStart + 1;
-			for (int square = 0; square < windowLength; square++)
-			{
-				result = result.MontgomeryMultiply(result, modulus, nPrime);
-			}
-
-			ulong mask = (1UL << windowLength) - 1UL;
-			ulong windowValue = (exponent >> windowStart) & mask;
-			int tableIndex = (int)((windowValue - 1UL) >> 1);
-			ulong multiplier = oddPowers[tableIndex];
-			result = result.MontgomeryMultiply(multiplier, modulus, nPrime);
-
-			index = windowStart - 1;
-		}
-
-		ThreadStaticPools.UlongPool.Return(oddPowersArray);
-
-		if (!keepMontgomery)
-		{
-			result = result.MontgomeryMultiply(1UL, modulus, nPrime);
-		}
-
-		return result;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Pow2MontgomeryModWindowedGpu(this ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
-	{
-		// We shouldn't hit it in production code. If we do, we're doing something wrong.
-		// ulong modulus = divisor.Modulus;
-		// if (exponent == 0UL)
-		// {
-		// 	return keepMontgomery ? divisor.MontgomeryOne : 1UL % modulus;
-		// }
-
-		// We barely ever hit it in production code. It's e.g. 772 calls out of billions
-		// if (exponent <= Pow2WindowFallbackThreshold)
-		// {
-		// 	return Pow2MontgomeryModSingleBit(exponent, divisor, keepMontgomery);
-		// }
-
-		if (Pow2MontgomeryGpuExecutor.TryExecute(exponent, divisor, keepMontgomery, out ulong gpuResult))
-		{
-			return gpuResult;
-		}
-
-		return Pow2MontgomeryModWindowedCpu(exponent, divisor, keepMontgomery);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -716,66 +588,6 @@ public static class ULongExtensions
 		return power;
 	}
 
-	private static class Pow2MontgomeryGpuExecutor
-	{
-		private static readonly ConcurrentDictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, byte, ArrayView1D<ulong, Stride1D.Dense>>> KernelCache = new();
-
-		public static bool TryExecute(ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery, out ulong result)
-		{
-			result = 0UL;
-
-			GpuKernelLease lease = GpuKernelPool.GetKernel(useGpuOrder: true);
-			var execution = lease.EnterExecutionScope();
-			try
-			{
-				Accelerator accelerator = lease.Accelerator;
-				// Keep this commented out. It should never happen in production code.
-				// if (accelerator.AcceleratorType == AcceleratorType.CPU)
-				// {
-				// 	return false;
-				// }
-
-				var kernel = KernelCache.GetOrAdd(accelerator, static accel =>
-				{
-					var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, byte, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernel);
-					var launcher = KernelUtil.GetKernel(loaded);
-					return launcher.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, byte, ArrayView1D<ulong, Stride1D.Dense>>>();
-				});
-
-				using var exponentBuffer = accelerator.Allocate1D<ulong>(1);
-				using var resultBuffer = accelerator.Allocate1D<ulong>(1);
-
-				exponentBuffer.View.CopyFromCPU(ref exponent, 1);
-				// We don't need to worry about any left-overs here.
-				// resultBuffer.MemSetToZero();
-
-				// TODO: Have 2 kernels for both cases to have branch-less solution.
-				byte keepFlag = keepMontgomery ? (byte)1 : (byte)0;
-				AcceleratorStream stream = lease.Stream;
-				kernel(stream, 1, exponentBuffer.View, divisor, keepFlag, resultBuffer.View);
-				stream.Synchronize();
-
-				resultBuffer.View.CopyToCPU(ref result, 1);
-				return true;
-			}
-			// Keep this commented. We don't want to catch any exceptions. All should crash the scanner.
-			// catch (AcceleratorException)
-			// {
-			//     return false;
-			// }
-			// catch (NotSupportedException)
-			// {
-			//     return false;
-			// }
-			finally
-			{
-				execution.Dispose();
-				lease.Dispose();
-			}
-		}
-
-
-        }
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static ulong Pow2MontgomeryModSingleBit(ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
 	{
@@ -844,51 +656,6 @@ public static class ULongExtensions
 		}
 
 		return Pow2WindowSize;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void InitializeMontgomeryOddPowersCpu(in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime, Span<ulong> oddPowers)
-	{
-		oddPowers[0] = divisor.MontgomeryTwo;
-		if (oddPowers.Length == 1)
-		{
-			return;
-		}
-
-		ulong previous;
-		ulong square = divisor.MontgomeryTwoSquared;
-
-		for (int i = 1; i < oddPowers.Length; i++)
-		{
-			previous = oddPowers[i - 1];
-			oddPowers[i] = previous.MontgomeryMultiply(square, modulus, nPrime);
-		}
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Pow2MontgomeryModWithCycleCpu(this ulong exponent, ulong cycleLength, in MontgomeryDivisorData divisor)
-	{
-		ulong rotationCount = exponent % cycleLength;
-		return Pow2MontgomeryModWindowedCpu(rotationCount, divisor, keepMontgomery: false);
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Pow2MontgomeryModFromCycleRemainderCpu(this ulong reducedExponent, in MontgomeryDivisorData divisor)
-	{
-		return Pow2MontgomeryModWindowedCpu(reducedExponent, divisor, keepMontgomery: false);
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Pow2MontgomeryModWithCycleGpu(this ulong exponent, ulong cycleLength, in MontgomeryDivisorData divisor)
-	{
-		ulong rotationCount = exponent % cycleLength;
-		return Pow2MontgomeryModWindowedGpu(rotationCount, divisor, keepMontgomery: false);
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Pow2MontgomeryModFromCycleRemainderGpu(this ulong reducedExponent, in MontgomeryDivisorData divisor)
-	{
-		return Pow2MontgomeryModWindowedGpu(reducedExponent, divisor, keepMontgomery: false);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1225,4 +992,5 @@ public static class ULongExtensions
 
 		return false;
 	}
+
 }

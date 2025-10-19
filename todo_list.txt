@@ -6,7 +6,6 @@ Divisor Cycle Cache & Generation
 - EvenPerfectBitScanner/Program.cs:146: Wire GenerateGpu to the unrolled-hex kernel that led the MersenneDivisorCycleLengthGpuBenchmarks once it lands.
 - EvenPerfectBitScanner/Program.cs:167: Keep a single cached block loaded from disk and honor the configured device when computing ad-hoc cycles for divisors that fall outside that snapshot instead of queuing generation of additional blocks.
 - EvenPerfectBitScanner/Program.cs:171: Stop reloading the full snapshot once the ad-hoc path streams results straight from the configured device without persisting them, so memory stays bounded while preserving the single cached block strategy.
-- PerfectNumbers.Core/MersenneDivisorCycles.cs:209: Replace this naive doubling fallback with the unrolled-hex generator from MersenneDivisorCycleLengthGpuBenchmarks so large divisors avoid the millions of iterations measured in the scalar loop.
 - PerfectNumbers.Core/MersenneDivisorCycles.cs:212: Route this miss to an ephemeral single-cycle computation on the device selected by the current configuration (and skip persisting the result) when the divisor falls outside the in-memory snapshot so we respect the large-p memory limits and avoid extra cache locks.
 - PerfectNumbers.Core/MersenneDivisorCycles.cs:245: Port this UInt128 path to the unrolled-hex cycle calculator so wide divisors stop relying on the slow shift-and-subtract loop measured in the GPU benchmarks.
 - PerfectNumbers.Core/MersenneDivisorCycles.cs:464: Reuse the remainder-tracking update from the cycle heuristic so repeated divisions disappear from this loop.
@@ -16,7 +15,6 @@ Divisor Cycle Cache & Generation
 - PerfectNumbers.Core/MersenneDivisorCycles.cs:794: Migrate this generation path to the shared unrolled-hex calculator so the CPU generator matches the GPU benchmark leader for large divisors.
 - PerfectNumbers.Core/MersenneDivisorCycles.cs:869: Swap these modulo checks for the cached Mod3/Mod5/Mod7/Mod11 helpers so range initialization avoids repeated `%` calls before the unrolled-hex pipeline takes over.
 - PerfectNumbers.Core/MersenneDivisorCycles.cs:919: Replace this modulo sieve with the cached Mod helpers once the divisor-cycle cache is mandatory so cycle enumeration can drop the slower `%` operations in this hot loop.
-- PerfectNumbers.Core/MersenneDivisorCycles.cs:991: Switch this scalar fallback to the unrolled-hex stepping sequence once the generator is shared with CPU callers; the benchmark shows the unrolled variant winning decisively for divisors >= 131,071.
 - PerfectNumbers.Core/MersenneDivisorCycles.cs:994: Expose a GPU-first branch here so high divisors leverage the ProcessEightBitWindows kernel measured fastest in CycleLengthGpuVsCpuBenchmarks, returning the result without storing it in the shared cache.
 - PerfectNumbers.Core/UInt128Extensions.cs:372: If the cache lacks this cycle, immediately schedule the configured device (GPU by default) to compute it on the fly and skip inserting it into the cache so wide-order factoring can still leverage cycle stepping without breaching the memory cap or introducing extra synchronization.
 
