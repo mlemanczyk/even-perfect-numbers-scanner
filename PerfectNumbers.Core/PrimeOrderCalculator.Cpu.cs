@@ -730,7 +730,8 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		ulong globalCacheLimit = (ulong)PerfectNumberConstants.MaxQForDivisorCycles;
-		if (candidate > globalCacheLimit)
+		bool bypassesGlobalCache = candidate > globalCacheLimit;
+		if (bypassesGlobalCache)
 		{
 			Dictionary<ulong, bool>? cache = localCache;
 			if (cache is not null && cache.TryGetValue(candidate, out bool cachedValue))
@@ -742,12 +743,13 @@ internal static partial class PrimeOrderCalculator
 		bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(candidate);
 		CachePrimalityResult(candidate, isPrime);
 
-		if (candidate > globalCacheLimit)
+		if (bypassesGlobalCache)
 		{
 			Dictionary<ulong, bool>? cache = localCache;
 			if (cache is null)
 			{
 				cache = ThreadStaticPools.RentUlongBoolDictionary(4);
+				cache.Clear();
 				localCache = cache;
 			}
 

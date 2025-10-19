@@ -279,22 +279,39 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
-        private static List<Dictionary<ulong, bool>>? _ulongBoolDictionaryPool;
+        private static Stack<Dictionary<ulong, bool>>? _ulongBoolDictionaryPool;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Dictionary<ulong, bool> RentUlongBoolDictionary(int capacityHint)
         {
-            List<Dictionary<ulong, bool>>? pool = _ulongBoolDictionaryPool;
-            if (pool is not null && pool.Count > 0)
+            Stack<Dictionary<ulong, bool>>? pool = _ulongBoolDictionaryPool;
+            if (pool is null)
             {
-                int lastIndex = pool.Count - 1;
-                Dictionary<ulong, bool> dictionary = pool[lastIndex];
-                pool.RemoveAt(lastIndex);
-                if (dictionary.Count > 0)
-                {
-                    dictionary.Clear();
-                }
+                pool = new Stack<Dictionary<ulong, bool>>(4);
+                _ulongBoolDictionaryPool = pool;
+            }
 
+            // Keep the previous null-check implementation here for reference.
+            // Do not uncomment this branch; the pool is always initialized above.
+            // if (pool is not null && pool.Count > 0)
+            // {
+            //     Dictionary<ulong, bool> dictionary = pool.Pop();
+            //     if (dictionary.Count < capacityHint)
+            //     {
+            //         dictionary.EnsureCapacity(capacityHint);
+            //     }
+            //
+            //     return dictionary;
+            // }
+
+            if (pool.Count > 0)
+            {
+                Dictionary<ulong, bool> dictionary = pool.Pop();
+                // Callers clear dictionaries after renting to avoid duplicate work.
+                // if (dictionary.Count > 0)
+                // {
+                //     dictionary.Clear();
+                // }
                 if (dictionary.Count < capacityHint)
                 {
                     dictionary.EnsureCapacity(capacityHint);
@@ -309,15 +326,15 @@ namespace PerfectNumbers.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void ReturnUlongBoolDictionary(Dictionary<ulong, bool> dictionary)
         {
-            List<Dictionary<ulong, bool>>? pool = _ulongBoolDictionaryPool;
+            Stack<Dictionary<ulong, bool>>? pool = _ulongBoolDictionaryPool;
             if (pool is null)
             {
-                pool = new List<Dictionary<ulong, bool>>(4);
+                pool = new Stack<Dictionary<ulong, bool>>(4);
                 _ulongBoolDictionaryPool = pool;
             }
 
-            dictionary.Clear();
-            pool.Add(dictionary);
+            // Do not clear pooled dictionaries here; callers must clear on rent.
+            pool.Push(dictionary);
         }
 
         [ThreadStatic]
