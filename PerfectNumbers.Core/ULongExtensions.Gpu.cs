@@ -115,6 +115,15 @@ public static partial class ULongExtensions
                         exponentBuffer.Dispose();
                         execution.Dispose();
                         lease.Dispose();
+                        // Keep this commented. We don't want to catch any exceptions. All should crash the scanner.
+                        // catch (AcceleratorException)
+                        // {
+                        //         return false;
+                        // }
+                        // catch (NotSupportedException)
+                        // {
+                        //         return false;
+                        // }
                         // Intentionally avoid exception handling here; any accelerator failure should crash the scanner.
                         return true;
                 }
