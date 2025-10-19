@@ -673,8 +673,9 @@ internal static partial class PrimeOrderCalculator
 		return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
 	}
 
+
 	// [ThreadStatic]
-	private static readonly Dictionary<ulong, bool> _primalityCache = new(16_777_216);
+	private static readonly Dictionary<ulong, bool> _primalityCache = new(4_096);
 	private static readonly ReaderWriterLockSlim _primalityCacheLock = new(LockRecursionPolicy.NoRecursion);
 
 	// [ThreadStatic]
@@ -683,6 +684,12 @@ internal static partial class PrimeOrderCalculator
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static bool TryGetCachedPrimality(ulong value, out bool isPrime)
 	{
+		if (value > (ulong)PerfectNumberConstants.MaxQForDivisorCycles)
+		{
+			isPrime = false;
+			return false;
+		}
+
 		_primalityCacheLock.EnterReadLock();
 		bool result = _primalityCache.TryGetValue(value, out isPrime);
 		_primalityCacheLock.ExitReadLock();
@@ -692,6 +699,11 @@ internal static partial class PrimeOrderCalculator
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void CachePrimalityResult(ulong value, bool isPrime)
 	{
+		if (value > (ulong)PerfectNumberConstants.MaxQForDivisorCycles)
+		{
+			return;
+		}
+
 		_primalityCacheLock.EnterWriteLock();
 		_primalityCache[value] = isPrime;
 		_primalityCacheLock.ExitWriteLock();
