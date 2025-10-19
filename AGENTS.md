@@ -114,6 +114,7 @@
   - `System.Numerics.BigInteger`: unsupported (`InternalCompilerException`).
   - `PeterO.Numbers.EInteger`: unsupported (`InternalCompilerException`).
   - `PeterO.Numbers.ERational`: unsupported (`InternalCompilerException`, lacks remainder API).
+- Prefer XMath in GPU calculations over Math or BitOperations.
 
 ## Patch Preparation Reminders
 
