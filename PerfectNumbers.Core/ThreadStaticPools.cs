@@ -279,65 +279,6 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
-        private static Stack<Dictionary<ulong, bool>>? _ulongBoolDictionaryPool;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static Dictionary<ulong, bool> RentUlongBoolDictionary(int capacityHint)
-        {
-            Stack<Dictionary<ulong, bool>>? pool = _ulongBoolDictionaryPool;
-            if (pool is null)
-            {
-                pool = new Stack<Dictionary<ulong, bool>>(4);
-                _ulongBoolDictionaryPool = pool;
-            }
-
-            // Keep the previous null-check implementation here for reference.
-            // Do not uncomment this branch; the pool is always initialized above.
-            // if (pool is not null && pool.Count > 0)
-            // {
-            //     Dictionary<ulong, bool> dictionary = pool.Pop();
-            //     if (dictionary.Count < capacityHint)
-            //     {
-            //         dictionary.EnsureCapacity(capacityHint);
-            //     }
-            //
-            //     return dictionary;
-            // }
-
-            if (pool.Count > 0)
-            {
-                Dictionary<ulong, bool> dictionary = pool.Pop();
-                // Callers clear dictionaries after renting to avoid duplicate work.
-                // if (dictionary.Count > 0)
-                // {
-                //     dictionary.Clear();
-                // }
-                if (dictionary.Count < capacityHint)
-                {
-                    dictionary.EnsureCapacity(capacityHint);
-                }
-
-                return dictionary;
-            }
-
-            return new Dictionary<ulong, bool>(capacityHint);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void ReturnUlongBoolDictionary(Dictionary<ulong, bool> dictionary)
-        {
-            Stack<Dictionary<ulong, bool>>? pool = _ulongBoolDictionaryPool;
-            if (pool is null)
-            {
-                pool = new Stack<Dictionary<ulong, bool>>(4);
-                _ulongBoolDictionaryPool = pool;
-            }
-
-            // Do not clear pooled dictionaries here; callers must clear on rent.
-            pool.Push(dictionary);
-        }
-
-        [ThreadStatic]
         private static Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? _mersenneFactorCacheDictionary;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

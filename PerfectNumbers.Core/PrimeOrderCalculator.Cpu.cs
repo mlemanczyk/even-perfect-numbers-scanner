@@ -10,10 +10,34 @@ namespace PerfectNumbers.Core;
 internal static partial class PrimeOrderCalculator
 {
 
-	internal readonly struct PendingEntry(ulong value, bool knownComposite)
+	internal readonly struct PendingEntry
 	{
-		public readonly ulong Value = value;
-		public readonly bool KnownComposite = knownComposite;
+		public readonly ulong Value;
+		public readonly bool KnownComposite;
+		public readonly bool HasKnownPrimality;
+		public readonly bool IsPrime;
+
+		public PendingEntry(ulong value, bool knownComposite)
+		{
+			Value = value;
+			KnownComposite = knownComposite;
+			HasKnownPrimality = knownComposite;
+			IsPrime = false;
+		}
+
+		private PendingEntry(ulong value, bool knownComposite, bool hasKnownPrimality, bool isPrime)
+		{
+			Value = value;
+			KnownComposite = knownComposite;
+			HasKnownPrimality = hasKnownPrimality;
+			IsPrime = isPrime;
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public PendingEntry WithPrimality(bool isPrime)
+		{
+			return new PendingEntry(Value, KnownComposite, true, isPrime);
+		}
 	}
 
 	private static ulong CalculateInternal(ulong prime, ulong? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
@@ -721,44 +745,6 @@ internal static partial class PrimeOrderCalculator
 	}
 
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static bool EvaluatePrimalityPartialFactor(ref Dictionary<ulong, bool>? localCache, ulong candidate)
-	{
-		if (TryGetCachedPrimality(candidate, out bool cached))
-		{
-			return cached;
-		}
-
-		ulong globalCacheLimit = (ulong)PerfectNumberConstants.MaxQForDivisorCycles;
-		bool bypassesGlobalCache = candidate > globalCacheLimit;
-		if (bypassesGlobalCache)
-		{
-			Dictionary<ulong, bool>? cache = localCache;
-			if (cache is not null && cache.TryGetValue(candidate, out bool cachedValue))
-			{
-				return cachedValue;
-			}
-		}
-
-		bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(candidate);
-		CachePrimalityResult(candidate, isPrime);
-
-		if (bypassesGlobalCache)
-		{
-			Dictionary<ulong, bool>? cache = localCache;
-			if (cache is null)
-			{
-				cache = ThreadStaticPools.RentUlongBoolDictionary(4);
-				cache.Clear();
-				localCache = cache;
-			}
-
-			cache[candidate] = isPrime;
-		}
-
-		return isPrime;
-	}
-
 	private static PartialFactorResult PartialFactor(ulong value, in PrimeOrderSearchConfig config)
 	{
 		if (value <= 1UL)
@@ -795,9 +781,6 @@ internal static partial class PrimeOrderCalculator
 		List<PendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(2);
 		Stack<ulong>? compositeStack = null;
 		PartialFactorResult result;
-		Dictionary<ulong, bool>? primalityCache = null;
-
-
 		if (!gpuFactored)
 		{
 			// We don't need to worry about leftovers, because we always use indexes within the calculated counts
@@ -862,7 +845,7 @@ internal static partial class PrimeOrderCalculator
 					// 	continue;
 					// }
 
-					bool isPrime = EvaluatePrimalityPartialFactor(ref primalityCache, composite);
+					bool isPrime = GetOrComputePrimality(composite);
 
 					if (isPrime)
 					{
@@ -920,9 +903,14 @@ internal static partial class PrimeOrderCalculator
 				continue;
 			}
 
-			bool isPrime = EvaluatePrimalityPartialFactor(ref primalityCache, composite);
+			if (!entry.HasKnownPrimality)
+			{
+				bool isPrime = GetOrComputePrimality(composite);
+				entry = entry.WithPrimality(isPrime);
+				pending[index] = entry;
+			}
 
-			if (isPrime)
+			if (entry.IsPrime)
 			{
 				AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
 			}
@@ -946,7 +934,7 @@ internal static partial class PrimeOrderCalculator
 		}
 		else
 		{
-			cofactorIsPrime = EvaluatePrimalityPartialFactor(ref primalityCache, cofactor);
+			cofactorIsPrime = GetOrComputePrimality(cofactor);
 		}
 
 		ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
@@ -1020,11 +1008,6 @@ internal static partial class PrimeOrderCalculator
 		// ThreadStaticPools.UlongPool.Return(primeSlotsArray);
 		// ThreadStaticPools.IntPool.Return(exponentSlotsArray);
 
-
-		if (primalityCache is not null)
-		{
-			ThreadStaticPools.ReturnUlongBoolDictionary(primalityCache);
-		}
 
 		if (counts is not null)
 		{
