@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using EvenPerfectBitScanner.Candidates;
+using EvenPerfectBitScanner.IO;
 using Open.Collections;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Cpu;
@@ -13,9 +14,9 @@ internal static class Program
 {
 	private static ThreadLocal<PrimeTester> PrimeTesters = null!;
 	private static ThreadLocal<MersenneNumberTester> MersenneTesters = null!;
-	private static ThreadLocal<ModResidueTracker> PResidue = null!;      // p mod d tracker (per-thread)
 	private const ulong InitialP = PerfectNumberConstants.BiggestKnownEvenPerfectP;
 	private static MersenneNumberDivisorGpuTester? _divisorTester;
+	private static UInt128 _divisor;
 	private static IMersenneNumberDivisorByDivisorTester? _byDivisorTester;
 	private static Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? _byDivisorPreviousResults;
 	private static bool _limitReached;
@@ -38,6 +39,7 @@ internal static class Program
 			}
 
 			_cliArguments = parsedArguments;
+			_divisor = UInt128.Zero;
 
 			if (_cliArguments.ShowHelp)
 			{
@@ -177,7 +179,7 @@ internal static class Program
 				blockSize = 1;
 			}
 
-			PResidue = new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, initialNumber: currentP, initialized: true), trackAllValues: true);
+			CandidatesCalculator.Initialize(currentP);
 			PrimeTesters = new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true);
 			// Note: --primes-device controls default device for library kernels; p primality remains CPU here.
 			// Initialize per-thread p residue tracker (Identity model) at currentP
@@ -243,7 +245,7 @@ internal static class Program
 
 			Console.WriteLine("Initialization...");
 			// Compose a results file name that encodes configuration (before opening file)
-			var builtName = BuildResultsFileName(
+			var builtName = CalculationResultsFile.BuildFileName(
 							useBitTransform,
 							threadCount,
 							blockSize,
@@ -287,7 +289,7 @@ internal static class Program
 			if (File.Exists(resultsFileName))
 			{
 				Console.WriteLine("Processing previous results...");
-				LoadResultsFile(resultsFileName, (p, detailedCheck, passedAllTests) =>
+				CalculationResultsFile.EnumerateCandidates(resultsFileName, (p, detailedCheck, passedAllTests) =>
 				{
 					CalculationResultHandler.RegisterExistingResult(detailedCheck, passedAllTests);
 
@@ -319,7 +321,7 @@ internal static class Program
 				{
 					Console.WriteLine("Loading filter...");
 					int skippedByLimit = 0;
-					byDivisorCandidates = LoadByDivisorCandidates(filterFile, maxPrimeLimit, maxPrimeConfigured, out skippedByLimit);
+					byDivisorCandidates = CalculationResultsFile.LoadCandidatesWithinRange(filterFile, maxPrimeLimit, maxPrimeConfigured, out skippedByLimit);
 					if (maxPrimeConfigured)
 					{
 						if (skippedByLimit > 0)
@@ -344,7 +346,7 @@ internal static class Program
 				filterCount = 0;
 				bool addedWithinLimit = false;
 				int skippedByLimit = 0;
-				LoadResultsFile(filterFile, (p, detailedCheck, passedAllTests) =>
+				CalculationResultsFile.EnumerateCandidates(filterFile, (p, detailedCheck, passedAllTests) =>
 				{
 					if (!passedAllTests)
 					{
@@ -546,179 +548,6 @@ internal static class Program
 		}
 	}
 
-	// TODO: Move this to a new static class CalculationResultsFile under IO namespace / folder. Rename it to LoadCandidatesWithinRange.
-	private static List<ulong> LoadByDivisorCandidates(string candidateFile, UInt128 maxPrimeLimit, bool maxPrimeConfigured, out int skippedByLimit)
-	{
-		List<ulong> candidates = [];
-		skippedByLimit = 0;
-		using FileStream readStream = new(candidateFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-		using StreamReader reader = new(readStream);
-		string? line;
-		ReadOnlySpan<char> span;
-		while ((line = reader.ReadLine()) is not null)
-		{
-			if (string.IsNullOrWhiteSpace(line))
-			{
-				continue;
-			}
-
-			span = line.AsSpan().Trim();
-			if (span.IsEmpty || span[0] == '#')
-			{
-				continue;
-			}
-			int index = 0;
-			while (index < span.Length)
-			{
-				if (!char.IsDigit(span[index]))
-				{
-					index++;
-					continue;
-				}
-
-				int start = index;
-				index++;
-				while (index < span.Length && char.IsDigit(span[index]))
-				{
-					index++;
-				}
-
-				if (Utf8CliParser.TryParseUInt64(span[start..index], out ulong parsed))
-				{
-					if (!maxPrimeConfigured || (UInt128)parsed <= maxPrimeLimit)
-					{
-						candidates.Add(parsed);
-					}
-					else
-					{
-						skippedByLimit++;
-					}
-				}
-			}
-		}
-
-		return candidates;
-	}
-
-	// TODO: Move this to a new static class CalculationResultsFile under IO namespace / folder. Rename it to EnumerateCandidates.
-	private static void LoadResultsFile(string resultsFileName, Action<ulong, bool, bool> lineProcessorAction)
-	{
-		using FileStream readStream = new(resultsFileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-		using StreamReader reader = new(readStream);
-		string? line;
-		bool headerSkipped = false;
-		ReadOnlySpan<char> span;
-		int first = 0;
-		int second = 0;
-		int third = 0;
-		ulong parsedP = 0UL;
-		ReadOnlySpan<char> detailedSpan = default;
-		ReadOnlySpan<char> passedAllTestsSpan = default;
-		bool detailed = false;
-		bool passedAllTests = false;
-		while ((line = reader.ReadLine()) != null)
-		{
-			if (!headerSkipped)
-			{
-				headerSkipped = true;
-				continue;
-			}
-
-			if (string.IsNullOrWhiteSpace(line))
-			{
-				continue;
-			}
-
-			span = line.AsSpan();
-			first = span.IndexOf(',');
-			if (first < 0)
-			{
-				continue;
-			}
-			parsedP = Utf8CliParser.ParseUInt64(span[..first]);
-			span = span[(first + 1)..];
-			second = span.IndexOf(',');
-			if (second < 0)
-			{
-				continue;
-			}
-
-			span = span[(second + 1)..];
-			third = span.IndexOf(',');
-			if (third < 0)
-			{
-				continue;
-			}
-
-			detailedSpan = span[..third];
-			passedAllTestsSpan = span[(third + 1)..];
-
-			if (Utf8CliParser.TryParseBoolean(detailedSpan, out detailed) && Utf8CliParser.TryParseBoolean(passedAllTestsSpan, out passedAllTests))
-			{
-				lineProcessorAction(parsedP, detailed, passedAllTests);
-			}
-		}
-	}
-
-	// TODO: Move this to a new static class CalculationResultsFile under IO namespace / folder. Rename it to BuildFileName.
-	private static string BuildResultsFileName(bool bitInc, int threads, int block, GpuKernelType kernelType, bool useLucasFlag, bool useDivisorFlag, bool useByDivisorFlag, bool mersenneOnGpu, bool useOrder, bool useGcd, NttBackend nttBackend, int gpuPrimeThreads, int llSlice, int gpuScanBatch, ulong warmupLimit, ModReductionMode reduction, string mersenneDevice, string primesDevice, string orderDevice)
-	{
-		string inc = bitInc ? "bit" : "add";
-		string mers = useDivisorFlag
-			? "divisor"
-			: (useLucasFlag
-				? "lucas"
-				: (useByDivisorFlag
-					? "bydivisor"
-					: (kernelType == GpuKernelType.Pow2Mod ? "pow2mod" : "incremental")));
-		string ntt = nttBackend == NttBackend.Staged ? "staged" : "reference";
-		string red = reduction switch { ModReductionMode.Mont64 => "mont64", ModReductionMode.Barrett128 => "barrett128", ModReductionMode.GpuUInt128 => "uint128", _ => "auto" };
-		string order = useOrder ? "order-on" : "order-off";
-		string gcd = useGcd ? "gcd-on" : "gcd-off";
-		Span<char> initialBuffer = stackalloc char[256];
-		var builder = new PooledValueStringBuilder(initialBuffer);
-		try
-		{
-			builder.Append("even_perfect_bit_scan_inc-");
-			builder.Append(inc);
-			builder.Append("_thr-");
-			builder.Append(threads);
-			builder.Append("_blk-");
-			builder.Append(block);
-			builder.Append("_mers-");
-			builder.Append(mers);
-			builder.Append("_mersdev-");
-			builder.Append(mersenneDevice);
-			builder.Append("_ntt-");
-			builder.Append(ntt);
-			builder.Append("_red-");
-			builder.Append(red);
-			builder.Append("_primesdev-");
-			builder.Append(primesDevice);
-			builder.Append('_');
-			builder.Append(order);
-			builder.Append("_orderdev-");
-			builder.Append(orderDevice);
-			builder.Append('_');
-			builder.Append(gcd);
-			builder.Append("_gputh-");
-			builder.Append(gpuPrimeThreads);
-			builder.Append("_llslice-");
-			builder.Append(llSlice);
-			builder.Append("_scanb-");
-			builder.Append(gpuScanBatch);
-			builder.Append("_warm-");
-			builder.Append(warmupLimit);
-			builder.Append(".csv");
-			return builder.ToString();
-		}
-		finally
-		{
-			builder.Dispose();
-		}
-	}
-
-
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void OnPrimeCandidateConfirmed()
 	{
@@ -784,7 +613,7 @@ internal static class Program
 		}
 
 		// Fast residue-based composite check for p using small primes
-		if (!_cliArguments.UseDivisor && !_cliArguments.UseByDivisor && IsCompositeByResidues(p))
+		if (!_cliArguments.UseDivisor && !_cliArguments.UseByDivisor && CandidatesCalculator.IsCompositeByResidues(p))
 		{
 			searchedMersenne = false;
 			detailedCheck = false;
@@ -807,6 +636,14 @@ internal static class Program
 		}
 
 		searchedMersenne = true;
+		if (_cliArguments.UseDivisor)
+		{
+			bool divisorsExhausted;
+			bool isPrime = _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out divisorsExhausted);
+			detailedCheck = divisorsExhausted;
+			return isPrime;
+		}
+
 		if (_cliArguments.UseByDivisor)
 		{
 			// Windowed pow2mod kernel handles by-divisor scans.
@@ -817,33 +654,4 @@ internal static class Program
 		return detailedCheck;
 	}
 
-	// TODO: Move this together with the tracker to existing CandidatesCalculator class in the Candidates folder.
-	// Use ModResidueTracker with a small set of primes to pre-filter composite p.
-	private static bool IsCompositeByResidues(ulong p)
-	{
-		var tracker = PResidue.Value!;
-		// TODO: Integrate the divisor-cycle cache here so the small-prime sweep reuses precomputed remainders instead of
-		// running MergeOrAppend for every candidate and missing the cycle-accelerated early exits.
-		tracker.BeginMerge(p);
-		// Use the small prime list from PerfectNumbers.Core to the extent of sqrt(p)
-		var primes = PrimesGenerator.SmallPrimes;
-		var primesPow2 = PrimesGenerator.SmallPrimesPow2;
-		int len = primes.Length;
-		int primeIndex = 0;
-		bool divisible;
-		for (; primeIndex < len; primeIndex++)
-		{
-			if (primesPow2[primeIndex] > p)
-			{
-				break;
-			}
-
-			if (tracker.MergeOrAppend(p, primes[primeIndex], out divisible) && divisible)
-			{
-				return true;
-			}
-		}
-
-		return false;
 	}
-}

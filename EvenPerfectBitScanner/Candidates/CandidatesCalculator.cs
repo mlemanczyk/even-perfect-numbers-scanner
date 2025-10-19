@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Open.Numeric.Primes;
+using PerfectNumbers.Core;
 using EvenPerfectBitScanner.Candidates.Transforms;
 
 namespace EvenPerfectBitScanner.Candidates;
@@ -10,11 +11,74 @@ internal static class CandidatesCalculator
     private static readonly Optimized PrimeIterator = new();
     private static long _state;
     private static PrimeTransformMode _transformMode;
+    private static ThreadLocal<ModResidueTracker>? _residueTrackers;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Configure(PrimeTransformMode transformMode)
     {
         _transformMode = transformMode;
+    }
+
+    internal static void Initialize(ulong initialNumber)
+    {
+        SetResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, initialNumber: initialNumber, initialized: true), trackAllValues: true));
+    }
+
+    internal static void OverrideResidueTrackers(ThreadLocal<ModResidueTracker> trackers)
+    {
+        if (trackers is null)
+        {
+            throw new ArgumentNullException(nameof(trackers));
+        }
+
+        SetResidueTrackers(trackers);
+    }
+
+    internal static void ResetResidueTrackers()
+    {
+        ThreadLocal<ModResidueTracker>? previous = _residueTrackers;
+        _residueTrackers = null;
+        previous?.Dispose();
+    }
+
+    private static void SetResidueTrackers(ThreadLocal<ModResidueTracker> trackers)
+    {
+        ThreadLocal<ModResidueTracker>? previous = _residueTrackers;
+        _residueTrackers = trackers;
+        previous?.Dispose();
+    }
+
+    private static ModResidueTracker AcquireResidueTracker()
+    {
+        var trackers = _residueTrackers ?? throw new InvalidOperationException("CandidatesCalculator.Initialize must be called before residue checks.");
+        return trackers.Value!;
+    }
+
+    internal static bool IsCompositeByResidues(ulong p)
+    {
+        ModResidueTracker tracker = AcquireResidueTracker();
+        // Use ModResidueTracker with a small set of primes to pre-filter composite p.
+        tracker.BeginMerge(p);
+        // TODO: Integrate the divisor-cycle cache here so the small-prime sweep reuses precomputed remainders instead of
+        // running MergeOrAppend for every candidate and missing the cycle-accelerated early exits.
+        // Use the small prime list from PerfectNumbers.Core to the extent of sqrt(p)
+        var primes = PrimesGenerator.SmallPrimes;
+        var primesPow2 = PrimesGenerator.SmallPrimesPow2;
+        int len = primes.Length;
+        for (int primeIndex = 0; primeIndex < len; primeIndex++)
+        {
+            if (primesPow2[primeIndex] > p)
+            {
+                break;
+            }
+
+            if (tracker.MergeOrAppend(p, primes[primeIndex], out bool divisible) && divisible)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
