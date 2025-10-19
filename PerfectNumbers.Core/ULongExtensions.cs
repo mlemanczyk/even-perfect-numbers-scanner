@@ -498,98 +498,8 @@ public static partial class ULongExtensions
 		return result;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static ulong Pow2MontgomeryModWindowedKernel(ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
-	{
-		ulong modulus = divisor.Modulus;
-		// This should never happen in production code
-		// if (exponent == 0UL)
-		// {
-		// 	return keepMontgomery ? divisor.MontgomeryOne : 1UL % modulus;
-		// }
-
-		// We barely every hit it from production code. It's only 772 calls out of billions.
-		// if (exponent <= Pow2WindowFallbackThreshold)
-		// {
-		// 	return Pow2MontgomeryModSingleBit(exponent, divisor, keepMontgomery);
-		// }
-
-		int bitLength = GetPortableBitLength(exponent);
-		int windowSize = GetWindowSize(bitLength);
-		ulong result = divisor.MontgomeryOne;
-		ulong nPrime = divisor.NPrime;
-
-		int index = bitLength - 1;
-		while (index >= 0)
-		{
-			if (((exponent >> index) & 1UL) == 0UL)
-			{
-				result = result.MontgomeryMultiply(result, modulus, nPrime);
-				index--;
-				continue;
-			}
-
-			int windowStart = index - windowSize + 1;
-			if (windowStart < 0)
-			{
-				windowStart = 0;
-			}
-
-			while (((exponent >> windowStart) & 1UL) == 0UL)
-			{
-				windowStart++;
-			}
-
-			int windowLength = index - windowStart + 1;
-			for (int square = 0; square < windowLength; square++)
-			{
-				result = result.MontgomeryMultiply(result, modulus, nPrime);
-			}
-
-			ulong mask = (1UL << windowLength) - 1UL;
-			ulong windowValue = (exponent >> windowStart) & mask;
-			ulong multiplier = ComputeMontgomeryOddPower(windowValue, divisor, modulus, nPrime);
-			result = result.MontgomeryMultiply(multiplier, modulus, nPrime);
-
-			index = windowStart - 1;
-		}
-
-		if (!keepMontgomery)
-		{
-			result = result.MontgomeryMultiply(1UL, modulus, nPrime);
-		}
-
-		return result;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static ulong ComputeMontgomeryOddPower(ulong exponent, in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime)
-	{
-		ulong baseValue = divisor.MontgomeryTwo;
-		ulong power = divisor.MontgomeryOne;
-		ulong remaining = exponent;
-
-		while (remaining != 0UL)
-		{
-			if ((remaining & 1UL) != 0UL)
-			{
-				power = power.MontgomeryMultiply(baseValue, modulus, nPrime);
-			}
-
-			remaining >>= 1;
-			if (remaining == 0UL)
-			{
-				break;
-			}
-
-			baseValue = baseValue.MontgomeryMultiply(baseValue, modulus, nPrime);
-		}
-
-		return power;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static ulong Pow2MontgomeryModSingleBit(ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong Pow2MontgomeryModSingleBit(ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
 	{
 		ulong modulus = divisor.Modulus;
 		ulong nPrime = divisor.NPrime;
@@ -616,47 +526,6 @@ public static partial class ULongExtensions
 		return keepMontgomery ? result : result.MontgomeryMultiply(1UL, modulus, nPrime);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static int GetPortableBitLength(ulong value)
-	{
-		// Keep this commented out. It will never happen in production code.
-		// if (value == 0UL)
-		// {
-		// 	return 0;
-		// }
-
-		return 64 - XMath.LeadingZeroCount(value);
-	}
-
-	private static int GetWindowSize(int bitLength)
-	{
-		if (bitLength <= 6)
-		{
-			return Math.Max(bitLength, 1);
-		}
-
-		if (bitLength <= 23)
-		{
-			return 4;
-		}
-
-		if (bitLength <= 79)
-		{
-			return 5;
-		}
-
-		if (bitLength <= 239)
-		{
-			return 6;
-		}
-
-		if (bitLength <= 671)
-		{
-			return 7;
-		}
-
-		return Pow2WindowSize;
-	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static UInt128 PowMod(this ulong exponent, UInt128 modulus)

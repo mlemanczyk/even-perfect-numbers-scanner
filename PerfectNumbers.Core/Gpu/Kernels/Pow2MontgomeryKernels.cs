@@ -1,5 +1,6 @@
 using ILGPU;
 using ILGPU.Runtime;
+using PerfectNumbers.Core;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -12,6 +13,6 @@ internal static class Pow2MontgomeryKernels
         byte keepMontgomery,
         ArrayView1D<ulong, Stride1D.Dense> results)
     {
-        results[index] = ULongExtensions.Pow2MontgomeryModWindowedKernel(exponents[index], divisor, keepMontgomery != 0);
+        results[index] = ULongExtensions.Pow2MontgomeryModWindowedGpu(divisor, exponents[index], keepMontgomery != 0);
     }
 }

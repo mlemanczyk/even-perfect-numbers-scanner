@@ -157,7 +157,7 @@ public class MulMod64Benchmarks
     }
 
     /// <summary>
-    /// Uses the GPU-friendly <see cref="ULongExtensions.MulMod64GpuCompatible(ulong, ulong, ulong)"/> helper; dense inputs now
+    /// Uses the GPU-friendly <see cref="ULongExtensions.MulMod64Gpu(ulong, ulong, ulong)"/> helper; dense inputs now
     /// cost 24.4–61.9 ns, while NearFullRange and SparseOperands finish near 7.27 ns and ZeroOperands stay baseline-fast at
     /// 3.59 ns.
     /// </summary>
@@ -170,11 +170,11 @@ public class MulMod64Benchmarks
     {
         // TODO: Callers in production should migrate to ULongExtensions.MulMod64 where GPU parity
         // is not required; that baseline stayed 6–17× faster for dense 64-bit operands.
-        return Input.Left.MulMod64GpuCompatible(Input.Right, Input.Modulus);
+        return Input.Left.MulMod64Gpu(Input.Right, Input.Modulus);
     }
 
     /// <summary>
-    /// Uses the deferred native-modulo helper <see cref="ULongExtensions.MulMod64GpuCompatibleDeferred(ulong, ulong, ulong)"/>;
+    /// Uses the deferred native-modulo helper <see cref="ULongExtensions.MulMod64GpuDeferred(ulong, ulong, ulong)"/>;
     /// excels when operands are tiny (2.01 ns on ZeroOperands) yet remains the slowest choice on dense data at 146–295 ns.
     /// </summary>
     /// <remarks>
@@ -186,7 +186,7 @@ public class MulMod64Benchmarks
     {
         // TODO: Retire the deferred GPU shim from runtime paths and keep it only for benchmarks;
         // ULongExtensions.MulMod64 avoids the 6×–82× slowdown on real-world operand mixes.
-        return Input.Left.MulMod64GpuCompatibleDeferred(Input.Right, Input.Modulus);
+        return Input.Left.MulMod64GpuDeferred(Input.Right, Input.Modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
