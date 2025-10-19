@@ -855,13 +855,6 @@ internal static partial class PrimeOrderCalculator
 			{
 				while (compositeStack.Count > 0)
 				{
-					long currentTimestamp = Stopwatch.GetTimestamp();
-					if (currentTimestamp > deadlineTimestamp)
-					{
-						pollardRhoDeadlineReached = true;
-						break;
-					}
-
 					ulong composite = compositeStack.Pop();
 					// composite will never be smaller than 1 on the execution path
 					// if (composite <= 1UL)
@@ -874,6 +867,14 @@ internal static partial class PrimeOrderCalculator
 					if (isPrime)
 					{
 						AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
+						continue;
+					}
+
+					long currentTimestamp = Stopwatch.GetTimestamp();
+					if (currentTimestamp > deadlineTimestamp)
+					{
+						pollardRhoDeadlineReached = true;
+						pending.Add(new PendingEntry(composite, knownComposite: true));
 						continue;
 					}
 
