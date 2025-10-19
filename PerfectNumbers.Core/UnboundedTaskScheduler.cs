@@ -1,27 +1,39 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
 namespace PerfectNumbers.Core;
 
 public sealed class UnboundedTaskScheduler : TaskScheduler
 {
-	public static UnboundedTaskScheduler Instance { get; } = new();
+    public static UnboundedTaskScheduler Instance { get; } = new();
 
-	private UnboundedTaskScheduler()
-	{
-		ThreadPool.SetMaxThreads(100_000, 100_000);
-		ThreadPool.SetMinThreads(10_340, 100);
-	}
+    private readonly TaskThreadPool _threadPool;
 
-	public override int MaximumConcurrencyLevel => int.MaxValue;
+    private UnboundedTaskScheduler()
+    {
+        _threadPool = new TaskThreadPool(10_340, ExecuteTask);
+    }
 
-	protected override void QueueTask(Task task)
-	{
-		ThreadPool.UnsafeQueueUserWorkItem( (state) =>
-		{
-			var (scheduler, task) = ((UnboundedTaskScheduler, Task))state!;
-			scheduler.TryExecuteTask(task);
-		}, (this, task));
-	}
+    public override int MaximumConcurrencyLevel => int.MaxValue;
 
-	protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => TryExecuteTask(task);
+    protected override void QueueTask(Task task)
+    {
+        _threadPool.Queue(task);
+    }
 
-	protected override IEnumerable<Task>? GetScheduledTasks() => null;
+    private void ExecuteTask(Task task)
+    {
+        TryExecuteTask(task);
+    }
+
+    protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
+    {
+        return TryExecuteTask(task);
+    }
+
+    protected override IEnumerable<Task>? GetScheduledTasks()
+    {
+        return _threadPool.GetScheduledTasks();
+    }
 }
