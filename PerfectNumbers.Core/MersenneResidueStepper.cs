@@ -18,6 +18,8 @@ public class MersenneResidueStepper
         p = p0;
 
         // Inputs are already reduced in production; keep the old modulo guard commented for debugging reference.
+        // TODO: Confirm whether GPU execution ever constructs this stepper; if so, split the CPU/GPU initialization so
+        // the accelerator path retains the modulo reductions that prevent divergence.
         // M_mod = M_mod_m_at_p0 % m;
         // pow2_mod = (M_mod + 1) % m;
         M_mod = M_mod_m_at_p0;

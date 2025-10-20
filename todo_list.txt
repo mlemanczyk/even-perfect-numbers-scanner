@@ -15,7 +15,6 @@ Divisor Cycle Cache & Generation
 - PerfectNumbers.Core/MersenneDivisorCycles.cs:794: Migrate this generation path to the shared unrolled-hex calculator so the CPU generator matches the GPU benchmark leader for large divisors.
 - PerfectNumbers.Core/MersenneDivisorCycles.cs:869: Swap these modulo checks for the cached Mod3/Mod5/Mod7/Mod11 helpers so range initialization avoids repeated `%` calls before the unrolled-hex pipeline takes over.
 - PerfectNumbers.Core/MersenneDivisorCycles.cs:919: Replace this modulo sieve with the cached Mod helpers once the divisor-cycle cache is mandatory so cycle enumeration can drop the slower `%` operations in this hot loop.
-- PerfectNumbers.Core/MersenneDivisorCycles.cs:994: Expose a GPU-first branch here so high divisors leverage the ProcessEightBitWindows kernel measured fastest in CycleLengthGpuVsCpuBenchmarks, returning the result without storing it in the shared cache.
 - PerfectNumbers.Core/UInt128Extensions.cs:372: If the cache lacks this cycle, immediately schedule the configured device (GPU by default) to compute it on the fly and skip inserting it into the cache so wide-order factoring can still leverage cycle stepping without breaching the memory cap or introducing extra synchronization.
 
 Primality & Order Screening
@@ -40,16 +39,6 @@ Montgomery Primitives
 - PerfectNumbers.Core/UInt128Extensions.cs:69: Prototype a UInt128-native Pow2MontgomeryModWindowed path that matches the GPU implementation once a faster modular multiplication helper is available, so we can revisit removing the GPU struct dependency without regressing benchmarks.
 
 Cycle-Aware Modular Arithmetic
-- PerfectNumbers.Core/ULongExtensions.cs:900: Port this scalar PowMod fallback to the ProcessEightBitWindows helper so CPU callers get the eight-bit window wins measured against the classic square-and-subtract implementation.
-- PerfectNumbers.Core/ULongExtensions.cs:952: Wire this cycle-aware overload into the ProcessEightBitWindows helper so the reduced exponent path inherits the faster windowed pow2 routine highlighted in the Pow2Montgomery benchmarks.
-- PerfectNumbers.Core/ULongExtensions.cs:986: Replace this modulo with the cached cycle remainder produced by the divisor-cycle cache so PowModWithCycle avoids repeated `%` work, matching the ProcessEightBitWindows wins captured in Pow2MontgomeryModCycleComputationBenchmarks.
-- PerfectNumbers.Core/ULongExtensions.cs:1007: Replace this UInt128-cycle overload with the ProcessEightBitWindows helper so large-exponent CPU scans reuse the faster windowed pow2 ladder instead of the manual rotation loop measured to lag behind in benchmarks.
-- PerfectNumbers.Core/ULongExtensions.cs:1039: Swap this modulo with the upcoming UInt128 cycle remainder helper so large-exponent scans reuse cached reductions instead of recomputing `%` for every lookup, as demonstrated in Pow2MontgomeryModCycleComputationBenchmarks.
-- PerfectNumbers.Core/ULongExtensions.cs:1065: Migrate this UInt128 exponent overload to ProcessEightBitWindows so the large-cycle reductions drop the slow manual loop that underperforms the windowed pow2 helper in the Pow2 benchmark suite.
-- PerfectNumbers.Core/ULongExtensions.cs:1097: Swap this modulo with the shared UInt128 cycle remainder helper once available so CRT powmods reuse cached reductions in the windowed ladder, avoiding the `%` cost highlighted in Pow2MontgomeryModCycleComputationBenchmarks.
-- PerfectNumbers.Core/ULongExtensions.cs:1144: Replace this `% modulusCandidate` with the cached residue helper derived from Mod10_8_5_3Benchmarks so CRT composition avoids repeated modulo divisions when combining residues for large divisor sets.
-- PerfectNumbers.Core/ULongExtensions.cs:1153: Swap this final `% modulus` with the pooled remainder cache so the CRT result write-back avoids one more division, aligning with the optimizations captured in Mod10_8_5_3Benchmarks.
-- PerfectNumbers.Core/UInt128Extensions.cs:388: Switch this divisor-order powmod to the ProcessEightBitWindows helper so the cycle factoring loop benefits from the faster windowed pow2 ladder measured in CPU benchmarks.
 
 Status & Progress Reporting
 - PerfectNumbers.Core/Cpu/MersenneNumberDivisorByDivisorCpuTester.cs:296: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI status benchmarks so we avoid `%` in this hot loop while still wrapping progress correctly.
@@ -62,11 +51,3 @@ Cycle Remainder Steppers
 - PerfectNumbers.Core/CycleRemainderStepper.cs:96: Expose these fields directly once the residue scanners adopt the single-cycle helper so the hot path can read them without paying for an additional wrapper call per iteration.
 
 Exponent Remainder & Montgomery Windowing
-- PerfectNumbers.Core/ExponentRemainderStepper.cs:47: Route these state resets through the ProcessEightBitWindows helper once the scalar Pow2MontgomeryMod implementation adopts it so delta stepping inherits the benchmarked 2× gains for large exponents.
-- PerfectNumbers.Core/ExponentRemainderStepper.cs:57: Once divisor cycle lengths are mandatory, pull the delta multiplier from the single-block divisor-cycle snapshot so we can skip the powmod entirely and reuse the cached Montgomery residue ladder highlighted in MersenneDivisorCycleLengthGpuBenchmarks.
-- PerfectNumbers.Core/ExponentRemainderStepper.cs:60: Replace this per-delta powmod with the upcoming windowed ladder so incremental updates stop paying the single-bit cost highlighted in GpuPow2ModBenchmarks.
-- PerfectNumbers.Core/ExponentRemainderStepper.cs:78: Switch this reload to the shared windowed pow2 helper once available so CPU residue checks align with the optimized ProcessEightBitWindows timings.
-- PerfectNumbers.Core/ExponentRemainderStepper.cs:87: Reuse the divisor-cycle derived Montgomery delta once the cache exposes single-cycle lookups so this branch also avoids recomputing powmods when the snapshot lacks the divisor.
-- PerfectNumbers.Core/ExponentRemainderStepper.cs:89: Use the windowed delta pow2 helper here as well to avoid the single-bit ladder that currently lags behind the benchmarked implementation for huge divisor cycles.
-- PerfectNumbers.Core/ExponentRemainderStepper.cs:124: Replace this fallback path with the upcoming ProcessEightBitWindows helper so fresh Montgomery states also benefit from the faster pow2 ladder measured on CPUs.
-- PerfectNumbers.Core/ExponentRemainderStepper.cs:133: Once the divisor-cycle cache exposes a direct Montgomery delta, multiply it here instead of relying on the caller-provided delta so incremental scans remain in sync with the snapshot without computing additional cycles or mutating cache state.

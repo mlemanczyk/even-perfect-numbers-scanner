@@ -26,7 +26,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
         UInt128 kStart = 1UL;
         UInt128 limit = maxK + UInt128.One;
         byte last = lastIsSeven ? (byte)1 : (byte)0;
-        var kernel = gpuLease.Pow2ModKernel; // Pow2ModKernel already executes the windowed pow2 ladder from GpuPow2ModBenchmarks.
+        var kernel = gpuLease.Pow2ModKernel;
         twoP.Mod10_8_5_3(out ulong step10, out ulong step8, out ulong step5, out ulong step3);
         step10 = step10.Mod10();
 
