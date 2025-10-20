@@ -698,54 +698,6 @@ internal static partial class PrimeOrderCalculator
 		return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
 	}
 
-
-	// [ThreadStatic]
-	private static readonly Dictionary<ulong, bool> _primalityCache = new(4_096);
-	private static readonly ReaderWriterLockSlim _primalityCacheLock = new(LockRecursionPolicy.NoRecursion);
-
-	// [ThreadStatic]
-	// private static UInt128 _isPrimeHits;
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static bool TryGetCachedPrimality(ulong value, out bool isPrime)
-	{
-		if (value > (ulong)PerfectNumberConstants.MaxQForDivisorCycles)
-		{
-			isPrime = false;
-			return false;
-		}
-
-		_primalityCacheLock.EnterReadLock();
-		bool result = _primalityCache.TryGetValue(value, out isPrime);
-		_primalityCacheLock.ExitReadLock();
-		return result;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void CachePrimalityResult(ulong value, bool isPrime)
-	{
-		if (value > (ulong)PerfectNumberConstants.MaxQForDivisorCycles)
-		{
-			return;
-		}
-
-		_primalityCacheLock.EnterWriteLock();
-		_primalityCache[value] = isPrime;
-		_primalityCacheLock.ExitWriteLock();
-	}
-
-	private static bool GetOrComputePrimality(ulong value)
-	{
-		if (!TryGetCachedPrimality(value, out bool isPrime))
-		{
-			isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(value);
-			CachePrimalityResult(value, isPrime);
-		}
-
-		return isPrime;
-	}
-
-
 	private static PartialFactorResult PartialFactor(ulong value, in PrimeOrderSearchConfig config)
 	{
 		if (value <= 1UL)
@@ -846,7 +798,7 @@ internal static partial class PrimeOrderCalculator
 					// 	continue;
 					// }
 
-					bool isPrime = GetOrComputePrimality(composite);
+					bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
 					if (isPrime)
 					{
@@ -906,7 +858,7 @@ internal static partial class PrimeOrderCalculator
 
 			if (!entry.HasKnownPrimality)
 			{
-				bool isPrime = GetOrComputePrimality(composite);
+				bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 				entry = entry.WithPrimality(isPrime);
 				pending[index] = entry;
 			}
@@ -935,7 +887,7 @@ internal static partial class PrimeOrderCalculator
 		}
 		else
 		{
-			cofactorIsPrime = GetOrComputePrimality(cofactor);
+			cofactorIsPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(cofactor);
 		}
 
 		ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
@@ -1462,7 +1414,8 @@ internal static partial class PrimeOrderCalculator
 			return;
 		}
 
-		if (!knownComposite && GetOrComputePrimality(value))
+		bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(value);
+		if (!knownComposite && isPrime)
 		{
 			AddFactor(counts, value, 1);
 			return;
@@ -1471,8 +1424,8 @@ internal static partial class PrimeOrderCalculator
 		ulong factor = PollardRhoStrict(value);
 		ulong quotient = value / factor;
 
-		bool factorIsPrime = GetOrComputePrimality(factor);
-		if (factorIsPrime)
+		isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factor);
+		if (isPrime)
 		{
 			int exponent = 1;
 			ulong remaining = quotient;
@@ -1494,17 +1447,16 @@ internal static partial class PrimeOrderCalculator
 
 		FactorCompletely(factor, counts, knownComposite: true);
 
-		bool quotientIsPrime;
 		if (quotient == factor)
 		{
-			quotientIsPrime = false;
+			isPrime = false;
 		}
 		else
 		{
-			quotientIsPrime = GetOrComputePrimality(quotient);
+			isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(quotient);
 		}
 
-		if (quotientIsPrime)
+		if (isPrime)
 		{
 			AddFactor(counts, quotient, 1);
 		}
