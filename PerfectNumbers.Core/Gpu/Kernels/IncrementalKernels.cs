@@ -96,9 +96,7 @@ internal static class IncrementalKernels
         }
 
         ulong phi64 = phi.Low;
-        // TODO: Replace these Pow2Mod calls with the ProcessEightBitWindows helper when the shared windowed
-        // scalar implementation lands; benchmarks showed the windowed kernel trimming per-divisor runtime by ~2.4×.
-        if (GpuUInt128.Pow2Mod(phi64, in readOnlyQ) != GpuUInt128.One)
+        if (GpuUInt128.Pow2Mod(phi64, in readOnlyQ) != GpuUInt128.One) // Windowed pow2 keeps the totient check fast.
         {
             orders[index] = 0UL;
             return;
@@ -194,9 +192,7 @@ internal static class IncrementalKernels
         }
 
         ulong phi64 = phi.Low;
-        // TODO: Upgrade this pow2mod order kernel to the ProcessEightBitWindows helper once available so GPU residue
-        // scans avoid the single-bit ladder that benchmarks found to be 2.3× slower on large exponents.
-        if (GpuUInt128.Pow2Mod(phi64, in readOnlyQ) != GpuUInt128.One)
+        if (GpuUInt128.Pow2Mod(phi64, in readOnlyQ) != GpuUInt128.One) // Windowed pow2 keeps the order probe aligned with benchmarks.
         {
             return;
         }

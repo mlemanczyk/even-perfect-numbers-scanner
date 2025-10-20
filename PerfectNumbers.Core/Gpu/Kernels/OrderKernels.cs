@@ -22,9 +22,7 @@ internal static class OrderKernels
         }
 
         ulong phi64 = phi.Low;
-        // TODO: Once the ProcessEightBitWindows helper is available, switch this order kernel to that faster
-        // Pow2Mod variant so cycle checks inherit the same gains observed in GpuPow2ModBenchmarks.
-        GpuUInt128 pow = GpuUInt128.Pow2Mod(phi64, in readOnlyQ);
+        GpuUInt128 pow = GpuUInt128.Pow2Mod(phi64, in readOnlyQ); // Windowed pow2 keeps the cycle check aligned with benchmark wins.
         if (pow != GpuUInt128.One)
         {
             orders[index] = 0UL;

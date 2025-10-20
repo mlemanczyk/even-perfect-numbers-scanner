@@ -170,9 +170,7 @@ internal static class Pow2ModKernels
                 return;
             }
         }
-        // TODO: Replace this Pow2Mod check with the ProcessEightBitWindows helper once Pow2Minus1Mod adopts it;
-        // residue order scans will then benefit from the same 2× speedup the benchmarked windowed kernel delivered.
-        if (GpuUInt128.Pow2Mod(exponent, in readOnlyQ) != GpuUInt128.One)
+        if (GpuUInt128.Pow2Mod(exponent, in readOnlyQ) != GpuUInt128.One) // Windowed pow2 keeps the order guard aligned with GPU benchmarks.
         {
             return;
         }
