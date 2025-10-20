@@ -553,8 +553,6 @@ public static class UInt128Extensions
       while (order % prime == 0UL)
       {
         temp = order / prime;
-        // TODO: Switch this divisor-order powmod to the ProcessEightBitWindows helper so the
-        // cycle factoring loop benefits from the faster windowed pow2 ladder measured in CPU benchmarks.
         if (temp.PowModWithCycle(q, cycle) == one)
         {
           order = temp;

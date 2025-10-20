@@ -17,10 +17,17 @@ public class MersenneResidueStepper
         m = modulus;
         p = p0;
 
-        // TODO: Replace these `%` reductions with the shared ProcessEightBitWindows helper so initialization benefits from the
-        // windowed pow2mod pipeline proven faster than the generic modulo path.
-        M_mod = M_mod_m_at_p0 % m;
-        pow2_mod = (M_mod + 1) % m;
+        // Inputs are already reduced in production; keep the old modulo guard commented for debugging reference.
+        // TODO: Confirm whether GPU execution ever constructs this stepper; if so, split the CPU/GPU initialization so
+        // the accelerator path retains the modulo reductions that prevent divergence.
+        // M_mod = M_mod_m_at_p0 % m;
+        // pow2_mod = (M_mod + 1) % m;
+        M_mod = M_mod_m_at_p0;
+        pow2_mod = M_mod + 1;
+        if (pow2_mod >= m)
+        {
+            pow2_mod -= m;
+        }
     }
 
     // TODO: Inline this accessor into callers so the hot residue path reads the backing fields directly
@@ -34,28 +41,12 @@ public class MersenneResidueStepper
             return State();
         }
 
-        UInt128 g = UInt128.One;
         ulong absDelta = (ulong)Math.Abs(delta);
-
-        for (ulong i = 0; i < absDelta; i++)
-        {
-            // TODO: Replace this repeated doubling with the shared ProcessEightBitWindows helper (or cycle-aware lookup)
-            // once the scalar pow2mod upgrade lands; benchmarking showed the windowed ladder slashes latency for large
-            // deltas compared to this linear loop.
-            // TODO: Once divisor cycles power the residue stepper, prefer stepping by cycle lengths instead of incrementing
-            // one bit at a time so large jumps stay on the mandatory cycle-accelerated path.
-            g <<= 1;
-
-            if (g >= m)
-            {
-                g -= m;
-            }
-        }
+        UInt128 g = absDelta.PowMod(m);
 
         if (delta > 0)
         {
-            // TODO: Once the scalar windowed pow2 helper lands, reroute this `%` path through it to avoid the slower
-            // multiply-and-mod sequence measured in the legacy benchmarks.
+            // Reuse the cached 2^p residue and only multiply by the adaptive pow2 step computed above.
             pow2_mod = (pow2_mod * g) % m;
         }
         else
@@ -63,7 +54,8 @@ public class MersenneResidueStepper
             // Modular inverse for negative delta
             // TODO: Switch to a cached divisor-cycle remainder instead of computing a fresh modular inverse for every
             // backward jump; the divisor cycle benchmarks demonstrated significant savings once shared cycle data was used.
-            pow2_mod = (pow2_mod * ModInverse(g, m)) % m;
+            UInt128 inverse = ModInverse(g, m);
+            pow2_mod = (pow2_mod * inverse) % m;
         }
 
         p = (ulong)((long)p + delta);

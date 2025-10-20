@@ -16,12 +16,13 @@ public static partial class ULongExtensions
                 //     return keepMontgomery ? divisor.MontgomeryOne : 1UL % modulus;
                 // }
 
-                // There is no point in having extra branch, because in real use-cases it'll barely ever hit.
-                // Out of all 3_358_944_545 Pow2MontgomeryModWindowedCpu calls, we hit Pow2MontgomeryModSingleBit only 772 times.
-                // if (exponent <= Pow2WindowFallbackThreshold)
-                // {
-                //     return Pow2MontgomeryModSingleBit(exponent, divisor, keepMontgomery);
-                // }
+                // Small divisors come from the precomputed <= 4,000,000 snapshot and tiny rotation counts
+                // appear when cycle reductions trigger. Route both cases through the single-bit ladder so the
+                // CPU path avoids renting the window tables when a cheaper method is available.
+                if (exponent <= Pow2WindowFallbackThreshold || modulus <= (ulong)PerfectNumberConstants.MaxQForDivisorCycles)
+                {
+                        return Pow2MontgomeryModSingleBit(exponent, divisor, keepMontgomery);
+                }
 
                 int bitLength = GetPortableBitLengthCpu(exponent);
                 int windowSize = GetWindowSizeCpu(bitLength);

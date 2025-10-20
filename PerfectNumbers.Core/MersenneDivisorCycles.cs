@@ -985,9 +985,6 @@ public class MersenneDivisorCycles
     private static ulong CalculateCycleLengthFallback(ulong divisor)
     {
         // Otherwise, find order of 2 mod divisor using the shared unrolled-hex stepping sequence.
-        // TODO: Expose a GPU-first branch here so high divisors leverage the ProcessEightBitWindows
-        // kernel measured fastest in CycleLengthGpuVsCpuBenchmarks, returning the result without
-        // storing it in the shared cache.
         return divisor.CalculateMersenneDivisorCycleLengthUnrolledHexCpu();
     }
 
