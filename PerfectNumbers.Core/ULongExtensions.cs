@@ -464,16 +464,19 @@ public static partial class ULongExtensions
 		// 	return 0UL;
 		// }
 
+		// The Pollard Rho walks keep both operands below the modulus, so skip re-folding them here.
 		UInt128 sum = (UInt128)value + addend;
-		UInt128 mod = modulus;
-		if (sum >= mod)
+		if (sum < modulus)
 		{
-			sum -= mod;
-			if (sum >= mod)
-			{
-				sum -= mod;
-			}
+			return (ulong)sum;
 		}
+
+		sum -= modulus;
+		// After one subtraction the sum always falls below the modulus on this path, making the old guard redundant.
+		// if (sum >= modulus)
+		// {
+		// 	sum -= modulus;
+		// }
 
 		return (ulong)sum;
 	}

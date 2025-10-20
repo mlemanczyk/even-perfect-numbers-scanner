@@ -677,15 +677,25 @@ public static class UInt128Extensions
         //     return UInt128.Zero;
         // }
 
-        value %= modulus;
-        addend %= modulus;
-        if (addend == UInt128.Zero)
-        {
-            return value;
-        }
+        // value and addend already lie below the modulus throughout the divisor-by-divisor CPU flow,
+        // so skip the redundant reductions the old helper performed.
+        // value %= modulus;
+        // addend %= modulus;
+        // Odd moduli keep 2^delta from landing on zero, leaving this branch inactive in the scan.
+        // if (addend == UInt128.Zero)
+        // {
+        //     return value;
+        // }
 
         UInt128 threshold = modulus - addend;
-        return value >= threshold ? value - threshold : value + addend;
+        if (value >= threshold)
+        {
+            return value - threshold;
+        }
+
+        UInt128 sum = value + addend;
+        // The sum stays below the modulus under the threshold guard above, so no wraparound occurs.
+        return sum;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
