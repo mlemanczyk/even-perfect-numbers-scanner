@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Gpu;
 
@@ -10,6 +11,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     private ulong _divisorLimit;
     private ulong _lastStatusDivisor;
     private int _batchSize = 1_024;
+
+    private const int FactorCachePrimeTrackingLimit = 500_000;
+    private static readonly HashSet<ulong> FactorCacheTrackedPrimes = new();
+    private static readonly object FactorCachePrimeLock = new();
+    private static ulong FactorCachePrimeHitCount;
+    private static bool FactorCachePrimeTrackingDisabled;
 
     [ThreadStatic]
     private static GpuUInt128WorkSet _divisorScanGpuWorkSet;
@@ -114,6 +121,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     {
         processedCount = 0UL;
         processedAll = false;
+
+        ObserveFactorCachePrime(prime);
 
         // The EvenPerfectBitScanner feeds primes >= 138,000,000 here, so allowedMax >= 3 in production runs.
         // Keeping the guard commented out documents the reasoning for benchmarks and tests.
@@ -252,6 +261,43 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         limit.High = 0UL;
         limit.Low = 0UL;
         return false;
+    }
+
+    private static void ObserveFactorCachePrime(ulong prime)
+    {
+        bool logHit = false;
+        ulong hitNumber = 0UL;
+        bool trackingDisabledNow = false;
+
+        lock (FactorCachePrimeLock)
+        {
+            if (FactorCachePrimeTrackingDisabled)
+            {
+                return;
+            }
+
+            if (!FactorCacheTrackedPrimes.Add(prime))
+            {
+                FactorCachePrimeHitCount++;
+                hitNumber = FactorCachePrimeHitCount;
+                logHit = true;
+            }
+            else if (FactorCacheTrackedPrimes.Count >= FactorCachePrimeTrackingLimit)
+            {
+                FactorCachePrimeTrackingDisabled = true;
+                FactorCacheTrackedPrimes.Clear();
+                trackingDisabledNow = true;
+            }
+        }
+
+        if (logHit)
+        {
+            Console.WriteLine($"Factor cache hit for exponent {prime} ({hitNumber})");
+        }
+        else if (trackingDisabledNow)
+        {
+            Console.WriteLine("Factor cache hit tracking disabled after exceeding the tracking limit.");
+        }
     }
 
     private static byte CheckDivisor(ulong prime, ulong divisorCycle, in MontgomeryDivisorData divisorData)
