@@ -671,10 +671,11 @@ public static class UInt128Extensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static UInt128 AddMod(this UInt128 value, UInt128 addend, UInt128 modulus)
     {
-        if (modulus <= UInt128.One)
-        {
-            return UInt128.Zero;
-        }
+        // The by-divisor CPU path never supplies moduli below 2, so this guard stays disabled.
+        // if (modulus <= UInt128.One)
+        // {
+        //     return UInt128.Zero;
+        // }
 
         value %= modulus;
         addend %= modulus;
@@ -684,21 +685,17 @@ public static class UInt128Extensions
         }
 
         UInt128 threshold = modulus - addend;
-        if (value >= threshold)
-        {
-            return value - threshold;
-        }
-
-        return value + addend;
+        return value >= threshold ? value - threshold : value + addend;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static UInt128 SubtractOneMod(this UInt128 value, UInt128 modulus)
     {
-        if (modulus <= UInt128.One)
-        {
-            return UInt128.Zero;
-        }
+        // The divisor scan never observes moduli below 2, so leave this guard documented but inactive.
+        // if (modulus <= UInt128.One)
+        // {
+        //     return UInt128.Zero;
+        // }
 
         if (value == UInt128.Zero)
         {

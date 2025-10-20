@@ -458,10 +458,11 @@ public static partial class ULongExtensions
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong AddMod64(this ulong value, ulong addend, ulong modulus)
 	{
-		if (modulus <= 1UL)
-		{
-			return 0UL;
-		}
+		// The CPU factoring path never presents moduli below 2, so leave this guard documented but disabled.
+		// if (modulus <= 1UL)
+		// {
+		// 	return 0UL;
+		// }
 
 		UInt128 sum = (UInt128)value + addend;
 		UInt128 mod = modulus;
@@ -480,10 +481,11 @@ public static partial class ULongExtensions
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static ulong FoldMontgomery(ulong value, ulong modulus)
 	{
-		if (modulus <= 1UL)
-		{
-			return 0UL;
-		}
+		// Moduli in the divisor scan always exceed 1, so retain the documentation and skip the runtime guard.
+		// if (modulus <= 1UL)
+		// {
+		// 	return 0UL;
+		// }
 
 		if (value < modulus)
 		{
@@ -508,10 +510,11 @@ public static partial class ULongExtensions
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong ModPow64(this ulong value, ulong exponent, ulong modulus)
 	{
-		if (modulus <= 1UL)
-		{
-			return 0UL;
-		}
+		// Moduli below 2 do not occur in the even-perfect divisor scans, so keep the guard commented for clarity.
+		// if (modulus <= 1UL)
+		// {
+		// 	return 0UL;
+		// }
 
 		ulong result = 1UL;
 		value = FoldMontgomery(value, modulus);
