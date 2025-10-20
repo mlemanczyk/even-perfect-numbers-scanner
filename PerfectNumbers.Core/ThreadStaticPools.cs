@@ -32,17 +32,6 @@ namespace PerfectNumbers.Core
 
 
         [ThreadStatic]
-        private static ArrayPool<KeyValuePair<ulong, int>>? _factorKeyValuePairPool;
-
-        public static ArrayPool<KeyValuePair<ulong, int>> FactorKeyValuePairPool
-        {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get
-            {
-                return _factorKeyValuePairPool ??= ArrayPool<KeyValuePair<ulong, int>>.Create();
-            }
-        }
-        [ThreadStatic]
         private static MersenneCpuDivisorScanSession? _mersenneCpuDivisorSession;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -276,62 +265,6 @@ namespace PerfectNumbers.Core
             }
 
             pool.Add(dictionary);
-        }
-
-        [ThreadStatic]
-        private static Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? _mersenneFactorCacheDictionary;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry> RentMersenneFactorCacheDictionary()
-        {
-            Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? cache = _mersenneFactorCacheDictionary;
-            if (cache is null)
-            {
-                return new Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>(8);
-            }
-
-            _mersenneFactorCacheDictionary = null;
-            cache.Clear();
-            return cache;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void ReturnMersenneFactorCacheDictionary(Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry> cache)
-        {
-            for (Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>.Enumerator enumerator = cache.GetEnumerator(); enumerator.MoveNext();)
-            {
-                enumerator.Current.Value.ReturnToPool();
-            }
-
-            cache.Clear();
-            _mersenneFactorCacheDictionary = cache;
-        }
-
-        [ThreadStatic]
-        private static MersenneDivisorCycles.FactorCacheEntry? _factorCacheEntryPoolHead;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static MersenneDivisorCycles.FactorCacheEntry RentFactorCacheEntry()
-        {
-            MersenneDivisorCycles.FactorCacheEntry? entry = _factorCacheEntryPoolHead;
-            if (entry is null)
-            {
-                entry = new MersenneDivisorCycles.FactorCacheEntry();
-            }
-            else
-            {
-                _factorCacheEntryPoolHead = entry.Next;
-            }
-
-            entry.Reset();
-            return entry;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void ReturnFactorCacheEntry(MersenneDivisorCycles.FactorCacheEntry entry)
-        {
-            entry.Next = _factorCacheEntryPoolHead;
-            _factorCacheEntryPoolHead = entry;
         }
 
         [ThreadStatic]
