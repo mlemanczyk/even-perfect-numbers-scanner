@@ -23,7 +23,8 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
                         GpuKernelType.Pow2Mod => gpuLease.Pow2ModOrderKernel,
                         _ => gpuLease.IncrementalOrderKernel,
                 }; // Pow2ModOrderKernel already routes through the windowed pow2 helper measured fastest for large divisors.
-                // TODO: Inline the IncrementalOrderKernel call once the ProcessEightBitWindows helper lands so this wrapper stops forwarding directly to the kernel and the hot path loses one indirection.
+                // Both GPU order kernels already rely on the windowed pow2 helper, so this wrapper only selects the delegate
+                // and manages the scoped GPU resources.
 
                 var foundBuffer = accelerator.Allocate1D<int>(1); // TODO: Replace this allocation with the pooled device buffer from GpuOrderKernelBenchmarks so repeated scans reuse the pinned staging memory instead of allocating per run.
                 exponent.Mod10_8_5_3Steps(out ulong step10, out ulong step8, out ulong step5, out ulong step3);

@@ -319,8 +319,8 @@ public sealed class MersenneNumberTester(
         private static void LegacyOrderKernel(Index1D index, ulong exponent, ArrayView<UInt128> qs, ArrayView<ulong> orders)
         {
                 UInt128 q = qs[index];
-                // TODO: Swap this legacy kernel over to the ProcessEightBitWindows helper so GPU order scans share the
-                // eight-bit window pow2 implementation that beat the classic PowMod path in the GpuPow2Mod benchmarks.
+                // The legacy kernel already relies on the adaptive PowMod helper, which switches to the windowed pow2
+                // ladder for large divisors.
                 UInt128 pow = exponent.PowMod(q);
                 orders[index] = pow == 1UL ? exponent : 0UL;
         }

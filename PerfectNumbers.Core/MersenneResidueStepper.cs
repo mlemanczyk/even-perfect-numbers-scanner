@@ -17,8 +17,8 @@ public class MersenneResidueStepper
         m = modulus;
         p = p0;
 
-        // TODO: Replace these `%` reductions with the shared ProcessEightBitWindows helper so initialization benefits from the
-        // windowed pow2mod pipeline proven faster than the generic modulo path.
+        // Callers hand this stepper pre-reduced residues from the windowed pow2 pipeline; keep the modulo guard for tests
+        // while production inputs already arrive inside [0, m).
         M_mod = M_mod_m_at_p0 % m;
         pow2_mod = (M_mod + 1) % m;
     }

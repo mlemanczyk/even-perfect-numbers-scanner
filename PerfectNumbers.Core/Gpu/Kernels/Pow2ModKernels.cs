@@ -77,8 +77,7 @@ internal static class Pow2ModKernels
                 return;
             }
         }
-        // TODO: Swap Pow2Minus1Mod for the eight-bit window helper once the scalar version switches;
-        // benchmarks show the windowed variant cuts large-divisor scans from ~51 µs to ~21 µs.
+        // Pow2Minus1Mod already routes through the windowed pow2 helper benchmarked as fastest for large divisors.
         if (GpuUInt128.Pow2Minus1Mod(exponent, in readOnlyQ) != GpuUInt128.Zero)
         {
             orders[index] = 0UL;

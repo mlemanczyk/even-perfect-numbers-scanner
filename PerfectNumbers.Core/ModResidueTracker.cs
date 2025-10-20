@@ -203,10 +203,8 @@ public sealed class ModResidueTracker
                         for (; i < divisors.Count; i++)
                         {
                                 d = divisors[i];
-                                // TODO: Replace this PowMod128 call with the upcoming eight-bit window helper once the
-                                // ProcessEightBitWindows scalar implementation lands so residue updates benefit from the
-                                // ~2× win recorded in GpuPow2ModBenchmarks for large moduli.
-                                UInt128 powDelta = UInt128Numbers.Two.ModPow(delta, d);
+                                // The pow-delta term now calls the windowed Pow2 Montgomery helper so residue updates reuse the fast ladder.
+                                UInt128 powDelta = delta.Pow2MontgomeryModWindowed(d);
                                 // r' = pow2Delta*r + (pow2Delta - 1) mod d
                                 value = powDelta.MulMod(residues[i], d);
                                 value = value.AddMod(powDelta, d);
@@ -262,7 +260,7 @@ public sealed class ModResidueTracker
                 // instead of recomputing powmods for every divisor; the divisor-cycle benchmarks showed large wins once the
                 // cached orders were used across scans, and a miss should trigger the configured device to compute the cycle
                 // immediately without storing it back or requesting additional cache blocks.
-                UInt128 pow = UInt128Numbers.Two.ModPow(number, divisor);
+                UInt128 pow = number.Pow2MontgomeryModWindowed(divisor);
 
                 // q divides M_p ⇔ 2^p ≡ 1 (mod q)  AND  ord_q(2) | p
                 if (pow != UInt128.One)
