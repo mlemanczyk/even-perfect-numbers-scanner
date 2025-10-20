@@ -112,7 +112,7 @@ public class MersenneNumberLucasLehmerGpuTester
 
         var gpu = GpuContextPool.RentPreferred(preferCpu: false);
         var accelerator = gpu.Accelerator;
-        var kernel = GetBatchKernel(accelerator); // TODO: Switch this batch path to the ProcessEightBitWindows residue kernel once Lucas–Lehmer integrates the benchmarked windowed pow2 helper for small exponents.
+        var kernel = GetBatchKernel(accelerator); // Batch kernel already relies on the Mersenne squaring reducer; windowed pow2 helpers do not apply here.
 
         var expBuffer = accelerator.Allocate1D<ulong>(count);
         ulong[] expArray = ArrayPool<ulong>.Shared.Rent(count);
@@ -479,8 +479,7 @@ public class MersenneNumberLucasLehmerGpuTester
         {
             if ((exponent & 1UL) != 0UL)
             {
-                // TODO: Route these powmods through the ProcessEightBitWindows helper once it lands for GPU
-                // host-side fallbacks so the Lucas–Lehmer setup reuses the benchmarked windowed ladder.
+                // The base varies per primitive-root candidate, so pow2-specific ladders do not apply.
                 result = MulMod(result, value, modulus);
             }
 

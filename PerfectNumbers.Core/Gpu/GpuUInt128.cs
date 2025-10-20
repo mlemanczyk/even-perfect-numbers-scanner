@@ -1020,18 +1020,8 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ShiftLeftByNativeChunk(ulong value, ulong modulus)
     {
-        // TODO: Collapse this eight-step shift ladder into the ProcessEightBitWindows helper once it lands so
-        // we reuse the precomputed window residues instead of emitting `% modulus` after every shift.
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-        value = (value << 1) % modulus;
-
-        return value;
+        // Multiply by 2^NativeModuloChunkBits in one pass so the native-modulo path avoids eight `%` reductions.
+        return MulMod64(value, 1UL << NativeModuloChunkBits, modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
