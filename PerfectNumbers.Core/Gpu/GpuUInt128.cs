@@ -488,6 +488,9 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             }
             else
             {
+                // Copy the low word into a temporary before shifting High; assigning directly
+                // regressed the GpuUInt128MulMod benchmarks (HighWordModulus 6.45 -> 7.38 us,
+                // MixedMagnitude 4.99 -> 6.24 us) with InvocationCount=16, IterationCount=3.
                 ulong newLow = (multiplier.Low >> 1) | (multiplier.High << 63);
                 multiplier.High >>= 1;
                 multiplier.Low = newLow;
