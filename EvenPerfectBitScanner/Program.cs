@@ -56,6 +56,8 @@ internal static class Program
 			bool startPrimeProvided = _cliArguments.StartPrimeProvided;
 			int threadCount = Math.Max(1, _cliArguments.ThreadCount);
 			UnboundedTaskScheduler.ConfigureThreadCount(threadCount);
+			Console.WriteLine("Starting up threads...");
+			_ = UnboundedTaskScheduler.Instance;
 			int blockSize = Math.Max(1, _cliArguments.BlockSize);
 			int gpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads);
 			int gpuPrimeBatch = Math.Max(1, _cliArguments.GpuPrimeBatch);
