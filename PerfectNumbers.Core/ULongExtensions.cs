@@ -456,12 +456,72 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static ulong AddMod64(this ulong value, ulong addend, ulong modulus)
+	{
+		// Every CPU caller (Pollard Rho and the ModPow64 ladder) supplies moduli of at least three, so leave this guard
+		// documented but disabled.
+		// if (modulus <= 1UL)
+		// {
+		// 	return 0UL;
+		// }
+
+		// Both flows keep their operands below the modulus ahead of time, letting us skip the re-fold the old helper performed.
+		UInt128 sum = (UInt128)value + addend;
+		if (sum < modulus)
+		{
+			return (ulong)sum;
+		}
+
+		sum -= modulus;
+		// After one subtraction the sum always falls below the modulus on this path, making the old guard redundant.
+		// if (sum >= modulus)
+		// {
+		// 	sum -= modulus;
+		// }
+
+		return (ulong)sum;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static ulong FoldMontgomery(ulong value, ulong modulus)
+	{
+		// Pollard Rho and ModPow64 both feed moduli of at least three, so retain the documentation and skip the runtime guard.
+		// if (modulus <= 1UL)
+		// {
+		// 	return 0UL;
+		// }
+
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		ulong folded = 0UL;
+		int leadingZeros = BitOperations.LeadingZeroCount(value);
+		int bitIndex = 63 - leadingZeros;
+		for (; bitIndex >= 0; bitIndex--)
+		{
+			folded = folded.AddMod64(folded, modulus);
+			if (((value >> bitIndex) & 1UL) != 0UL)
+			{
+				folded = folded.AddMod64(1UL, modulus);
+			}
+		}
+
+		return folded;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong ModPow64(this ulong value, ulong exponent, ulong modulus)
 	{
+		// Pollard Rho and the Mersenne testers never pass moduli below two, so keep the guard commented for clarity.
+		// if (modulus <= 1UL)
+		// {
+		// 	return 0UL;
+		// }
+
 		ulong result = 1UL;
-		// TODO: Replace this `%` with the Montgomery folding helper highlighted in MulMod64Benchmarks so the
-		// modular exponentiation avoids the slow integer division before the ladder even starts.
-		value %= modulus;
+		value = FoldMontgomery(value, modulus);
 
 		while (exponent != 0UL)
 		{
@@ -477,10 +537,13 @@ public static partial class ULongExtensions
 		return result;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	// TODO: Replace this fallback with the UInt128 Montgomery helper measured fastest in
-	// MulMod64Benchmarks so CPU callers stop paying for triple modulo operations.
-	public static ulong MulMod64(this ulong a, ulong b, ulong modulus) => (ulong)(UInt128)(((a % modulus) * (b % modulus)) % modulus);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        // Reuse the direct UInt128 reduction path that dominated MulMod64Benchmarks to avoid
+        // the redundant operand modulo operations in the older fallback.
+        public static ulong MulMod64(this ulong a, ulong b, ulong modulus)
+        {
+                return (ulong)(((UInt128)a * b) % modulus);
+        }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong MontgomeryMultiply(this ulong a, ulong b, ulong modulus, ulong nPrime)

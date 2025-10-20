@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
@@ -628,6 +629,57 @@ public static class UInt128Extensions
         // Reusing left to capture the reduced 128-bit remainder before returning.
         left = ReduceProductBitwise(p3, p2, p1, p0, modulus);
         return left;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UInt128 AddMod(this UInt128 value, UInt128 addend, UInt128 modulus)
+    {
+        // All current CPU callers (Pollard Rho and the Mersenne residue tracker) only supply moduli
+        // of at least three, so leave this guard documented but disabled.
+        // if (modulus <= UInt128.One)
+        // {
+        //     return UInt128.Zero;
+        // }
+
+        // Both operands arrive pre-reduced on these paths, letting us skip the redundant folds the old
+        // helper performed.
+        // value %= modulus;
+        // addend %= modulus;
+        // Pollard Rho keeps its polynomial constant inside [1, modulus - 1], and the Mersenne pow-delta
+        // term never hits zero for odd moduli, leaving this branch inactive outside targeted tests.
+        // if (addend == UInt128.Zero)
+        // {
+        //     return value;
+        // }
+
+        UInt128 threshold = modulus - addend;
+        if (value >= threshold)
+        {
+            return value - threshold;
+        }
+
+        UInt128 sum = value + addend;
+        // The sum stays below the modulus under the threshold guard above, so no wraparound occurs.
+        return sum;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UInt128 SubtractOneMod(this UInt128 value, UInt128 modulus)
+    {
+        // Only the Mersenne residue tracker calls this helper, and it never observes moduli below three,
+        // so leave this guard documented but inactive.
+        // if (modulus <= UInt128.One)
+        // {
+        //     return UInt128.Zero;
+        // }
+
+        if (value == UInt128.Zero)
+        {
+            // Wrapping occurs when the prior AddMod call produced one, so step back to modulus - 1.
+            return modulus - UInt128.One;
+        }
+
+        return value - UInt128.One;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
