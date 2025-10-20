@@ -13,7 +13,7 @@ public static partial class ULongExtensions
         public static ulong MulHighGpuCompatible(this ulong x, ulong y)
         {
                 GpuUInt128 product = new(x);
-                product.Mul64(new GpuUInt128(y));
+                GpuUInt128.Mul64(ref product, 0UL, y);
                 return product.High;
         }
 

@@ -33,7 +33,7 @@ public class GpuUInt128Mul64Benchmarks
     public GpuUInt128 HighProductMaterializedInLocal()
     {
         GpuUInt128 value = Input.Multiplicand;
-        value.Mul64(Input.Multiplier);
+        GpuUInt128.Mul64(ref value, Input.Multiplier.High, Input.Multiplier.Low);
         return value;
     }
 

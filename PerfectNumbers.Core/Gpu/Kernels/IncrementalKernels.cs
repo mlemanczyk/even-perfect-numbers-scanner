@@ -71,7 +71,7 @@ internal static class IncrementalKernels
         // TODO: Is this expected that the value of kStart is modified?
         GpuUInt128 k = kStart + (GpuUInt128)idx;
         GpuUInt128 q = twoP;
-        q.Mul64(k);
+        GpuUInt128.Mul64(ref q, k.High, k.Low);
         q.Add(GpuUInt128.One);
         ReadOnlyGpuUInt128 readOnlyQ = q.AsReadOnly();
 
@@ -174,7 +174,7 @@ internal static class IncrementalKernels
 
         GpuUInt128 k = kStart + (GpuUInt128)idx;
         GpuUInt128 q = twoP;
-        q.Mul64(k);
+        GpuUInt128.Mul64(ref q, k.High, k.Low);
         q.Add(GpuUInt128.One);
         ReadOnlyGpuUInt128 readOnlyQ = q.AsReadOnly();
 

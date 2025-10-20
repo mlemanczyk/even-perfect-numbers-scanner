@@ -157,9 +157,8 @@ public class MulMod64Benchmarks
     }
 
     /// <summary>
-    /// Uses the GPU-friendly <see cref="ULongExtensions.MulMod64Gpu(ulong, ulong, ulong)"/> helper; dense inputs now
-    /// cost 24.4–61.9 ns, while NearFullRange and SparseOperands finish near 7.27 ns and ZeroOperands stay baseline-fast at
-    /// 3.59 ns.
+    /// Benchmarks the legacy GPU-oriented shim that previously powered <see cref="ULongExtensions.MulMod64Gpu(ulong, ulong, ulong)"/>;
+    /// dense inputs still land in the 24.4–61.9 ns range while sparse operands remain closer to 3.6–7.3 ns.
     /// </summary>
     /// <remarks>
     /// Observed means: CrossWordBlend 24.422 ns (6.86×), MixedBitPattern 61.850 ns, NearFullRange 7.267 ns,
@@ -168,14 +167,12 @@ public class MulMod64Benchmarks
     [Benchmark]
     public ulong GpuCompatibleBaseline()
     {
-        // TODO: Callers in production should migrate to ULongExtensions.MulMod64 where GPU parity
-        // is not required; that baseline stayed 6–17× faster for dense 64-bit operands.
-        return Input.Left.MulMod64Gpu(Input.Right, Input.Modulus);
+        return MulMod64GpuLegacy(Input.Left, Input.Right, Input.Modulus);
     }
 
     /// <summary>
-    /// Uses the deferred native-modulo helper <see cref="ULongExtensions.MulMod64GpuDeferred(ulong, ulong, ulong)"/>;
-    /// excels when operands are tiny (2.01 ns on ZeroOperands) yet remains the slowest choice on dense data at 146–295 ns.
+    /// Benchmarks the deferred native-modulo shim that now lives only in this suite; tiny operands still excel around 2 ns
+    /// while dense datasets take 146–295 ns.
     /// </summary>
     /// <remarks>
     /// Observed means: CrossWordBlend 146.559 ns (40.63×), MixedBitPattern 255.555 ns, NearFullRange 21.390 ns,
@@ -184,9 +181,21 @@ public class MulMod64Benchmarks
     [Benchmark]
     public ulong GpuCompatibleDeferred()
     {
-        // TODO: Retire the deferred GPU shim from runtime paths and keep it only for benchmarks;
-        // ULongExtensions.MulMod64 avoids the 6×–82× slowdown on real-world operand mixes.
-        return Input.Left.MulMod64GpuDeferred(Input.Right, Input.Modulus);
+        return MulMod64GpuDeferredLegacy(Input.Left, Input.Right, Input.Modulus);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong MulMod64GpuLegacy(ulong a, ulong b, ulong modulus)
+    {
+        GpuUInt128 state = new(a % modulus);
+        return state.MulMod(b, modulus);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong MulMod64GpuDeferredLegacy(ulong a, ulong b, ulong modulus)
+    {
+        GpuUInt128 state = new(a);
+        return state.MulModWithNativeModulo(b, modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -64,7 +64,7 @@ internal static class Pow2ModKernels
         // TODO: kStart is modified after this. Is this expected?
         kStart.Add(idx);
         GpuUInt128 q = twoP;
-        q.Mul64(kStart);
+        GpuUInt128.Mul64(ref q, kStart.High, kStart.Low);
         q.Add(GpuUInt128.One);
         ReadOnlyGpuUInt128 readOnlyQ = q.AsReadOnly();
         if (q.High == 0UL && q.Low < (ulong)smallCycles.Length)
@@ -158,7 +158,7 @@ internal static class Pow2ModKernels
 
         GpuUInt128 k = kStart + (GpuUInt128)idx;
         GpuUInt128 q = twoP;
-        q.Mul64(k);
+        GpuUInt128.Mul64(ref q, k.High, k.Low);
         q.Add(GpuUInt128.One);
         ReadOnlyGpuUInt128 readOnlyQ = q.AsReadOnly();
         // Small-cycles in-kernel early rejection from device table
