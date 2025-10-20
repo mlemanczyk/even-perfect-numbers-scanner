@@ -105,7 +105,7 @@ public static class MersennePrimeFactorTester
                 }
 
                 candidate = order / prime;
-                if (ModPow128(2, candidate, q, ct) == 1)
+                if (UInt128Numbers.Two.ModPow(candidate, q, ct) == UInt128.One)
                 {
                     order = candidate;
                 }
@@ -128,81 +128,6 @@ public static class MersennePrimeFactorTester
         }
 
         return order;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    // TODO: Replace this duplicate powmod with ULongExtensions.ModPow64 so we inherit the optimized MulMod64 path that led the MulMod64Benchmarks on large operands.
-    private static ulong ModPow64(ulong value, ulong exponent, ulong modulus, CancellationToken ct)
-    {
-        ulong result = 1UL;
-        ulong baseValue = value % modulus;
-        ulong exp = exponent;
-
-        while (exp != 0UL)
-        {
-            if (ct.IsCancellationRequested)
-            {
-                return 0UL;
-            }
-
-            if ((exp & 1UL) != 0UL)
-            {
-                result = MulMod64(result, baseValue, modulus);
-            }
-
-            if (ct.IsCancellationRequested)
-            {
-                return 0UL;
-            }
-
-            baseValue = MulMod64(baseValue, baseValue, modulus);
-            exp >>= 1;
-        }
-
-        return result;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong MulMod64(ulong a, ulong b, ulong mod) => (ulong)((UInt128)a * b % mod); // TODO: Route this through ULongExtensions.MulMod64 so the powmod above adopts the inline UInt128 implementation that dominated the MulMod64Benchmarks.
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    // TODO: Switch to UInt128Extensions.ModPow once its MulMod backend adopts the faster UInt128BuiltIn path highlighted in MulHighBenchmarks to avoid the BigInteger fallback.
-    private static UInt128 ModPow128(UInt128 value, UInt128 exponent, UInt128 modulus, CancellationToken ct)
-    {
-        UInt128 result = 1;
-        UInt128 baseValue = value % modulus;
-        UInt128 exp = exponent;
-
-        while (exp != 0)
-        {
-            if (ct.IsCancellationRequested)
-            {
-                return 0;
-            }
-
-            if ((exp & 1) != 0)
-            {
-                result = MulMod128(result, baseValue, modulus);
-            }
-
-            if (ct.IsCancellationRequested)
-            {
-                return 0;
-            }
-
-            baseValue = MulMod128(baseValue, baseValue, modulus);
-            exp >>= 1;
-        }
-
-        return result;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static UInt128 MulMod128(UInt128 a, UInt128 b, UInt128 mod)
-    {
-        BigInteger product = (BigInteger)a * b; // TODO: Replace this BigInteger reduction with the forthcoming UInt128 intrinsic helper measured faster in Mul64Benchmarks and MulHighBenchmarks for huge operands.
-        product %= (BigInteger)mod;
-        return (UInt128)product;
     }
 
     private static readonly ConcurrentBag<List<ulong>> ListPool = new();
@@ -391,24 +316,19 @@ public static class MersennePrimeFactorTester
                     return 0UL;
                 }
 
-                x = (MulMod64(x, x, n) + c) % n; // TODO: Swap the `% n` with the Montgomery folding
-                                                 // helper from the PollardRho benchmarks once the
-                                                 // specialized reducer lands.
+                x = x.MulMod64(x, n).AddMod64(c, n);
                 if (ct.IsCancellationRequested)
                 {
                     return 0UL;
                 }
 
-                y = (MulMod64(y, y, n) + c) % n; // TODO: Use the same Montgomery folding helper here
-                                                 // to keep the tortoise sequence on the optimized
-                                                 // path.
+                y = y.MulMod64(y, n).AddMod64(c, n);
                 if (ct.IsCancellationRequested)
                 {
                     return 0UL;
                 }
 
-                y = (MulMod64(y, y, n) + c) % n; // TODO: Replace this modulo with the optimized helper
-                                                 // so both steps share the fast reduction.
+                y = y.MulMod64(y, n).AddMod64(c, n);
                 diff = x > y ? x - y : y - x;
                 if (ct.IsCancellationRequested)
                 {
@@ -539,22 +459,19 @@ public static class MersennePrimeFactorTester
                     return 0;
                 }
 
-                x = (MulMod128(x, x, n) + c) % n; // TODO: Swap this modulo for the UInt128 Montgomery
-                                                 // reducer once the optimized helper lands.
+                x = x.MulMod(x, n).AddMod(c, n);
                 if (ct.IsCancellationRequested)
                 {
                     return 0;
                 }
 
-                y = (MulMod128(y, y, n) + c) % n; // TODO: Use the same optimized reducer for the
-                                                 // tortoise step.
+                y = y.MulMod(y, n).AddMod(c, n);
                 if (ct.IsCancellationRequested)
                 {
                     return 0;
                 }
 
-                y = (MulMod128(y, y, n) + c) % n; // TODO: Replace with the optimized reducer so both
-                                                 // steps avoid BigInteger-based modulo.
+                y = y.MulMod(y, n).AddMod(c, n);
                 diff = x > y ? x - y : y - x;
                 if (ct.IsCancellationRequested)
                 {

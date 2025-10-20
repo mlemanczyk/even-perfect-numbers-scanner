@@ -44,7 +44,7 @@ public sealed class ModResidueTracker
 		if (divisor == UInt128.Zero)
 		{
 			throw new ArgumentOutOfRangeException(nameof(divisor));
-		}
+                }
 
 		EnsureAt(number);
 
@@ -58,15 +58,15 @@ public sealed class ModResidueTracker
 			if (_hasLastAppended && idx == divisors.Count - 1 && divisor >= _lastAppended)
 			{
 				_lastAppended = divisor;
-			}
+                        }
 			else if (!_hasLastAppended)
 			{
 				_hasLastAppended = true;
 				_lastAppended = divisor;
-			}
+                        }
 
 			return residue == UInt128.Zero;
-		}
+                }
 
 		return _residues[idx] == UInt128.Zero;
 	}
@@ -90,7 +90,7 @@ public sealed class ModResidueTracker
 			EnsureAt(number);
 			// After EnsureAt we can keep _cursor (still valid monotonic pointer)
 			if (_cursor > divisors.Count) _cursor = divisors.Count;
-		}
+                }
 
 		UInt128 residue;
 		// Fast path: append to tail when candidates are strictly increasing.
@@ -105,21 +105,21 @@ public sealed class ModResidueTracker
 			_cursor = divisors.Count; // position after last
 			divisible = residue == UInt128.Zero;
 			return true;
-		}
+                }
 
 		// Merge pointer: advance until current >= divisor
 		var cursor = _cursor;
 		while (cursor < divisors.Count && divisors[cursor] < divisor)
 		{
 			cursor++;
-		}
+                }
 
 		if (cursor < divisors.Count && divisors[cursor] == divisor)
 		{
 			divisible = residues[cursor] == UInt128.Zero;
 			_cursor = cursor + 1; // position after matched
 			return true;
-		}
+                }
 
 
 		// Insert at cursor to keep order
@@ -134,7 +134,7 @@ public sealed class ModResidueTracker
 		{
 			_hasLastAppended = true;
 			_lastAppended = divisor;
-		}
+                }
 
 		return true;
 	}
@@ -150,17 +150,17 @@ public sealed class ModResidueTracker
 			// Initialize residues lazily upon first check for each divisor.
 			_initialized = true;
 			return;
-		}
+                }
 
 		if (number == _currentNumber)
 		{
 			return;
-		}
+                }
 
 		if (number < _currentNumber)
 		{
 			throw new InvalidOperationException("Number must be non-decreasing.");
-		}
+                }
 
 		UInt128 delta = number - _currentNumber;
 		List<UInt128> divisors = _divisors;
@@ -169,7 +169,7 @@ public sealed class ModResidueTracker
 		{
 			_currentNumber = number;
 			return;
-		}
+                }
 
 		// Advance all tracked residues from _currentNumber to 'number'.
 		// For Identity: r' = (r + delta) mod d
@@ -206,17 +206,15 @@ public sealed class ModResidueTracker
                                 // TODO: Replace this PowMod128 call with the upcoming eight-bit window helper once the
                                 // ProcessEightBitWindows scalar implementation lands so residue updates benefit from the
                                 // ~2× win recorded in GpuPow2ModBenchmarks for large moduli.
-                                value = PowMod128(UInt128Numbers.Two, delta, d);
+                                UInt128 powDelta = UInt128Numbers.Two.ModPow(delta, d);
                                 // r' = pow2Delta*r + (pow2Delta - 1) mod d
-                                value = MulMod128(value, residues[i], d) + value - UInt128.One;
-                                if (value >= d)
-                                {
-					value -= d;
-				}
+                                value = powDelta.MulMod(residues[i], d);
+                                value = value.AddMod(powDelta, d);
+                                value = value.SubtractOneMod(d);
 
-				residues[i] = value;
-			}
-		}
+                                residues[i] = value;
+                        }
+                }
 
 		_currentNumber = number;
 	}
@@ -231,12 +229,12 @@ public sealed class ModResidueTracker
 			if (list[mid] < value)
 			{
 				lo = mid + 1;
-			}
+                        }
 			else
 			{
 				hi = mid;
-			}
-		}
+                        }
+                }
 
 		return lo;
 	}
@@ -264,70 +262,18 @@ public sealed class ModResidueTracker
                 // instead of recomputing powmods for every divisor; the divisor-cycle benchmarks showed large wins once the
                 // cached orders were used across scans, and a miss should trigger the configured device to compute the cycle
                 // immediately without storing it back or requesting additional cache blocks.
-                UInt128 pow = PowMod128(UInt128Numbers.Two, number, divisor);
+                UInt128 pow = UInt128Numbers.Two.ModPow(number, divisor);
 
                 // q divides M_p ⇔ 2^p ≡ 1 (mod q)  AND  ord_q(2) | p
                 if (pow != UInt128.One)
                         return (pow - UInt128.One) % divisor;
 
 		ulong ord = divisor.CalculateOrder();
-		if (ord == 0UL || divisor % ord != UInt128.Zero)
+		if (ord == 0UL || number % (UInt128)ord != UInt128.Zero)
 			return UInt128.One; // does NOT divide
 
 		return UInt128.Zero; // q really divides M_p
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static UInt128 PowMod128(UInt128 baseValue, UInt128 exponent, UInt128 modulus)
-        {
-                if (modulus == UInt128.One)
-                {
-                        return UInt128.Zero;
-                }
-
-                UInt128 result = UInt128.One;
-                UInt128 value = baseValue % modulus;
-
-                while (exponent != UInt128.Zero)
-                {
-                        if ((exponent & UInt128.One) != UInt128.Zero)
-                        {
-                                // TODO: Route this through the planned UInt128 windowed powmod so the inner MulMod adopts the
-                                // UInt128BuiltIn path that dominated the MulHighBenchmarks on wide operands instead of the
-                                // current square-and-multiply loop.
-                                result = MulMod128(result, value, modulus);
-                        }
-
-                        exponent >>= 1;
-                        if (exponent != UInt128.Zero)
-			{
-				value = MulMod128(value, value, modulus);
-			}
-		}
-
-		return result;
-	}
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static UInt128 MulMod128(UInt128 a, UInt128 b, UInt128 modulus)
-        {
-                // Same approach as MulMod in MersenneNumberTester: double-and-add to avoid overflow.
-                // TODO: Replace this double-and-add fallback with the UInt128 intrinsic-backed multiplier once the
-                // MulHighBenchmarks-guided implementation lands; the intrinsic path measured dozens of times faster for
-                // dense 128-bit workloads.
-                UInt128 result = UInt128.Zero;
-                a %= modulus;
-
-                while (b != UInt128.Zero)
-                {
-			if ((b & UInt128.One) != UInt128.Zero)
-			{
-				result += result < modulus ? a : a - modulus;
-			}
-
-			a = a < modulus ? a << 1 : (a << 1) - modulus;
-			b >>= 1;
-		}
-
-		return result;
-	}
+	
 }

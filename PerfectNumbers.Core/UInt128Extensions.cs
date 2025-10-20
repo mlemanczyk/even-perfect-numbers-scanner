@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
@@ -560,6 +561,43 @@ public static class UInt128Extensions
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UInt128 ModPow(this UInt128 value, UInt128 exponent, UInt128 modulus, CancellationToken ct)
+    {
+        UInt128 zero = UInt128.Zero;
+        UInt128 one = UInt128.One;
+        if (modulus <= one)
+        {
+            return zero;
+        }
+
+        UInt128 result = UInt128.One;
+        UInt128 baseValue = value % modulus;
+
+        while (exponent != zero)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                return zero;
+            }
+
+            if ((exponent & one) != zero)
+            {
+                result = result.MulMod(baseValue, modulus);
+            }
+
+            if (ct.IsCancellationRequested)
+            {
+                return zero;
+            }
+
+            baseValue = baseValue.MulMod(baseValue, modulus);
+            exponent >>= 1;
+        }
+
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static UInt128 ModPow(this UInt128 value, UInt128 exponent, UInt128 modulus)
     {
         UInt128 zero = UInt128.Zero;
@@ -628,6 +666,46 @@ public static class UInt128Extensions
         // Reusing left to capture the reduced 128-bit remainder before returning.
         left = ReduceProductBitwise(p3, p2, p1, p0, modulus);
         return left;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UInt128 AddMod(this UInt128 value, UInt128 addend, UInt128 modulus)
+    {
+        if (modulus <= UInt128.One)
+        {
+            return UInt128.Zero;
+        }
+
+        value %= modulus;
+        addend %= modulus;
+        if (addend == UInt128.Zero)
+        {
+            return value;
+        }
+
+        UInt128 threshold = modulus - addend;
+        if (value >= threshold)
+        {
+            return value - threshold;
+        }
+
+        return value + addend;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UInt128 SubtractOneMod(this UInt128 value, UInt128 modulus)
+    {
+        if (modulus <= UInt128.One)
+        {
+            return UInt128.Zero;
+        }
+
+        if (value == UInt128.Zero)
+        {
+            return modulus - UInt128.One;
+        }
+
+        return value - UInt128.One;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
