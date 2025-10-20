@@ -18,15 +18,21 @@ internal sealed class TaskThreadPool : IDisposable
         public Task Task { get; }
     }
 
-    private readonly ConcurrentQueue<WorkItem> _pendingTasks = new();
-    private readonly SemaphoreSlim _availableTasks = new(0);
+    private readonly ConcurrentQueue<WorkItem> _pendingTaskQueue = new();
+    private readonly BlockingCollection<WorkItem> _pendingTasks;
     private readonly Thread[] _threads;
     private readonly Action<Task> _taskExecutor;
     private int _disposed;
 
     public TaskThreadPool(int minimumThreads, Action<Task> taskExecutor)
     {
+        if (minimumThreads <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(minimumThreads));
+        }
+
         _taskExecutor = taskExecutor ?? throw new ArgumentNullException(nameof(taskExecutor));
+        _pendingTasks = new BlockingCollection<WorkItem>(_pendingTaskQueue);
         _threads = new Thread[minimumThreads];
 
         for (int i = 0; i < minimumThreads; i++)
@@ -46,18 +52,33 @@ internal sealed class TaskThreadPool : IDisposable
 
     public void Queue(Task task)
     {
+        if (task is null)
+        {
+            throw new ArgumentNullException(nameof(task));
+        }
+
         if (Volatile.Read(ref _disposed) != 0)
         {
             throw new ObjectDisposedException(nameof(TaskThreadPool));
         }
 
-        _pendingTasks.Enqueue(new WorkItem(task));
-        _availableTasks.Release();
+        try
+        {
+            _pendingTasks.Add(new WorkItem(task));
+        }
+        catch (InvalidOperationException ex) when (Volatile.Read(ref _disposed) != 0)
+        {
+            throw new ObjectDisposedException(nameof(TaskThreadPool), ex);
+        }
+        catch (ObjectDisposedException ex)
+        {
+            throw new ObjectDisposedException(nameof(TaskThreadPool), ex);
+        }
     }
 
     public IEnumerable<Task> GetScheduledTasks()
     {
-        WorkItem[] snapshot = _pendingTasks.ToArray();
+        WorkItem[] snapshot = _pendingTaskQueue.ToArray();
 
         if (snapshot.Length == 0)
         {
@@ -81,36 +102,28 @@ internal sealed class TaskThreadPool : IDisposable
             return;
         }
 
-        for (int i = 0; i < _threads.Length; i++)
-        {
-            _availableTasks.Release();
-        }
+        _pendingTasks.CompleteAdding();
 
         foreach (Thread thread in _threads)
         {
             thread.Join();
         }
 
-        _availableTasks.Dispose();
+        _pendingTasks.Dispose();
     }
 
     private void WorkerLoop()
     {
-        while (true)
+        try
         {
-            _availableTasks.Wait();
-
-            if (Volatile.Read(ref _disposed) != 0)
+            foreach (WorkItem workItem in _pendingTasks.GetConsumingEnumerable())
             {
-                return;
+                _taskExecutor(workItem.Task);
             }
-
-            if (!_pendingTasks.TryDequeue(out WorkItem workItem))
-            {
-                continue;
-            }
-
-            _taskExecutor(workItem.Task);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The collection was disposed while the worker was waiting. Exit gracefully.
         }
     }
 }
