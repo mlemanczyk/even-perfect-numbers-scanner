@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Gpu;
 
@@ -149,9 +150,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             return false;
         }
 
-        FactorCacheLease factorCacheLease = new FactorCacheLease();
-        Dictionary<ulong, MersenneDivisorCycles.FactorCacheEntry>? factorCache = null;
-
+        // Intentionally recomputes factorizations without a per-thread cache.
+        // The previous factor cache recorded virtually no hits and only slowed down the scan.
         DivisorCycleCache cycleCache = DivisorCycleCache.Shared;
 
         ulong stepHigh = step.High;
@@ -196,16 +196,10 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 // }
                 // else
                 {
-                    if (factorCache is null)
-                    {
-                        factorCacheLease.EnsureInitialized(ref factorCache);
-                    }
-
                     if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(
                             candidate,
                             prime,
                             divisorData,
-                            factorCache,
                             out ulong computedCycle,
                             out bool primeOrderFailed) || computedCycle == 0UL)
                     {
@@ -226,8 +220,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 {
                     // A cycle equal to the tested exponent (which is prime in this path) guarantees that the candidate divides
                     // the corresponding Mersenne number because the order of 2 modulo the divisor is exactly p.
-                    factorCacheLease.Dispose();
-                    factorCache = null;
                     divisor.High = 0UL;
                     divisor.Low = 0UL;
                     step.High = 0UL;
@@ -252,9 +244,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             remainder7 = AddMod(remainder7, step7, (byte)7);
             remainder11 = AddMod(remainder11, step11, (byte)11);
         }
-
-        factorCacheLease.Dispose();
-        factorCache = null; // The pooled dictionary was returned to the thread-static slot.
 
         processedAll = divisor.CompareTo(limit) > 0;
         divisor.High = 0UL;

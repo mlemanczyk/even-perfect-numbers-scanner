@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ILGPU;
@@ -19,6 +20,12 @@ public sealed class DivisorCycleCache
     private volatile bool _useGpuGeneration = true;
     private readonly int _divisorCyclesBatchSize;
     private static int _sharedDivisorCyclesBatchSize = GpuConstants.GpuCycleStepsPerInvocation;
+
+    private const int CycleCacheTrackingLimit = 500_000;
+    private static readonly HashSet<ulong> CycleCacheTrackedDivisors = new();
+    private static readonly object CycleCacheTrackingLock = new();
+    private static ulong CycleCacheHitCount;
+    private static bool CycleCacheTrackingDisabled;
 
     public static void SetDivisorCyclesBatchSize(int divisorCyclesBatchSize)
     {
@@ -72,6 +79,7 @@ public sealed class DivisorCycleCache
                 throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
             }
 
+            ObserveCycleCacheDivisor(divisor);
             return cached;
         }
 
@@ -106,6 +114,7 @@ public sealed class DivisorCycleCache
                     throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
                 }
 
+                ObserveCycleCacheDivisor(divisor);
                 cycles[i] = cached;
             }
             else
@@ -130,6 +139,43 @@ public sealed class DivisorCycleCache
         if (rentedMissing is not null)
         {
             ArrayPool<int>.Shared.Return(rentedMissing, clearArray: false);
+        }
+    }
+
+    private static void ObserveCycleCacheDivisor(ulong divisor)
+    {
+        bool logHit = false;
+        ulong hitNumber = 0UL;
+        bool trackingDisabledNow = false;
+
+        lock (CycleCacheTrackingLock)
+        {
+            if (CycleCacheTrackingDisabled)
+            {
+                return;
+            }
+
+            if (!CycleCacheTrackedDivisors.Add(divisor))
+            {
+                CycleCacheHitCount++;
+                hitNumber = CycleCacheHitCount;
+                logHit = true;
+            }
+            else if (CycleCacheTrackedDivisors.Count >= CycleCacheTrackingLimit)
+            {
+                CycleCacheTrackingDisabled = true;
+                CycleCacheTrackedDivisors.Clear();
+                trackingDisabledNow = true;
+            }
+        }
+
+        if (logHit)
+        {
+            Console.WriteLine($"Cycle cache hit for divisor {divisor} ({hitNumber})");
+        }
+        else if (trackingDisabledNow)
+        {
+            Console.WriteLine("Cycle cache hit tracking disabled after exceeding the tracking limit.");
         }
     }
 

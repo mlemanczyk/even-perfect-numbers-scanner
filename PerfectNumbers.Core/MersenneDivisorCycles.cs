@@ -53,12 +53,6 @@ public class MersenneDivisorCycles
 
     public static bool CycleEqualsExponent(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
     {
-        Dictionary<ulong, FactorCacheEntry>? cache = null;
-        return CycleEqualsExponent(divisor, exponent, divisorData, ref cache);
-    }
-
-    public static bool CycleEqualsExponent(ulong divisor, ulong exponent, in MontgomeryDivisorData divisorData, ref Dictionary<ulong, FactorCacheEntry>? factorCache)
-    {
         if (CycleEqualsExponentForMersenneCandidate(divisor, divisorData, exponent))
         {
             return true;
@@ -87,14 +81,7 @@ public class MersenneDivisorCycles
             return heuristicCycle == exponent;
         }
 
-        Dictionary<ulong, FactorCacheEntry>? cache = factorCache;
-        if (cache is null)
-        {
-            cache = new Dictionary<ulong, FactorCacheEntry>(8);
-            factorCache = cache;
-        }
-
-        if (TryCalculateCycleLengthForExponent(divisor, exponent, divisorData, cache, out ulong cycleLength, out bool _) && cycleLength != 0UL)
+        if (TryCalculateCycleLengthForExponent(divisor, exponent, divisorData, out ulong cycleLength, out bool _) && cycleLength != 0UL)
         {
             return cycleLength == exponent;
         }
@@ -262,7 +249,6 @@ public class MersenneDivisorCycles
         ulong divisor,
         ulong exponent,
         in MontgomeryDivisorData divisorData,
-        Dictionary<ulong, FactorCacheEntry>? factorCache,
         out ulong cycleLength,
         out bool primeOrderFailed)
     {
@@ -326,8 +312,8 @@ public class MersenneDivisorCycles
             factorCounts[2UL] = twoCount;
         }
 
-        bool exponentAccumulated = AccumulateFactors(exponent, factorCache, factorCounts, cacheResult: true);
-        bool factorsAccumulated = exponentAccumulated && AccumulateFactors(k, factorCache, factorCounts, cacheResult: false);
+        bool exponentAccumulated = AccumulateFactors(exponent, factorCounts);
+        bool factorsAccumulated = exponentAccumulated && AccumulateFactors(k, factorCounts);
 
         if (factorsAccumulated)
         {
@@ -342,98 +328,29 @@ public class MersenneDivisorCycles
 
     private static bool AccumulateFactors(
         ulong value,
-        Dictionary<ulong, FactorCacheEntry>? cache,
-        Dictionary<ulong, int> counts,
-        bool cacheResult)
+        Dictionary<ulong, int> counts)
     {
         if (value <= 1UL)
         {
             return true;
         }
 
-        if (!TryGetFactorization(value, cache, cacheResult, out FactorCacheEntry? factorization, out bool releaseAfterUse) || factorization is null)
-        {
-            return false;
-        }
-
-        FactorCacheEntry actualFactorization = factorization;
-        KeyValuePair<ulong, int>[]? pairs = actualFactorization.Pairs;
-        if (pairs is not null)
-        {
-            int length = actualFactorization.Count;
-
-            for (int i = 0; i < length; i++)
-            {
-                KeyValuePair<ulong, int> pair = pairs[i];
-                AddFactor(counts, pair.Key, pair.Value);
-            }
-        }
-
-        if (releaseAfterUse)
-        {
-            actualFactorization.ReturnToPool();
-        }
-
-        return true;
-    }
-
-    private static bool TryGetFactorization(
-        ulong value,
-        Dictionary<ulong, FactorCacheEntry>? cache,
-        bool cacheResult,
-        out FactorCacheEntry? factorization,
-        out bool releaseAfterUse)
-    {
-        releaseAfterUse = false;
-
-        if (cache is not null && cache.TryGetValue(value, out FactorCacheEntry? cachedEntry))
-        {
-            factorization = cachedEntry;
-            return true;
-        }
-
         Dictionary<ulong, int> scratch = ThreadStaticPools.RentFactorScratchDictionary();
-        bool factored = TryFactorIntoCountsInternal(value, scratch);
-        if (!factored)
+        bool success = TryFactorIntoCountsInternal(value, scratch);
+        if (!success)
         {
+            // The scan recalculates factors every time; the old cache never produced hits.
             ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
-            factorization = null;
             return false;
         }
 
-        int count = scratch.Count;
-        FactorCacheEntry entry = ThreadStaticPools.RentFactorCacheEntry();
-        if (count == 0)
+        for (Dictionary<ulong, int>.Enumerator enumerator = scratch.GetEnumerator(); enumerator.MoveNext();)
         {
-            entry.Initialize(null, 0, fromPool: false);
-            factorization = entry;
-            releaseAfterUse = cache is null || !cacheResult;
-            if (cache is not null && cacheResult)
-            {
-                cache[value] = entry;
-            }
-
-            ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
-            return true;
+            KeyValuePair<ulong, int> pair = enumerator.Current;
+            AddFactor(counts, pair.Key, pair.Value);
         }
 
-        KeyValuePair<ulong, int>[] pairs = ThreadStaticPools.FactorKeyValuePairPool.Rent(count);
-        ((ICollection<KeyValuePair<ulong, int>>)scratch).CopyTo(pairs, 0);
         ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
-        Array.Sort(pairs, 0, count, FactorPairValueComparer.Instance);
-
-        entry.Initialize(pairs, count, fromPool: true);
-        factorization = entry;
-
-        if (cache is not null && cacheResult)
-        {
-            cache[value] = entry;
-        }
-        else
-        {
-            releaseAfterUse = true;
-        }
-
         return true;
     }
 
@@ -683,44 +600,6 @@ public class MersenneDivisorCycles
             }
 
             return 0;
-        }
-    }
-
-    public sealed class FactorCacheEntry
-    {
-        internal FactorCacheEntry? Next;
-        internal KeyValuePair<ulong, int>[]? Pairs;
-        internal int Count;
-        private bool _fromPool;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void Reset()
-        {
-            Pairs = null;
-            Count = 0;
-            _fromPool = false;
-            Next = null;
-        }
-
-        internal void Initialize(KeyValuePair<ulong, int>[]? pairs, int count, bool fromPool)
-        {
-            Pairs = pairs;
-            Count = count;
-            _fromPool = fromPool;
-            Next = null;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void ReturnToPool()
-        {
-            KeyValuePair<ulong, int>[]? pairs = Pairs;
-            if (_fromPool && pairs is not null)
-            {
-                ThreadStaticPools.FactorKeyValuePairPool.Return(pairs, clearArray: false);
-            }
-
-            Reset();
-            ThreadStaticPools.ReturnFactorCacheEntry(this);
         }
     }
 
