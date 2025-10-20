@@ -753,7 +753,8 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         GpuUInt128 remainder = dividend;
         GpuUInt128 shiftedDivisor = divisor;
         shiftedDivisor.ShiftLeft(shift);
-        GpuUInt128 quotientBit = One << shift;
+        GpuUInt128 quotientBit = One;
+        quotientBit.ShiftLeft(shift);
 
         while (true)
         {
@@ -1113,8 +1114,8 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         // TODO: Can we modify these loops to process multiple bits at a time? E.g. 64-bit chunks.
         for (bit = 63; bit >= 0; bit--)
         {
-            remainder <<= 1;
-            remainder = new(remainder.High, remainder.Low | ((p3 >> bit) & 1UL));
+            remainder.ShiftLeft(1);
+            remainder.Low |= (p3 >> bit) & 1UL;
             if (remainder.CompareTo(modulus) >= 0)
             {
                 remainder.Sub(modulus);
@@ -1123,8 +1124,8 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
         for (bit = 63; bit >= 0; bit--)
         {
-            remainder <<= 1;
-            remainder = new(remainder.High, remainder.Low | ((p2 >> bit) & 1UL));
+            remainder.ShiftLeft(1);
+            remainder.Low |= (p2 >> bit) & 1UL;
             if (remainder.CompareTo(modulus) >= 0)
             {
                 remainder.Sub(modulus);
@@ -1133,8 +1134,8 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
         for (bit = 63; bit >= 0; bit--)
         {
-            remainder <<= 1;
-            remainder = new(remainder.High, remainder.Low | ((p1 >> bit) & 1UL));
+            remainder.ShiftLeft(1);
+            remainder.Low |= (p1 >> bit) & 1UL;
             if (remainder.CompareTo(modulus) >= 0)
             {
                 remainder.Sub(modulus);
@@ -1143,8 +1144,8 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
         for (bit = 63; bit >= 0; bit--)
         {
-            remainder <<= 1;
-            remainder = new(remainder.High, remainder.Low | ((p0 >> bit) & 1UL));
+            remainder.ShiftLeft(1);
+            remainder.Low |= (p0 >> bit) & 1UL;
             if (remainder.CompareTo(modulus) >= 0)
             {
                 remainder.Sub(modulus);
@@ -1173,7 +1174,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
                 result.MulMod(baseValue, modulus);
             }
 
-            exponent >>= 1;
+            exponent.ShiftRight(1);
             baseValue.MulMod(baseValue, modulus);
         }
 
