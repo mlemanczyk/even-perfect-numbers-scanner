@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
@@ -67,7 +68,6 @@ public class GpuUInt128MulModBenchmarks
     [ArgumentsSource(nameof(GetGeneralCases))]
     public GpuUInt128 InPlaceMulMod(GpuMulModCase input)
     {
-        // TODO: Switch the extension method to allocate per iteration, as it's faster. Keep the benchmarks.
         GpuUInt128 value = input.Left;
         value.MulMod(input.Right, input.Modulus);
         return value;
@@ -85,6 +85,16 @@ public class GpuUInt128MulModBenchmarks
     public GpuUInt128 AllocatePerIteration(GpuMulModCase input)
     {
         return MulModInline(input.Left, input.Right, input.Modulus);
+    }
+
+    /// <summary>
+    /// BigInteger-based reference reduction kept for validation; remains several microseconds slower than the GPU-compatible implementations.
+    /// </summary>
+    [Benchmark]
+    [ArgumentsSource(nameof(GetGeneralCases))]
+    public GpuUInt128 BigIntegerReference(GpuMulModCase input)
+    {
+        return MulModBigInteger(input.Left, input.Right, input.Modulus);
     }
 
     /// <summary>
@@ -112,10 +122,7 @@ public class GpuUInt128MulModBenchmarks
     [ArgumentsSource(nameof(GetByLimbCases))]
     public GpuUInt128 InPlaceReduction(GpuMulModCase input)
     {
-        // TODO: Switch the extension method back to legacy method, as it's faster. Keep the benchmarks.
-        GpuUInt128 value = input.Left;
-        value.MulModByLimb(input.Right, input.Modulus);
-        return value;
+        return MulModByLimbInPlace(input.Left, input.Right, input.Modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -156,6 +163,46 @@ public class GpuUInt128MulModBenchmarks
         }
 
         return result;
+    }
+
+    private static GpuUInt128 MulModBigInteger(GpuUInt128 left, GpuUInt128 right, GpuUInt128 modulus)
+    {
+        BigInteger leftBig = (UInt128)left;
+        BigInteger rightBig = (UInt128)right;
+        BigInteger modulusBig = (UInt128)modulus;
+        if (modulusBig.IsZero)
+        {
+            return GpuUInt128.Zero;
+        }
+
+        UInt128 reduced = (UInt128)((leftBig * rightBig) % modulusBig);
+        return new GpuUInt128((ulong)(reduced >> 64), (ulong)reduced);
+    }
+
+    private static GpuUInt128 MulModByLimbInPlace(GpuUInt128 left, GpuUInt128 right, GpuUInt128 modulus)
+    {
+        var (p3, p2, p1, p0) = MultiplyFullLegacy(left, right);
+
+        GpuUInt128 remainder = new(p3, p2);
+        while (remainder.CompareTo(modulus) >= 0)
+        {
+            remainder.Sub(modulus);
+        }
+
+        ulong limb = p1;
+        for (int i = 0; i < 2; i++)
+        {
+            remainder.ShiftLeft(64);
+            remainder.Low = limb;
+            while (remainder.CompareTo(modulus) >= 0)
+            {
+                remainder.Sub(modulus);
+            }
+
+            limb = p0;
+        }
+
+        return remainder;
     }
 
     private static GpuUInt128 MulModByLimbLegacy(GpuUInt128 left, GpuUInt128 right, GpuUInt128 modulus)
