@@ -65,19 +65,16 @@ public static class UInt128Extensions
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static UInt128 Pow2MontgomeryModWindowed(this UInt128 exponent, UInt128 modulus)
+    public static UInt128 Pow2MontgomeryModWindowed(this ulong exponent, UInt128 modulus)
     {
-        // TODO: Prototype a UInt128-native Pow2MontgomeryModWindowed path that matches the GPU implementation once a faster modular multiplication helper is available, so we can revisit removing the GPU struct dependency without regressing benchmarks.
-        if (modulus == UInt128.One)
-        {
-            return UInt128.Zero;
-        }
-
-        if (exponent == UInt128.Zero)
-        {
-            return UInt128.One % modulus;
-        }
-
+        // EvenPerfectBitScanner keeps CPU exponents above Pow2WindowFallbackThreshold once p >= 138,000,000,
+        // so production never routes the tiny-exponent single-bit fallback through this helper. Leave the
+        // guard commented out for targeted microbenchmarks.
+        // This helper executes only on CPU fallbacks (PrimeOrderCalculator.Shared and PrimeOrderGpuHeuristics
+        // call it after the GPU heuristics decline), but we still use GpuUInt128 because its mutable Montgomery
+        // operations beat the pure-UInt128 prototype by roughly 12% in Pow2MontgomeryModBenchmarks.
+        // TODO: Swap in a CPU-native Montgomery ladder once it surpasses the shared struct so GPU and CPU tuning
+        // can diverge without compromising either path.
         GpuUInt128 modulusGpu = new(modulus);
         GpuUInt128 baseValue = new(2UL);
         if (baseValue.CompareTo(modulusGpu) >= 0)
@@ -85,11 +82,11 @@ public static class UInt128Extensions
             baseValue.Sub(modulusGpu);
         }
 
-        if (ShouldUseSingleBit(exponent))
-        {
-            GpuUInt128 singleBitResult = Pow2MontgomeryModSingleBit(exponent, modulusGpu, baseValue);
-            return (UInt128)singleBitResult;
-        }
+        // if (exponent <= Pow2WindowFallbackThreshold)
+        // {
+        //     GpuUInt128 tinyResult = Pow2MontgomeryModSingleBit((UInt128)exponent, modulusGpu, baseValue);
+        //     return (UInt128)tinyResult;
+        // }
 
         GpuUInt128 exponentGpu = new(exponent);
         int bitLength = exponentGpu.GetBitLength();
@@ -137,6 +134,176 @@ public static class UInt128Extensions
         }
 
         return (UInt128)result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UInt128 Pow2MontgomeryModWindowed(this UInt128 exponent, UInt128 modulus)
+    {
+        // TODO: Prototype a UInt128-native Pow2MontgomeryModWindowed path that matches the GPU implementation once a faster
+        // modular multiplication helper is available, so we can replace the shared GpuUInt128 usage on CPU fallbacks and let
+        // the GPU kernels continue using their dedicated ladder without cross-contaminating optimizations.
+        // All GPU kernels already route through Pow2MontgomeryModWindowedGpu, and Pow2MontgomeryModBenchmarks confirmed this
+        // windowed ladder stays the fastest CPU option with the current Montgomery helpers.
+        if (modulus == UInt128.One)
+        {
+            return UInt128.Zero;
+        }
+
+        if (exponent == UInt128.Zero)
+        {
+            return UInt128.One % modulus;
+        }
+
+        // This helper still executes on CPU-only call sites, so we lean on the shared GpuUInt128 ladder until
+        // the TODO above lands and gives the CPU path its own Montgomery struct.
+        GpuUInt128 modulusGpu = new(modulus);
+        GpuUInt128 baseValue = new(2UL);
+        if (baseValue.CompareTo(modulusGpu) >= 0)
+        {
+            baseValue.Sub(modulusGpu);
+        }
+
+        // EvenPerfectBitScanner CPU exponents exceed Pow2WindowFallbackThreshold once p >= 138,000,000,
+        // so the single-bit fallback never triggers during production scans. Leave it commented out for targeted benchmarks.
+        // if (ShouldUseSingleBit(exponent))
+        // {
+        //     GpuUInt128 singleBitResult = Pow2MontgomeryModSingleBit(exponent, modulusGpu, baseValue);
+        //     return (UInt128)singleBitResult;
+        // }
+
+        GpuUInt128 exponentGpu = new(exponent);
+        int bitLength = exponentGpu.GetBitLength();
+        int windowSize = GetWindowSize(bitLength);
+        int oddPowerCount = 1 << (windowSize - 1);
+
+        Span<GpuUInt128> oddPowers = stackalloc GpuUInt128[oddPowerCount];
+        InitializeOddPowers(baseValue, modulusGpu, oddPowers);
+
+        GpuUInt128 result = GpuUInt128.One;
+        int index = bitLength - 1;
+
+        while (index >= 0)
+        {
+            if (!IsBitSet(exponentGpu, index))
+            {
+                result.MulMod(result, modulusGpu);
+                index--;
+                continue;
+            }
+
+            int windowStart = index - windowSize + 1;
+            if (windowStart < 0)
+            {
+                windowStart = 0;
+            }
+
+            while (!IsBitSet(exponentGpu, windowStart))
+            {
+                windowStart++;
+            }
+
+            int windowBitCount = index - windowStart + 1;
+            for (int square = 0; square < windowBitCount; square++)
+            {
+                result.MulMod(result, modulusGpu);
+            }
+
+            ulong windowValue = ExtractWindowValue(exponentGpu, windowStart, windowBitCount);
+            int tableIndex = (int)((windowValue - 1UL) >> 1);
+            GpuUInt128 factor = oddPowers[tableIndex];
+            result.MulMod(factor, modulusGpu);
+
+            index = windowStart - 1;
+        }
+
+        return (UInt128)result;
+    }
+
+    /// <summary>
+    /// Uses the known cycle length to reduce the exponent and reuse cached remainders before
+    /// running the windowed pow2 ladder.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UInt128 Pow2MontgomeryModWindowedWithCycle(this UInt128 exponent, UInt128 modulus, ulong cycleLength, UInt128? precomputedRemainder = null)
+    {
+        // The EvenPerfectBitScanner CPU path receives cycle lengths from MersenneDivisorCycles, which never
+        // produces a zero-length order for admissible divisors. Keep the fallback documented for tests.
+        // if (cycleLength == 0UL)
+        // {
+        //     return exponent.Pow2MontgomeryModWindowed(modulus);
+        // }
+
+        UInt128 remainder;
+        if (precomputedRemainder.HasValue)
+        {
+            // PowModWithCycle caches the reduced rotation count before reaching this helper, so production
+            // scans always reuse the precomputed remainder instead of recomputing the modulus here.
+            remainder = precomputedRemainder.Value;
+        }
+        else if (cycleLength != 0UL && exponent >= cycleLength)
+        {
+            if ((exponent >> 64) == UInt128.Zero)
+            {
+                remainder = (UInt128)((ulong)exponent % cycleLength);
+            }
+            else
+            {
+                remainder = exponent % (UInt128)cycleLength;
+            }
+        }
+        else
+        {
+            remainder = exponent;
+        }
+
+        // When the cycle divides the exponent, 2^exponent ≡ 1 (mod modulus) and the caller expects an
+        // immediate success signal.
+        if (remainder == UInt128.Zero)
+        {
+            return UInt128.One;
+        }
+
+        return remainder.Pow2MontgomeryModWindowed(modulus);
+    }
+
+    /// <summary>
+    /// Uses the known cycle length to reduce the exponent and reuse cached remainders before
+    /// running the windowed pow2 ladder.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UInt128 Pow2MontgomeryModWindowedWithCycle(this UInt128 exponent, UInt128 modulus, UInt128 cycleLength, UInt128? precomputedRemainder = null)
+    {
+        // Divisor-cycle lookups never hand the EvenPerfectBitScanner CPU flow a zero cycle length. Keep the
+        // fallback documented for targeted benchmarks and tests.
+        // if (cycleLength == UInt128.Zero)
+        // {
+        //     return exponent.Pow2MontgomeryModWindowed(modulus);
+        // }
+
+        UInt128 remainder;
+        if (precomputedRemainder.HasValue)
+        {
+            // PowModWithCycle forwards the cached rotation count, so production scans always reuse the
+            // supplied remainder instead of recomputing exponent % cycleLength.
+            remainder = precomputedRemainder.Value;
+        }
+        else if (cycleLength != UInt128.Zero && exponent >= cycleLength)
+        {
+            remainder = exponent % cycleLength;
+        }
+        else
+        {
+            remainder = exponent;
+        }
+
+        // A zero remainder means the divisor order divides the exponent, so 2^exponent ≡ 1 (mod modulus)
+        // and the sieves rely on the early exit.
+        if (remainder == UInt128.Zero)
+        {
+            return UInt128.One;
+        }
+
+        return remainder.Pow2MontgomeryModWindowed(modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
