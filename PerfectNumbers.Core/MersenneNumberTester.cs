@@ -94,8 +94,6 @@ public sealed class MersenneNumberTester(
 					continue;
 				}
 
-                                // TODO: Swap this fallback to the shared windowed order helper once CalculateOrder migrates
-                                // to the ProcessEightBitWindows pipeline so warm-ups stop invoking the slower legacy powmod.
                                 ulong ord = q.CalculateOrder();
                                 OrderCache[q] = ord;
                         }
@@ -184,8 +182,6 @@ public sealed class MersenneNumberTester(
                                         ulong order = orders[i];
                                         if (order == 0UL)
                                         {
-                                                // TODO: Replace this CalculateOrder call with the upcoming windowed helper so
-                                                // GPU warm-ups reuse the faster pow2 ladder measured in the CPU order benchmarks.
                                                 order = qs[offset + i].CalculateOrder();
                                         }
 
