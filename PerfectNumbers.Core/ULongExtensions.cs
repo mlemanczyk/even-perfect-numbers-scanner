@@ -458,13 +458,14 @@ public static partial class ULongExtensions
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong AddMod64(this ulong value, ulong addend, ulong modulus)
 	{
-		// The CPU factoring path never presents moduli below 2, so leave this guard documented but disabled.
+		// Every CPU caller (Pollard Rho and the ModPow64 ladder) supplies moduli of at least three, so leave this guard
+		// documented but disabled.
 		// if (modulus <= 1UL)
 		// {
 		// 	return 0UL;
 		// }
 
-		// The Pollard Rho walks keep both operands below the modulus, so skip re-folding them here.
+		// Both flows keep their operands below the modulus ahead of time, letting us skip the re-fold the old helper performed.
 		UInt128 sum = (UInt128)value + addend;
 		if (sum < modulus)
 		{
@@ -484,7 +485,7 @@ public static partial class ULongExtensions
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static ulong FoldMontgomery(ulong value, ulong modulus)
 	{
-		// Moduli in the divisor scan always exceed 1, so retain the documentation and skip the runtime guard.
+		// Pollard Rho and ModPow64 both feed moduli of at least three, so retain the documentation and skip the runtime guard.
 		// if (modulus <= 1UL)
 		// {
 		// 	return 0UL;
@@ -513,7 +514,7 @@ public static partial class ULongExtensions
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong ModPow64(this ulong value, ulong exponent, ulong modulus)
 	{
-		// Moduli below 2 do not occur in the even-perfect divisor scans, so keep the guard commented for clarity.
+		// Pollard Rho and the Mersenne testers never pass moduli below two, so keep the guard commented for clarity.
 		// if (modulus <= 1UL)
 		// {
 		// 	return 0UL;

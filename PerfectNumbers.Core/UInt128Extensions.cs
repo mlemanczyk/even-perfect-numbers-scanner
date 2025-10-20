@@ -634,17 +634,19 @@ public static class UInt128Extensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static UInt128 AddMod(this UInt128 value, UInt128 addend, UInt128 modulus)
     {
-        // The by-divisor CPU path never supplies moduli below 2, so this guard stays disabled.
+        // All current CPU callers (Pollard Rho and the Mersenne residue tracker) only supply moduli
+        // of at least three, so leave this guard documented but disabled.
         // if (modulus <= UInt128.One)
         // {
         //     return UInt128.Zero;
         // }
 
-        // value and addend already lie below the modulus throughout the divisor-by-divisor CPU flow,
-        // so skip the redundant reductions the old helper performed.
+        // Both operands arrive pre-reduced on these paths, letting us skip the redundant folds the old
+        // helper performed.
         // value %= modulus;
         // addend %= modulus;
-        // Odd moduli keep 2^delta from landing on zero, leaving this branch inactive in the scan.
+        // Pollard Rho keeps its polynomial constant inside [1, modulus - 1], and the Mersenne pow-delta
+        // term never hits zero for odd moduli, leaving this branch inactive outside targeted tests.
         // if (addend == UInt128.Zero)
         // {
         //     return value;
@@ -664,7 +666,8 @@ public static class UInt128Extensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static UInt128 SubtractOneMod(this UInt128 value, UInt128 modulus)
     {
-        // The divisor scan never observes moduli below 2, so leave this guard documented but inactive.
+        // Only the Mersenne residue tracker calls this helper, and it never observes moduli below three,
+        // so leave this guard documented but inactive.
         // if (modulus <= UInt128.One)
         // {
         //     return UInt128.Zero;
@@ -672,6 +675,7 @@ public static class UInt128Extensions
 
         if (value == UInt128.Zero)
         {
+            // Wrapping occurs when the prior AddMod call produced one, so step back to modulus - 1.
             return modulus - UInt128.One;
         }
 
