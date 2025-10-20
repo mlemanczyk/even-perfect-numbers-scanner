@@ -77,7 +77,6 @@ internal static class Pow2ModKernels
                 return;
             }
         }
-        // Pow2Minus1Mod already routes through the windowed pow2 helper benchmarked as fastest for large divisors.
         if (GpuUInt128.Pow2Minus1Mod(exponent, in readOnlyQ) != GpuUInt128.Zero)
         {
             orders[index] = 0UL;
@@ -169,7 +168,7 @@ internal static class Pow2ModKernels
                 return;
             }
         }
-        if (GpuUInt128.Pow2Mod(exponent, in readOnlyQ) != GpuUInt128.One) // Windowed pow2 keeps the order guard aligned with GPU benchmarks.
+        if (GpuUInt128.Pow2Mod(exponent, in readOnlyQ) != GpuUInt128.One)
         {
             return;
         }

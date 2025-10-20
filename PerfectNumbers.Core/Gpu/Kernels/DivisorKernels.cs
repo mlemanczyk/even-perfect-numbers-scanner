@@ -21,7 +21,7 @@ internal static class DivisorKernels
         ReadOnlyGpuUInt128 readOnlyMod = divisor;
         if (x == 0)
         {
-            baseVal = GpuUInt128.Pow2Mod(exponent, in readOnlyMod); // Uses the eight-bit windowed ladder measured fastest in GPU benchmarks.
+            baseVal = GpuUInt128.Pow2Mod(exponent, in readOnlyMod);
             result[0] = baseVal.High == 0UL && baseVal.Low == 1UL ? (byte)1 : (byte)0;
             return;
         }
@@ -38,7 +38,7 @@ internal static class DivisorKernels
 
         GpuUInt128 pow = baseVal;
         pow.ModPow(exponent / ux, in readOnlyMod);
-        var part2 = GpuUInt128.Pow2Mod(exponent % ux, in readOnlyMod); // Windowed pow2 keeps the mixed-radix tail fast.
+        var part2 = GpuUInt128.Pow2Mod(exponent % ux, in readOnlyMod);
         GpuUInt128 product = pow;
         ReadOnlyGpuUInt128 part2ReadOnly = part2.AsReadOnly();
         product.MulMod(in part2ReadOnly, in readOnlyMod);

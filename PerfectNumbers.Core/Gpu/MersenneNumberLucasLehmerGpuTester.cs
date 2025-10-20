@@ -112,7 +112,7 @@ public class MersenneNumberLucasLehmerGpuTester
 
         var gpu = GpuContextPool.RentPreferred(preferCpu: false);
         var accelerator = gpu.Accelerator;
-        var kernel = GetBatchKernel(accelerator); // Batch kernel already relies on the Mersenne squaring reducer; windowed pow2 helpers do not apply here.
+        var kernel = GetBatchKernel(accelerator);
 
         var expBuffer = accelerator.Allocate1D<ulong>(count);
         ulong[] expArray = ArrayPool<ulong>.Shared.Rent(count);
@@ -479,7 +479,6 @@ public class MersenneNumberLucasLehmerGpuTester
         {
             if ((exponent & 1UL) != 0UL)
             {
-                // The base varies per primitive-root candidate, so pow2-specific ladders do not apply.
                 result = MulMod(result, value, modulus);
             }
 

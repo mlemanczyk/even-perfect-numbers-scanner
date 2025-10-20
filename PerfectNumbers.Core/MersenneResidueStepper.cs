@@ -17,10 +17,15 @@ public class MersenneResidueStepper
         m = modulus;
         p = p0;
 
-        // Callers hand this stepper pre-reduced residues from the windowed pow2 pipeline; keep the modulo guard for tests
-        // while production inputs already arrive inside [0, m).
-        M_mod = M_mod_m_at_p0 % m;
-        pow2_mod = (M_mod + 1) % m;
+        // Inputs are already reduced in production; keep the old modulo guard commented for debugging reference.
+        // M_mod = M_mod_m_at_p0 % m;
+        // pow2_mod = (M_mod + 1) % m;
+        M_mod = M_mod_m_at_p0;
+        pow2_mod = M_mod + 1;
+        if (pow2_mod >= m)
+        {
+            pow2_mod -= m;
+        }
     }
 
     // TODO: Inline this accessor into callers so the hot residue path reads the backing fields directly

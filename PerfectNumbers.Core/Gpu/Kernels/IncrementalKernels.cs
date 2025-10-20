@@ -96,7 +96,7 @@ internal static class IncrementalKernels
         }
 
         ulong phi64 = phi.Low;
-        if (GpuUInt128.Pow2Mod(phi64, in readOnlyQ) != GpuUInt128.One) // Windowed pow2 keeps the totient check fast.
+        if (GpuUInt128.Pow2Mod(phi64, in readOnlyQ) != GpuUInt128.One)
         {
             orders[index] = 0UL;
             return;
@@ -192,7 +192,7 @@ internal static class IncrementalKernels
         }
 
         ulong phi64 = phi.Low;
-        if (GpuUInt128.Pow2Mod(phi64, in readOnlyQ) != GpuUInt128.One) // Windowed pow2 keeps the order probe aligned with benchmarks.
+        if (GpuUInt128.Pow2Mod(phi64, in readOnlyQ) != GpuUInt128.One)
         {
             return;
         }

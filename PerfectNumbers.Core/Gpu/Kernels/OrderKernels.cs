@@ -22,7 +22,7 @@ internal static class OrderKernels
         }
 
         ulong phi64 = phi.Low;
-        GpuUInt128 pow = GpuUInt128.Pow2Mod(phi64, in readOnlyQ); // Windowed pow2 keeps the cycle check aligned with benchmark wins.
+        GpuUInt128 pow = GpuUInt128.Pow2Mod(phi64, in readOnlyQ);
         if (pow != GpuUInt128.One)
         {
             orders[index] = 0UL;
