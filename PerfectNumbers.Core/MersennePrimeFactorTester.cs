@@ -105,7 +105,7 @@ public static class MersennePrimeFactorTester
                 }
 
                 candidate = order / prime;
-                if (UInt128Numbers.Two.ModPow(candidate, q, ct) == UInt128.One)
+                if (ModPowWithCancellation(UInt128Numbers.Two, candidate, q, ct) == UInt128.One)
                 {
                     order = candidate;
                 }
@@ -128,6 +128,43 @@ public static class MersennePrimeFactorTester
         }
 
         return order;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static UInt128 ModPowWithCancellation(UInt128 baseValue, UInt128 exponent, UInt128 modulus, CancellationToken ct)
+    {
+        // Keep this helper local to the factoring path so we can preserve the token-aware early outs
+        // without carrying a separate overload on the shared UInt128 extensions.
+        if (modulus <= UInt128.One)
+        {
+            return UInt128.Zero;
+        }
+
+        UInt128 result = UInt128.One;
+        UInt128 baseResidue = baseValue % modulus;
+
+        while (exponent != UInt128.Zero)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                return UInt128.Zero;
+            }
+
+            if ((exponent & UInt128.One) != UInt128.Zero)
+            {
+                result = result.MulMod(baseResidue, modulus);
+            }
+
+            if (ct.IsCancellationRequested)
+            {
+                return UInt128.Zero;
+            }
+
+            baseResidue = baseResidue.MulMod(baseResidue, modulus);
+            exponent >>= 1;
+        }
+
+        return result;
     }
 
     private static readonly ConcurrentBag<List<ulong>> ListPool = new();

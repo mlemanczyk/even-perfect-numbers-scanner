@@ -561,43 +561,6 @@ public static class UInt128Extensions
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static UInt128 ModPow(this UInt128 value, UInt128 exponent, UInt128 modulus, CancellationToken ct)
-    {
-        UInt128 zero = UInt128.Zero;
-        UInt128 one = UInt128.One;
-        if (modulus <= one)
-        {
-            return zero;
-        }
-
-        UInt128 result = UInt128.One;
-        UInt128 baseValue = value % modulus;
-
-        while (exponent != zero)
-        {
-            if (ct.IsCancellationRequested)
-            {
-                return zero;
-            }
-
-            if ((exponent & one) != zero)
-            {
-                result = result.MulMod(baseValue, modulus);
-            }
-
-            if (ct.IsCancellationRequested)
-            {
-                return zero;
-            }
-
-            baseValue = baseValue.MulMod(baseValue, modulus);
-            exponent >>= 1;
-        }
-
-        return result;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static UInt128 ModPow(this UInt128 value, UInt128 exponent, UInt128 modulus)
     {
         UInt128 zero = UInt128.Zero;
