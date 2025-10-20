@@ -15,12 +15,6 @@ public class MersenneDivisorCycles
     private List<(ulong divisor, ulong cycleLength)> _table = [];
     // Lightweight read-mostly cache for small divisors (<= 4,000,000). 0 => unknown
     private ulong[]? _smallCycles;
-    private const int FactorCacheExponentTrackingLimit = 500_000;
-    private static readonly HashSet<ulong> FactorCacheTrackedExponents = new();
-    private static readonly object FactorCacheTrackingLock = new();
-    private static ulong FactorCacheHitCount;
-    private static bool FactorCacheTrackingDisabled;
-
     public static MersenneDivisorCycles Shared { get; } = new MersenneDivisorCycles();
 
     public MersenneDivisorCycles()
@@ -318,7 +312,6 @@ public class MersenneDivisorCycles
             factorCounts[2UL] = twoCount;
         }
 
-        ObserveFactorCacheExponent(exponent);
         bool exponentAccumulated = AccumulateFactors(exponent, factorCounts);
         bool factorsAccumulated = exponentAccumulated && AccumulateFactors(k, factorCounts);
 
@@ -331,43 +324,6 @@ public class MersenneDivisorCycles
 
         ThreadStaticPools.ReturnFactorCountDictionary(factorCounts);
         return success;
-    }
-
-    private static void ObserveFactorCacheExponent(ulong exponent)
-    {
-        bool logHit = false;
-        ulong hitNumber = 0UL;
-        bool trackingDisabledNow = false;
-
-        lock (FactorCacheTrackingLock)
-        {
-            if (FactorCacheTrackingDisabled)
-            {
-                return;
-            }
-
-            if (!FactorCacheTrackedExponents.Add(exponent))
-            {
-                FactorCacheHitCount++;
-                hitNumber = FactorCacheHitCount;
-                logHit = true;
-            }
-            else if (FactorCacheTrackedExponents.Count >= FactorCacheExponentTrackingLimit)
-            {
-                FactorCacheTrackingDisabled = true;
-                FactorCacheTrackedExponents.Clear();
-                trackingDisabledNow = true;
-            }
-        }
-
-        if (logHit)
-        {
-            Console.WriteLine($"Factor cache hit for exponent {exponent} ({hitNumber})");
-        }
-        else if (trackingDisabledNow)
-        {
-            Console.WriteLine("Factor cache hit tracking disabled after exceeding the tracking limit.");
-        }
     }
 
     private static bool AccumulateFactors(
