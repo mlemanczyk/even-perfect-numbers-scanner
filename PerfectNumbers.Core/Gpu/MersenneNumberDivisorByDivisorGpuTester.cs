@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using ILGPU;
 using ILGPU.Runtime;
 
@@ -96,42 +97,41 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         var gpuLease = GpuContextPool.RentPreferred(preferCpu: false);
         var accelerator = gpuLease.Accelerator;
-        var kernel = GetKernel(accelerator);
-        BatchResources resources = RentBatchResources(accelerator, batchCapacity);
 
-        try
-        {
-            composite = CheckDivisors(
-            prime,
-            allowedMax,
-            accelerator,
-            kernel,
-            resources.DivisorsBuffer,
-            resources.ExponentBuffer,
-            resources.HitsBuffer,
-            resources.DivisorDeltaBuffer,
-            resources.RemainderDeltaBuffer,
-            resources.RemainderBuffer,
-            resources.RemainderDeltaKernel,
-            resources.RemainderScanKernel,
-            resources.CandidateMaskKernel,
-            resources.Divisors,
-            resources.Exponents,
-            resources.Hits,
-            resources.DivisorData,
-            resources.CycleCandidates,
-            resources.CycleLengths,
-            resources.CycleCapacity,
-            out lastProcessed,
-            out coveredRange,
-            out processedCount
-            );
-        }
-        finally
-        {
-            ReturnBatchResources(accelerator, resources);
-            gpuLease.Dispose();
-        }
+        Monitor.Enter(gpuLease.ExecutionLock);
+
+        var kernel = GetKernel(accelerator);
+        var resources = RentBatchResources(accelerator, batchCapacity);
+
+        composite = CheckDivisors(
+        prime,
+        allowedMax,
+        accelerator,
+        kernel,
+        resources.DivisorsBuffer,
+        resources.ExponentBuffer,
+        resources.HitsBuffer,
+        resources.DivisorDeltaBuffer,
+        resources.RemainderDeltaBuffer,
+        resources.RemainderBuffer,
+        resources.RemainderDeltaKernel,
+        resources.RemainderScanKernel,
+        resources.CandidateMaskKernel,
+        resources.Divisors,
+        resources.Exponents,
+        resources.Hits,
+        resources.DivisorData,
+        resources.CycleCandidates,
+        resources.CycleLengths,
+        resources.CycleCapacity,
+        out lastProcessed,
+        out coveredRange,
+        out processedCount
+        );
+
+        ReturnBatchResources(accelerator, resources);
+        Monitor.Exit(gpuLease.ExecutionLock);
+        gpuLease.Dispose();
 
         if (composite)
         {
@@ -540,7 +540,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
         private readonly GpuContextPool.GpuContextLease _lease;
         private readonly Accelerator _accelerator;
-        private readonly Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> _kernel;
+        private Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> _kernel;
         private MemoryBuffer1D<ulong, Stride1D.Dense> _exponentsBuffer;
         private MemoryBuffer1D<ulong, Stride1D.Dense> _resultsBuffer;
         private ulong[] _hostBuffer;
@@ -552,16 +552,20 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             _owner = owner;
             _lease = GpuContextPool.RentPreferred(preferCpu: false);
             _accelerator = _lease.Accelerator;
-            _kernel = owner.GetKernelByPrimeExponent(_accelerator);
             _capacity = Math.Max(1, owner._gpuBatchSize);
-            _exponentsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
-            _resultsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
-            _hostBuffer = ArrayPool<ulong>.Shared.Rent(_capacity);
         }
 
         internal void Reset()
         {
             _disposed = false;
+        }
+
+        private void EnsureExecutionResourcesLocked()
+        {
+            _kernel = _owner.GetKernelByPrimeExponent(_accelerator);
+            _exponentsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
+            _resultsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
+            _hostBuffer = ArrayPool<ulong>.Shared.Rent(_capacity);
         }
 
         public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes, Span<byte> hits)
@@ -581,6 +585,13 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             {
                 hits.Clear();
                 return;
+            }
+
+            Monitor.Enter(_lease.ExecutionLock);
+
+            if (_kernel == null)
+            {
+                EnsureExecutionResourcesLocked();
             }
 
             ArrayView1D<ulong, Stride1D.Dense> exponentsView = _exponentsBuffer.View;
@@ -609,6 +620,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
                 offset += batchSize;
             }
+
+            Monitor.Exit(_lease.ExecutionLock);
         }
 
         public void Dispose()
