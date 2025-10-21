@@ -140,12 +140,13 @@ internal static partial class PrimeOrderCalculator
 		for (int i = 0; i < factors.Length; i++)
 		{
 			ulong factor = factors[i].Value;
-			if (factor == 0UL)
+			if (factor == 0UL || factor > phi)
 			{
 				continue;
 			}
 
-			if (!TryExactDivision(phi, factor, out ulong reduced))
+			ulong reduced = phi / factor;
+			if (reduced == 0UL)
 			{
 				continue;
 			}
@@ -249,8 +250,19 @@ internal static partial class PrimeOrderCalculator
 	{
 		ulong working = order;
 		int actual = 0;
-		while (actual < exponent && TryExactDivision(working, primeFactor, out ulong reduced))
+		while (actual < exponent)
 		{
+			if (working < primeFactor)
+			{
+				break;
+			}
+
+			ulong reduced = working / primeFactor;
+			if (reduced == 0UL)
+			{
+				break;
+			}
+
 			candidateBuffer[actual] = reduced;
 			working = reduced;
 			actual++;
@@ -388,8 +400,19 @@ internal static partial class PrimeOrderCalculator
 	{
 		ulong working = order;
 		int actual = 0;
-		while (actual < exponent && TryExactDivision(working, primeFactor, out ulong reduced))
+		while (actual < exponent)
 		{
+			if (working < primeFactor)
+			{
+				break;
+			}
+
+			ulong reduced = working / primeFactor;
+			if (reduced == 0UL)
+			{
+				break;
+			}
+
 			buffer[actual] = reduced;
 			working = reduced;
 			actual++;
@@ -833,8 +856,19 @@ internal static partial class PrimeOrderCalculator
 	{
 		ulong working = candidate;
 		int actual = 0;
-		while (actual < exponent && TryExactDivision(working, primeFactor, out ulong reduced))
+		while (actual < exponent)
 		{
+			if (working < primeFactor)
+			{
+				break;
+			}
+
+			ulong reduced = working / primeFactor;
+			if (reduced == 0UL)
+			{
+				break;
+			}
+
 			buffer[actual] = reduced;
 			working = reduced;
 			actual++;
@@ -866,12 +900,6 @@ internal static partial class PrimeOrderCalculator
 		return false;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static bool TryExactDivision(ulong value, ulong divisor, out ulong quotient)
-	{
-		quotient = value / divisor;
-		return quotient * divisor == value;
-	}
 
 	private static bool Pow2EqualsOneCpu(ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
 	{

@@ -451,13 +451,6 @@ public class MersenneDivisorCycles
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryExactDivision(ulong value, ulong divisor, out ulong quotient)
-    {
-        quotient = value / divisor;
-        return quotient * divisor == value;
-    }
-
     private static ulong ReduceOrder(in MontgomeryDivisorData divisorData, ulong initialOrder, Dictionary<ulong, int> factorCounts)
     {
         if (factorCounts.Count == 0)
@@ -522,8 +515,19 @@ public class MersenneDivisorCycles
     {
         ulong working = order;
         int actual = 0;
-        while (actual < multiplicity && TryExactDivision(working, prime, out ulong reduced))
+        while (actual < multiplicity)
         {
+            if (working < prime)
+            {
+                break;
+            }
+
+            ulong reduced = working / prime;
+            if (reduced == 0UL)
+            {
+                break;
+            }
+
             candidateBuffer[actual] = reduced;
             working = reduced;
             actual++;
