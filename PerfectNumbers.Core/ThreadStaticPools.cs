@@ -31,7 +31,6 @@ namespace PerfectNumbers.Core
             }
         }
 
-
         [ThreadStatic]
         private static MersenneCpuDivisorScanSession? _mersenneCpuDivisorSession;
 
@@ -114,7 +113,6 @@ namespace PerfectNumbers.Core
                 return _charPool ??= ArrayPool<char>.Create();
             }
         }
-
 
         [ThreadStatic]
         private static List<List<ulong>>? _ulongListPool;
@@ -253,6 +251,7 @@ namespace PerfectNumbers.Core
             pool.Add(stack);
         }
 
+        // The factor-count scratch caches were removed because divisor factorizations never repeat across scan iterations.
         [ThreadStatic]
         private static List<Dictionary<ulong, int>>? _ulongIntDictionaryPool;
 
@@ -293,96 +292,6 @@ namespace PerfectNumbers.Core
             }
 
             pool.Add(dictionary);
-        }
-
-
-        [ThreadStatic]
-        private static List<Dictionary<ulong, ulong>>? _ulongUlongDictionaryPool;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static Dictionary<ulong, ulong> RentUlongUlongDictionary(int capacityHint)
-        {
-            List<Dictionary<ulong, ulong>>? pool = _ulongUlongDictionaryPool;
-            if (pool is not null)
-            {
-                int poolCount = pool.Count;
-                if (poolCount > 0)
-                {
-                    int lastIndex = poolCount - 1;
-                    Dictionary<ulong, ulong> dictionary = pool[lastIndex];
-                    pool.RemoveAt(lastIndex);
-                    if (dictionary.Count > 0)
-                    {
-                        dictionary.Clear();
-                    }
-
-                    dictionary.EnsureCapacity(capacityHint);
-
-                    return dictionary;
-                }
-            }
-
-            return new Dictionary<ulong, ulong>(capacityHint);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void ReturnUlongUlongDictionary(Dictionary<ulong, ulong> dictionary)
-        {
-            List<Dictionary<ulong, ulong>>? pool = _ulongUlongDictionaryPool;
-            if (pool is null)
-            {
-                pool = new List<Dictionary<ulong, ulong>>(4);
-                _ulongUlongDictionaryPool = pool;
-            }
-
-            pool.Add(dictionary);
-        }
-        [ThreadStatic]
-        private static Dictionary<ulong, int>? _factorCountDictionary;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static Dictionary<ulong, int> RentFactorCountDictionary()
-        {
-            Dictionary<ulong, int>? dictionary = _factorCountDictionary;
-            if (dictionary is null)
-            {
-                return new Dictionary<ulong, int>(8);
-            }
-
-            _factorCountDictionary = null;
-            dictionary.Clear();
-            return dictionary;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void ReturnFactorCountDictionary(Dictionary<ulong, int> dictionary)
-        {
-            dictionary.Clear();
-            _factorCountDictionary = dictionary;
-        }
-
-        [ThreadStatic]
-        private static Dictionary<ulong, int>? _factorScratchDictionary;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static Dictionary<ulong, int> RentFactorScratchDictionary()
-        {
-            Dictionary<ulong, int>? dictionary = _factorScratchDictionary;
-            if (dictionary is null)
-            {
-                return new Dictionary<ulong, int>(8);
-            }
-
-            _factorScratchDictionary = null;
-            dictionary.Clear();
-            return dictionary;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void ReturnFactorScratchDictionary(Dictionary<ulong, int> dictionary)
-        {
-            dictionary.Clear();
-            _factorScratchDictionary = dictionary;
         }
 
         [ThreadStatic]

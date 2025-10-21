@@ -304,7 +304,8 @@ public class MersenneDivisorCycles
         //     return false;
         // }
 
-        Dictionary<ulong, int> factorCounts = ThreadStaticPools.RentFactorCountDictionary();
+        // Each divisor candidate is evaluated once along the scan, so a fresh factor map per call avoids keeping an unused cache.
+        Dictionary<ulong, int> factorCounts = new Dictionary<ulong, int>();
         bool success = false;
 
         if (twoCount > 0)
@@ -322,7 +323,6 @@ public class MersenneDivisorCycles
             primeOrderFailed = false;
         }
 
-        ThreadStaticPools.ReturnFactorCountDictionary(factorCounts);
         return success;
     }
 
@@ -335,12 +335,11 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        Dictionary<ulong, int> scratch = ThreadStaticPools.RentFactorScratchDictionary();
+        // Factorizations are local to a single reduction attempt; there is no reuse across calls.
+        Dictionary<ulong, int> scratch = new Dictionary<ulong, int>();
         bool success = TryFactorIntoCountsInternal(value, scratch);
         if (!success)
         {
-            // The scan recalculates factors every time; the old cache never produced hits.
-            ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
             return false;
         }
 
@@ -350,7 +349,6 @@ public class MersenneDivisorCycles
             AddFactor(counts, pair.Key, pair.Value);
         }
 
-        ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
         return true;
     }
 
