@@ -13,18 +13,18 @@ internal static partial class PrimeOrderCalculator
 
 	private const int GpuSmallPrimeFactorSlots = 64;
 
-	private static bool TryPopulateSmallPrimeFactorsGpu(ulong value, uint limit, Span<ulong> primeBuffer, Span<int> exponentBuffer, out int factorCount, out ulong remaining)
+	private static bool TryPopulateSmallPrimeFactorsGpu(ulong value, uint limit, Dictionary<ulong, int> counts, out int factorCount, out ulong remaining)
 	{
-		// primeBufferArray = ThreadStaticPools.UlongPool.Rent(GpuSmallPrimeFactorSlots);
-		// exponentBufferArray = ThreadStaticPools.IntPool.Rent(GpuSmallPrimeFactorSlots);
-		// Span<ulong> primeBuffer = primeBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
-		// Span<int> exponentBuffer = exponentBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
+		var primeBufferArray = ThreadStaticPools.UlongPool.Rent(GpuSmallPrimeFactorSlots);
+		var exponentBufferArray = ThreadStaticPools.IntPool.Rent(GpuSmallPrimeFactorSlots);
+		Span<ulong> primeBuffer = primeBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
+		Span<int> exponentBuffer = exponentBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
 		// primeBuffer.Clear();
 		// exponentBuffer.Clear();
 		remaining = value;
 
-		// try
-		// {
+		try
+		{
 			var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
 			var execution = lease.EnterExecutionScope();
 			try
@@ -64,18 +64,18 @@ internal static partial class PrimeOrderCalculator
 
 				scratch.RemainingSlot.View.CopyToCPU(ref remaining, 1);
 
-				// for (int i = 0; i < factorCount; i++)
-				// {
-				// 	ulong primeValue = primeBuffer[i];
-				// 	int exponent = exponentBuffer[i];
-				// 	// This will never happen in production code
-				// 	// if (primeValue == 0UL || exponent == 0)
-				// 	// {
-				// 	// 	continue;
-				// 	// }
+				for (int i = 0; i < factorCount; i++)
+				{
+					ulong primeValue = primeBuffer[i];
+					int exponent = exponentBuffer[i];
+					// This will never happen in production code
+					// if (primeValue == 0UL || exponent == 0)
+					// {
+					// 	continue;
+					// }
 
-				// 	counts[primeValue] = exponent;
-				// }
+					counts.Add(primeValue, exponent);
+				}
 
 				return true;
 			}
@@ -84,11 +84,11 @@ internal static partial class PrimeOrderCalculator
 				execution.Dispose();
 				lease.Dispose();
 			}
-		// }
-		// finally
-		// {
-		// 	ThreadStaticPools.UlongPool.Return(primeBufferArray);
-		// 	ThreadStaticPools.IntPool.Return(exponentBufferArray);
-		// }
+		}
+		finally
+		{
+			ThreadStaticPools.UlongPool.Return(primeBufferArray);
+			ThreadStaticPools.IntPool.Return(exponentBufferArray);
+		}
 	}
 }
