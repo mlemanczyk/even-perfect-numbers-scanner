@@ -15,8 +15,10 @@ public sealed class PrimeTester(bool useInternal = false)
         // indirection shows up when we sieve millions of candidates per second.
         IsPrimeInternal(n, ct);
 
-    // Optional GPU-assisted primality: batched small-prime sieve on device.
-    public bool IsPrimeGpu(ulong n, CancellationToken ct)
+	public static bool IsPrimeGpu(ulong n) => new PrimeTester().IsPrimeGpu(n, CancellationToken.None);
+
+	// Optional GPU-assisted primality: batched small-prime sieve on device.
+	public bool IsPrimeGpu(ulong n, CancellationToken ct)
     {
         if (GpuContextPool.ForceCpu)
         {
