@@ -160,7 +160,7 @@ internal static partial class PrimeOrderCalculator
 			return true;
 		}
 
-		Span<ulong> candidates = buffer.Slice(0, actual);
+		Span<ulong> candidates = buffer[..actual];
 		candidates.Sort();
 
 		ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
@@ -210,7 +210,7 @@ internal static partial class PrimeOrderCalculator
 			length++;
 		}
 
-		buffer.Slice(0, length).Sort(static (a, b) => a.Value.CompareTo(b.Value));
+		buffer[..length].Sort(static (a, b) => a.Value.CompareTo(b.Value));
 
 		ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
 
@@ -240,7 +240,7 @@ internal static partial class PrimeOrderCalculator
 
 			if (exponent <= StackExponentCapacity)
 			{
-				ProcessExponentLoweringPrime(stackCandidates.Slice(0, exponent), stackEvaluations.Slice(0, exponent), ref order, primeFactor, exponent, ref stepper);
+				ProcessExponentLoweringPrime(stackCandidates[..exponent], stackEvaluations[..exponent], ref order, primeFactor, exponent, ref stepper);
 				continue;
 			}
 
@@ -288,8 +288,8 @@ internal static partial class PrimeOrderCalculator
 			return;
 		}
 
-		Span<ulong> candidates = candidateBuffer.Slice(0, actual);
-		Span<bool> evaluations = evaluationBuffer.Slice(0, actual);
+		Span<ulong> candidates = candidateBuffer[..actual];
+		Span<bool> evaluations = evaluationBuffer[..actual];
 
 		for (int left = 0, right = actual - 1; left < right; left++, right--)
 		{
@@ -400,7 +400,7 @@ internal static partial class PrimeOrderCalculator
 
 			if (exponent <= StackExponentCapacity)
 			{
-				if (ValidateOrderForFactor(stackBuffer.Slice(0, exponent), primeFactor, exponent, order, ref stepper))
+				if (ValidateOrderForFactor(stackBuffer[..exponent], primeFactor, exponent, order, ref stepper))
 				{
 					violates = true;
 					break;
@@ -454,7 +454,7 @@ internal static partial class PrimeOrderCalculator
 			return false;
 		}
 
-		Span<ulong> candidates = buffer.Slice(0, actual);
+		Span<ulong> candidates = buffer[..actual];
 		candidates.Reverse();
 
 		stepper.Reset();
@@ -563,7 +563,7 @@ internal static partial class PrimeOrderCalculator
 				{
 					if (batchSize <= StackGpuBatchSize)
 					{
-						Span<ulong> localRemainders = stackGpuRemainders.Slice(0, batchSize);
+						Span<ulong> localRemainders = stackGpuRemainders[..batchSize];
 						status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, localRemainders, divisorData);
 						if (status == GpuPow2ModStatus.Success)
 						{
@@ -872,7 +872,7 @@ internal static partial class PrimeOrderCalculator
 
 				if (exponent <= StackExponentCapacity)
 				{
-					if (CheckCandidateViolation(stackBuffer.Slice(0, exponent), primeFactor, exponent, candidate, prime, ref powUsed, powBudget, ref stepper))
+					if (CheckCandidateViolation(stackBuffer[..exponent], primeFactor, exponent, candidate, prime, ref powUsed, powBudget, ref stepper))
 					{
 						violates = true;
 						break;
@@ -931,7 +931,7 @@ internal static partial class PrimeOrderCalculator
 			return false;
 		}
 
-		Span<ulong> candidates = buffer.Slice(0, actual);
+		Span<ulong> candidates = buffer[..actual];
 		candidates.Reverse();
 
 		stepper.Reset();
