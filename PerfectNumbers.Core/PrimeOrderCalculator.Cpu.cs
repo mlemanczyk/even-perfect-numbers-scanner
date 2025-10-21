@@ -521,6 +521,7 @@ internal static partial class PrimeOrderCalculator
 			BuildCandidates(order, factorArray, orderFactors.Count, candidates, capacity);
 			if (candidates.Count == 0)
 			{
+				candidates.Clear();
 				ThreadStaticPools.ReturnUlongList(candidates);
 				return false;
 			}
@@ -623,6 +624,7 @@ internal static partial class PrimeOrderCalculator
 						pool.Return(gpuPool, clearArray: false);
 					}
 
+					candidates.Clear();
 					ThreadStaticPools.ReturnUlongList(candidates);
 					ThreadStaticPools.ReturnExponentStepper(powStepper);
 					result = candidate;
@@ -637,6 +639,7 @@ internal static partial class PrimeOrderCalculator
 				index += batchSize;
 			}
 
+			candidates.Clear();
 			ThreadStaticPools.ReturnUlongList(candidates);
 			ThreadStaticPools.ReturnExponentStepper(powStepper);
 			// DebugLog("No candidate confirmed");
@@ -1030,6 +1033,7 @@ internal static partial class PrimeOrderCalculator
 				}
 
 				factorCount = copyIndex;
+				counts.Clear();
 				ThreadStaticPools.ReturnUlongIntDictionary(counts);
 				counts = null;
 			}
@@ -1231,6 +1235,7 @@ internal static partial class PrimeOrderCalculator
 
 		if (counts is not null)
 		{
+			counts.Clear();
 			ThreadStaticPools.ReturnUlongIntDictionary(counts);
 		}
 

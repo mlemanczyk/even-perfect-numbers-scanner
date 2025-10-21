@@ -129,11 +129,6 @@ namespace PerfectNumbers.Core
                     int lastIndex = poolCount - 1;
                     List<ulong> list = pool[lastIndex];
                     pool.RemoveAt(lastIndex);
-                    if (list.Count > 0)
-                    {
-                        list.Clear();
-                    }
-
                     if (list.Capacity < capacityHint)
                     {
                         list.Capacity = capacityHint;
@@ -174,11 +169,6 @@ namespace PerfectNumbers.Core
                     int lastIndex = poolCount - 1;
                     List<PrimeOrderCalculator.PendingEntry> list = pool[lastIndex];
                     pool.RemoveAt(lastIndex);
-                    if (list.Count > 0)
-                    {
-                        list.Clear();
-                    }
-
                     if (list.Capacity < capacityHint)
                     {
                         list.Capacity = capacityHint;
@@ -219,14 +209,8 @@ namespace PerfectNumbers.Core
                     int lastIndex = poolCount - 1;
                     Stack<ulong> stack = pool[lastIndex];
                     pool.RemoveAt(lastIndex);
-                    int stackCount = stack.Count;
-                    if (stackCount > 0)
-                    {
-                        stack.Clear();
-                        stackCount = 0;
-                    }
 
-                    if (stackCount < capacityHint)
+                    if (stack.Count < capacityHint)
                     {
                         stack.EnsureCapacity(capacityHint);
                     }
@@ -266,11 +250,6 @@ namespace PerfectNumbers.Core
                     int lastIndex = poolCount - 1;
                     Dictionary<ulong, int> dictionary = pool[lastIndex];
                     pool.RemoveAt(lastIndex);
-                    if (dictionary.Count > 0)
-                    {
-                        dictionary.Clear();
-                    }
-
                     dictionary.EnsureCapacity(capacityHint);
 
                     return dictionary;
@@ -306,14 +285,12 @@ namespace PerfectNumbers.Core
             }
 
             _factorCountDictionary = null;
-            dictionary.Clear();
             return dictionary;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void ReturnFactorCountDictionary(Dictionary<ulong, int> dictionary)
         {
-            dictionary.Clear();
             _factorCountDictionary = dictionary;
         }
 
@@ -330,14 +307,12 @@ namespace PerfectNumbers.Core
             }
 
             _factorScratchDictionary = null;
-            dictionary.Clear();
             return dictionary;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void ReturnFactorScratchDictionary(Dictionary<ulong, int> dictionary)
         {
-            dictionary.Clear();
             _factorScratchDictionary = dictionary;
         }
 

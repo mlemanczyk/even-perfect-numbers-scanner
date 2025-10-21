@@ -322,6 +322,7 @@ public class MersenneDivisorCycles
             primeOrderFailed = false;
         }
 
+        factorCounts.Clear();
         ThreadStaticPools.ReturnFactorCountDictionary(factorCounts);
         return success;
     }
@@ -339,6 +340,7 @@ public class MersenneDivisorCycles
         bool success = TryFactorIntoCountsInternal(value, scratch);
         if (!success)
         {
+            scratch.Clear();
             ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
             return false;
         }
@@ -349,6 +351,7 @@ public class MersenneDivisorCycles
             AddFactor(counts, pair.Key, pair.Value);
         }
 
+        scratch.Clear();
         ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
         return true;
     }
