@@ -135,43 +135,46 @@ public static partial class ULongExtensions
                 {
                         ulong currentBit = (exponent >> index) & 1UL;
                         ulong squared = MontgomeryMultiply(result, result, modulus, nPrime);
-                        result = currentBit == 0UL ? squared : result;
-                        index -= (int)(currentBit ^ 1UL);
-                        if (currentBit == 0UL)
-                        {
-                                continue;
-                        }
+                        bool processWindow = currentBit != 0UL;
 
-                        int windowStart = index - windowSize + 1;
-                        // if (windowStart < 0)
+                        result = processWindow ? result : squared;
+                        index -= (int)(currentBit ^ 1UL);
+
+                        int windowStartCandidate = index - windowSize + 1;
+                        // if (windowStartCandidate < 0)
                         // {
-                        //         windowStart = 0;
+                        //         windowStartCandidate = 0;
                         // }
                         // Clamp the negative offset without branching so the GPU loop stays divergence-free.
                         // This still handles windows that would otherwise extend past the most significant bit.
-                        int negativeMask = windowStart >> 31;
-                        windowStart &= ~negativeMask;
+                        int negativeMask = windowStartCandidate >> 31;
+                        windowStartCandidate &= ~negativeMask;
 
-                        windowStart = GetNextSetBitIndexGpu(exponent, windowStart);
-
-                        int windowLength = index - windowStart + 1;
+                        int windowStart = processWindow ? GetNextSetBitIndexGpu(exponent, windowStartCandidate) : windowStartCandidate;
+                        int windowLength = processWindow ? index - windowStart + 1 : 0;
                         for (int square = 0; square < windowLength; square++)
                         {
                                 result = MontgomeryMultiply(result, result, modulus, nPrime);
                         }
 
-                        ulong mask = (1UL << windowLength) - 1UL;
-                        ulong windowValue = (exponent >> windowStart) & mask;
-                        ulong multiplier = ComputeMontgomeryOddPowerGpu(windowValue, divisor, modulus, nPrime);
-                        result = MontgomeryMultiply(result, multiplier, modulus, nPrime);
+                        result = processWindow
+                                ? MontgomeryMultiply(
+                                        result,
+                                        ComputeMontgomeryOddPowerGpu(
+                                                (exponent >> windowStart) & ((1UL << windowLength) - 1UL),
+                                                divisor,
+                                                modulus,
+                                                nPrime),
+                                        modulus,
+                                        nPrime)
+                                : result;
 
-                        index = windowStart - 1;
+                        index = processWindow ? windowStart - 1 : index;
                 }
 
-                if (!keepMontgomery)
-                {
-                        result = MontgomeryMultiply(result, 1UL, modulus, nPrime);
-                }
+                result = keepMontgomery
+                        ? result
+                        : MontgomeryMultiply(result, 1UL, modulus, nPrime);
 
                 return result;
         }
