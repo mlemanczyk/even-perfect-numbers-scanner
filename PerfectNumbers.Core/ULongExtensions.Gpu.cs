@@ -109,20 +109,35 @@ public static partial class ULongExtensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static ulong Pow2MontgomeryModWindowedGpu(in MontgomeryDivisorData divisor, ulong exponent, bool keepMontgomery)
+        internal static ulong Pow2MontgomeryModWindowedGpuKeepMontgomery(in MontgomeryDivisorData divisor, ulong exponent)
+        {
+                return Pow2MontgomeryModWindowedGpuMontgomeryResult(divisor, exponent);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static ulong Pow2MontgomeryModWindowedGpuConvertToStandard(in MontgomeryDivisorData divisor, ulong exponent)
+        {
+                ulong modulus = divisor.Modulus;
+                ulong nPrime = divisor.NPrime;
+                ulong montgomeryResult = Pow2MontgomeryModWindowedGpuMontgomeryResult(divisor, exponent);
+                return MontgomeryMultiply(montgomeryResult, 1UL, modulus, nPrime);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong Pow2MontgomeryModWindowedGpuMontgomeryResult(in MontgomeryDivisorData divisor, ulong exponent)
         {
                 ulong modulus = divisor.Modulus;
                 // Reuse the optimized MontgomeryMultiply extension highlighted in MontgomeryMultiplyBenchmarks so the GPU path matches the fastest CPU reduction.
                 // We shouldn't hit it in production code. If we do, we're doing something wrong.
                 // if (exponent == 0UL)
                 // {
-                //         return keepMontgomery ? divisor.MontgomeryOne : 1UL % modulus;
+                //         return divisor.MontgomeryOne;
                 // }
 
                 // We barely ever hit it in production code. It's e.g. 772 calls out of billions
                 // if (exponent <= Pow2WindowFallbackThreshold)
                 // {
-                //         return Pow2MontgomeryModSingleBit(exponent, divisor, keepMontgomery);
+                //         return Pow2MontgomeryModSingleBit(exponent, divisor);
                 // }
 
                 int bitLength = GetPortableBitLengthGpu(exponent);
@@ -172,10 +187,6 @@ public static partial class ULongExtensions
                         index = processWindow ? windowStart - 1 : index;
                 }
 
-                result = keepMontgomery
-                        ? result
-                        : MontgomeryMultiply(result, 1UL, modulus, nPrime);
-
                 return result;
         }
 
@@ -186,16 +197,18 @@ public static partial class ULongExtensions
                 // ulong modulus = divisor.Modulus;
                 // if (exponent == 0UL)
                 // {
-                //      return keepMontgomery ? divisor.MontgomeryOne : 1UL % modulus;
+                //      return divisor.MontgomeryOne;
                 // }
 
                 // We barely ever hit it in production code. It's e.g. 772 calls out of billions
                 // if (exponent <= Pow2WindowFallbackThreshold)
                 // {
-                //      return Pow2MontgomeryModSingleBit(exponent, divisor, keepMontgomery);
+                //      return Pow2MontgomeryModSingleBit(exponent, divisor);
                 // }
 
-                return Pow2MontgomeryGpuExecutor.Execute(exponent, divisor, keepMontgomery);
+                return keepMontgomery
+                        ? Pow2MontgomeryGpuExecutor.ExecuteKeep(exponent, divisor)
+                        : Pow2MontgomeryGpuExecutor.ExecuteConvert(exponent, divisor);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -292,20 +305,30 @@ public static partial class ULongExtensions
         public static ulong Pow2MontgomeryModWithCycleGpu(this ulong exponent, ulong cycleLength, in MontgomeryDivisorData divisor)
         {
                 ulong rotationCount = exponent % cycleLength;
-                return Pow2MontgomeryModWindowedGpu(rotationCount, divisor, keepMontgomery: false);
+                return Pow2MontgomeryGpuExecutor.ExecuteConvert(rotationCount, divisor);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong Pow2MontgomeryModFromCycleRemainderGpu(this ulong reducedExponent, in MontgomeryDivisorData divisor)
         {
-                return Pow2MontgomeryModWindowedGpu(reducedExponent, divisor, keepMontgomery: false);
+                return Pow2MontgomeryGpuExecutor.ExecuteConvert(reducedExponent, divisor);
         }
 
         private static class Pow2MontgomeryGpuExecutor
         {
                 private static readonly ConcurrentDictionary<Accelerator, Pow2MontgomeryKernelGroup> KernelCache = new();
 
-                public static ulong Execute(ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
+                public static ulong ExecuteKeep(ulong exponent, in MontgomeryDivisorData divisor)
+                {
+                        return Execute(exponent, divisor, useKeepKernel: true);
+                }
+
+                public static ulong ExecuteConvert(ulong exponent, in MontgomeryDivisorData divisor)
+                {
+                        return Execute(exponent, divisor, useKeepKernel: false);
+                }
+
+                private static ulong Execute(ulong exponent, in MontgomeryDivisorData divisor, bool useKeepKernel)
                 {
                         ulong result = 0UL;
 
@@ -328,7 +351,7 @@ public static partial class ULongExtensions
                         // We don't need to worry about any left-overs here.
                         // resultBuffer.MemSetToZero();
 
-                        var kernel = keepMontgomery ? kernelGroup.KeepMontgomery : kernelGroup.ConvertToStandard;
+                        var kernel = useKeepKernel ? kernelGroup.KeepMontgomery : kernelGroup.ConvertToStandard;
                         AcceleratorStream stream = lease.Stream;
                         kernel(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
                         stream.Synchronize();
@@ -351,6 +374,7 @@ public static partial class ULongExtensions
                         // Intentionally avoid exception handling here; any accelerator failure should crash the scanner.
                         return result;
                 }
+
                 private sealed class Pow2MontgomeryKernelGroup
                 {
                         internal Pow2MontgomeryKernelGroup(

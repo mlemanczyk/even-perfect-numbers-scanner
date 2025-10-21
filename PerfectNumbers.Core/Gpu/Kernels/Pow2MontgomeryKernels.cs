@@ -12,7 +12,7 @@ internal static class Pow2MontgomeryKernels
         MontgomeryDivisorData divisor,
         ArrayView1D<ulong, Stride1D.Dense> results)
     {
-        results[index] = ULongExtensions.Pow2MontgomeryModWindowedGpu(divisor, exponents[index], keepMontgomery: true);
+        results[index] = ULongExtensions.Pow2MontgomeryModWindowedGpuKeepMontgomery(divisor, exponents[index]);
     }
 
     public static void Pow2MontgomeryKernelConvertToStandard(
@@ -21,6 +21,6 @@ internal static class Pow2MontgomeryKernels
         MontgomeryDivisorData divisor,
         ArrayView1D<ulong, Stride1D.Dense> results)
     {
-        results[index] = ULongExtensions.Pow2MontgomeryModWindowedGpu(divisor, exponents[index], keepMontgomery: false);
+        results[index] = ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponents[index]);
     }
 }
