@@ -303,7 +303,7 @@ public static partial class ULongExtensions
 
         private static class Pow2MontgomeryGpuExecutor
         {
-                private static readonly ConcurrentDictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, byte, ArrayView1D<ulong, Stride1D.Dense>>> KernelCache = new();
+                private static readonly ConcurrentDictionary<Accelerator, Pow2MontgomeryKernelGroup> KernelCache = new();
 
                 public static ulong Execute(ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
                 {
@@ -319,12 +319,7 @@ public static partial class ULongExtensions
                         //         return 0UL;
                         // }
 
-                        var kernel = KernelCache.GetOrAdd(accelerator, static accel =>
-                        {
-                                var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, byte, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernel);
-                                var launcher = KernelUtil.GetKernel(loaded);
-                                return launcher.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, byte, ArrayView1D<ulong, Stride1D.Dense>>>();
-                        });
+                        var kernelGroup = KernelCache.GetOrAdd(accelerator, static accel => Pow2MontgomeryKernelGroup.Create(accel));
 
                         var exponentBuffer = accelerator.Allocate1D<ulong>(1);
                         var resultBuffer = accelerator.Allocate1D<ulong>(1);
@@ -333,10 +328,9 @@ public static partial class ULongExtensions
                         // We don't need to worry about any left-overs here.
                         // resultBuffer.MemSetToZero();
 
-                        // TODO: Have 2 kernels for both cases to have branch-less solution.
-                        byte keepFlag = keepMontgomery ? (byte)1 : (byte)0;
+                        var kernel = keepMontgomery ? kernelGroup.KeepMontgomery : kernelGroup.ConvertToStandard;
                         AcceleratorStream stream = lease.Stream;
-                        kernel(stream, 1, exponentBuffer.View, divisor, keepFlag, resultBuffer.View);
+                        kernel(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
                         stream.Synchronize();
 
                         resultBuffer.View.CopyToCPU(ref result, 1);
@@ -357,5 +351,33 @@ public static partial class ULongExtensions
                         // Intentionally avoid exception handling here; any accelerator failure should crash the scanner.
                         return result;
                 }
+                private sealed class Pow2MontgomeryKernelGroup
+                {
+                        internal Pow2MontgomeryKernelGroup(
+                                Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> keepMontgomery,
+                                Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> convertToStandard)
+                        {
+                                KeepMontgomery = keepMontgomery;
+                                ConvertToStandard = convertToStandard;
+                        }
+
+                        internal Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> KeepMontgomery { get; }
+
+                        internal Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> ConvertToStandard { get; }
+
+                        internal static Pow2MontgomeryKernelGroup Create(Accelerator accelerator)
+                        {
+                                var keepKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelKeepMontgomery);
+                                var keepLauncher = KernelUtil.GetKernel(keepKernel);
+                                var keepDelegate = keepLauncher.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
+
+                                var convertKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelConvertToStandard);
+                                var convertLauncher = KernelUtil.GetKernel(convertKernel);
+                                var convertDelegate = convertLauncher.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
+
+                                return new Pow2MontgomeryKernelGroup(keepDelegate, convertDelegate);
+                        }
+                }
+
         }
 }
