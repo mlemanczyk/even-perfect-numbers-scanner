@@ -501,18 +501,6 @@ public class MersenneDivisorCycles
 
             if (multiplicity > HeapMultiplicityCapacity)
             {
-                if (heapCandidateArray is not null)
-                {
-                    ThreadStaticPools.UlongPool.Return(heapCandidateArray);
-                }
-
-                if (heapEvaluationArray is not null)
-                {
-                    ThreadStaticPools.BoolPool.Return(heapEvaluationArray);
-                }
-
-                ThreadStaticPools.ReturnExponentStepper(stepper);
-                ThreadStaticPools.UlongPool.Return(primes);
                 throw new InvalidOperationException($"Factor multiplicity {multiplicity} exceeds the supported limit of {HeapMultiplicityCapacity}.");
             }
 
@@ -528,11 +516,7 @@ public class MersenneDivisorCycles
         if (heapCandidateArray is not null)
         {
             ThreadStaticPools.UlongPool.Return(heapCandidateArray);
-        }
-
-        if (heapEvaluationArray is not null)
-        {
-            ThreadStaticPools.BoolPool.Return(heapEvaluationArray);
+            ThreadStaticPools.BoolPool.Return(heapEvaluationArray!);
         }
 
         return order;

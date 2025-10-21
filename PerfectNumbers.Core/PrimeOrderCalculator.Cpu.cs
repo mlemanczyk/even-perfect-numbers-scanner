@@ -235,19 +235,6 @@ internal static partial class PrimeOrderCalculator
 
 			if (exponent > ExponentHardLimit)
 			{
-				ThreadStaticPools.ReturnExponentStepper(stepper);
-
-				if (heapCandidateArray is not null)
-				{
-					ThreadStaticPools.UlongPool.Return(heapCandidateArray);
-				}
-
-				if (heapEvaluationArray is not null)
-				{
-					ThreadStaticPools.BoolPool.Return(heapEvaluationArray);
-				}
-
-				pool.Return(tempArray, clearArray: false);
 				throw new InvalidOperationException($"Prime factor exponent {exponent} exceeds the supported limit of {ExponentHardLimit}.");
 			}
 
@@ -267,11 +254,7 @@ internal static partial class PrimeOrderCalculator
 		if (heapCandidateArray is not null)
 		{
 			ThreadStaticPools.UlongPool.Return(heapCandidateArray);
-		}
-
-		if (heapEvaluationArray is not null)
-		{
-			ThreadStaticPools.BoolPool.Return(heapEvaluationArray);
+			ThreadStaticPools.BoolPool.Return(heapEvaluationArray!);
 		}
 
 		pool.Return(tempArray, clearArray: false);
@@ -412,13 +395,6 @@ internal static partial class PrimeOrderCalculator
 
 			if (exponent > ExponentHardLimit)
 			{
-				ThreadStaticPools.ReturnExponentStepper(stepper);
-
-				if (heapCandidateArray is not null)
-				{
-					ThreadStaticPools.UlongPool.Return(heapCandidateArray);
-				}
-
 				throw new InvalidOperationException($"Factor exponent {exponent} exceeds the supported limit of {ExponentHardLimit}.");
 			}
 
@@ -888,13 +864,6 @@ internal static partial class PrimeOrderCalculator
 
 				if (exponent > ExponentHardLimit)
 				{
-					ThreadStaticPools.ReturnExponentStepper(stepper);
-
-					if (heapCandidateArray is not null)
-					{
-						ThreadStaticPools.UlongPool.Return(heapCandidateArray);
-					}
-
 					throw new InvalidOperationException($"Candidate factor exponent {exponent} exceeds the supported limit of {ExponentHardLimit}.");
 				}
 
