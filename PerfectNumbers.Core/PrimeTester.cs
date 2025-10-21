@@ -69,28 +69,24 @@ public sealed class PrimeTester(bool useInternal = false)
 
     internal static bool IsPrimeInternal(ulong n, CancellationToken ct)
     {
-        bool result = true;
-        if (n <= 3UL)
+        // EvenPerfectBitScanner streams monotonically increasing odd exponents that start at 136,279,841 and already exclude
+        // multiples of five. Factorization helpers (PrimeOrderCalculator, Pollard routines, and divisor-cycle warmups) reuse
+        // this path for arbitrary residues and cofactors, so keep the boolean guards even though the scanner never trips them.
+        bool isTwo = n == 2UL;
+        bool isOdd = (n & 1UL) != 0UL;
+        // TODO: Replace this modulo check with ULongExtensions.Mod5 so the CPU hot path reuses the benchmarked helper instead of `%`.
+        ulong mod5 = n % 5UL;
+        bool divisibleByFive = n > 5UL && mod5 == 0UL;
+
+        bool result = n >= 2UL && (isTwo || isOdd) && !divisibleByFive;
+        bool requiresTrialDivision = result && n >= 7UL && !isTwo;
+
+        if (requiresTrialDivision)
         {
-            result = n >= 2UL;
-        }
-        else if ((n & 1UL) == 0)
-        {
-            result = false;
-        }
-        else if (n > 5UL && (n % 5UL) == 0UL)
-        {
-            // TODO: Replace this modulo check with ULongExtensions.Mod5 so the CPU hot path
-            // reuses the benchmarked helper instead of `%` when sieving large prime ranges.
-            result = false;
-        }
-        else
-        {
-            if (n.Mod10() == 1UL && SharesFactorWithMaxExponent(n))
-            {
-                result = false;
-            }
-            else
+            bool sharesMaxExponentFactor = n.Mod10() == 1UL && SharesFactorWithMaxExponent(n);
+            result &= !sharesMaxExponentFactor;
+
+            if (result)
             {
                 var smallPrimeDivisorsLength = PrimesGenerator.SmallPrimes.Length;
                 uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
