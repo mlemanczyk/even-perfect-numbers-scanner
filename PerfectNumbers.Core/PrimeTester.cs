@@ -16,33 +16,53 @@ public sealed class PrimeTester(bool useInternal = false)
         // indirection shows up when we sieve millions of candidates per second.
         IsPrimeInternal(n, ct);
 
-	public static bool IsPrimeGpu(ulong n) => new PrimeTester().IsPrimeGpu(n, CancellationToken.None);
+    public static bool IsPrimeGpu(ulong n) => new PrimeTester().IsPrimeGpu(n, CancellationToken.None);
 
-	// Optional GPU-assisted primality: batched small-prime sieve on device.
-	public bool IsPrimeGpu(ulong n, CancellationToken ct)
+    // Optional GPU-assisted primality: batched small-prime sieve on device.
+    public bool IsPrimeGpu(ulong n, CancellationToken ct)
     {
-        if (GpuContextPool.ForceCpu)
-        {
-            return IsPrimeInternal(n, ct);
-        }
+        // EvenPerfectBitScanner never enqueues exponents <= 3 on the GPU path; keep the legacy guard commented out
+        // so ad-hoc callers that expect that behavior must re-enable it intentionally.
+        // if (n <= 3UL)
+        // {
+        //     return n >= 2UL;
+        // }
 
+        // Candidate generation (Add/AddPrimes transforms plus ModResidueTracker) already strips even values and multiples of five.
+        // The downstream small-factor sweep and Pollard routines factor divisors q = 2kp + 1 with k >= 1 without feeding new
+        // exponents back into this path, so the GPU sees the same odd sequence that already passed the CPU residues.
+
+        // EvenPerfectBitScanner seeds p at 136,279,841 and advances monotonically, so production scans never hit the GPU with
+        // exponents below 31. Leave this CPU redirect commented out to keep the wrapper branchless while documenting the guard.
+        // The ternary fallback below still routes sub-31 values through IsPrimeInternal for correctness when ad-hoc callers bypass
+        // the scanner pipeline.
+        // if (n < 31UL)
+        // {
+        //     return IsPrimeInternal(n, ct);
+        // }
+
+        bool forceCpu = GpuContextPool.ForceCpu;
         Span<ulong> one = stackalloc ulong[1];
         Span<byte> outFlags = stackalloc byte[1];
         // TODO: Inline the single-value GPU sieve fast path from GpuModularArithmeticBenchmarks so this wrapper
         // can skip stackalloc buffers and reuse the pinned upload span the benchmark identified as fastest.
         one[0] = n;
-        IsPrimeBatchGpu(one, outFlags);
+        outFlags[0] = 0;
 
-        if (outFlags[0] != 0)
+        if (!forceCpu)
         {
-            return true;
+            IsPrimeBatchGpu(one, outFlags);
         }
 
-        // Defensive fallback: GPU sieve produced a composite verdict.
-        // Confirm with CPU logic to prevent false negatives observed on
-        // some accelerators.
-        return IsPrimeInternal(n, ct);
+        bool belowGpuRange = n < 31UL;
+        bool gpuReportedPrime = !forceCpu && !belowGpuRange && outFlags[0] != 0;
+        bool requiresCpuFallback = forceCpu || belowGpuRange || !gpuReportedPrime;
+
+        // Defensive fallback: GPU sieve produced a composite verdict or execution was skipped.
+        // Confirm with CPU logic to prevent false negatives observed on some accelerators.
+        return requiresCpuFallback ? IsPrimeInternal(n, ct) : true;
     }
+
 
     // Note: GPU-backed primality path is implemented via IsPrimeGpu/IsPrimeBatchGpu and is routed
     // from EvenPerfectBitScanner based on --primes-device.

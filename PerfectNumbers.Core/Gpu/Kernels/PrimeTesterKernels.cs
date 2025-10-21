@@ -10,51 +10,37 @@ internal static class PrimeTesterKernels
     public static void SmallPrimeSieveKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<uint> smallPrimes, ArrayView<byte> results)
     {
         ulong n = numbers[index];
-        if (n <= 3UL)
+
+        // EvenPerfectBitScanner filters candidates so production GPU launches only see:
+        //  - n >= 31 (the scanner starts at 136,279,841 and test mode seeds 31)
+        //  - n odd (candidate generators and ModResidueTracker eliminate even exponents)
+        //  - n not divisible by 5 (residue prefiltering and AddPrimes transform cover these composites)
+        // Tests should honor the same constraints so the host wrapper can remain branchless.
+        ulong log2Estimate = 63UL - (ulong)XMath.LeadingZeroCount(n | 1UL);
+        ulong gcd = BinaryGcdGpu(n, log2Estimate);
+        bool heuristicActive = n.Mod10() == 1UL;
+        bool gcdReject = heuristicActive & (gcd != 1UL);
+
+        bool composite = gcdReject;
+        bool continueLoop = !gcdReject;
+
+        long length = smallPrimes.Length;
+        for (int i = 0; i < length; i++)
         {
-            results[index] = (byte)(n >= 2UL ? 1 : 0);
-            return;
+            ulong prime = smallPrimes[i];
+            ulong primeSquare = (ulong)prime * prime;
+            bool withinRange = primeSquare <= n;
+            ulong remainder = n % prime;
+            bool divides = remainder == 0UL;
+
+            bool markComposite = continueLoop & withinRange & divides;
+            composite |= markComposite;
+            continueLoop &= withinRange & !divides;
         }
 
-        if ((n & 1UL) == 0UL || (n > 5UL && (n % 5UL) == 0UL))
-        {
-            // TODO: Replace the `% 5` branch with the GPU Mod5 helper once the sieve kernel can
-            // reuse the benchmarked bitmask reduction instead of modulo on every candidate.
-            results[index] = 0;
-            return;
-        }
-
-        if (n.Mod10() == 1UL)
-        {
-            // Early reject special GCD heuristic with floor(log2 n)
-            ulong m = 63UL - (ulong)XMath.LeadingZeroCount(n);
-            if (BinaryGcdGpu(n, m) != 1UL)
-            {
-                results[index] = 0;
-                return;
-            }
-        }
-
-        long len = smallPrimes.Length;
-        for (int i = 0; i < len; i++)
-        {
-            ulong p = smallPrimes[i];
-            if (p * p > n)
-            {
-                break;
-            }
-
-            if ((n % p) == 0UL)
-            {
-                // TODO: Route this modulo through the shared divisor-cycle cache once exposed to GPU kernels
-                // so batched sieves avoid per-prime `%` operations that profiling showed expensive.
-                results[index] = 0;
-                return;
-            }
-        }
-
-        results[index] = 1;
+        results[index] = composite ? (byte)0 : (byte)1;
     }
+
 
     public static void SharesFactorKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<byte> results)
     {
@@ -69,31 +55,32 @@ internal static class PrimeTesterKernels
         // TODO: Replace this inline GPU binary GCD with the kernel extracted from
         // GpuUInt128BinaryGcdBenchmarks via GpuKernelPool so device callers reuse the
         // fully unrolled ladder instead of this branchy fallback.
-        if (u == 0UL)
+        bool uIsZero = u == 0UL;
+        bool vIsZero = v == 0UL;
+        bool eitherZero = uIsZero | vIsZero;
+        ulong zeroResult = uIsZero ? v : u;
+
+        ulong combined = u | v | 1UL;
+        int shift = XMath.TrailingZeroCount(combined);
+
+        ulong normalizedU = u >> XMath.TrailingZeroCount(u | 1UL);
+        ulong normalizedV = v >> XMath.TrailingZeroCount(v | 1UL);
+
+        ulong currentU = normalizedU;
+        ulong currentV = normalizedV;
+        bool loopCondition = currentV != 0UL;
+
+        while (loopCondition)
         {
-            return v;
+            currentV >>= XMath.TrailingZeroCount(currentV);
+            ulong minValue = XMath.Min(currentU, currentV);
+            ulong maxValue = XMath.Max(currentU, currentV);
+            currentU = minValue;
+            currentV = maxValue - minValue;
+            loopCondition = currentV != 0UL;
         }
 
-        if (v == 0UL)
-        {
-            return u;
-        }
-
-        int shift = XMath.TrailingZeroCount(u | v);
-        u >>= XMath.TrailingZeroCount(u);
-
-        do
-        {
-            v >>= XMath.TrailingZeroCount(v);
-            if (u > v)
-            {
-                (u, v) = (v, u);
-            }
-
-            v -= u;
-        }
-        while (v != 0UL);
-
-        return u << shift;
+        ulong gcd = currentU << shift;
+        return eitherZero ? zeroResult : gcd;
     }
 }

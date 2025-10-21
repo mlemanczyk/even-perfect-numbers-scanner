@@ -30,9 +30,9 @@ public class PrimeTesterIsPrimeTests
         var tester = new PrimeTester();
         GpuContextPool.ForceCpu = true;
 
-        tester.IsPrimeGpu(11UL, CancellationToken.None).Should().BeTrue();
+        tester.IsPrimeGpu(137UL, CancellationToken.None).Should().BeTrue();
 
-        tester.IsPrimeGpu(12UL, CancellationToken.None).Should().BeFalse();
+        tester.IsPrimeGpu(341UL, CancellationToken.None).Should().BeFalse();
 
         GpuContextPool.ForceCpu = false;
     }
