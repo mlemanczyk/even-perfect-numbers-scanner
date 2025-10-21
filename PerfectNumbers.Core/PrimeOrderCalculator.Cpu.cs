@@ -747,7 +747,7 @@ internal static partial class PrimeOrderCalculator
 			// if (!gpuPopulated)
 			// {
 			// 	throw new InvalidOperationException($"GPU didn't populate factors for {value}");
-			// counts.Clear();
+				// counts.Clear();
 			remaining = PopulateSmallPrimeFactorsCpu(value, limit, counts);
 			// }
 
@@ -798,7 +798,8 @@ internal static partial class PrimeOrderCalculator
 					// 	continue;
 					// }
 
-					bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
+					bool isPrime = PrimeTester.IsPrimeInternal(composite, CancellationToken.None);
+					// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
 					if (isPrime)
 					{
@@ -858,7 +859,8 @@ internal static partial class PrimeOrderCalculator
 
 			if (!entry.HasKnownPrimality)
 			{
-				bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
+				bool isPrime = PrimeTester.IsPrimeInternal(composite, CancellationToken.None);
+				// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 				entry = entry.WithPrimality(isPrime);
 				pending[index] = entry;
 			}
@@ -887,7 +889,8 @@ internal static partial class PrimeOrderCalculator
 		}
 		else
 		{
-			cofactorIsPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(cofactor);
+			cofactorIsPrime = PrimeTester.IsPrimeInternal(cofactor, CancellationToken.None);
+			// cofactorIsPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(cofactor);
 		}
 
 		ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
@@ -1414,7 +1417,8 @@ internal static partial class PrimeOrderCalculator
 			return;
 		}
 
-		bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(value);
+		bool isPrime = PrimeTester.IsPrimeInternal(value, CancellationToken.None);
+		// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(value);
 		if (!knownComposite && isPrime)
 		{
 			AddFactor(counts, value, 1);
@@ -1424,7 +1428,8 @@ internal static partial class PrimeOrderCalculator
 		ulong factor = PollardRhoStrict(value);
 		ulong quotient = value / factor;
 
-		isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factor);
+		isPrime = PrimeTester.IsPrimeInternal(factor, CancellationToken.None);
+		// isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factor);
 		if (isPrime)
 		{
 			int exponent = 1;
@@ -1453,7 +1458,8 @@ internal static partial class PrimeOrderCalculator
 		}
 		else
 		{
-			isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(quotient);
+		isPrime = PrimeTester.IsPrimeInternal(quotient, CancellationToken.None);
+			// isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(quotient);
 		}
 
 		if (isPrime)
