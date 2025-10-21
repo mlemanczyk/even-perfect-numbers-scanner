@@ -451,6 +451,13 @@ public class MersenneDivisorCycles
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryExactDivision(ulong value, ulong divisor, out ulong quotient)
+    {
+        quotient = value / divisor;
+        return quotient * divisor == value;
+    }
+
     private static ulong ReduceOrder(in MontgomeryDivisorData divisorData, ulong initialOrder, Dictionary<ulong, int> factorCounts)
     {
         if (factorCounts.Count == 0)
@@ -476,22 +483,30 @@ public class MersenneDivisorCycles
             {
                 ulong prime = primes[i];
                 int multiplicity = factorCounts[prime];
-
-                for (int iteration = 0; iteration < multiplicity; iteration++)
+                if (multiplicity <= 0)
                 {
-                    if (order % prime != 0UL)
-                    {
-                        break;
-                    }
+                    continue;
+                }
 
-                    ulong candidate = order / prime;
-                    if (candidate.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL)
+                if (multiplicity <= 16)
+                {
+                    Span<ulong> stackCandidates = stackalloc ulong[multiplicity];
+                    Span<bool> stackEvaluations = stackalloc bool[multiplicity];
+                    ProcessReduceOrderPrime(stackCandidates, stackEvaluations, ref order, prime, multiplicity, divisorData);
+                }
+                else
+                {
+                    ulong[] rentedCandidates = ArrayPool<ulong>.Shared.Rent(multiplicity);
+                    bool[] rentedEvaluations = ArrayPool<bool>.Shared.Rent(multiplicity);
+                    try
                     {
-                        order = candidate;
-                        continue;
+                        ProcessReduceOrderPrime(rentedCandidates.AsSpan(0, multiplicity), rentedEvaluations.AsSpan(0, multiplicity), ref order, prime, multiplicity, divisorData);
                     }
-
-                    break;
+                    finally
+                    {
+                        ArrayPool<ulong>.Shared.Return(rentedCandidates, clearArray: false);
+                        ArrayPool<bool>.Shared.Return(rentedEvaluations, clearArray: false);
+                    }
                 }
             }
 
@@ -500,6 +515,49 @@ public class MersenneDivisorCycles
         finally
         {
             ArrayPool<ulong>.Shared.Return(primes, clearArray: false);
+        }
+    }
+
+    private static void ProcessReduceOrderPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong prime, int multiplicity, in MontgomeryDivisorData divisorData)
+    {
+        ulong working = order;
+        int actual = 0;
+        while (actual < multiplicity && TryExactDivision(working, prime, out ulong reduced))
+        {
+            candidateBuffer[actual] = reduced;
+            working = reduced;
+            actual++;
+        }
+
+        if (actual == 0)
+        {
+            return;
+        }
+
+        Span<ulong> candidates = candidateBuffer.Slice(0, actual);
+        Span<bool> evaluations = evaluationBuffer.Slice(0, actual);
+
+        for (int left = 0, right = actual - 1; left < right; left++, right--)
+        {
+            ulong tmp = candidates[left];
+            candidates[left] = candidates[right];
+            candidates[right] = tmp;
+        }
+
+        var stepper = new ExponentRemainderStepper(divisorData);
+        for (int j = 0; j < actual; j++)
+        {
+            evaluations[j] = stepper.ComputeNextIsUnity(candidates[j]);
+        }
+
+        for (int j = actual - 1; j >= 0; j--)
+        {
+            if (!evaluations[j])
+            {
+                break;
+            }
+
+            order = candidates[j];
         }
     }
 

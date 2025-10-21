@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Cpu;
 
@@ -243,10 +244,7 @@ namespace PerfectNumbers.Core
                     dictionary.Clear();
                 }
 
-                if (dictionary.Count < capacityHint)
-                {
-                    dictionary.EnsureCapacity(capacityHint);
-                }
+                dictionary.EnsureCapacity(capacityHint);
 
                 return dictionary;
             }
@@ -267,6 +265,44 @@ namespace PerfectNumbers.Core
             pool.Add(dictionary);
         }
 
+
+        [ThreadStatic]
+        private static List<Dictionary<ulong, ulong>>? _ulongUlongDictionaryPool;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Dictionary<ulong, ulong> RentUlongUlongDictionary(int capacityHint)
+        {
+            List<Dictionary<ulong, ulong>>? pool = _ulongUlongDictionaryPool;
+            if (pool is not null && pool.Count > 0)
+            {
+                int lastIndex = pool.Count - 1;
+                Dictionary<ulong, ulong> dictionary = pool[lastIndex];
+                pool.RemoveAt(lastIndex);
+                if (dictionary.Count > 0)
+                {
+                    dictionary.Clear();
+                }
+
+                dictionary.EnsureCapacity(capacityHint);
+
+                return dictionary;
+            }
+
+            return new Dictionary<ulong, ulong>(capacityHint);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void ReturnUlongUlongDictionary(Dictionary<ulong, ulong> dictionary)
+        {
+            List<Dictionary<ulong, ulong>>? pool = _ulongUlongDictionaryPool;
+            if (pool is null)
+            {
+                pool = new List<Dictionary<ulong, ulong>>(4);
+                _ulongUlongDictionaryPool = pool;
+            }
+
+            pool.Add(dictionary);
+        }
         [ThreadStatic]
         private static Dictionary<ulong, int>? _factorCountDictionary;
 

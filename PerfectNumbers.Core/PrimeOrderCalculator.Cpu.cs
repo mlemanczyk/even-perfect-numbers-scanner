@@ -110,22 +110,62 @@ internal static partial class PrimeOrderCalculator
 	private static bool TrySpecialMaxCpu(ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
 	{
 		int length = factors.Count;
-		ReadOnlySpan<FactorEntry> factorSpan = new(factors.Factors, 0, length);
-		for (int i = 0; i < length; i++)
+		if (length == 0)
 		{
-			ulong factor = factorSpan[i].Value;
-			// Don't uncomment this. If there is division by zero, that means something wrong.
-			// if (factor == 0UL)
-			// {
-			// 	continue;
-			// }
+			return true;
+		}
 
-			// TODO: Can we optimize it thanks to knowing the factors, differences between factors, factors and / or phi
-			// being monotonically increasing etc. For example, if phi increases and factor increases, what does it tell us
-			// about the value of reduced?  Or, maybe wee can use residue stepping to calculate the residue instead of calling
-			// Pow2equalsOneCpu? Maybe we don't need to calculate it from scratch?
-			ulong reduced = phi / factor;
-			if (Pow2EqualsOneCpu(reduced, prime, divisorData))
+		ReadOnlySpan<FactorEntry> factorSpan = new(factors.Factors, 0, length);
+
+		if (length <= 32)
+		{
+			Span<ulong> stackBuffer = stackalloc ulong[length];
+			return EvaluateSpecialMaxCandidates(stackBuffer, factorSpan, phi, prime, divisorData);
+		}
+
+		ulong[] rented = ArrayPool<ulong>.Shared.Rent(length);
+		try
+		{
+			return EvaluateSpecialMaxCandidates(rented.AsSpan(0, length), factorSpan, phi, prime, divisorData);
+		}
+		finally
+		{
+			ArrayPool<ulong>.Shared.Return(rented, clearArray: false);
+		}
+	}
+
+	private static bool EvaluateSpecialMaxCandidates(Span<ulong> buffer, ReadOnlySpan<FactorEntry> factors, ulong phi, ulong prime, in MontgomeryDivisorData divisorData)
+	{
+		int actual = 0;
+		for (int i = 0; i < factors.Length; i++)
+		{
+			ulong factor = factors[i].Value;
+			if (factor == 0UL)
+			{
+				continue;
+			}
+
+			if (!TryExactDivision(phi, factor, out ulong reduced))
+			{
+				continue;
+			}
+
+			buffer[actual] = reduced;
+			actual++;
+		}
+
+		if (actual == 0)
+		{
+			return true;
+		}
+
+		Span<ulong> candidates = buffer.Slice(0, actual);
+		candidates.Sort();
+
+		var stepper = new ExponentRemainderStepper(divisorData);
+		for (int i = 0; i < candidates.Length; i++)
+		{
+			if (stepper.ComputeNextIsUnity(candidates[i]))
 			{
 				return false;
 			}
@@ -160,8 +200,6 @@ internal static partial class PrimeOrderCalculator
 		Span<FactorEntry> buffer = tempArray;
 		factorSpan.CopyTo(buffer);
 
-		// bool isPrime = PrimeTester.IsPrimeInternal(factors.Cofactor, CancellationToken.None);
-		// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factors.Cofactor);
 		if (!factors.FullyFactored && factors.Cofactor > 1UL && factors.CofactorIsPrime)
 		{
 			buffer[length] = new FactorEntry(factors.Cofactor, 1, true);
@@ -170,30 +208,85 @@ internal static partial class PrimeOrderCalculator
 
 		buffer.Slice(0, length).Sort(static (a, b) => a.Value.CompareTo(b.Value));
 
+		var stepper = new ExponentRemainderStepper(divisorData);
+
 		for (int i = 0; i < length; i++)
 		{
 			ulong primeFactor = buffer[i].Value;
 			int exponent = buffer[i].Exponent;
-			for (int iteration = 0; iteration < exponent; iteration++)
+			if (exponent <= 0)
 			{
-				if ((order % primeFactor) != 0UL)
-				{
-					break;
-				}
+				continue;
+			}
 
-				ulong reduced = order / primeFactor;
-				if (Pow2EqualsOneCpu(reduced, prime, divisorData))
+			if (exponent <= 16)
+			{
+				Span<ulong> stackCandidates = stackalloc ulong[exponent];
+				Span<bool> stackEvaluations = stackalloc bool[exponent];
+				ProcessExponentLoweringPrime(stackCandidates, stackEvaluations, ref order, primeFactor, exponent, ref stepper);
+			}
+			else
+			{
+				ulong[] rentedCandidates = ArrayPool<ulong>.Shared.Rent(exponent);
+				bool[] rentedEvaluations = ArrayPool<bool>.Shared.Rent(exponent);
+				try
 				{
-					order = reduced;
-					continue;
+					ProcessExponentLoweringPrime(rentedCandidates.AsSpan(0, exponent), rentedEvaluations.AsSpan(0, exponent), ref order, primeFactor, exponent, ref stepper);
 				}
-
-				break;
+				finally
+				{
+					ArrayPool<ulong>.Shared.Return(rentedCandidates, clearArray: false);
+					ArrayPool<bool>.Shared.Return(rentedEvaluations, clearArray: false);
+				}
 			}
 		}
 
 		pool.Return(tempArray, clearArray: false);
 		return order;
+	}
+
+	private static void ProcessExponentLoweringPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong primeFactor, int exponent, ref ExponentRemainderStepper stepper)
+	{
+		ulong working = order;
+		int actual = 0;
+		while (actual < exponent && TryExactDivision(working, primeFactor, out ulong reduced))
+		{
+			candidateBuffer[actual] = reduced;
+			working = reduced;
+			actual++;
+		}
+
+		if (actual == 0)
+		{
+			return;
+		}
+
+		Span<ulong> candidates = candidateBuffer.Slice(0, actual);
+		Span<bool> evaluations = evaluationBuffer.Slice(0, actual);
+
+		for (int left = 0, right = actual - 1; left < right; left++, right--)
+		{
+			ulong tmp = candidates[left];
+			candidates[left] = candidates[right];
+			candidates[right] = tmp;
+		}
+
+		stepper.Reset();
+
+		for (int j = 0; j < actual; j++)
+		{
+			evaluations[j] = stepper.ComputeNextIsUnity(candidates[j]);
+		}
+
+		for (int j = actual - 1; j >= 0; j--)
+		{
+			if (!evaluations[j])
+			{
+				break;
+			}
+
+			order = candidates[j];
+		}
 	}
 
 	private static bool TryConfirmOrderCpu(
@@ -253,28 +346,73 @@ internal static partial class PrimeOrderCalculator
 	{
 		ReadOnlySpan<FactorEntry> span = factorization.Factors!;
 		int length = factorization.Count;
+
 		for (int i = 0; i < length; i++)
 		{
 			ulong primeFactor = span[i].Value;
-			ulong reduced = order;
 			int exponent = span[i].Exponent;
-			for (int iteration = 0; iteration < exponent; iteration++)
+			if (exponent <= 0)
 			{
-				// TODO: Benchmark and / or implement DivRem like solution or residue stepper?
-				if ((reduced % primeFactor) != 0UL)
-				{
-					break;
-				}
+				continue;
+			}
 
-				reduced /= primeFactor;
-				if (Pow2EqualsOneCpu(reduced, prime, divisorData))
+			if (exponent <= 32)
+			{
+				Span<ulong> stackBuffer = stackalloc ulong[exponent];
+				if (ValidateOrderForFactor(stackBuffer, primeFactor, exponent, order, divisorData))
 				{
 					return false;
+				}
+			}
+			else
+			{
+				ulong[] rentedCandidates = ArrayPool<ulong>.Shared.Rent(exponent);
+				try
+				{
+					if (ValidateOrderForFactor(rentedCandidates.AsSpan(0, exponent), primeFactor, exponent, order, divisorData))
+					{
+						return false;
+					}
+				}
+				finally
+				{
+					ArrayPool<ulong>.Shared.Return(rentedCandidates, clearArray: false);
 				}
 			}
 		}
 
 		return true;
+	}
+
+	private static bool ValidateOrderForFactor(Span<ulong> buffer, ulong primeFactor, int exponent, ulong order, in MontgomeryDivisorData divisorData)
+	{
+		ulong working = order;
+		int actual = 0;
+		while (actual < exponent && TryExactDivision(working, primeFactor, out ulong reduced))
+		{
+			buffer[actual] = reduced;
+			working = reduced;
+			actual++;
+		}
+
+		if (actual == 0)
+		{
+			return false;
+		}
+
+		Span<ulong> candidates = buffer.Slice(0, actual);
+		candidates.Reverse();
+
+		var stepper = new ExponentRemainderStepper(divisorData);
+		for (int j = 0; j < actual; j++)
+		{
+			if (stepper.ComputeNextIsUnity(candidates[j]))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private static bool TryHeuristicFinishCpu(
@@ -340,6 +478,7 @@ internal static partial class PrimeOrderCalculator
 			int candidateCount = candidates.Count;
 			bool allowGpuBatch = true;
 			Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
+			var powStepper = new ExponentRemainderStepper(divisorData);
 
 			// DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
 			int index = 0;
@@ -412,7 +551,7 @@ internal static partial class PrimeOrderCalculator
 					}
 					else
 					{
-						equalsOne = Pow2EqualsOneCpu(candidate, prime, divisorData);
+						equalsOne = powStepper.ComputeNextIsUnity(candidate);
 					}
 					if (!equalsOne)
 					{
@@ -635,8 +774,6 @@ internal static partial class PrimeOrderCalculator
 					return false;
 				}
 
-				// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factorization.Cofactor);
-				// bool isPrime = PrimeTester.IsPrimeInternal(factorization.Cofactor, CancellationToken.None);
 				if (!factorization.CofactorIsPrime)
 				{
 					return false;
@@ -649,28 +786,37 @@ internal static partial class PrimeOrderCalculator
 
 			ReadOnlySpan<FactorEntry> span = factorization.Factors;
 			int length = factorization.Count;
+
 			for (int i = 0; i < length; i++)
 			{
 				ulong primeFactor = span[i].Value;
-				ulong reduced = candidate;
-				for (int iteration = 0; iteration < span[i].Exponent; iteration++)
+				int exponent = span[i].Exponent;
+				if (exponent <= 0)
 				{
-					// TODO: Measure and implement DivRem like solution or residue stepper to reuse calculation results from previous iteration
-					if ((reduced % primeFactor) != 0UL)
-					{
-						break;
-					}
+					continue;
+				}
 
-					reduced /= primeFactor;
-					if (powUsed >= powBudget && powBudget > 0)
+				if (exponent <= 32)
+				{
+					Span<ulong> stackBuffer = stackalloc ulong[exponent];
+					if (CheckCandidateViolation(stackBuffer, primeFactor, exponent, candidate, prime, divisorData, ref powUsed, powBudget))
 					{
 						return false;
 					}
-
-					powUsed++;
-					if (Pow2EqualsOneCpu(reduced, prime, divisorData))
+				}
+				else
+				{
+					ulong[] rentedCandidates = ArrayPool<ulong>.Shared.Rent(exponent);
+					try
 					{
-						return false;
+						if (CheckCandidateViolation(rentedCandidates.AsSpan(0, exponent), primeFactor, exponent, candidate, prime, divisorData, ref powUsed, powBudget))
+						{
+							return false;
+						}
+					}
+					finally
+					{
+						ArrayPool<ulong>.Shared.Return(rentedCandidates, clearArray: false);
 					}
 				}
 			}
@@ -681,6 +827,50 @@ internal static partial class PrimeOrderCalculator
 		{
 			factorization.Dispose();
 		}
+	}
+
+	private static bool CheckCandidateViolation(Span<ulong> buffer, ulong primeFactor, int exponent, ulong candidate, ulong prime, in MontgomeryDivisorData divisorData, ref int powUsed, int powBudget)
+	{
+		ulong working = candidate;
+		int actual = 0;
+		while (actual < exponent && TryExactDivision(working, primeFactor, out ulong reduced))
+		{
+			buffer[actual] = reduced;
+			working = reduced;
+			actual++;
+		}
+
+		if (actual == 0)
+		{
+			return false;
+		}
+
+		Span<ulong> candidates = buffer.Slice(0, actual);
+		candidates.Reverse();
+
+		var stepper = new ExponentRemainderStepper(divisorData);
+		for (int j = 0; j < actual; j++)
+		{
+			if (powUsed >= powBudget && powBudget > 0)
+			{
+				return true;
+			}
+
+			powUsed++;
+			if (stepper.ComputeNextIsUnity(candidates[j]))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool TryExactDivision(ulong value, ulong divisor, out ulong quotient)
+	{
+		quotient = value / divisor;
+		return quotient * divisor == value;
 	}
 
 	private static bool Pow2EqualsOneCpu(ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
