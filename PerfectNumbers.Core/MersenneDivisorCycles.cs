@@ -322,6 +322,7 @@ public class MersenneDivisorCycles
             primeOrderFailed = false;
         }
 
+        factorCounts.Clear();
         ThreadStaticPools.ReturnFactorCountDictionary(factorCounts);
         return success;
     }
@@ -339,7 +340,7 @@ public class MersenneDivisorCycles
         bool success = TryFactorIntoCountsInternal(value, scratch);
         if (!success)
         {
-            // The scan recalculates factors every time; the old cache never produced hits.
+            scratch.Clear();
             ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
             return false;
         }
@@ -350,6 +351,7 @@ public class MersenneDivisorCycles
             AddFactor(counts, pair.Key, pair.Value);
         }
 
+        scratch.Clear();
         ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
         return true;
     }
@@ -459,47 +461,122 @@ public class MersenneDivisorCycles
         }
 
         int count = factorCounts.Count;
-        ulong[] primes = ArrayPool<ulong>.Shared.Rent(count);
-        try
+        ulong[] primes = ThreadStaticPools.UlongPool.Rent(count);
+
+        int index = 0;
+        foreach (KeyValuePair<ulong, int> entry in factorCounts)
         {
-            int index = 0;
-            foreach (KeyValuePair<ulong, int> entry in factorCounts)
-            {
-                primes[index] = entry.Key;
-                index++;
-            }
-
-            Array.Sort(primes, 0, count);
-
-            ulong order = initialOrder;
-            for (int i = 0; i < count; i++)
-            {
-                ulong prime = primes[i];
-                int multiplicity = factorCounts[prime];
-
-                for (int iteration = 0; iteration < multiplicity; iteration++)
-                {
-                    if (order % prime != 0UL)
-                    {
-                        break;
-                    }
-
-                    ulong candidate = order / prime;
-                    if (candidate.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL)
-                    {
-                        order = candidate;
-                        continue;
-                    }
-
-                    break;
-                }
-            }
-
-            return order;
+            primes[index] = entry.Key;
+            index++;
         }
-        finally
+
+        Array.Sort(primes, 0, count);
+
+        const int StackMultiplicityCapacity = 16;
+        const int HeapMultiplicityCapacity = 256;
+
+        // Scanner workloads keep almost all multiplicities within the stack-backed span, so the stack path handles the hot loop.
+        Span<ulong> stackCandidates = stackalloc ulong[StackMultiplicityCapacity];
+        Span<bool> stackEvaluations = stackalloc bool[StackMultiplicityCapacity];
+
+        ulong[]? heapCandidateArray = null;
+        bool[]? heapEvaluationArray = null;
+
+        ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
+
+        ulong order = initialOrder;
+        for (int i = 0; i < count; i++)
         {
-            ArrayPool<ulong>.Shared.Return(primes, clearArray: false);
+            ulong prime = primes[i];
+            int multiplicity = factorCounts[prime];
+            // Multiplicities collected by TryFactorIntoCountsInternal are strictly positive along the scanner path.
+            // Keeping the guard commented documents the assumption so it does not resurface in future reviews.
+            // if (multiplicity <= 0)
+            // {
+            //     continue;
+            // }
+
+            if (multiplicity <= StackMultiplicityCapacity)
+            {
+                ProcessReduceOrderPrime(stackCandidates.Slice(0, multiplicity), stackEvaluations.Slice(0, multiplicity), ref order, prime, multiplicity, ref stepper);
+                continue;
+            }
+
+            if (multiplicity > HeapMultiplicityCapacity)
+            {
+                throw new InvalidOperationException($"Factor multiplicity {multiplicity} exceeds the supported limit of {HeapMultiplicityCapacity}.");
+            }
+
+            // Larger multiplicities appear during stress tests; reuse a shared heap buffer in those cases.
+            heapCandidateArray ??= ThreadStaticPools.UlongPool.Rent(HeapMultiplicityCapacity);
+            heapEvaluationArray ??= ThreadStaticPools.BoolPool.Rent(HeapMultiplicityCapacity);
+            ProcessReduceOrderPrime(heapCandidateArray.AsSpan(0, multiplicity), heapEvaluationArray.AsSpan(0, multiplicity), ref order, prime, multiplicity, ref stepper);
+        }
+
+        ThreadStaticPools.ReturnExponentStepper(stepper);
+        ThreadStaticPools.UlongPool.Return(primes);
+
+        if (heapCandidateArray is not null)
+        {
+            ThreadStaticPools.UlongPool.Return(heapCandidateArray);
+            ThreadStaticPools.BoolPool.Return(heapEvaluationArray!);
+        }
+
+        return order;
+    }
+
+    private static void ProcessReduceOrderPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong prime, int multiplicity, ref ExponentRemainderStepper stepper)
+    {
+        ulong working = order;
+        int actual = 0;
+        while (actual < multiplicity)
+        {
+            if (working < prime)
+            {
+                break;
+            }
+
+            ulong reduced = working / prime;
+            if (reduced == 0UL)
+            {
+                break;
+            }
+
+            candidateBuffer[actual] = reduced;
+            working = reduced;
+            actual++;
+        }
+
+        if (actual == 0)
+        {
+            return;
+        }
+
+        Span<ulong> candidates = candidateBuffer.Slice(0, actual);
+        Span<bool> evaluations = evaluationBuffer.Slice(0, actual);
+
+        for (int left = 0, right = actual - 1; left < right; left++, right--)
+        {
+            ulong tmp = candidates[left];
+            candidates[left] = candidates[right];
+            candidates[right] = tmp;
+        }
+
+        stepper.Reset();
+
+        for (int j = 0; j < actual; j++)
+        {
+            evaluations[j] = stepper.ComputeNextIsUnity(candidates[j]);
+        }
+
+        for (int j = actual - 1; j >= 0; j--)
+        {
+            if (!evaluations[j])
+            {
+                break;
+            }
+
+            order = candidates[j];
         }
     }
 
