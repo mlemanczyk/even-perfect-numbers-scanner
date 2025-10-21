@@ -123,22 +123,26 @@ namespace PerfectNumbers.Core
         public static List<ulong> RentUlongList(int capacityHint)
         {
             List<List<ulong>>? pool = _ulongListPool;
-            if (pool is not null && pool.Count > 0)
+            if (pool is not null)
             {
-                int lastIndex = pool.Count - 1;
-                List<ulong> list = pool[lastIndex];
-                pool.RemoveAt(lastIndex);
-                if (list.Count > 0)
+                int poolCount = pool.Count;
+                if (poolCount > 0)
                 {
-                    list.Clear();
-                }
+                    int lastIndex = poolCount - 1;
+                    List<ulong> list = pool[lastIndex];
+                    pool.RemoveAt(lastIndex);
+                    if (list.Count > 0)
+                    {
+                        list.Clear();
+                    }
 
-                if (list.Capacity < capacityHint)
-                {
-                    list.Capacity = capacityHint;
-                }
+                    if (list.Capacity < capacityHint)
+                    {
+                        list.Capacity = capacityHint;
+                    }
 
-                return list;
+                    return list;
+                }
             }
 
             return new List<ulong>(capacityHint);
@@ -164,22 +168,26 @@ namespace PerfectNumbers.Core
         internal static List<PrimeOrderCalculator.PendingEntry> RentPrimeOrderPendingEntryList(int capacityHint)
         {
             List<List<PrimeOrderCalculator.PendingEntry>>? pool = _primeOrderPendingEntryListPool;
-            if (pool is not null && pool.Count > 0)
+            if (pool is not null)
             {
-                int lastIndex = pool.Count - 1;
-                List<PrimeOrderCalculator.PendingEntry> list = pool[lastIndex];
-                pool.RemoveAt(lastIndex);
-                if (list.Count > 0)
+                int poolCount = pool.Count;
+                if (poolCount > 0)
                 {
-                    list.Clear();
-                }
+                    int lastIndex = poolCount - 1;
+                    List<PrimeOrderCalculator.PendingEntry> list = pool[lastIndex];
+                    pool.RemoveAt(lastIndex);
+                    if (list.Count > 0)
+                    {
+                        list.Clear();
+                    }
 
-                if (list.Capacity < capacityHint)
-                {
-                    list.Capacity = capacityHint;
-                }
+                    if (list.Capacity < capacityHint)
+                    {
+                        list.Capacity = capacityHint;
+                    }
 
-                return list;
+                    return list;
+                }
             }
 
             return new List<PrimeOrderCalculator.PendingEntry>(capacityHint);
@@ -205,22 +213,28 @@ namespace PerfectNumbers.Core
         public static Stack<ulong> RentUlongStack(int capacityHint)
         {
             List<Stack<ulong>>? pool = _ulongStackPool;
-            if (pool is not null && pool.Count > 0)
+            if (pool is not null)
             {
-                int lastIndex = pool.Count - 1;
-                Stack<ulong> stack = pool[lastIndex];
-                pool.RemoveAt(lastIndex);
-                if (stack.Count > 0)
+                int poolCount = pool.Count;
+                if (poolCount > 0)
                 {
-                    stack.Clear();
-                }
+                    int lastIndex = poolCount - 1;
+                    Stack<ulong> stack = pool[lastIndex];
+                    pool.RemoveAt(lastIndex);
+                    int stackCount = stack.Count;
+                    if (stackCount > 0)
+                    {
+                        stack.Clear();
+                        stackCount = 0;
+                    }
 
-                if (stack.Count < capacityHint)
-                {
-                    stack.EnsureCapacity(capacityHint);
-                }
+                    if (stackCount < capacityHint)
+                    {
+                        stack.EnsureCapacity(capacityHint);
+                    }
 
-                return stack;
+                    return stack;
+                }
             }
 
             return new Stack<ulong>(capacityHint);
@@ -246,19 +260,23 @@ namespace PerfectNumbers.Core
         public static Dictionary<ulong, int> RentUlongIntDictionary(int capacityHint)
         {
             List<Dictionary<ulong, int>>? pool = _ulongIntDictionaryPool;
-            if (pool is not null && pool.Count > 0)
+            if (pool is not null)
             {
-                int lastIndex = pool.Count - 1;
-                Dictionary<ulong, int> dictionary = pool[lastIndex];
-                pool.RemoveAt(lastIndex);
-                if (dictionary.Count > 0)
+                int poolCount = pool.Count;
+                if (poolCount > 0)
                 {
-                    dictionary.Clear();
+                    int lastIndex = poolCount - 1;
+                    Dictionary<ulong, int> dictionary = pool[lastIndex];
+                    pool.RemoveAt(lastIndex);
+                    if (dictionary.Count > 0)
+                    {
+                        dictionary.Clear();
+                    }
+
+                    dictionary.EnsureCapacity(capacityHint);
+
+                    return dictionary;
                 }
-
-                dictionary.EnsureCapacity(capacityHint);
-
-                return dictionary;
             }
 
             return new Dictionary<ulong, int>(capacityHint);
@@ -285,19 +303,23 @@ namespace PerfectNumbers.Core
         public static Dictionary<ulong, ulong> RentUlongUlongDictionary(int capacityHint)
         {
             List<Dictionary<ulong, ulong>>? pool = _ulongUlongDictionaryPool;
-            if (pool is not null && pool.Count > 0)
+            if (pool is not null)
             {
-                int lastIndex = pool.Count - 1;
-                Dictionary<ulong, ulong> dictionary = pool[lastIndex];
-                pool.RemoveAt(lastIndex);
-                if (dictionary.Count > 0)
+                int poolCount = pool.Count;
+                if (poolCount > 0)
                 {
-                    dictionary.Clear();
+                    int lastIndex = poolCount - 1;
+                    Dictionary<ulong, ulong> dictionary = pool[lastIndex];
+                    pool.RemoveAt(lastIndex);
+                    if (dictionary.Count > 0)
+                    {
+                        dictionary.Clear();
+                    }
+
+                    dictionary.EnsureCapacity(capacityHint);
+
+                    return dictionary;
                 }
-
-                dictionary.EnsureCapacity(capacityHint);
-
-                return dictionary;
             }
 
             return new Dictionary<ulong, ulong>(capacityHint);

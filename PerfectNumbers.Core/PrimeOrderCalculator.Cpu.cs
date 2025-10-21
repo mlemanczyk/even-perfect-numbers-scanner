@@ -110,10 +110,12 @@ internal static partial class PrimeOrderCalculator
 	private static bool TrySpecialMaxCpu(ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
 	{
 		int length = factors.Count;
-		if (length == 0)
-		{
-			return true;
-		}
+		// The phi factorization on the scanner path always yields at least one entry for phi >= 2,
+		// preventing the zero-length case from occurring outside synthetic tests.
+		// if (length == 0)
+		// {
+		//     return true;
+		// }
 
 		ReadOnlySpan<FactorEntry> factorSpan = new(factors.Factors, 0, length);
 
@@ -132,7 +134,8 @@ internal static partial class PrimeOrderCalculator
 	private static bool EvaluateSpecialMaxCandidates(Span<ulong> buffer, ReadOnlySpan<FactorEntry> factors, ulong phi, ulong prime, in MontgomeryDivisorData divisorData)
 	{
 		int actual = 0;
-		for (int i = 0; i < factors.Length; i++)
+		int factorCount = factors.Length;
+		for (int i = 0; i < factorCount; i++)
 		{
 			ulong factor = factors[i].Value;
 			// The partial factor pipeline never feeds zero or oversized factors while scanning candidate orders.
@@ -160,7 +163,8 @@ internal static partial class PrimeOrderCalculator
 		candidates.Sort();
 
 		ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
-		for (int i = 0; i < candidates.Length; i++)
+		int candidateCount = candidates.Length;
+		for (int i = 0; i < candidateCount; i++)
 		{
 			if (stepper.ComputeNextIsUnity(candidates[i]))
 			{
@@ -1204,7 +1208,7 @@ internal static partial class PrimeOrderCalculator
 		// value will never <= 1 in production code
 		// if (value <= 1UL)
 		// {
-		// 	return true;
+		//     return true;
 		// }
 
 		int capacity = Math.Min(primeTargets.Length, exponentTargets.Length);
