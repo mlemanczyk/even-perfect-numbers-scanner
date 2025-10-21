@@ -1,3 +1,4 @@
+using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Numerics;
@@ -213,18 +214,11 @@ internal static partial class PrimeOrderCalculator
 
 		ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
 
-		int maxStackExponent = 0;
-		for (int i = 0; i < length; i++)
-		{
-			int exponent = buffer[i].Exponent;
-			if (exponent <= 16 && exponent > maxStackExponent)
-			{
-				maxStackExponent = exponent;
-			}
-		}
+		const int StackExponentCapacity = 16;
+		const int ExponentHardLimit = 256;
 
-		Span<ulong> stackCandidates = maxStackExponent > 0 ? stackalloc ulong[maxStackExponent] : Span<ulong>.Empty;
-		Span<bool> stackEvaluations = maxStackExponent > 0 ? stackalloc bool[maxStackExponent] : Span<bool>.Empty;
+		Span<ulong> stackCandidates = stackalloc ulong[StackExponentCapacity];
+		Span<bool> stackEvaluations = stackalloc bool[StackExponentCapacity];
 
 		for (int i = 0; i < length; i++)
 		{
@@ -233,10 +227,17 @@ internal static partial class PrimeOrderCalculator
 			// Factor exponents produced by Pollard-Rho and trial division are always positive in the scanner flow.
 			// if (exponent <= 0)
 			// {
-			// 	continue;
+			//     continue;
 			// }
 
-			if (exponent <= 16)
+			if (exponent > ExponentHardLimit)
+			{
+				ThreadStaticPools.ReturnExponentStepper(stepper);
+				pool.Return(tempArray, clearArray: false);
+				throw new InvalidOperationException($"Prime factor exponent {exponent} exceeds the supported limit of {ExponentHardLimit}.");
+			}
+
+			if (exponent <= StackExponentCapacity)
 			{
 				ProcessExponentLoweringPrime(stackCandidates.Slice(0, exponent), stackEvaluations.Slice(0, exponent), ref order, primeFactor, exponent, ref stepper);
 			}
@@ -368,17 +369,10 @@ internal static partial class PrimeOrderCalculator
 		ReadOnlySpan<FactorEntry> span = factorization.Factors!;
 		int length = factorization.Count;
 
-		int maxStackExponent = 0;
-		for (int i = 0; i < length; i++)
-		{
-			int exponent = span[i].Exponent;
-			if (exponent <= 32 && exponent > maxStackExponent)
-			{
-				maxStackExponent = exponent;
-			}
-		}
+		const int StackExponentCapacity = 32;
+		const int ExponentHardLimit = 256;
 
-		Span<ulong> stackBuffer = maxStackExponent > 0 ? stackalloc ulong[maxStackExponent] : Span<ulong>.Empty;
+		Span<ulong> stackBuffer = stackalloc ulong[StackExponentCapacity];
 
 		for (int i = 0; i < length; i++)
 		{
@@ -387,10 +381,15 @@ internal static partial class PrimeOrderCalculator
 			// Factor exponents emitted by TryConfirmCandidateCpu stay positive for production workloads.
 			// if (exponent <= 0)
 			// {
-			// 	continue;
+			//     continue;
 			// }
 
-			if (exponent <= 32)
+			if (exponent > ExponentHardLimit)
+			{
+				throw new InvalidOperationException($"Factor exponent {exponent} exceeds the supported limit of {ExponentHardLimit}.");
+			}
+
+			if (exponent <= StackExponentCapacity)
 			{
 				if (ValidateOrderForFactor(stackBuffer.Slice(0, exponent), primeFactor, exponent, order, divisorData))
 				{
@@ -830,17 +829,10 @@ internal static partial class PrimeOrderCalculator
 			ReadOnlySpan<FactorEntry> span = factorization.Factors;
 			int length = factorization.Count;
 
-			int maxStackExponent = 0;
-			for (int i = 0; i < length; i++)
-			{
-				int exponent = span[i].Exponent;
-				if (exponent <= 32 && exponent > maxStackExponent)
-				{
-					maxStackExponent = exponent;
-				}
-			}
+			const int StackExponentCapacity = 32;
+			const int ExponentHardLimit = 256;
 
-			Span<ulong> stackBuffer = maxStackExponent > 0 ? stackalloc ulong[maxStackExponent] : Span<ulong>.Empty;
+			Span<ulong> stackBuffer = stackalloc ulong[StackExponentCapacity];
 
 			for (int i = 0; i < length; i++)
 			{
@@ -849,10 +841,15 @@ internal static partial class PrimeOrderCalculator
 				// Factorization entries for candidate confirmation are always positive here.
 				// if (exponent <= 0)
 				// {
-				// 	continue;
+				//     continue;
 				// }
 
-				if (exponent <= 32)
+				if (exponent > ExponentHardLimit)
+				{
+					throw new InvalidOperationException($"Candidate factor exponent {exponent} exceeds the supported limit of {ExponentHardLimit}.");
+				}
+
+				if (exponent <= StackExponentCapacity)
 				{
 					if (CheckCandidateViolation(stackBuffer.Slice(0, exponent), primeFactor, exponent, candidate, prime, divisorData, ref powUsed, powBudget))
 					{
