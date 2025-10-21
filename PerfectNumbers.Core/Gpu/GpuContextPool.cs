@@ -100,6 +100,8 @@ public static class GpuContextPool
 		{
 			gpu.Dispose();
 		}
+
+		PrimeTester.DisposeGpuContexts();
 	}
 
 	private static void Return(PooledContext ctx)

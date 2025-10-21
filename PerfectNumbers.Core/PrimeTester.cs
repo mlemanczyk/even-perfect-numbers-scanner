@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using ILGPU;
@@ -103,7 +104,7 @@ public sealed class PrimeTester(bool useInternal = false)
     {
         // Limit concurrency and declare variables outside loops for performance and reuse
         var limiter = GpuPrimeWorkLimiter.Acquire();
-        var gpu = GpuContextPool.Rent();
+        var gpu = PrimeTesterGpuContextPool.Rent();
 
         try
         {
@@ -153,6 +154,92 @@ public sealed class PrimeTester(bool useInternal = false)
         {
             gpu.Dispose();
             limiter.Dispose();
+        }
+    }
+
+    private static class PrimeTesterGpuContextPool
+    {
+        internal sealed class PooledContext : IDisposable
+        {
+            private bool _disposed;
+
+            public Context Context { get; }
+
+            public Accelerator Accelerator { get; }
+
+            public object ExecutionLock { get; } = new();
+
+            public PooledContext()
+            {
+                Context = Context.CreateDefault();
+                Accelerator = Context.GetPreferredDevice(false).CreateAccelerator(Context);
+            }
+
+            public void Dispose()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                PrimeTester.ClearGpuCaches(Accelerator);
+                Accelerator.Dispose();
+                Context.Dispose();
+                _disposed = true;
+            }
+        }
+
+        private static readonly ConcurrentQueue<PooledContext> Pool = new();
+        private static readonly object CreationLock = new();
+
+        internal static PrimeTesterGpuContextLease Rent()
+        {
+            if (Pool.TryDequeue(out var ctx))
+            {
+                return new PrimeTesterGpuContextLease(ctx);
+            }
+
+            lock (CreationLock)
+            {
+                return new PrimeTesterGpuContextLease(new PooledContext());
+            }
+        }
+
+        internal static void DisposeAll()
+        {
+            while (Pool.TryDequeue(out var ctx))
+            {
+                ctx.Dispose();
+            }
+        }
+
+        private static void Return(PooledContext ctx)
+        {
+            ctx.Accelerator.Synchronize();
+            Pool.Enqueue(ctx);
+        }
+
+        internal struct PrimeTesterGpuContextLease : IDisposable
+        {
+            private PooledContext? _ctx;
+
+            internal PrimeTesterGpuContextLease(PooledContext ctx)
+            {
+                _ctx = ctx;
+            }
+
+            public Accelerator Accelerator => _ctx!.Accelerator;
+
+            public object ExecutionLock => _ctx!.ExecutionLock;
+
+            public void Dispose()
+            {
+                if (_ctx is { } ctx)
+                {
+                    Return(ctx);
+                    _ctx = null;
+                }
+            }
         }
     }
 
@@ -268,6 +355,11 @@ public sealed class PrimeTester(bool useInternal = false)
         GpuKernelState.Clear(accelerator);
     }
 
+    internal static void DisposeGpuContexts()
+    {
+        PrimeTesterGpuContextPool.DisposeAll();
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool SharesFactorWithMaxExponent(ulong n)
     {
@@ -283,7 +375,7 @@ public sealed class PrimeTester(bool useInternal = false)
         // TODO: Route this batch helper through the shared GPU kernel pool from
         // GpuUInt128BinaryGcdBenchmarks so we reuse cached kernels, pinned host buffers,
         // and divisor-cycle staging instead of allocating new device buffers per call.
-        var gpu = GpuContextPool.Rent();
+        var gpu = PrimeTesterGpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
         var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SharesFactorKernel);
 
