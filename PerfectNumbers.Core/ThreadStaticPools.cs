@@ -68,6 +68,18 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
+        private static ArrayPool<bool>? _boolPool;
+
+        public static ArrayPool<bool> BoolPool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _boolPool ??= ArrayPool<bool>.Create();
+            }
+        }
+
+        [ThreadStatic]
         private static ArrayPool<byte>? _bytePool;
 
         public static ArrayPool<byte> BytePool
@@ -349,6 +361,34 @@ namespace PerfectNumbers.Core
         {
             dictionary.Clear();
             _factorScratchDictionary = dictionary;
+        }
+
+        [ThreadStatic]
+        private static ExponentRemainderStepper _exponentRemainderStepper;
+
+        [ThreadStatic]
+        private static bool _hasExponentRemainderStepper;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static ExponentRemainderStepper RentExponentStepper(in MontgomeryDivisorData divisorData)
+        {
+            if (_hasExponentRemainderStepper && _exponentRemainderStepper.MatchesDivisor(divisorData))
+            {
+                ExponentRemainderStepper stepper = _exponentRemainderStepper;
+                _hasExponentRemainderStepper = false;
+                stepper.Reset();
+                return stepper;
+            }
+
+            return new ExponentRemainderStepper(divisorData);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void ReturnExponentStepper(ExponentRemainderStepper stepper)
+        {
+            stepper.Reset();
+            _exponentRemainderStepper = stepper;
+            _hasExponentRemainderStepper = true;
         }
     }
 }

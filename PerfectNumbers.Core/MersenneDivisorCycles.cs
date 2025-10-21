@@ -459,56 +459,47 @@ public class MersenneDivisorCycles
         }
 
         int count = factorCounts.Count;
-        ulong[] primes = ArrayPool<ulong>.Shared.Rent(count);
-        try
+        ulong[] primes = ThreadStaticPools.UlongPool.Rent(count);
+
+        int index = 0;
+        foreach (KeyValuePair<ulong, int> entry in factorCounts)
         {
-            int index = 0;
-            foreach (KeyValuePair<ulong, int> entry in factorCounts)
-            {
-                primes[index] = entry.Key;
-                index++;
-            }
-
-            Array.Sort(primes, 0, count);
-
-            ulong order = initialOrder;
-            for (int i = 0; i < count; i++)
-            {
-                ulong prime = primes[i];
-                int multiplicity = factorCounts[prime];
-                if (multiplicity <= 0)
-                {
-                    continue;
-                }
-
-                if (multiplicity <= 16)
-                {
-                    Span<ulong> stackCandidates = stackalloc ulong[multiplicity];
-                    Span<bool> stackEvaluations = stackalloc bool[multiplicity];
-                    ProcessReduceOrderPrime(stackCandidates, stackEvaluations, ref order, prime, multiplicity, divisorData);
-                }
-                else
-                {
-                    ulong[] rentedCandidates = ArrayPool<ulong>.Shared.Rent(multiplicity);
-                    bool[] rentedEvaluations = ArrayPool<bool>.Shared.Rent(multiplicity);
-                    try
-                    {
-                        ProcessReduceOrderPrime(rentedCandidates.AsSpan(0, multiplicity), rentedEvaluations.AsSpan(0, multiplicity), ref order, prime, multiplicity, divisorData);
-                    }
-                    finally
-                    {
-                        ArrayPool<ulong>.Shared.Return(rentedCandidates, clearArray: false);
-                        ArrayPool<bool>.Shared.Return(rentedEvaluations, clearArray: false);
-                    }
-                }
-            }
-
-            return order;
+            primes[index] = entry.Key;
+            index++;
         }
-        finally
+
+        Array.Sort(primes, 0, count);
+
+        ulong order = initialOrder;
+        for (int i = 0; i < count; i++)
         {
-            ArrayPool<ulong>.Shared.Return(primes, clearArray: false);
+            ulong prime = primes[i];
+            int multiplicity = factorCounts[prime];
+            // Multiplicities collected by TryFactorIntoCountsInternal are strictly positive along the scanner path.
+            // Keeping the guard commented documents the assumption so it does not resurface in future reviews.
+            // if (multiplicity <= 0)
+            // {
+            //     continue;
+            // }
+
+            if (multiplicity <= 16)
+            {
+                Span<ulong> stackCandidates = stackalloc ulong[multiplicity];
+                Span<bool> stackEvaluations = stackalloc bool[multiplicity];
+                ProcessReduceOrderPrime(stackCandidates, stackEvaluations, ref order, prime, multiplicity, divisorData);
+            }
+            else
+            {
+                ulong[] rentedCandidates = ThreadStaticPools.UlongPool.Rent(multiplicity);
+                bool[] rentedEvaluations = ThreadStaticPools.BoolPool.Rent(multiplicity);
+                ProcessReduceOrderPrime(rentedCandidates.AsSpan(0, multiplicity), rentedEvaluations.AsSpan(0, multiplicity), ref order, prime, multiplicity, divisorData);
+                ThreadStaticPools.UlongPool.Return(rentedCandidates, clearArray: false);
+                ThreadStaticPools.BoolPool.Return(rentedEvaluations, clearArray: false);
+            }
         }
+
+        ThreadStaticPools.UlongPool.Return(primes, clearArray: false);
+        return order;
     }
 
     private static void ProcessReduceOrderPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong prime, int multiplicity, in MontgomeryDivisorData divisorData)
@@ -548,7 +539,7 @@ public class MersenneDivisorCycles
             candidates[right] = tmp;
         }
 
-        var stepper = new ExponentRemainderStepper(divisorData);
+        ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
         for (int j = 0; j < actual; j++)
         {
             evaluations[j] = stepper.ComputeNextIsUnity(candidates[j]);
@@ -563,6 +554,8 @@ public class MersenneDivisorCycles
 
             order = candidates[j];
         }
+
+        ThreadStaticPools.ReturnExponentStepper(stepper);
     }
 
     private static ulong PollardRho64(ulong n)

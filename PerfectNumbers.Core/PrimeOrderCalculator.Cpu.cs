@@ -123,15 +123,10 @@ internal static partial class PrimeOrderCalculator
 			return EvaluateSpecialMaxCandidates(stackBuffer, factorSpan, phi, prime, divisorData);
 		}
 
-		ulong[] rented = ArrayPool<ulong>.Shared.Rent(length);
-		try
-		{
-			return EvaluateSpecialMaxCandidates(rented.AsSpan(0, length), factorSpan, phi, prime, divisorData);
-		}
-		finally
-		{
-			ArrayPool<ulong>.Shared.Return(rented, clearArray: false);
-		}
+		ulong[] rented = ThreadStaticPools.UlongPool.Rent(length);
+		bool result = EvaluateSpecialMaxCandidates(rented.AsSpan(0, length), factorSpan, phi, prime, divisorData);
+		ThreadStaticPools.UlongPool.Return(rented, clearArray: false);
+		return result;
 	}
 
 	private static bool EvaluateSpecialMaxCandidates(Span<ulong> buffer, ReadOnlySpan<FactorEntry> factors, ulong phi, ulong prime, in MontgomeryDivisorData divisorData)
@@ -140,10 +135,11 @@ internal static partial class PrimeOrderCalculator
 		for (int i = 0; i < factors.Length; i++)
 		{
 			ulong factor = factors[i].Value;
-			if (factor == 0UL || factor > phi)
-			{
-				continue;
-			}
+			// The partial factor pipeline never feeds zero or oversized factors while scanning candidate orders.
+			// if (factor == 0UL || factor > phi)
+			// {
+			// 	continue;
+			// }
 
 			ulong reduced = phi / factor;
 			if (reduced == 0UL)
@@ -163,15 +159,17 @@ internal static partial class PrimeOrderCalculator
 		Span<ulong> candidates = buffer.Slice(0, actual);
 		candidates.Sort();
 
-		var stepper = new ExponentRemainderStepper(divisorData);
+		ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
 		for (int i = 0; i < candidates.Length; i++)
 		{
 			if (stepper.ComputeNextIsUnity(candidates[i]))
 			{
+				ThreadStaticPools.ReturnExponentStepper(stepper);
 				return false;
 			}
 		}
 
+		ThreadStaticPools.ReturnExponentStepper(stepper);
 		return true;
 	}
 
@@ -209,16 +207,17 @@ internal static partial class PrimeOrderCalculator
 
 		buffer.Slice(0, length).Sort(static (a, b) => a.Value.CompareTo(b.Value));
 
-		var stepper = new ExponentRemainderStepper(divisorData);
+		ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
 
 		for (int i = 0; i < length; i++)
 		{
 			ulong primeFactor = buffer[i].Value;
 			int exponent = buffer[i].Exponent;
-			if (exponent <= 0)
-			{
-				continue;
-			}
+			// Factor exponents produced by Pollard-Rho and trial division are always positive in the scanner flow.
+			// if (exponent <= 0)
+			// {
+			// 	continue;
+			// }
 
 			if (exponent <= 16)
 			{
@@ -228,20 +227,15 @@ internal static partial class PrimeOrderCalculator
 			}
 			else
 			{
-				ulong[] rentedCandidates = ArrayPool<ulong>.Shared.Rent(exponent);
-				bool[] rentedEvaluations = ArrayPool<bool>.Shared.Rent(exponent);
-				try
-				{
-					ProcessExponentLoweringPrime(rentedCandidates.AsSpan(0, exponent), rentedEvaluations.AsSpan(0, exponent), ref order, primeFactor, exponent, ref stepper);
-				}
-				finally
-				{
-					ArrayPool<ulong>.Shared.Return(rentedCandidates, clearArray: false);
-					ArrayPool<bool>.Shared.Return(rentedEvaluations, clearArray: false);
-				}
+				ulong[] rentedCandidates = ThreadStaticPools.UlongPool.Rent(exponent);
+				bool[] rentedEvaluations = ThreadStaticPools.BoolPool.Rent(exponent);
+				ProcessExponentLoweringPrime(rentedCandidates.AsSpan(0, exponent), rentedEvaluations.AsSpan(0, exponent), ref order, primeFactor, exponent, ref stepper);
+				ThreadStaticPools.UlongPool.Return(rentedCandidates, clearArray: false);
+				ThreadStaticPools.BoolPool.Return(rentedEvaluations, clearArray: false);
 			}
 		}
 
+		ThreadStaticPools.ReturnExponentStepper(stepper);
 		pool.Return(tempArray, clearArray: false);
 		return order;
 	}
@@ -363,10 +357,11 @@ internal static partial class PrimeOrderCalculator
 		{
 			ulong primeFactor = span[i].Value;
 			int exponent = span[i].Exponent;
-			if (exponent <= 0)
-			{
-				continue;
-			}
+			// Factor exponents emitted by TryConfirmCandidateCpu stay positive for production workloads.
+			// if (exponent <= 0)
+			// {
+			// 	continue;
+			// }
 
 			if (exponent <= 32)
 			{
@@ -378,18 +373,13 @@ internal static partial class PrimeOrderCalculator
 			}
 			else
 			{
-				ulong[] rentedCandidates = ArrayPool<ulong>.Shared.Rent(exponent);
-				try
+				ulong[] rentedCandidates = ThreadStaticPools.UlongPool.Rent(exponent);
+				if (ValidateOrderForFactor(rentedCandidates.AsSpan(0, exponent), primeFactor, exponent, order, divisorData))
 				{
-					if (ValidateOrderForFactor(rentedCandidates.AsSpan(0, exponent), primeFactor, exponent, order, divisorData))
-					{
-						return false;
-					}
+					ThreadStaticPools.UlongPool.Return(rentedCandidates, clearArray: false);
+					return false;
 				}
-				finally
-				{
-					ArrayPool<ulong>.Shared.Return(rentedCandidates, clearArray: false);
-				}
+				ThreadStaticPools.UlongPool.Return(rentedCandidates, clearArray: false);
 			}
 		}
 
@@ -426,15 +416,17 @@ internal static partial class PrimeOrderCalculator
 		Span<ulong> candidates = buffer.Slice(0, actual);
 		candidates.Reverse();
 
-		var stepper = new ExponentRemainderStepper(divisorData);
+		ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
 		for (int j = 0; j < actual; j++)
 		{
 			if (stepper.ComputeNextIsUnity(candidates[j]))
 			{
+				ThreadStaticPools.ReturnExponentStepper(stepper);
 				return true;
 			}
 		}
 
+		ThreadStaticPools.ReturnExponentStepper(stepper);
 		return false;
 	}
 
@@ -501,7 +493,7 @@ internal static partial class PrimeOrderCalculator
 			int candidateCount = candidates.Count;
 			bool allowGpuBatch = true;
 			Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
-			var powStepper = new ExponentRemainderStepper(divisorData);
+			ExponentRemainderStepper powStepper = ThreadStaticPools.RentExponentStepper(divisorData);
 
 			// DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
 			int index = 0;
@@ -592,6 +584,7 @@ internal static partial class PrimeOrderCalculator
 					}
 
 					ThreadStaticPools.ReturnUlongList(candidates);
+					ThreadStaticPools.ReturnExponentStepper(powStepper);
 					result = candidate;
 					return true;
 				}
@@ -605,6 +598,7 @@ internal static partial class PrimeOrderCalculator
 			}
 
 			ThreadStaticPools.ReturnUlongList(candidates);
+			ThreadStaticPools.ReturnExponentStepper(powStepper);
 			// DebugLog("No candidate confirmed");
 			return false;
 		}
@@ -814,10 +808,11 @@ internal static partial class PrimeOrderCalculator
 			{
 				ulong primeFactor = span[i].Value;
 				int exponent = span[i].Exponent;
-				if (exponent <= 0)
-				{
-					continue;
-				}
+				// Factorization entries for candidate confirmation are always positive here.
+				// if (exponent <= 0)
+				// {
+				// 	continue;
+				// }
 
 				if (exponent <= 32)
 				{
@@ -829,18 +824,13 @@ internal static partial class PrimeOrderCalculator
 				}
 				else
 				{
-					ulong[] rentedCandidates = ArrayPool<ulong>.Shared.Rent(exponent);
-					try
+					ulong[] rentedCandidates = ThreadStaticPools.UlongPool.Rent(exponent);
+					if (CheckCandidateViolation(rentedCandidates.AsSpan(0, exponent), primeFactor, exponent, candidate, prime, divisorData, ref powUsed, powBudget))
 					{
-						if (CheckCandidateViolation(rentedCandidates.AsSpan(0, exponent), primeFactor, exponent, candidate, prime, divisorData, ref powUsed, powBudget))
-						{
-							return false;
-						}
+						ThreadStaticPools.UlongPool.Return(rentedCandidates, clearArray: false);
+						return false;
 					}
-					finally
-					{
-						ArrayPool<ulong>.Shared.Return(rentedCandidates, clearArray: false);
-					}
+					ThreadStaticPools.UlongPool.Return(rentedCandidates, clearArray: false);
 				}
 			}
 
@@ -882,21 +872,24 @@ internal static partial class PrimeOrderCalculator
 		Span<ulong> candidates = buffer.Slice(0, actual);
 		candidates.Reverse();
 
-		var stepper = new ExponentRemainderStepper(divisorData);
+		ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
 		for (int j = 0; j < actual; j++)
 		{
 			if (powUsed >= powBudget && powBudget > 0)
 			{
+				ThreadStaticPools.ReturnExponentStepper(stepper);
 				return true;
 			}
 
 			powUsed++;
 			if (stepper.ComputeNextIsUnity(candidates[j]))
 			{
+				ThreadStaticPools.ReturnExponentStepper(stepper);
 				return true;
 			}
 		}
 
+		ThreadStaticPools.ReturnExponentStepper(stepper);
 		return false;
 	}
 

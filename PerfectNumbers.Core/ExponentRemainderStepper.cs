@@ -27,6 +27,11 @@ internal struct ExponentRemainderStepper
 
     public ulong PreviousExponent => _previousExponent;
 
+    public bool MatchesDivisor(in MontgomeryDivisorData divisor)
+    {
+        return _modulus == divisor.Modulus && _nPrime == divisor.NPrime && _montgomeryOne == divisor.MontgomeryOne;
+    }
+
     public void Reset()
     {
         _previousExponent = 0UL;
