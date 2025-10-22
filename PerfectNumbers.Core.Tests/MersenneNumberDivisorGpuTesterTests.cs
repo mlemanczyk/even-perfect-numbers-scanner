@@ -197,17 +197,7 @@ public class MersenneNumberDivisorGpuTesterTests
 
         session.CheckDivisor(7UL, divisorData, cycle, exponents, hits);
 
-        var hostBufferField = typeof(MersenneNumberDivisorByDivisorGpuTester.DivisorScanSession)
-            .GetField("_hostBuffer", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        ulong[] hostBuffer = (ulong[])hostBufferField.GetValue(session)!;
-        Span<ulong> residues = hostBuffer.AsSpan(0, exponents.Length);
-        byte[] computedHits = new byte[exponents.Length];
-        for (int i = 0; i < residues.Length; i++)
-        {
-            computedHits[i] = residues[i] == divisorData.MontgomeryOne ? (byte)1 : (byte)0;
-        }
-
-        computedHits.Should().Equal(new byte[] { 1, 0, 1, 0, 1 });
+        hits.Should().Equal(new byte[] { 1, 0, 1, 0, 1 });
     }
 
     [Fact]
@@ -229,17 +219,7 @@ public class MersenneNumberDivisorGpuTesterTests
 
         session.CheckDivisor(11UL, divisorData, cycle, exponents, hits);
 
-        var hostBufferField = typeof(MersenneNumberDivisorByDivisorGpuTester.DivisorScanSession)
-            .GetField("_hostBuffer", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        ulong[] hostBuffer = (ulong[])hostBufferField.GetValue(session)!;
-        Span<ulong> residues = hostBuffer.AsSpan(0, exponents.Length);
-        byte[] computedHits = new byte[exponents.Length];
-        for (int i = 0; i < residues.Length; i++)
-        {
-            computedHits[i] = residues[i] == divisorData.MontgomeryOne ? (byte)1 : (byte)0;
-        }
-
-        computedHits.Should().Equal(new byte[] { 1, 0, 1, 0, 1 });
+        hits.Should().Equal(new byte[] { 1, 0, 1, 0, 1 });
     }
 
     [Fact]

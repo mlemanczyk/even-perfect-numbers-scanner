@@ -30,6 +30,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>>> _candidateMaskKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<int>>> _candidateCompactionKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<byte>, ArrayView<int>>> _hitDetectionKernelCache = new(AcceleratorReferenceComparer.Instance);
+    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<byte>>> _hitConversionKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>> _candidateGenerationKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, ConcurrentBag<BatchResources>> _resourcePools = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentBag<GpuContextPool.GpuContextLease> _acceleratorPool = new();
@@ -63,6 +64,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         _hitDetectionKernelCache.GetOrAdd(
             accelerator,
             acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<byte>, ArrayView<int>>(DivisorByDivisorKernels.PublishFirstHitKernel));
+
+    private Action<Index1D, ArrayView<ulong>, ArrayView<byte>> GetResultConversionKernel(Accelerator accelerator) =>
+        _hitConversionKernelCache.GetOrAdd(
+            accelerator,
+            acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(DivisorByDivisorKernels.ConvertMontgomeryResultsToHitsKernel));
 
     private Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128> GetCandidateGenerationKernel(Accelerator accelerator) =>
         _candidateGenerationKernelCache.GetOrAdd(
@@ -686,10 +692,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
         private readonly GpuContextPool.GpuContextLease _lease;
         private readonly Accelerator _accelerator;
-        private Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> _kernel;
-        private MemoryBuffer1D<ulong, Stride1D.Dense> _exponentsBuffer;
-        private MemoryBuffer1D<ulong, Stride1D.Dense> _resultsBuffer;
-        private ulong[] _hostBuffer;
+        private Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> _kernel = null!;
+        private Action<Index1D, ArrayView<ulong>, ArrayView<byte>> _hitConversionKernel = null!;
+        private MemoryBuffer1D<ulong, Stride1D.Dense> _exponentsBuffer = null!;
+        private MemoryBuffer1D<ulong, Stride1D.Dense> _resultsBuffer = null!;
+        private MemoryBuffer1D<byte, Stride1D.Dense> _hitBuffer = null!;
+        private ulong[] _hostBuffer = null!;
         private int _capacity;
         private bool _disposed;
 
@@ -709,8 +717,10 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         private void EnsureExecutionResourcesLocked()
         {
             _kernel = _owner.GetKernelByPrimeExponent(_accelerator);
+            _hitConversionKernel = _owner.GetResultConversionKernel(_accelerator);
             _exponentsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
             _resultsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
+            _hitBuffer = _accelerator.Allocate1D<byte>(_capacity);
             _hostBuffer = ThreadStaticPools.UlongPool.Rent(_capacity);
         }
 
@@ -722,26 +732,33 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             }
 
             int length = primes.Length;
-            if (length == 0)
-            {
-                return;
-            }
+            // EvenPerfectBitScanner always supplies at least one exponent per divisor check, so the previous zero-length guard stays commented out.
+            // if (length == 0)
+            // {
+            //     return;
+            // }
 
-            if (divisorData.Modulus <= 1UL || (divisorData.Modulus & 1UL) == 0UL)
-            {
-                hits.Clear();
-                return;
-            }
+            // The GPU divisor sessions only materialize odd moduli greater than one (q = 2kp + 1),
+            // so the defensive modulus guard stays commented out to keep the hot path branch-free.
+            // if (divisorData.Modulus <= 1UL || (divisorData.Modulus & 1UL) == 0UL)
+            // {
+            //     hits.Clear();
+            //     return;
+            // }
 
             Monitor.Enter(_lease.ExecutionLock);
 
-            if (_kernel == null)
+            if (_kernel == null || _hitConversionKernel == null)
             {
                 EnsureExecutionResourcesLocked();
             }
 
+            var kernel = _kernel!;
+            var hitConversionKernel = _hitConversionKernel!;
+
             ArrayView1D<ulong, Stride1D.Dense> exponentsView = _exponentsBuffer.View;
             ArrayView1D<ulong, Stride1D.Dense> resultsView = _resultsBuffer.View;
+            ArrayView1D<byte, Stride1D.Dense> hitView = _hitBuffer.View;
             Span<ulong> hostSpan = _hostBuffer.AsSpan(0, _capacity);
 
             int offset = 0;
@@ -755,14 +772,13 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                 exponentSlice.CopyFromCPU(ref MemoryMarshal.GetReference(hostSpan), batchSize);
 
                 ArrayView1D<ulong, Stride1D.Dense> resultSlice = resultsView.SubView(0, batchSize);
-                _kernel(batchSize, divisorData, exponentSlice, resultSlice);
-                resultSlice.CopyToCPU(ref MemoryMarshal.GetReference(hostSpan), batchSize);
+                kernel(batchSize, divisorData, exponentSlice, resultSlice);
+
+                ArrayView1D<byte, Stride1D.Dense> hitSliceView = hitView.SubView(0, batchSize);
+                hitConversionKernel(batchSize, resultSlice, hitSliceView);
 
                 Span<byte> hitSlice = hits.Slice(offset, batchSize);
-                for (int i = 0; i < batchSize; i++)
-                {
-                    hitSlice[i] = hostSpan[i] == 1UL ? (byte)1 : (byte)0;
-                }
+                hitSliceView.CopyToCPU(ref MemoryMarshal.GetReference(hitSlice), batchSize);
 
                 offset += batchSize;
             }
