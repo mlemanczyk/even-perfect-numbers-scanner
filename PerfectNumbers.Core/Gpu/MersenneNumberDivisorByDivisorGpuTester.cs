@@ -588,7 +588,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         //     return 0;
         // }
 
-        SharedMemoryConfig sharedMemoryConfig = SharedMemoryConfig.RequestDynamic<int>(count);
+        countView.MemSetToZero();
+        SharedMemoryConfig sharedMemoryConfig = SharedMemoryConfig.RequestDynamic<int>(count * 3);
         Index1D gridDim = new Index1D(1);
         Index1D groupDim = new Index1D(count);
         KernelConfig kernelConfig = new KernelConfig(gridDim, groupDim, sharedMemoryConfig);

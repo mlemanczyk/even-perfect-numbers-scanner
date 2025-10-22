@@ -1,4 +1,5 @@
 using ILGPU;
+using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using PerfectNumbers.Core;
 
@@ -179,43 +180,60 @@ internal static class DivisorByDivisorKernels
         int groupSize = Group.Dimension.X;
         var shared = SharedMemory.GetDynamic<int>();
 
+        int prefixBase = 0;
+        int mappingBase = length;
+        int fallbackBase = length * 2;
+        // The dynamic shared-memory slice stores prefix sums, compacted index mappings, and fallback slots
+        // in separate regions so the scatter stage can avoid divergent branches.
+
         byte maskValue = mask[globalIndex];
         int accepted = maskValue != 0 ? 1 : 0;
-        shared[localIndex] = accepted;
-
-        ulong candidateValue = sourceCandidates[globalIndex];
+        shared[prefixBase + localIndex] = accepted;
+        shared[fallbackBase + localIndex] = globalIndex;
 
         Group.Barrier();
 
         int offset = 1;
         while (offset < groupSize)
         {
-            int addend = localIndex >= offset ? shared[localIndex - offset] : 0;
+            int addendIndex = prefixBase + localIndex - offset;
+            int addend = localIndex >= offset ? shared[addendIndex] : 0;
 
             Group.Barrier();
 
-            int current = shared[localIndex];
+            int currentIndex = prefixBase + localIndex;
+            int current = shared[currentIndex];
             int sum = current + addend;
-            if (localIndex >= offset)
-            {
-                shared[localIndex] = sum;
-            }
+            int shouldUpdate = localIndex >= offset ? 1 : 0;
+            shared[currentIndex] = shouldUpdate != 0 ? sum : current;
 
             Group.Barrier();
 
             offset <<= 1;
         }
 
-        if (accepted != 0)
-        {
-            int targetIndex = shared[localIndex] - 1;
-            compactedCandidates[targetIndex] = candidateValue;
-        }
+        int inclusivePrefix = shared[prefixBase + localIndex];
+        int exclusiveIndex = inclusivePrefix - accepted;
+        int targetBase = accepted != 0 ? mappingBase : fallbackBase;
+        int targetOffset = accepted != 0 ? exclusiveIndex : localIndex;
+        shared[targetBase + targetOffset] = globalIndex;
 
-        if (globalIndex == length - 1)
-        {
-            compactedCount[0] = shared[localIndex];
-        }
+        Group.Barrier();
+
+        int totalAccepted = shared[prefixBase + length - 1];
+        int writerMask = localIndex < totalAccepted ? 1 : 0;
+        int lookupBase = writerMask != 0 ? mappingBase : fallbackBase;
+        int sourceIndex = shared[lookupBase + localIndex];
+
+        ulong candidateValue = sourceCandidates[sourceIndex];
+        int destinationIndex = localIndex;
+        ulong existingValue = compactedCandidates[destinationIndex];
+        compactedCandidates[destinationIndex] = writerMask != 0 ? candidateValue : existingValue;
+
+        int lastLaneMask = globalIndex == length - 1 ? 1 : 0;
+        int countValue = shared[prefixBase + localIndex];
+        int storedCount = lastLaneMask != 0 ? countValue : 0;
+        Atomic.Max(ref compactedCount[0], storedCount);
     }
 
     public static void ComputeMontgomeryExponentKernel(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
