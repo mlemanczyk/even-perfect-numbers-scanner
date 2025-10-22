@@ -10,14 +10,11 @@ internal static class DivisorByDivisorKernels
     {
         MontgomeryDivisorData divisor = divisors[index];
         ulong modulus = divisor.Modulus;
-        if (modulus <= 1UL || (modulus & 1UL) == 0UL)
-        {
-            hits[index] = 0;
-            return;
-        }
-
+        // The GPU by-divisor pipeline only materializes odd moduli greater than one (q = 2kp + 1),
+        // so the defensive guard for invalid values stays disabled here to keep the kernel branch-free.
         ulong exponent = exponents[index];
-        hits[index] = ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponent) == 1UL ? (byte)1 : (byte)0;
+        ulong montgomeryResult = ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponent);
+        hits[index] = montgomeryResult == 1UL ? (byte)1 : (byte)0;
     }
 
     public static void ComputeRemainderDeltasKernel(Index1D index, ArrayView<ulong> gaps, ArrayView<byte> deltas, byte modulus)
@@ -50,42 +47,25 @@ internal static class DivisorByDivisorKernels
         int mod = modulus;
         while (offset < groupSize)
         {
-            int addend = 0;
-            if (localIndex >= offset)
-            {
-                addend = shared[localIndex - offset];
-            }
+            bool apply = localIndex >= offset;
+            int addend = apply ? shared[localIndex - offset] : 0;
 
             Group.Barrier();
 
-            if (localIndex >= offset)
-            {
-                int sum = shared[localIndex] + addend;
-                if (sum >= mod)
-                {
-                    sum %= mod;
-                }
-
-                shared[localIndex] = sum;
-            }
+            int current = shared[localIndex];
+            int sum = apply ? current + addend : current;
+            int wrap = sum >= mod ? 1 : 0;
+            sum -= wrap * mod;
+            shared[localIndex] = apply ? sum : current;
 
             Group.Barrier();
 
             offset <<= 1;
         }
 
-        if (globalIndex == 0)
-        {
-            remainders[0] = baseRemainder;
-            return;
-        }
-
         int remainder = baseRemainder + shared[localIndex];
-        if (remainder >= mod)
-        {
-            remainder %= mod;
-        }
-
+        int remainderWrap = remainder >= mod ? 1 : 0;
+        remainder -= remainderWrap * mod;
         remainders[globalIndex] = (byte)remainder;
     }
 
@@ -106,49 +86,24 @@ internal static class DivisorByDivisorKernels
         }
 
         byte value10 = remainder10[globalIndex];
-        bool accept10;
-        if (lastIsSevenFlag != 0)
-        {
-            accept10 = value10 == 3 || value10 == 7 || value10 == 9;
-        }
-        else
-        {
-            accept10 = value10 == 1 || value10 == 3 || value10 == 7 || value10 == 9;
-        }
-
-        if (!accept10)
-        {
-            mask[globalIndex] = 0;
-            return;
-        }
-
+        bool lastIsSeven = lastIsSevenFlag != 0;
+        bool acceptSeven = value10 == 3 || value10 == 7 || value10 == 9;
+        bool acceptNonSeven = value10 == 1 || value10 == 3 || value10 == 7 || value10 == 9;
+        bool accept10 = lastIsSeven ? acceptSeven : acceptNonSeven;
         byte value8 = remainder8[globalIndex];
-        if (value8 != 1 && value8 != 7)
-        {
-            mask[globalIndex] = 0;
-            return;
-        }
-
-        if (remainder3[globalIndex] == 0 || remainder5[globalIndex] == 0)
-        {
-            mask[globalIndex] = 0;
-            return;
-        }
-
-        mask[globalIndex] = 1;
+        bool accept8 = value8 == 1 || value8 == 7;
+        bool accept5 = remainder5[globalIndex] != 0;
+        bool accept3 = remainder3[globalIndex] != 0;
+        byte accepted = (byte)((accept10 && accept8 && accept3 && accept5) ? 1 : 0);
+        mask[globalIndex] = accepted;
     }
 
     public static void ComputeMontgomeryExponentKernel(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
     {
         ulong modulus = divisor.Modulus;
-        if (modulus <= 1UL || (modulus & 1UL) == 0UL)
-        {
-            results[index] = 0UL;
-            return;
-        }
-
+        // Each divisor flowing through this kernel follows q = 2kp + 1 with k >= 1, so modulus is always odd and exceeds one.
         ulong exponent = exponents[index];
-
-        results[index] = ULongExtensions.Pow2MontgomeryModWindowedGpuKeepMontgomery(divisor, exponent);
+        ulong montgomeryResult = ULongExtensions.Pow2MontgomeryModWindowedGpuKeepMontgomery(divisor, exponent);
+        results[index] = montgomeryResult;
     }
 }
