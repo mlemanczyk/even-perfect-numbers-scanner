@@ -344,10 +344,10 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
             BuildCandidateMaskOnGpu(effectiveCount, remainder10View, remainder8View, remainder5View, remainder3View, lastIsSevenFlag, maskView, candidateMaskKernel);
 
-            byte lastRemainder10 = FetchLastRemainder(remainder10View, effectiveCount);
-            byte lastRemainder8 = FetchLastRemainder(remainder8View, effectiveCount);
-            byte lastRemainder5 = FetchLastRemainder(remainder5View, effectiveCount);
-            byte lastRemainder3 = FetchLastRemainder(remainder3View, effectiveCount);
+            byte lastRemainder10 = effectiveCount > 0 ? FetchLastRemainder(remainder10View, effectiveCount) : (byte)0;
+            byte lastRemainder8 = effectiveCount > 0 ? FetchLastRemainder(remainder8View, effectiveCount) : (byte)0;
+            byte lastRemainder5 = effectiveCount > 0 ? FetchLastRemainder(remainder5View, effectiveCount) : (byte)0;
+            byte lastRemainder3 = effectiveCount > 0 ? FetchLastRemainder(remainder3View, effectiveCount) : (byte)0;
 
             remainder10 = AddModGpu(lastRemainder10, step10, 10);
             remainder8 = AddModGpu(lastRemainder8, step8, 8);
@@ -563,10 +563,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         ArrayView1D<byte, Stride1D.Dense> maskView,
         Action<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>> maskKernel)
     {
-        if (count <= 0)
-        {
-            return;
-        }
+        // EvenPerfectBitScanner always supplies a positive count here,
+        // so the guard stays commented out to keep the hot path branch-free.
+        // if (count <= 0)
+        // {
+        //     return;
+        // }
 
         maskKernel(count, remainder10View, remainder8View, remainder5View, remainder3View, lastIsSevenFlag, maskView);
     }
@@ -579,10 +581,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         ArrayView1D<int, Stride1D.Dense> countView,
         Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<int>> compactionKernel)
     {
-        if (count <= 0)
-        {
-            return 0;
-        }
+        // EvenPerfectBitScanner always compacts with a positive count,
+        // so the guard stays commented out to keep the hot path branch-free.
+        // if (count <= 0)
+        // {
+        //     return 0;
+        // }
 
         SharedMemoryConfig sharedMemoryConfig = SharedMemoryConfig.RequestDynamic<int>(count);
         Index1D gridDim = new Index1D(1);
@@ -598,11 +602,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
     private static byte FetchLastRemainder(ArrayView1D<byte, Stride1D.Dense> remainderView, int count)
     {
-        if (count <= 0)
-        {
-            return 0;
-        }
-
+        // Callers guard against zero counts before invoking this helper to keep the hot path branch-free.
         byte value = 0;
         remainderView.SubView(count - 1, 1).CopyToCPU(ref value, 1);
         return value;
