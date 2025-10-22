@@ -155,6 +155,63 @@ internal static class DivisorByDivisorKernels
         mask[globalIndex] = accepted;
     }
 
+    public static void CompactCandidateMaskKernel(
+        Index1D index,
+        ArrayView<byte> mask,
+        ArrayView<ulong> sourceCandidates,
+        ArrayView<ulong> compactedCandidates,
+        ArrayView<int> compactedCount)
+    {
+        int globalIndex = index;
+        int length = (int)mask.Length;
+        if (globalIndex >= length)
+        {
+            return;
+        }
+
+        int localIndex = Group.IdxX;
+        int groupSize = Group.Dimension.X;
+        var shared = SharedMemory.GetDynamic<int>();
+
+        byte maskValue = mask[globalIndex];
+        int accepted = maskValue != 0 ? 1 : 0;
+        shared[localIndex] = accepted;
+
+        ulong candidateValue = sourceCandidates[globalIndex];
+
+        Group.Barrier();
+
+        int offset = 1;
+        while (offset < groupSize)
+        {
+            int addend = localIndex >= offset ? shared[localIndex - offset] : 0;
+
+            Group.Barrier();
+
+            int current = shared[localIndex];
+            int sum = current + addend;
+            if (localIndex >= offset)
+            {
+                shared[localIndex] = sum;
+            }
+
+            Group.Barrier();
+
+            offset <<= 1;
+        }
+
+        if (accepted != 0)
+        {
+            int targetIndex = shared[localIndex] - 1;
+            compactedCandidates[targetIndex] = candidateValue;
+        }
+
+        if (globalIndex == length - 1)
+        {
+            compactedCount[0] = shared[localIndex];
+        }
+    }
+
     public static void ComputeMontgomeryExponentKernel(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
     {
         ulong modulus = divisor.Modulus;
