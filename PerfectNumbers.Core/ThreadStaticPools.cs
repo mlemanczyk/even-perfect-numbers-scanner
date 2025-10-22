@@ -91,6 +91,18 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
+        private static ArrayPool<MontgomeryDivisorData>? _montgomeryDivisorDataPool;
+
+        public static ArrayPool<MontgomeryDivisorData> MontgomeryDivisorDataPool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _montgomeryDivisorDataPool ??= ArrayPool<MontgomeryDivisorData>.Create();
+            }
+        }
+
+        [ThreadStatic]
         private static ArrayPool<int>? _intPool;
 
         public static ArrayPool<int> IntPool
