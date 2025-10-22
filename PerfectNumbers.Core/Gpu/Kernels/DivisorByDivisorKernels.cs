@@ -17,6 +17,26 @@ internal static class DivisorByDivisorKernels
         hits[index] = montgomeryResult == 1UL ? (byte)1 : (byte)0;
     }
 
+    public static void GenerateCandidatesAndGapsKernel(Index1D index, ArrayView<ulong> candidates, ArrayView<ulong> gaps, ulong startValue, ulong stride)
+    {
+        int globalIndex = index;
+        int candidateLength = (int)candidates.Length;
+        if (globalIndex >= candidateLength)
+        {
+            return;
+        }
+
+        ulong offset = (ulong)globalIndex;
+        ulong candidate = startValue + offset * stride;
+        candidates[globalIndex] = candidate;
+
+        int gapLength = (int)gaps.Length;
+        if (globalIndex < gapLength)
+        {
+            gaps[globalIndex] = offset == 0UL ? 0UL : stride;
+        }
+    }
+
     public static void ComputeRemainderDeltasKernel(Index1D index, ArrayView<ulong> gaps, ArrayView<byte> deltas, byte modulus)
     {
         deltas[index] = (byte)(gaps[index] % modulus);
