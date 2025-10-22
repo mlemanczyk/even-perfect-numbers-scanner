@@ -35,14 +35,8 @@ internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDi
             divisorCycle = DivisorCycleCache.Shared.GetCycleLength(divisor);
             if (divisorCycle == 0UL)
             {
-                divisorCycle = MersenneDivisorCycles.CalculateCycleLength(
-                    divisor,
-                    cachedData,
-                    skipPrimeOrderHeuristic: true);
-                if (divisorCycle == 0UL)
-                {
-                    throw new InvalidOperationException($"Failed to compute a cycle for divisor {divisor}.");
-                }
+                hits.Clear();
+                return;
             }
         }
 
