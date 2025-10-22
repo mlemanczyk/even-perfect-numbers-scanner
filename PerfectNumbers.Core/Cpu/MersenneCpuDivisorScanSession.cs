@@ -35,8 +35,8 @@ internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDi
             divisorCycle = DivisorCycleCache.Shared.GetCycleLength(divisor);
             if (divisorCycle == 0UL)
             {
-                hits.Clear();
-                return;
+                // DivisorCycleCache guarantees a positive cycle for divisors greater than one.
+                throw new InvalidOperationException($"Divisor cycle solver returned zero for divisor {divisor}.");
             }
         }
 
