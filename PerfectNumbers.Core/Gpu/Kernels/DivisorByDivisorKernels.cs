@@ -236,6 +236,25 @@ internal static class DivisorByDivisorKernels
         Atomic.Max(ref compactedCount[0], storedCount);
     }
 
+    public static void PublishFirstHitKernel(
+        Index1D index,
+        ArrayView<byte> hits,
+        ArrayView<int> firstHit)
+    {
+        int globalIndex = index;
+        // EvenPerfectBitScanner launches this auto-grouped kernel with an extent matching the hit view length,
+        // so the defensive guard stays commented out to keep the hot path branch-free.
+        // int length = (int)hits.Length;
+        // if (globalIndex >= length)
+        // {
+        //     return;
+        // }
+
+        byte hitValue = hits[globalIndex];
+        int candidate = hitValue != 0 ? globalIndex : int.MaxValue;
+        Atomic.Min(ref firstHit[0], candidate);
+    }
+
     public static void ComputeMontgomeryExponentKernel(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
     {
         ulong modulus = divisor.Modulus;
