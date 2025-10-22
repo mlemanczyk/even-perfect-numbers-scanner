@@ -25,47 +25,32 @@ internal static class DivisorByDivisorKernels
         GpuUInt128 stride)
     {
         int globalIndex = index;
-        int candidateLength = (int)candidates.Length;
-        if (globalIndex >= candidateLength)
-        {
-            return;
-        }
+        // EvenPerfectBitScanner always launches this kernel with an extent matching the candidate view length,
+        // so the bounds guard stays commented out to keep the hot path branch-free.
+        // int candidateLength = (int)candidates.Length;
+        // if (globalIndex >= candidateLength)
+        // {
+        //     return;
+        // }
 
         ulong offset = (ulong)globalIndex;
-        GpuUInt128 candidateValue;
-        if (offset == 0UL)
-        {
-            candidateValue = startValue;
-        }
-        else
-        {
-            candidateValue = stride;
-            candidateValue.Mul(offset);
-            candidateValue.Add(startValue);
-        }
-
+        GpuUInt128 candidateValue = stride;
+        candidateValue.Mul(offset);
+        candidateValue.Add(startValue);
         candidates[globalIndex] = candidateValue.Low;
 
-        int gapLength = (int)gaps.Length;
-        if (globalIndex >= gapLength)
-        {
-            return;
-        }
+        // The scanner supplies gap buffers that mirror the candidate view length,
+        // so the additional bounds guard remains commented out for the same reason as above.
+        // int gapLength = (int)gaps.Length;
+        // if (globalIndex >= gapLength)
+        // {
+        //     return;
+        // }
 
-        if (offset == 0UL)
-        {
-            gaps[globalIndex] = 0UL;
-            return;
-        }
-
-        GpuUInt128 previousValue = startValue;
-        ulong previousOffset = offset - 1UL;
-        if (previousOffset != 0UL)
-        {
-            GpuUInt128 scaledStride = stride;
-            scaledStride.Mul(previousOffset);
-            previousValue.Add(scaledStride);
-        }
+        ulong previousOffset = offset > 0UL ? offset - 1UL : 0UL;
+        GpuUInt128 previousValue = stride;
+        previousValue.Mul(previousOffset);
+        previousValue.Add(startValue);
 
         GpuUInt128 gapValue = candidateValue;
         gapValue.Sub(previousValue);
