@@ -87,11 +87,13 @@ internal static class DivisorByDivisorKernels
         byte modulus)
     {
         int globalIndex = index;
-        int length = (int)remainders.Length;
-        if (globalIndex >= length)
-        {
-            return;
-        }
+        // EvenPerfectBitScanner launches this stream kernel with an extent matching the remainder span length,
+        // so the defensive guard stays commented out to keep the kernel branch-free.
+        // int length = (int)remainders.Length;
+        // if (globalIndex >= length)
+        // {
+        //     return;
+        // }
 
         int localIndex = Group.IdxX;
         int groupSize = Group.Dimension.X;
@@ -136,11 +138,13 @@ internal static class DivisorByDivisorKernels
         ArrayView<byte> mask)
     {
         int globalIndex = index;
-        int length = (int)mask.Length;
-        if (globalIndex >= length)
-        {
-            return;
-        }
+        // EvenPerfectBitScanner launches this auto-grouped kernel with an extent matching the mask length,
+        // so the defensive guard stays commented out to keep the kernel branch-free.
+        // int length = (int)mask.Length;
+        // if (globalIndex >= length)
+        // {
+        //     return;
+        // }
 
         byte value10 = remainder10[globalIndex];
         bool lastIsSeven = lastIsSevenFlag != 0;
@@ -164,10 +168,12 @@ internal static class DivisorByDivisorKernels
     {
         int globalIndex = index;
         int length = (int)mask.Length;
-        if (globalIndex >= length)
-        {
-            return;
-        }
+        // EvenPerfectBitScanner launches this stream kernel with an extent matching the mask length,
+        // so the defensive guard stays commented out to keep the kernel branch-free.
+        // if (globalIndex >= length)
+        // {
+        //     return;
+        // }
 
         int localIndex = Group.IdxX;
         int groupSize = Group.Dimension.X;
