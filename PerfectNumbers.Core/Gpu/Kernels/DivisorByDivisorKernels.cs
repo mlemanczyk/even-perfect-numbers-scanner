@@ -1,4 +1,5 @@
 using ILGPU;
+using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using PerfectNumbers.Core;
 
@@ -17,6 +18,63 @@ internal static class DivisorByDivisorKernels
         hits[index] = montgomeryResult == 1UL ? (byte)1 : (byte)0;
     }
 
+    public static void GenerateCandidatesAndGapsKernel(
+        Index1D index,
+        ArrayView<ulong> candidates,
+        ArrayView<ulong> gaps,
+        ArrayView<GpuUInt128> nextStarts,
+        GpuUInt128 startValue,
+        GpuUInt128 stride)
+    {
+        int globalIndex = index;
+        // EvenPerfectBitScanner always launches this kernel with an extent matching the candidate view length,
+        // so the bounds guard stays commented out to keep the hot path branch-free.
+        // int candidateLength = (int)candidates.Length;
+        // if (globalIndex >= candidateLength)
+        // {
+        //     return;
+        // }
+
+        ulong offset = (ulong)globalIndex;
+        GpuUInt128 candidateValue = stride;
+        candidateValue.Mul(offset);
+        candidateValue.Add(startValue);
+        candidates[globalIndex] = candidateValue.Low;
+
+        // The scanner supplies gap buffers that mirror the candidate view length,
+        // so the additional bounds guard remains commented out for the same reason as above.
+        // int gapLength = (int)gaps.Length;
+        // if (globalIndex >= gapLength)
+        // {
+        //     return;
+        // }
+
+        ulong previousOffset = offset > 0UL ? offset - 1UL : 0UL;
+        GpuUInt128 previousValue = stride;
+        previousValue.Mul(previousOffset);
+        previousValue.Add(startValue);
+
+        GpuUInt128 gapValue = candidateValue;
+        gapValue.Sub(previousValue);
+        gaps[globalIndex] = gapValue.Low;
+
+        if (globalIndex == 0)
+        {
+            // EvenPerfectBitScanner provides a single-element nextStarts view per launch, so the guard stays commented out.
+            // int nextStartLength = (int)nextStarts.Length;
+            // if (nextStartLength <= 0)
+            // {
+            //     return;
+            // }
+
+            ulong candidateCount = (ulong)candidates.Length;
+            GpuUInt128 nextValue = stride;
+            nextValue.Mul(candidateCount);
+            nextValue.Add(startValue);
+            nextStarts[0] = nextValue;
+        }
+    }
+
     public static void ComputeRemainderDeltasKernel(Index1D index, ArrayView<ulong> gaps, ArrayView<byte> deltas, byte modulus)
     {
         deltas[index] = (byte)(gaps[index] % modulus);
@@ -30,11 +88,13 @@ internal static class DivisorByDivisorKernels
         byte modulus)
     {
         int globalIndex = index;
-        int length = (int)remainders.Length;
-        if (globalIndex >= length)
-        {
-            return;
-        }
+        // EvenPerfectBitScanner launches this stream kernel with an extent matching the remainder span length,
+        // so the defensive guard stays commented out to keep the kernel branch-free.
+        // int length = (int)remainders.Length;
+        // if (globalIndex >= length)
+        // {
+        //     return;
+        // }
 
         int localIndex = Group.IdxX;
         int groupSize = Group.Dimension.X;
@@ -79,11 +139,13 @@ internal static class DivisorByDivisorKernels
         ArrayView<byte> mask)
     {
         int globalIndex = index;
-        int length = (int)mask.Length;
-        if (globalIndex >= length)
-        {
-            return;
-        }
+        // EvenPerfectBitScanner launches this auto-grouped kernel with an extent matching the mask length,
+        // so the defensive guard stays commented out to keep the kernel branch-free.
+        // int length = (int)mask.Length;
+        // if (globalIndex >= length)
+        // {
+        //     return;
+        // }
 
         byte value10 = remainder10[globalIndex];
         bool lastIsSeven = lastIsSevenFlag != 0;
@@ -96,6 +158,119 @@ internal static class DivisorByDivisorKernels
         bool accept3 = remainder3[globalIndex] != 0;
         byte accepted = (byte)((accept10 && accept8 && accept3 && accept5) ? 1 : 0);
         mask[globalIndex] = accepted;
+    }
+
+    public static void CompactCandidateMaskKernel(
+        Index1D index,
+        ArrayView<byte> mask,
+        ArrayView<ulong> sourceCandidates,
+        ArrayView<ulong> compactedCandidates,
+        ArrayView<int> compactedCount)
+    {
+        int globalIndex = index;
+        int length = (int)mask.Length;
+        // EvenPerfectBitScanner launches this stream kernel with an extent matching the mask length,
+        // so the defensive guard stays commented out to keep the kernel branch-free.
+        // if (globalIndex >= length)
+        // {
+        //     return;
+        // }
+
+        int localIndex = Group.IdxX;
+        int groupSize = Group.Dimension.X;
+        var shared = SharedMemory.GetDynamic<int>();
+
+        int prefixBase = 0;
+        int mappingBase = length;
+        int fallbackBase = length * 2;
+        // The dynamic shared-memory slice stores prefix sums, compacted index mappings, and fallback slots
+        // in separate regions so the scatter stage can avoid divergent branches.
+
+        byte maskValue = mask[globalIndex];
+        int accepted = maskValue != 0 ? 1 : 0;
+        shared[prefixBase + localIndex] = accepted;
+        shared[fallbackBase + localIndex] = globalIndex;
+
+        Group.Barrier();
+
+        int offset = 1;
+        while (offset < groupSize)
+        {
+            int addendIndex = prefixBase + localIndex - offset;
+            int addend = localIndex >= offset ? shared[addendIndex] : 0;
+
+            Group.Barrier();
+
+            int currentIndex = prefixBase + localIndex;
+            int current = shared[currentIndex];
+            int sum = current + addend;
+            int shouldUpdate = localIndex >= offset ? 1 : 0;
+            shared[currentIndex] = shouldUpdate != 0 ? sum : current;
+
+            Group.Barrier();
+
+            offset <<= 1;
+        }
+
+        int inclusivePrefix = shared[prefixBase + localIndex];
+        int exclusiveIndex = inclusivePrefix - accepted;
+        int targetBase = accepted != 0 ? mappingBase : fallbackBase;
+        int targetOffset = accepted != 0 ? exclusiveIndex : localIndex;
+        shared[targetBase + targetOffset] = globalIndex;
+
+        Group.Barrier();
+
+        int totalAccepted = shared[prefixBase + length - 1];
+        int writerMask = localIndex < totalAccepted ? 1 : 0;
+        int lookupBase = writerMask != 0 ? mappingBase : fallbackBase;
+        int sourceIndex = shared[lookupBase + localIndex];
+
+        ulong candidateValue = sourceCandidates[sourceIndex];
+        int destinationIndex = localIndex;
+        ulong existingValue = compactedCandidates[destinationIndex];
+        compactedCandidates[destinationIndex] = writerMask != 0 ? candidateValue : existingValue;
+
+        int lastLaneMask = globalIndex == length - 1 ? 1 : 0;
+        int countValue = shared[prefixBase + localIndex];
+        int storedCount = lastLaneMask != 0 ? countValue : 0;
+        Atomic.Max(ref compactedCount[0], storedCount);
+    }
+
+    public static void PublishFirstHitKernel(
+        Index1D index,
+        ArrayView<byte> hits,
+        ArrayView<int> firstHit)
+    {
+        int globalIndex = index;
+        // EvenPerfectBitScanner launches this auto-grouped kernel with an extent matching the hit view length,
+        // so the defensive guard stays commented out to keep the hot path branch-free.
+        // int length = (int)hits.Length;
+        // if (globalIndex >= length)
+        // {
+        //     return;
+        // }
+
+        byte hitValue = hits[globalIndex];
+        int candidate = hitValue != 0 ? globalIndex : int.MaxValue;
+        Atomic.Min(ref firstHit[0], candidate);
+    }
+
+    public static void ConvertMontgomeryResultsToHitsKernel(
+        Index1D index,
+        ArrayView<ulong> results,
+        ArrayView<byte> hits)
+    {
+        int globalIndex = index;
+        // EvenPerfectBitScanner launches this kernel with an extent matching the result and hit spans,
+        // so the defensive bounds guard stays commented out to keep the conversion branch-free.
+        // int length = (int)results.Length;
+        // if (globalIndex >= length)
+        // {
+        //     return;
+        // }
+
+        ulong montgomeryResult = results[globalIndex];
+        hits[globalIndex] = montgomeryResult == 1UL ? (byte)1 : (byte)0;
     }
 
     public static void ComputeMontgomeryExponentKernel(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
