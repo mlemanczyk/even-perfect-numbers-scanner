@@ -8,6 +8,8 @@ public class PrimeTesterIsPrimeTests
 {
     [Theory]
     [Trait("Category", "Fast")]
+    // EvenPerfectBitScanner never routes these small values, but factoring helpers and residue checks still call into
+    // PrimeTester for sanity probes, so the regression suite keeps the tiny cases alongside large primes/composites.
     [InlineData(1UL, false)]
     [InlineData(2UL, true)]
     [InlineData(3UL, true)]
@@ -30,9 +32,9 @@ public class PrimeTesterIsPrimeTests
         var tester = new PrimeTester();
         GpuContextPool.ForceCpu = true;
 
-        tester.IsPrimeGpu(11UL, CancellationToken.None).Should().BeTrue();
+        tester.IsPrimeGpu(137UL, CancellationToken.None).Should().BeTrue();
 
-        tester.IsPrimeGpu(12UL, CancellationToken.None).Should().BeFalse();
+        tester.IsPrimeGpu(341UL, CancellationToken.None).Should().BeFalse();
 
         GpuContextPool.ForceCpu = false;
     }
