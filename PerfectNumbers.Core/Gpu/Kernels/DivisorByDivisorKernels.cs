@@ -21,6 +21,7 @@ internal static class DivisorByDivisorKernels
         Index1D index,
         ArrayView<ulong> candidates,
         ArrayView<ulong> gaps,
+        ArrayView<GpuUInt128> nextStarts,
         GpuUInt128 startValue,
         GpuUInt128 stride)
     {
@@ -55,6 +56,22 @@ internal static class DivisorByDivisorKernels
         GpuUInt128 gapValue = candidateValue;
         gapValue.Sub(previousValue);
         gaps[globalIndex] = gapValue.Low;
+
+        if (globalIndex == 0)
+        {
+            // EvenPerfectBitScanner provides a single-element nextStarts view per launch, so the guard stays commented out.
+            // int nextStartLength = (int)nextStarts.Length;
+            // if (nextStartLength <= 0)
+            // {
+            //     return;
+            // }
+
+            ulong candidateCount = (ulong)candidates.Length;
+            GpuUInt128 nextValue = stride;
+            nextValue.Mul(candidateCount);
+            nextValue.Add(startValue);
+            nextStarts[0] = nextValue;
+        }
     }
 
     public static void ComputeRemainderDeltasKernel(Index1D index, ArrayView<ulong> gaps, ArrayView<byte> deltas, byte modulus)
