@@ -17,7 +17,12 @@ internal static class DivisorByDivisorKernels
         hits[index] = montgomeryResult == 1UL ? (byte)1 : (byte)0;
     }
 
-    public static void GenerateCandidatesAndGapsKernel(Index1D index, ArrayView<ulong> candidates, ArrayView<ulong> gaps, ulong startValue, ulong stride)
+    public static void GenerateCandidatesAndGapsKernel(
+        Index1D index,
+        ArrayView<ulong> candidates,
+        ArrayView<ulong> gaps,
+        GpuUInt128 startValue,
+        GpuUInt128 stride)
     {
         int globalIndex = index;
         int candidateLength = (int)candidates.Length;
@@ -27,14 +32,44 @@ internal static class DivisorByDivisorKernels
         }
 
         ulong offset = (ulong)globalIndex;
-        ulong candidate = startValue + offset * stride;
-        candidates[globalIndex] = candidate;
+        GpuUInt128 candidateValue;
+        if (offset == 0UL)
+        {
+            candidateValue = startValue;
+        }
+        else
+        {
+            candidateValue = stride;
+            candidateValue.Mul(offset);
+            candidateValue.Add(startValue);
+        }
+
+        candidates[globalIndex] = candidateValue.Low;
 
         int gapLength = (int)gaps.Length;
-        if (globalIndex < gapLength)
+        if (globalIndex >= gapLength)
         {
-            gaps[globalIndex] = offset == 0UL ? 0UL : stride;
+            return;
         }
+
+        if (offset == 0UL)
+        {
+            gaps[globalIndex] = 0UL;
+            return;
+        }
+
+        GpuUInt128 previousValue = startValue;
+        ulong previousOffset = offset - 1UL;
+        if (previousOffset != 0UL)
+        {
+            GpuUInt128 scaledStride = stride;
+            scaledStride.Mul(previousOffset);
+            previousValue.Add(scaledStride);
+        }
+
+        GpuUInt128 gapValue = candidateValue;
+        gapValue.Sub(previousValue);
+        gaps[globalIndex] = gapValue.Low;
     }
 
     public static void ComputeRemainderDeltasKernel(Index1D index, ArrayView<ulong> gaps, ArrayView<byte> deltas, byte modulus)

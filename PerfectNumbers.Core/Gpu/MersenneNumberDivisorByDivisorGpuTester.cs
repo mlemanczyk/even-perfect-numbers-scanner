@@ -28,7 +28,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<byte>, byte>> _remainderDeltaKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte>> _remainderScanKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>>> _candidateMaskKernelCache = new(AcceleratorReferenceComparer.Instance);
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ulong, ulong>> _candidateGenerationKernelCache = new(AcceleratorReferenceComparer.Instance);
+    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, GpuUInt128, GpuUInt128>> _candidateGenerationKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, ConcurrentBag<BatchResources>> _resourcePools = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentBag<GpuContextPool.GpuContextLease> _acceleratorPool = new();
     private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
@@ -52,10 +52,10 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             accelerator,
             acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>>(DivisorByDivisorKernels.EvaluateCandidateMaskKernel));
 
-    private Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ulong, ulong> GetCandidateGenerationKernel(Accelerator accelerator) =>
+    private Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, GpuUInt128, GpuUInt128> GetCandidateGenerationKernel(Accelerator accelerator) =>
         _candidateGenerationKernelCache.GetOrAdd(
             accelerator,
-            acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<ulong>, ulong, ulong>(DivisorByDivisorKernels.GenerateCandidatesAndGapsKernel));
+            acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<ulong>, GpuUInt128, GpuUInt128>(DivisorByDivisorKernels.GenerateCandidatesAndGapsKernel));
 
     public int GpuBatchSize
     {
@@ -208,7 +208,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         Action<Index1D, ArrayView<ulong>, ArrayView<byte>, byte> remainderDeltaKernel,
         Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte> remainderScanKernel,
         Action<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>> candidateMaskKernel,
-        Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ulong, ulong> candidateGenerationKernel,
+        Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, GpuUInt128, GpuUInt128> candidateGenerationKernel,
         in ulong[] divisors,
         ulong[] exponents,
         byte[] hits,
@@ -268,7 +268,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
         ulong[] filteredDivisors = ulongPool.Rent(chunkCapacity);
-        ulong[]? fallbackDivisorGaps = null;
         var viewCache = new BufferSliceCache(divisorDeltaBuffer, remainderDeltaBuffer, remainderBuffer, hitsBuffer, remainderStride);
         Span<ulong> candidateStorage = cycleCandidates.AsSpan();
         Span<byte> hitStorage = hits.AsSpan();
@@ -306,58 +305,17 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
             UInt128 localDivisor = currentDivisor128;
             UInt128 nextDivisor;
-            bool strideFits = twoP128 <= (UInt128)ulong.MaxValue;
-            bool baseFits = localDivisor <= (UInt128)ulong.MaxValue;
-            bool useGpuGeneration = strideFits && baseFits;
 
-            if (useGpuGeneration)
+            ArrayView1D<ulong, Stride1D.Dense> candidateView = candidateBuffer.View.SubView(0, effectiveCount);
+            GpuUInt128 gpuStartValue = new GpuUInt128(localDivisor);
+            GpuUInt128 gpuStride = new GpuUInt128(twoP128);
+            GenerateCandidatesOnGpu(effectiveCount, gpuStartValue, gpuStride, candidateView, gapView, candidateGenerationKernel);
+            if (effectiveCount > 0)
             {
-                ulong startValue = (ulong)localDivisor;
-                ulong stride = (ulong)twoP128;
-                ArrayView1D<ulong, Stride1D.Dense> candidateView = candidateBuffer.View.SubView(0, effectiveCount);
-                GenerateCandidatesOnGpu(effectiveCount, startValue, stride, candidateView, gapView, candidateGenerationKernel);
-                if (effectiveCount > 0)
-                {
-                    candidateView.CopyToCPU(ref MemoryMarshal.GetReference(candidateSpan), effectiveCount);
-                }
-
-                nextDivisor = localDivisor + twoP128 * (UInt128)(ulong)effectiveCount;
+                candidateView.CopyToCPU(ref MemoryMarshal.GetReference(candidateSpan), effectiveCount);
             }
-            else
-            {
-                if (fallbackDivisorGaps is null || fallbackDivisorGaps.Length < chunkCapacity)
-                {
-                    if (fallbackDivisorGaps is not null)
-                    {
-                        ulongPool.Return(fallbackDivisorGaps, clearArray: false);
-                    }
 
-                    fallbackDivisorGaps = ulongPool.Rent(chunkCapacity);
-                }
-
-                Span<ulong> gapSpan = fallbackDivisorGaps.AsSpan(0, effectiveCount);
-                UInt128 cursor = localDivisor;
-
-                for (int i = 0; i < effectiveCount; i++)
-                {
-                    ulong divisorValue = (ulong)cursor;
-                    candidateSpan[i] = divisorValue;
-                    cursor += twoP128;
-                }
-
-                if (effectiveCount > 0)
-                {
-                    gapSpan[0] = 0UL;
-                    for (int i = 1; i < effectiveCount; i++)
-                    {
-                        gapSpan[i] = candidateSpan[i] - candidateSpan[i - 1];
-                    }
-
-                    gapView.CopyFromCPU(ref MemoryMarshal.GetReference(gapSpan), effectiveCount);
-                }
-
-                nextDivisor = cursor;
-            }
+            nextDivisor = localDivisor + twoP128 * (UInt128)effectiveCount;
 
             processedCount += (ulong)effectiveCount;
             if (effectiveCount > 0)
@@ -447,10 +405,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         }
 
         ulongPool.Return(filteredDivisors, clearArray: false);
-        if (fallbackDivisorGaps is not null)
-        {
-            ulongPool.Return(fallbackDivisorGaps, clearArray: false);
-        }
 
         coveredRange = composite || processedAll || (currentDivisor128 > allowedMax128);
         return composite;
@@ -530,11 +484,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void GenerateCandidatesOnGpu(
         int count,
-        ulong startValue,
-        ulong stride,
+        GpuUInt128 startValue,
+        GpuUInt128 stride,
         ArrayView1D<ulong, Stride1D.Dense> candidateView,
         ArrayView1D<ulong, Stride1D.Dense> gapView,
-        Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ulong, ulong> kernel)
+        Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, GpuUInt128, GpuUInt128> kernel)
     {
         if (count <= 0)
         {
@@ -854,7 +808,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         internal readonly Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte> RemainderScanKernel;
         internal readonly Action<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>> CandidateMaskKernel;
-        internal readonly Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ulong, ulong> CandidateGenerationKernel;
+        internal readonly Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, GpuUInt128, GpuUInt128> CandidateGenerationKernel;
 
         internal readonly int Capacity;
 
