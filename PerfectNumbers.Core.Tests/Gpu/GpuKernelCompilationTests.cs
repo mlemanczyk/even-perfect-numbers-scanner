@@ -78,13 +78,9 @@ public class GpuKernelCompilationTests
         typeof(MersenneNumberDivisorByDivisorGpuTester).GetMethod("GetStepperKernel", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("MersenneNumberDivisorByDivisorGpuTester.GetKernelByPrimeExponent not found.");
 
-    private static readonly MethodInfo DivisorByDivisorGetCandidateMaskKernelMethod =
-        typeof(MersenneNumberDivisorByDivisorGpuTester).GetMethod("GetCandidateMaskKernel", BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("MersenneNumberDivisorByDivisorGpuTester.GetCandidateMaskKernel not found.");
-
-    private static readonly MethodInfo DivisorByDivisorGetCandidateGenerationKernelMethod =
-        typeof(MersenneNumberDivisorByDivisorGpuTester).GetMethod("GetCandidateGenerationKernel", BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("MersenneNumberDivisorByDivisorGpuTester.GetCandidateGenerationKernel not found.");
+    private static readonly MethodInfo DivisorByDivisorGetFilteredCandidateKernelMethod =
+        typeof(MersenneNumberDivisorByDivisorGpuTester).GetMethod("GetFilteredCandidateKernel", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("MersenneNumberDivisorByDivisorGpuTester.GetFilteredCandidateKernel not found.");
 
     private static readonly MethodInfo DivisorTesterGetKernelMethod =
         typeof(MersenneNumberDivisorGpuTester).GetMethod("GetKernel", BindingFlags.NonPublic | BindingFlags.Instance)
@@ -158,8 +154,7 @@ public class GpuKernelCompilationTests
         yield return Loader("NttGpuMath.InverseKernel", CompileNttInverseKernel);
         yield return Loader("MersenneNumberDivisorByDivisorGpuTester.CheckKernel", CompileDivisorByDivisorCheckKernel);
         yield return Loader("MersenneNumberDivisorByDivisorGpuTester.EvaluateDivisorWithStepperKernel", CompileDivisorByDivisorExponentKernel);
-        yield return Loader("MersenneNumberDivisorByDivisorGpuTester.EvaluateCandidateMaskKernel", CompileDivisorByDivisorCandidateMaskKernel);
-        yield return Loader("MersenneNumberDivisorByDivisorGpuTester.GenerateCandidatesKernel", CompileDivisorByDivisorCandidateGenerationKernel);
+        yield return Loader("MersenneNumberDivisorByDivisorGpuTester.GenerateFilteredCandidatesKernel", CompileDivisorByDivisorFilteredCandidateKernel);
         yield return Loader("MersenneNumberDivisorGpuTester.Kernel", CompileDivisorTesterKernel);
         yield return Loader("MersenneNumberLucasLehmerGpuTester.Kernel", CompileLucasLehmerKernel);
         yield return Loader("MersenneNumberLucasLehmerGpuTester.AddSmallKernel", CompileLucasLehmerAddSmallKernel);
@@ -287,16 +282,10 @@ public class GpuKernelCompilationTests
         _ = DivisorByDivisorGetExponentKernelMethod.Invoke(tester, new object[] { accelerator });
     }
 
-    private static void CompileDivisorByDivisorCandidateMaskKernel(Accelerator accelerator)
+    private static void CompileDivisorByDivisorFilteredCandidateKernel(Accelerator accelerator)
     {
         var tester = new MersenneNumberDivisorByDivisorGpuTester();
-        _ = DivisorByDivisorGetCandidateMaskKernelMethod.Invoke(tester, new object[] { accelerator });
-    }
-
-    private static void CompileDivisorByDivisorCandidateGenerationKernel(Accelerator accelerator)
-    {
-        var tester = new MersenneNumberDivisorByDivisorGpuTester();
-        _ = DivisorByDivisorGetCandidateGenerationKernelMethod.Invoke(tester, new object[] { accelerator });
+        _ = DivisorByDivisorGetFilteredCandidateKernelMethod.Invoke(tester, new object[] { accelerator });
     }
 
     private static void CompileDivisorTesterKernel(Accelerator accelerator)

@@ -74,63 +74,37 @@ internal static class DivisorByDivisorKernels
         }
     }
 
-    public static void GenerateCandidatesKernel(
+    public static void GenerateFilteredCandidatesKernel(
         Index1D index,
         ArrayView<ulong> candidates,
+        ArrayView<int> filteredCount,
         ArrayView<GpuUInt128> nextStarts,
         GpuUInt128 startValue,
-        GpuUInt128 stride)
+        GpuUInt128 stride,
+        byte lastIsSevenFlag)
     {
         int globalIndex = index;
-        // EvenPerfectBitScanner always launches this kernel with an extent matching the candidate view length,
-        // so the bounds guard stays commented out to keep the hot path branch-free.
-        // int candidateLength = (int)candidates.Length;
-        // if (globalIndex >= candidateLength)
-        // {
-        //     return;
-        // }
+        int localIndex = Group.IdxX;
+        int groupSize = Group.Dimension.X;
 
-        ulong offset = (ulong)globalIndex;
+        ulong candidateOffset = (ulong)globalIndex;
         GpuUInt128 candidateValue = stride;
-        candidateValue.Mul(offset);
+        candidateValue.Mul(candidateOffset);
         candidateValue.Add(startValue);
-        candidates[globalIndex] = candidateValue.Low;
+        ulong candidate = candidateValue.Low;
+        candidates[globalIndex] = candidate;
 
         if (globalIndex == 0)
         {
-            // EvenPerfectBitScanner provides a single-element nextStarts view per launch, so the guard stays commented out.
-            // int nextStartLength = (int)nextStarts.Length;
-            // if (nextStartLength <= 0)
-            // {
-            //     return;
-            // }
-
-            ulong candidateCount = (ulong)candidates.Length;
+            ulong candidateCount = (ulong)groupSize;
             GpuUInt128 nextValue = stride;
             nextValue.Mul(candidateCount);
             nextValue.Add(startValue);
             nextStarts[0] = nextValue;
         }
-    }
 
-    public static void EvaluateCandidateMaskKernel(
-        Index1D index,
-        ArrayView<ulong> candidates,
-        ArrayView<byte> mask,
-        byte lastIsSevenFlag)
-    {
-        int globalIndex = index;
-        // EvenPerfectBitScanner launches this auto-grouped kernel with an extent matching the mask length,
-        // so the defensive guard stays commented out to keep the kernel branch-free.
-        // int length = (int)mask.Length;
-        // if (globalIndex >= length)
-        // {
-        //     return;
-        // }
-
-        ulong candidate = candidates[globalIndex];
-        byte remainder10 = (byte)(candidate % 10UL);
         bool lastIsSeven = lastIsSevenFlag != 0;
+        byte remainder10 = (byte)(candidate % 10UL);
         bool acceptSeven = remainder10 == 3 || remainder10 == 7 || remainder10 == 9;
         bool acceptNonSeven = remainder10 == 1 || remainder10 == 3 || remainder10 == 7 || remainder10 == 9;
         bool accept10 = lastIsSeven ? acceptSeven : acceptNonSeven;
@@ -140,60 +114,36 @@ internal static class DivisorByDivisorKernels
         bool accept5 = remainder5 != 0;
         byte remainder3 = (byte)(candidate % 3UL);
         bool accept3 = remainder3 != 0;
-        byte accepted = (byte)((accept10 && accept8 && accept3 && accept5) ? 1 : 0);
-        mask[globalIndex] = accepted;
-    }
+        int accepted = (accept10 && accept8 && accept3 && accept5) ? 1 : 0;
 
-    public static void CompactCandidateMaskKernel(
-        Index1D index,
-        ArrayView<byte> mask,
-        ArrayView<ulong> sourceCandidates,
-        ArrayView<ulong> compactedCandidates,
-        ArrayView<int> compactedCount)
-    {
-        int globalIndex = index;
-        int length = (int)mask.Length;
-        // EvenPerfectBitScanner launches this stream kernel with an extent matching the mask length,
-        // so the defensive guard stays commented out to keep the kernel branch-free.
-        // if (globalIndex >= length)
-        // {
-        //     return;
-        // }
-
-        int localIndex = Group.IdxX;
-        int groupSize = Group.Dimension.X;
         var shared = SharedMemory.GetDynamic<int>();
-
+        int length = groupSize;
         int prefixBase = 0;
         int mappingBase = length;
         int fallbackBase = length * 2;
-        // The dynamic shared-memory slice stores prefix sums, compacted index mappings, and fallback slots
-        // in separate regions so the scatter stage can avoid divergent branches.
 
-        byte maskValue = mask[globalIndex];
-        int accepted = maskValue != 0 ? 1 : 0;
         shared[prefixBase + localIndex] = accepted;
         shared[fallbackBase + localIndex] = globalIndex;
 
         Group.Barrier();
 
-        int offset = 1;
-        while (offset < groupSize)
+        int scanOffset = 1;
+        while (scanOffset < groupSize)
         {
-            int addendIndex = prefixBase + localIndex - offset;
-            int addend = localIndex >= offset ? shared[addendIndex] : 0;
+            int addendIndex = prefixBase + localIndex - scanOffset;
+            int addend = localIndex >= scanOffset ? shared[addendIndex] : 0;
 
             Group.Barrier();
 
             int currentIndex = prefixBase + localIndex;
             int current = shared[currentIndex];
             int sum = current + addend;
-            int shouldUpdate = localIndex >= offset ? 1 : 0;
+            int shouldUpdate = localIndex >= scanOffset ? 1 : 0;
             shared[currentIndex] = shouldUpdate != 0 ? sum : current;
 
             Group.Barrier();
 
-            offset <<= 1;
+            scanOffset <<= 1;
         }
 
         int inclusivePrefix = shared[prefixBase + localIndex];
@@ -209,16 +159,17 @@ internal static class DivisorByDivisorKernels
         int lookupBase = writerMask != 0 ? mappingBase : fallbackBase;
         int sourceIndex = shared[lookupBase + localIndex];
 
-        ulong candidateValue = sourceCandidates[sourceIndex];
-        int destinationIndex = localIndex;
-        ulong existingValue = compactedCandidates[destinationIndex];
-        compactedCandidates[destinationIndex] = writerMask != 0 ? candidateValue : existingValue;
+        ulong candidateValueToStore = candidates[sourceIndex];
+        if (writerMask != 0)
+        {
+            candidates[localIndex] = candidateValueToStore;
+        }
 
         int lastLaneMask = globalIndex == length - 1 ? 1 : 0;
         int countValue = shared[prefixBase + localIndex];
         if (lastLaneMask != 0)
         {
-            compactedCount[0] = countValue;
+            filteredCount[0] = countValue;
         }
     }
 
