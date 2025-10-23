@@ -1,3 +1,4 @@
+using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
@@ -11,6 +12,7 @@ namespace PerfectNumbers.Core.Gpu;
 
 /// <summary>
 /// Scans Mersenne divisors on the GPU for prime exponents p >= 31 using per-divisor Montgomery data.
+/// Consumers must call <see cref="ConfigureFromMaxPrime"/> before invoking other members so the divisor limits are populated.
 /// </summary>
 public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDivisorByDivisorTester
 {
@@ -24,13 +26,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     // private bool _isConfigured;
 
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>>> _kernelCache = new();
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>>> _kernelExponentCache = new();
+    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, MontgomeryDivisorData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>>> _stepperKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<byte>, byte>> _remainderDeltaKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte>> _remainderScanKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>>> _candidateMaskKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<int>>> _candidateCompactionKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<byte>, ArrayView<int>>> _hitDetectionKernelCache = new(AcceleratorReferenceComparer.Instance);
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<byte>>> _hitConversionKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>> _candidateGenerationKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, ConcurrentBag<BatchResources>> _resourcePools = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentBag<GpuContextPool.GpuContextLease> _acceleratorPool = new();
@@ -39,8 +40,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     private Action<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
         _kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>>(DivisorByDivisorKernels.CheckKernel));
 
-    private Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> GetKernelByPrimeExponent(Accelerator accelerator) =>
-        _kernelExponentCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>>(DivisorByDivisorKernels.ComputeMontgomeryExponentKernel));
+    private Action<Index1D, MontgomeryDivisorData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>> GetStepperKernel(Accelerator accelerator) =>
+        _stepperKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, MontgomeryDivisorData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>>(DivisorByDivisorKernels.EvaluateDivisorWithStepperKernel));
 
     private Action<Index1D, ArrayView<ulong>, ArrayView<byte>, byte> GetRemainderDeltaKernel(Accelerator accelerator) =>
         _remainderDeltaKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>, byte>(DivisorByDivisorKernels.ComputeRemainderDeltasKernel));
@@ -64,11 +65,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         _hitDetectionKernelCache.GetOrAdd(
             accelerator,
             acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<byte>, ArrayView<int>>(DivisorByDivisorKernels.PublishFirstHitKernel));
-
-    private Action<Index1D, ArrayView<ulong>, ArrayView<byte>> GetResultConversionKernel(Accelerator accelerator) =>
-        _hitConversionKernelCache.GetOrAdd(
-            accelerator,
-            acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(DivisorByDivisorKernels.ConvertMontgomeryResultsToHitsKernel));
 
     private Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128> GetCandidateGenerationKernel(Accelerator accelerator) =>
         _candidateGenerationKernelCache.GetOrAdd(
@@ -564,6 +560,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         scanKernel(kernelConfig, new Index1D(count), deltaView, remainderView, baseRemainder, modulus);
     }
 
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void BuildCandidateMaskOnGpu(
         int count,
@@ -691,10 +688,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
         private readonly GpuContextPool.GpuContextLease _lease;
         private readonly Accelerator _accelerator;
-        private Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> _kernel = null!;
-        private Action<Index1D, ArrayView<ulong>, ArrayView<byte>> _hitConversionKernel = null!;
+        private Action<Index1D, MontgomeryDivisorData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>> _stepperKernel = null!;
         private MemoryBuffer1D<ulong, Stride1D.Dense> _exponentsBuffer = null!;
-        private MemoryBuffer1D<ulong, Stride1D.Dense> _resultsBuffer = null!;
         private MemoryBuffer1D<byte, Stride1D.Dense> _hitBuffer = null!;
         private ulong[] _hostBuffer = null!;
         private int _capacity;
@@ -713,14 +708,37 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             _disposed = false;
         }
 
-        private void EnsureExecutionResourcesLocked()
+        private void EnsureExecutionResourcesLocked(int requiredCapacity)
         {
-            _kernel = _owner.GetKernelByPrimeExponent(_accelerator);
-            _hitConversionKernel = _owner.GetResultConversionKernel(_accelerator);
-            _exponentsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
-            _resultsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
-            _hitBuffer = _accelerator.Allocate1D<byte>(_capacity);
-            _hostBuffer = ThreadStaticPools.UlongPool.Rent(_capacity);
+            if (_stepperKernel == null)
+            {
+                _stepperKernel = _owner.GetStepperKernel(_accelerator);
+            }
+
+            bool allocateBuffers = _exponentsBuffer == null;
+            if (!allocateBuffers && _capacity < requiredCapacity)
+            {
+                _exponentsBuffer?.Dispose();
+                _hitBuffer?.Dispose();
+                if (_hostBuffer != null)
+                {
+                    ThreadStaticPools.UlongPool.Return(_hostBuffer, clearArray: false);
+                    _hostBuffer = null!;
+                }
+
+                _exponentsBuffer = null!;
+                _hitBuffer = null!;
+                allocateBuffers = true;
+            }
+
+            if (allocateBuffers)
+            {
+                int desiredCapacity = requiredCapacity > _capacity ? requiredCapacity : _capacity;
+                _capacity = desiredCapacity;
+                _exponentsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
+                _hitBuffer = _accelerator.Allocate1D<byte>(_capacity);
+                _hostBuffer = ThreadStaticPools.UlongPool.Rent(_capacity);
+            }
         }
 
         public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes, Span<byte> hits)
@@ -731,7 +749,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             }
 
             int length = primes.Length;
-            // EvenPerfectBitScanner always supplies at least one exponent per divisor check, so the previous zero-length guard stays commented out.
+            // EvenPerfectBitScanner always supplies at least one exponent per divisor check, so the guard stays commented out.
             // if (length == 0)
             // {
             //     return;
@@ -745,42 +763,51 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             //     return;
             // }
 
+            MontgomeryDivisorData cachedData = divisorData;
+            if (cachedData.Modulus != divisor)
+            {
+                cachedData = MontgomeryDivisorData.FromModulus(divisor);
+            }
+
+            ulong cycle = divisorCycle;
+            // EvenPerfectBitScanner resolves divisor cycles before scheduling GPU work, so the zero-cycle fallback stays disabled.
+            // if (cycle == 0UL)
+            // {
+            //     throw new InvalidOperationException("GPU divisor cycle length must be non-zero.");
+            // }
+
+            ulong firstPrime = primes[0];
+            // Precompute the initial cycle remainder on the host to keep the GPU kernel branch-free.
+            // EvenPerfectBitScanner resolves divisor cycles before scheduling GPU work, so cycle never equals zero here.
+            ulong firstRemainder = firstPrime % cycle;
+
             Monitor.Enter(_lease.ExecutionLock);
 
-            if (_kernel == null || _hitConversionKernel == null)
-            {
-                EnsureExecutionResourcesLocked();
-            }
+            EnsureExecutionResourcesLocked(length);
 
-            var kernel = _kernel!;
-            var hitConversionKernel = _hitConversionKernel!;
-
-            ArrayView1D<ulong, Stride1D.Dense> exponentsView = _exponentsBuffer.View;
-            ArrayView1D<ulong, Stride1D.Dense> resultsView = _resultsBuffer.View;
+            ArrayView1D<ulong, Stride1D.Dense> exponentView = _exponentsBuffer.View;
             ArrayView1D<byte, Stride1D.Dense> hitView = _hitBuffer.View;
-            Span<ulong> hostSpan = _hostBuffer.AsSpan(0, _capacity);
 
-            int offset = 0;
-            while (offset < length)
-            {
-                int batchSize = Math.Min(_capacity, length - offset);
-                ReadOnlySpan<ulong> batch = primes.Slice(offset, batchSize);
-                batch.CopyTo(hostSpan);
+            Span<ulong> hostSpan = _hostBuffer.AsSpan(0, length);
+            primes.CopyTo(hostSpan);
 
-                ArrayView1D<ulong, Stride1D.Dense> exponentSlice = exponentsView.SubView(0, batchSize);
-                exponentSlice.CopyFromCPU(ref MemoryMarshal.GetReference(hostSpan), batchSize);
+            ArrayView1D<ulong, Stride1D.Dense> exponentSlice = exponentView.SubView(0, length);
+            exponentSlice.CopyFromCPU(ref MemoryMarshal.GetReference(hostSpan), length);
 
-                ArrayView1D<ulong, Stride1D.Dense> resultSlice = resultsView.SubView(0, batchSize);
-                kernel(batchSize, divisorData, exponentSlice, resultSlice);
+            ArrayView1D<byte, Stride1D.Dense> hitSliceView = hitView.SubView(0, length);
+            var stepperKernel = _stepperKernel!;
+            // EnsureExecutionResourcesLocked binds the GPU stepper kernel during the first session launch, so the null check
+            // remains commented out to avoid a redundant branch on the production path.
+            // if (stepperKernel is null)
+            // {
+            //     Monitor.Exit(_lease.ExecutionLock);
+            //     throw new InvalidOperationException("GPU stepper kernel was not initialized.");
+            // }
 
-                ArrayView1D<byte, Stride1D.Dense> hitSliceView = hitView.SubView(0, batchSize);
-                hitConversionKernel(batchSize, resultSlice, hitSliceView);
+            stepperKernel(1, cachedData, cycle, firstRemainder, exponentSlice, hitSliceView);
 
-                Span<byte> hitSlice = hits.Slice(offset, batchSize);
-                hitSliceView.CopyToCPU(ref MemoryMarshal.GetReference(hitSlice), batchSize);
-
-                offset += batchSize;
-            }
+            Span<byte> hitSlice = hits.Slice(0, length);
+            hitSliceView.CopyToCPU(ref MemoryMarshal.GetReference(hitSlice), length);
 
             Monitor.Exit(_lease.ExecutionLock);
         }

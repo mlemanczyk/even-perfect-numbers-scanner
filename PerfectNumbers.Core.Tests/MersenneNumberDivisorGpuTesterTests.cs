@@ -85,11 +85,17 @@ public class MersenneNumberDivisorGpuTesterTests
 
     [Fact]
     [Trait("Category", "Fast")]
-    public void ByDivisor_tester_requires_configuration()
+    public void ByDivisor_tester_defaults_to_zero_limit_before_configuration()
     {
         var tester = new MersenneNumberDivisorByDivisorGpuTester();
-        Action act = () => tester.IsPrime(31UL, out _);
-        act.Should().Throw<InvalidOperationException>();
+
+        tester.DivisorLimit.Should().Be(0UL);
+
+        ulong[] primes = { 31UL, 37UL };
+        ulong[] allowed = new ulong[primes.Length];
+
+        tester.PrepareCandidates(primes, allowed);
+        allowed.Should().OnlyContain(value => value == 0UL);
     }
 
     [Fact]

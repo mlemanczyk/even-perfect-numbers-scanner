@@ -122,6 +122,30 @@ internal struct ExponentRemainderStepper
     }
 
     /// <summary>
+    /// Advances the GPU stepping state to the next exponent in a strictly ascending sequence that reuses the same divisor.
+    /// Callers must invoke <see cref="InitializeGpu(ulong)"/> beforehand.
+    /// </summary>
+    /// <param name="exponent">Next exponent in the ascending sequence.</param>
+    /// <returns>The canonical residue produced by <c>2^exponent mod divisor</c>.</returns>
+    public ulong ComputeNextGpu(ulong exponent)
+    {
+        AdvanceGpu(exponent);
+        return ReduceCurrent();
+    }
+
+    /// <summary>
+    /// Advances the GPU stepping state to the next exponent and reports whether it evaluates to unity.
+    /// Callers must seed the stepper through <see cref="InitializeGpu(ulong)"/> or <see cref="InitializeGpuIsUnity(ulong)"/>.
+    /// </summary>
+    /// <param name="exponent">Next exponent in the ascending sequence.</param>
+    /// <returns><see langword="true"/> when the canonical residue equals one.</returns>
+    public bool ComputeNextGpuIsUnity(ulong exponent)
+    {
+        AdvanceGpu(exponent);
+        return _currentMontgomery == _montgomeryOne;
+    }
+
+    /// <summary>
     /// Seeds the stepper with a precomputed Montgomery residue produced by the caller.
     /// The provided exponent becomes the new baseline and all subsequent calls must continue with greater exponents.
     /// </summary>
@@ -145,6 +169,14 @@ internal struct ExponentRemainderStepper
     /// <param name="montgomeryDelta">Montgomery residue delta corresponding to the exponent gap.</param>
     /// <param name="isUnity">Outputs whether the resulting residue equals Montgomery one.</param>
     /// <returns><see langword="true"/> when the advance succeeds.</returns>
+    private void AdvanceGpu(ulong exponent)
+    {
+        ulong delta = exponent - _previousExponent;
+        ulong multiplier = ULongExtensions.Pow2MontgomeryModWindowedGpuKeepMontgomery(_divisor, delta);
+        _currentMontgomery = _currentMontgomery.MontgomeryMultiply(multiplier, _modulus, _nPrime);
+        _previousExponent = exponent;
+    }
+
     public bool TryAdvanceWithMontgomeryDelta(ulong exponent, ulong montgomeryDelta, out bool isUnity)
     {
         // TODO: Once the divisor-cycle cache exposes a direct Montgomery delta, multiply it here instead
@@ -164,7 +196,7 @@ internal struct ExponentRemainderStepper
 
     private void InitializeGpuState(ulong exponent)
     {
-        _currentMontgomery = exponent.Pow2MontgomeryModWindowedCpu(_divisor, keepMontgomery: true);
+        _currentMontgomery = ULongExtensions.Pow2MontgomeryModWindowedGpuKeepMontgomery(_divisor, exponent);
         _previousExponent = exponent;
     }
 

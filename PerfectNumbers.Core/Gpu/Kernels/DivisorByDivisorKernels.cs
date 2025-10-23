@@ -2,6 +2,7 @@ using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -16,6 +17,61 @@ internal static class DivisorByDivisorKernels
         ulong exponent = exponents[index];
         ulong montgomeryResult = ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponent);
         hits[index] = montgomeryResult == 1UL ? (byte)1 : (byte)0;
+    }
+
+    public static void EvaluateDivisorWithStepperKernel(
+        Index1D _,
+        MontgomeryDivisorData divisor,
+        ulong divisorCycle,
+        ulong firstCycleRemainder,
+        ArrayView<ulong> exponents,
+        ArrayView<byte> hits)
+    {
+        int length = (int)exponents.Length;
+        // EvenPerfectBitScanner always supplies at least one exponent per GPU divisor check,
+        // so the guard stays commented out to keep the kernel branch-free.
+        // if (length == 0)
+        // {
+        //     return;
+        // }
+
+        var exponentStepper = new ExponentRemainderStepper(divisor);
+        ulong firstPrime = exponents[0];
+        bool firstUnity = exponentStepper.InitializeGpuIsUnity(firstPrime);
+        // EvenPerfectBitScanner only schedules divisors with non-zero cycle lengths (equal to the tested prime),
+        // so the no-cycle path remains commented out to keep the kernel branch-free.
+        // if (divisorCycle == 0UL)
+        // {
+        //     hits[0] = firstUnity ? (byte)1 : (byte)0;
+        //     for (int i = 1; i < length; i++)
+        //     {
+        //         ulong primeNoCycle = exponents[i];
+        //         bool unityNoCycle = exponentStepper.ComputeNextGpuIsUnity(primeNoCycle);
+        //         hits[i] = unityNoCycle ? (byte)1 : (byte)0;
+        //     }
+        //     return;
+        // }
+
+        ulong cycleLength = divisorCycle;
+        ulong previousPrime = firstPrime;
+        // The host precomputes the initial cycle remainder to keep the kernel free of modulo operations.
+        ulong cycleRemainder = firstCycleRemainder;
+        hits[0] = cycleRemainder == 0UL && firstUnity ? (byte)1 : (byte)0;
+
+        for (int i = 1; i < length; i++)
+        {
+            ulong prime = exponents[i];
+            ulong delta = prime - previousPrime;
+            previousPrime = prime;
+
+            var remainderValue = new GpuUInt128(cycleRemainder);
+            remainderValue.AddMod(delta, cycleLength);
+            cycleRemainder = remainderValue.Low;
+
+            hits[i] = cycleRemainder == 0UL
+                ? (exponentStepper.ComputeNextGpuIsUnity(prime) ? (byte)1 : (byte)0)
+                : (byte)0;
+        }
     }
 
     public static void GenerateCandidatesAndGapsKernel(
