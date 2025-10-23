@@ -2,6 +2,7 @@ using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -18,10 +19,64 @@ internal static class DivisorByDivisorKernels
         hits[index] = montgomeryResult == 1UL ? (byte)1 : (byte)0;
     }
 
-    public static void GenerateCandidatesAndGapsKernel(
+    public static void EvaluateDivisorWithStepperKernel(
+        Index1D _,
+        MontgomeryDivisorData divisor,
+        ulong divisorCycle,
+        ulong firstCycleRemainder,
+        ArrayView<ulong> exponents,
+        ArrayView<byte> hits)
+    {
+        int length = (int)exponents.Length;
+        // EvenPerfectBitScanner always supplies at least one exponent per GPU divisor check,
+        // so the guard stays commented out to keep the kernel branch-free.
+        // if (length == 0)
+        // {
+        //     return;
+        // }
+
+        var exponentStepper = new ExponentRemainderStepper(divisor);
+        ulong firstPrime = exponents[0];
+        bool firstUnity = exponentStepper.InitializeGpuIsUnity(firstPrime);
+        // EvenPerfectBitScanner only schedules divisors with non-zero cycle lengths (equal to the tested prime),
+        // so the no-cycle path remains commented out to keep the kernel branch-free.
+        // if (divisorCycle == 0UL)
+        // {
+        //     hits[0] = firstUnity ? (byte)1 : (byte)0;
+        //     for (int i = 1; i < length; i++)
+        //     {
+        //         ulong primeNoCycle = exponents[i];
+        //         bool unityNoCycle = exponentStepper.ComputeNextGpuIsUnity(primeNoCycle);
+        //         hits[i] = unityNoCycle ? (byte)1 : (byte)0;
+        //     }
+        //     return;
+        // }
+
+        ulong cycleLength = divisorCycle;
+        ulong previousPrime = firstPrime;
+        // The host precomputes the initial cycle remainder to keep the kernel free of modulo operations.
+        ulong cycleRemainder = firstCycleRemainder;
+        hits[0] = cycleRemainder == 0UL && firstUnity ? (byte)1 : (byte)0;
+
+        for (int i = 1; i < length; i++)
+        {
+            ulong prime = exponents[i];
+            ulong delta = prime - previousPrime;
+            previousPrime = prime;
+
+            var remainderValue = new GpuUInt128(cycleRemainder);
+            remainderValue.AddMod(delta, cycleLength);
+            cycleRemainder = remainderValue.Low;
+
+            hits[i] = cycleRemainder == 0UL
+                ? (exponentStepper.ComputeNextGpuIsUnity(prime) ? (byte)1 : (byte)0)
+                : (byte)0;
+        }
+    }
+
+    public static void GenerateCandidatesKernel(
         Index1D index,
         ArrayView<ulong> candidates,
-        ArrayView<ulong> gaps,
         ArrayView<GpuUInt128> nextStarts,
         GpuUInt128 startValue,
         GpuUInt128 stride)
@@ -41,23 +96,6 @@ internal static class DivisorByDivisorKernels
         candidateValue.Add(startValue);
         candidates[globalIndex] = candidateValue.Low;
 
-        // The scanner supplies gap buffers that mirror the candidate view length,
-        // so the additional bounds guard remains commented out for the same reason as above.
-        // int gapLength = (int)gaps.Length;
-        // if (globalIndex >= gapLength)
-        // {
-        //     return;
-        // }
-
-        ulong previousOffset = offset > 0UL ? offset - 1UL : 0UL;
-        GpuUInt128 previousValue = stride;
-        previousValue.Mul(previousOffset);
-        previousValue.Add(startValue);
-
-        GpuUInt128 gapValue = candidateValue;
-        gapValue.Sub(previousValue);
-        gaps[globalIndex] = gapValue.Low;
-
         if (globalIndex == 0)
         {
             // EvenPerfectBitScanner provides a single-element nextStarts view per launch, so the guard stays commented out.
@@ -75,68 +113,11 @@ internal static class DivisorByDivisorKernels
         }
     }
 
-    public static void ComputeRemainderDeltasKernel(Index1D index, ArrayView<ulong> gaps, ArrayView<byte> deltas, byte modulus)
-    {
-        deltas[index] = (byte)(gaps[index] % modulus);
-    }
-
-    public static void AccumulateRemaindersKernel(
-        Index1D index,
-        ArrayView<byte> deltas,
-        ArrayView<byte> remainders,
-        byte baseRemainder,
-        byte modulus)
-    {
-        int globalIndex = index;
-        // EvenPerfectBitScanner launches this stream kernel with an extent matching the remainder span length,
-        // so the defensive guard stays commented out to keep the kernel branch-free.
-        // int length = (int)remainders.Length;
-        // if (globalIndex >= length)
-        // {
-        //     return;
-        // }
-
-        int localIndex = Group.IdxX;
-        int groupSize = Group.Dimension.X;
-        var shared = SharedMemory.GetDynamic<int>();
-
-        shared[localIndex] = deltas[globalIndex];
-        Group.Barrier();
-
-        int offset = 1;
-        int mod = modulus;
-        while (offset < groupSize)
-        {
-            bool apply = localIndex >= offset;
-            int addend = apply ? shared[localIndex - offset] : 0;
-
-            Group.Barrier();
-
-            int current = shared[localIndex];
-            int sum = apply ? current + addend : current;
-            int wrap = sum >= mod ? 1 : 0;
-            sum -= wrap * mod;
-            shared[localIndex] = apply ? sum : current;
-
-            Group.Barrier();
-
-            offset <<= 1;
-        }
-
-        int remainder = baseRemainder + shared[localIndex];
-        int remainderWrap = remainder >= mod ? 1 : 0;
-        remainder -= remainderWrap * mod;
-        remainders[globalIndex] = (byte)remainder;
-    }
-
     public static void EvaluateCandidateMaskKernel(
         Index1D index,
-        ArrayView<byte> remainder10,
-        ArrayView<byte> remainder8,
-        ArrayView<byte> remainder5,
-        ArrayView<byte> remainder3,
-        byte lastIsSevenFlag,
-        ArrayView<byte> mask)
+        ArrayView<ulong> candidates,
+        ArrayView<byte> mask,
+        byte lastIsSevenFlag)
     {
         int globalIndex = index;
         // EvenPerfectBitScanner launches this auto-grouped kernel with an extent matching the mask length,
@@ -147,15 +128,18 @@ internal static class DivisorByDivisorKernels
         //     return;
         // }
 
-        byte value10 = remainder10[globalIndex];
+        ulong candidate = candidates[globalIndex];
+        byte remainder10 = (byte)(candidate % 10UL);
         bool lastIsSeven = lastIsSevenFlag != 0;
-        bool acceptSeven = value10 == 3 || value10 == 7 || value10 == 9;
-        bool acceptNonSeven = value10 == 1 || value10 == 3 || value10 == 7 || value10 == 9;
+        bool acceptSeven = remainder10 == 3 || remainder10 == 7 || remainder10 == 9;
+        bool acceptNonSeven = remainder10 == 1 || remainder10 == 3 || remainder10 == 7 || remainder10 == 9;
         bool accept10 = lastIsSeven ? acceptSeven : acceptNonSeven;
-        byte value8 = remainder8[globalIndex];
-        bool accept8 = value8 == 1 || value8 == 7;
-        bool accept5 = remainder5[globalIndex] != 0;
-        bool accept3 = remainder3[globalIndex] != 0;
+        byte remainder8 = (byte)(candidate & 7UL);
+        bool accept8 = remainder8 == 1 || remainder8 == 7;
+        byte remainder5 = (byte)(candidate % 5UL);
+        bool accept5 = remainder5 != 0;
+        byte remainder3 = (byte)(candidate % 3UL);
+        bool accept3 = remainder3 != 0;
         byte accepted = (byte)((accept10 && accept8 && accept3 && accept5) ? 1 : 0);
         mask[globalIndex] = accepted;
     }
