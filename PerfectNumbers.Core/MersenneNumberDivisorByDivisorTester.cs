@@ -73,7 +73,7 @@ public static class MersenneNumberDivisorByDivisorTester
 				candidateCount = candidateSpan.Length;
 			}
 
-			pool.Return(recordedCandidates, clearArray: true);
+			pool.Return(recordedCandidates, clearArray: false);
 		}
 
 		if (skippedByPreviousResults > 0)
@@ -211,8 +211,8 @@ public static class MersenneNumberDivisorByDivisorTester
 			filteredPrimes.Add(prime);
 		}
 
-		pool.Return(allowedMaxBatch, clearArray: true);
-		pool.Return(primeBatch, clearArray: true);
+		pool.Return(allowedMaxBatch, clearArray: false);
+		pool.Return(primeBatch, clearArray: false);
 
 		// The filtered list mirrors primesToTest in the CPU flow, so the guard below never triggers after the earlier
 		// emptiness checks.

@@ -232,8 +232,10 @@ internal static class DivisorByDivisorKernels
 
         int lastLaneMask = globalIndex == length - 1 ? 1 : 0;
         int countValue = shared[prefixBase + localIndex];
-        int storedCount = lastLaneMask != 0 ? countValue : 0;
-        Atomic.Max(ref compactedCount[0], storedCount);
+        if (lastLaneMask != 0)
+        {
+            compactedCount[0] = countValue;
+        }
     }
 
     public static void PublishFirstHitKernel(
