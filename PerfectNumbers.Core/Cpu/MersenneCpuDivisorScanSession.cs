@@ -43,16 +43,13 @@ internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDi
         // Keep these remainder steppers in place so future updates continue reusing the previously computed residues.
         // They are critical for avoiding repeated full Montgomery exponentiation work when scanning divisors.
         var exponentStepper = new ExponentRemainderStepper(cachedData);
-        if (!exponentStepper.IsValidModulus)
-        {
-            throw new InvalidOperationException($"Invalid modulus {cachedData.Modulus} for divisor scans.");
-        }
 
         var cycleStepper = new CycleRemainderStepper(divisorCycle);
 
+        bool initialUnity = exponentStepper.InitializeCpuIsUnity(primes[0]);
         ulong remainder = cycleStepper.Initialize(primes[0]);
         hits[0] = remainder == 0UL
-            ? (exponentStepper.ComputeNextIsUnity(primes[0]) ? (byte)1 : (byte)0)
+            ? (initialUnity ? (byte)1 : (byte)0)
             : (byte)0;
 
         for (int i = 1; i < length; i++)
