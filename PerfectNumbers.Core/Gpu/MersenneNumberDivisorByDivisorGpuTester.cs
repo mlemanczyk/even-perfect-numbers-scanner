@@ -23,16 +23,15 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     private ulong _divisorLimit;
     // private bool _isConfigured;
 
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>>> _kernelCache = new();
+    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>> _kernelCache = new();
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, MontgomeryDivisorData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>>> _stepperKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, Action<KernelConfig, Index1D, ArrayView<ulong>, ArrayView<int>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128, byte>> _filteredCandidateKernelCache = new(AcceleratorReferenceComparer.Instance);
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<byte>, ArrayView<int>>> _hitDetectionKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, ConcurrentBag<BatchResources>> _resourcePools = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentBag<GpuContextPool.GpuContextLease> _acceleratorPool = new();
     private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
 
-    private Action<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
-        _kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>>(DivisorByDivisorKernels.CheckKernel));
+    private Action<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> GetKernel(Accelerator accelerator) =>
+        _kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>(DivisorByDivisorKernels.CheckKernel));
 
     private Action<Index1D, MontgomeryDivisorData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>> GetStepperKernel(Accelerator accelerator) =>
         _stepperKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, MontgomeryDivisorData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>>(DivisorByDivisorKernels.EvaluateDivisorWithStepperKernel));
@@ -41,11 +40,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         _filteredCandidateKernelCache.GetOrAdd(
             accelerator,
             acc => acc.LoadStreamKernel<Index1D, ArrayView<ulong>, ArrayView<int>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128, byte>(DivisorByDivisorKernels.GenerateFilteredCandidatesKernel));
-
-    private Action<Index1D, ArrayView<byte>, ArrayView<int>> GetHitDetectionKernel(Accelerator accelerator) =>
-        _hitDetectionKernelCache.GetOrAdd(
-            accelerator,
-            acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<byte>, ArrayView<int>>(DivisorByDivisorKernels.PublishFirstHitKernel));
 
     public int GpuBatchSize
     {
@@ -126,7 +120,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             resources.NextStartBuffer,
             resources.FilterCountBuffer,
             resources.FilteredCandidateKernel,
-            resources.HitDetectionKernel,
             resources.Divisors,
             resources.Exponents,
             resources.DivisorData,
@@ -183,7 +176,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         ulong prime,
         ulong allowedMax,
         Accelerator accelerator,
-        Action<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>> kernel,
+        Action<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> kernel,
         MemoryBuffer1D<MontgomeryDivisorData, Stride1D.Dense> divisorsBuffer,
         MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer,
         MemoryBuffer1D<byte, Stride1D.Dense> hitsBuffer,
@@ -192,7 +185,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         MemoryBuffer1D<GpuUInt128, Stride1D.Dense> nextStartBuffer,
         MemoryBuffer1D<int, Stride1D.Dense> filterCountBuffer,
         Action<KernelConfig, Index1D, ArrayView<ulong>, ArrayView<int>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128, byte> filteredCandidateKernel,
-        Action<Index1D, ArrayView<byte>, ArrayView<int>> hitDetectionKernel,
         in ulong[] divisors,
         ulong[] exponents,
         MontgomeryDivisorData[] divisorData,
@@ -336,9 +328,14 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
             divisorView.CopyFromCPU(ref MemoryMarshal.GetReference(divisorDataSpan), admissibleCount);
             exponentView.CopyFromCPU(ref MemoryMarshal.GetReference(exponentSpan), admissibleCount);
-            kernel(admissibleCount, divisorView, exponentView, hitsView);
+            int sentinel = int.MaxValue;
+            hitIndexView.SubView(0, 1).CopyFromCPU(ref sentinel, 1);
 
-            int hitIndex = FindFirstHitOnGpu(admissibleCount, hitsView, hitIndexView, hitDetectionKernel);
+            kernel(admissibleCount, divisorView, exponentView, hitsView, hitIndexView);
+
+            int firstHit = sentinel;
+            hitIndexView.SubView(0, 1).CopyToCPU(ref firstHit, 1);
+            int hitIndex = firstHit >= admissibleCount ? -1 : firstHit;
             bool hitFound = hitIndex >= 0;
             composite = hitFound;
             int lastIndex = admissibleCount - 1;
@@ -350,9 +347,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         coveredRange = composite || processedAll || (currentDivisor128 > allowedMax128);
         return composite;
     }
-
-
-
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -390,29 +384,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         return filteredCount;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FindFirstHitOnGpu(
-        int count,
-        ArrayView1D<byte, Stride1D.Dense> hitsView,
-        ArrayView1D<int, Stride1D.Dense> hitIndexView,
-        Action<Index1D, ArrayView<byte>, ArrayView<int>> hitKernel)
-    {
-        // EvenPerfectBitScanner only calls this helper with positive counts,
-        // so the guard stays commented out to keep the hot path branch-free.
-        // if (count <= 0)
-        // {
-        //     return -1;
-        // }
-
-        int sentinel = int.MaxValue;
-        hitIndexView.SubView(0, 1).CopyFromCPU(ref sentinel, 1);
-
-        hitKernel(count, hitsView, hitIndexView);
-
-        int firstHit = sentinel;
-        hitIndexView.SubView(0, 1).CopyToCPU(ref firstHit, 1);
-        return firstHit >= count ? -1 : firstHit;
-    }
 
 
 
@@ -660,7 +631,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             DivisorData = ThreadStaticPools.MontgomeryDivisorDataPool.Rent(actualCapacity);
             CycleLengths = ulongPool.Rent(cycleCapacity);
             FilteredCandidateKernel = owner.GetFilteredCandidateKernel(accelerator);
-            HitDetectionKernel = owner.GetHitDetectionKernel(accelerator);
             Capacity = actualCapacity;
             CycleCapacity = cycleCapacity;
         }
@@ -688,8 +658,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         internal readonly ulong[] CycleLengths;
 
         internal readonly Action<KernelConfig, Index1D, ArrayView<ulong>, ArrayView<int>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128, byte> FilteredCandidateKernel;
-
-        internal readonly Action<Index1D, ArrayView<byte>, ArrayView<int>> HitDetectionKernel;
 
         internal readonly int Capacity;
 

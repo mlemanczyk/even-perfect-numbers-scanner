@@ -8,15 +8,27 @@ namespace PerfectNumbers.Core.Gpu;
 
 internal static class DivisorByDivisorKernels
 {
-    public static void CheckKernel(Index1D index, ArrayView<MontgomeryDivisorData> divisors, ArrayView<ulong> exponents, ArrayView<byte> hits)
+    public static void CheckKernel(
+        Index1D index,
+        ArrayView<MontgomeryDivisorData> divisors,
+        ArrayView<ulong> exponents,
+        ArrayView<byte> hits,
+        ArrayView<int> firstHit)
     {
-        MontgomeryDivisorData divisor = divisors[index];
+        int globalIndex = index;
+        MontgomeryDivisorData divisor = divisors[globalIndex];
         ulong modulus = divisor.Modulus;
         // The GPU by-divisor pipeline only materializes odd moduli greater than one (q = 2kp + 1),
         // so the defensive guard for invalid values stays disabled here to keep the kernel branch-free.
-        ulong exponent = exponents[index];
+        ulong exponent = exponents[globalIndex];
         ulong montgomeryResult = ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponent);
-        hits[index] = montgomeryResult == 1UL ? (byte)1 : (byte)0;
+        byte hit = montgomeryResult == 1UL ? (byte)1 : (byte)0;
+        hits[globalIndex] = hit;
+
+        if (hit != 0)
+        {
+            Atomic.Min(ref firstHit[0], globalIndex);
+        }
     }
 
     public static void EvaluateDivisorWithStepperKernel(
@@ -171,25 +183,6 @@ internal static class DivisorByDivisorKernels
         {
             filteredCount[0] = countValue;
         }
-    }
-
-    public static void PublishFirstHitKernel(
-        Index1D index,
-        ArrayView<byte> hits,
-        ArrayView<int> firstHit)
-    {
-        int globalIndex = index;
-        // EvenPerfectBitScanner launches this auto-grouped kernel with an extent matching the hit view length,
-        // so the defensive guard stays commented out to keep the hot path branch-free.
-        // int length = (int)hits.Length;
-        // if (globalIndex >= length)
-        // {
-        //     return;
-        // }
-
-        byte hitValue = hits[globalIndex];
-        int candidate = hitValue != 0 ? globalIndex : int.MaxValue;
-        Atomic.Min(ref firstHit[0], candidate);
     }
 
     public static void ConvertMontgomeryResultsToHitsKernel(
