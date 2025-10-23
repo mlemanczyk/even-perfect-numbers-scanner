@@ -564,7 +564,8 @@ public class MersenneDivisorCycles
 
         stepper.Reset();
 
-        for (int j = 0; j < actual; j++)
+        evaluations[0] = stepper.InitializeCpuIsUnity(candidates[0]);
+        for (int j = 1; j < actual; j++)
         {
             evaluations[j] = stepper.ComputeNextIsUnity(candidates[j]);
         }
@@ -582,10 +583,13 @@ public class MersenneDivisorCycles
 
     private static ulong PollardRho64(ulong n)
     {
-        if ((n & 1UL) == 0UL)
-        {
-            return 2UL;
-        }
+        // The EvenPerfectBitScanner path removes all factors of two before invoking Pollard-Rho, so this branch never executes
+        // outside synthetic tests and benchmarks. Keep the guard documented to prevent future regressions without paying the hot-
+        // path cost.
+        // if ((n & 1UL) == 0UL)
+        // {
+        //     return 2UL;
+        // }
 
         while (true)
         {

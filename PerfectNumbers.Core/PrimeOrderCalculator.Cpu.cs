@@ -165,7 +165,14 @@ internal static partial class PrimeOrderCalculator
 
 		ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
 		int candidateCount = candidates.Length;
-		for (int i = 0; i < candidateCount; i++)
+
+		if (stepper.InitializeCpuIsUnity(candidates[0]))
+		{
+			ThreadStaticPools.ReturnExponentStepper(stepper);
+			return false;
+		}
+
+		for (int i = 1; i < candidateCount; i++)
 		{
 			if (stepper.ComputeNextIsUnity(candidates[i]))
 			{
@@ -300,7 +307,8 @@ internal static partial class PrimeOrderCalculator
 
 		stepper.Reset();
 
-		for (int j = 0; j < actual; j++)
+		evaluations[0] = stepper.InitializeCpuIsUnity(candidates[0]);
+		for (int j = 1; j < actual; j++)
 		{
 			evaluations[j] = stepper.ComputeNextIsUnity(candidates[j]);
 		}
@@ -459,7 +467,12 @@ internal static partial class PrimeOrderCalculator
 
 		stepper.Reset();
 
-		for (int j = 0; j < actual; j++)
+		if (stepper.InitializeCpuIsUnity(candidates[0]))
+		{
+			return true;
+		}
+
+		for (int j = 1; j < actual; j++)
 		{
 			if (stepper.ComputeNextIsUnity(candidates[j]))
 			{
@@ -535,6 +548,7 @@ internal static partial class PrimeOrderCalculator
 			bool allowGpuBatch = true;
 			Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
 			ExponentRemainderStepper powStepper = ThreadStaticPools.RentExponentStepper(divisorData);
+			bool powStepperInitialized = false;
 
 			// DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
 			int index = 0;
@@ -594,7 +608,33 @@ internal static partial class PrimeOrderCalculator
 					}
 				}
 
-				for (int i = 0; i < batchSize && powUsed < powBudget; i++)
+				int startIndex = 0;
+
+				if (!gpuSuccess && !powStepperInitialized)
+				{
+					ulong candidate = batch[0];
+					powUsed++;
+
+					bool equalsOne = powStepper.InitializeCpuIsUnity(candidate);
+					powStepperInitialized = true;
+					if (equalsOne && TryConfirmCandidateCpu(prime, candidate, divisorData, config, ref powUsed, powBudget))
+					{
+						if (gpuPool is not null)
+						{
+							pool.Return(gpuPool, clearArray: false);
+						}
+
+						candidates.Clear();
+						ThreadStaticPools.ReturnUlongList(candidates);
+						ThreadStaticPools.ReturnExponentStepper(powStepper);
+						result = candidate;
+						return true;
+					}
+
+					startIndex = 1;
+				}
+
+				for (int i = startIndex; i < batchSize && powUsed < powBudget; i++)
 				{
 					ulong candidate = batch[i];
 					powUsed++;
@@ -936,7 +976,18 @@ internal static partial class PrimeOrderCalculator
 
 		stepper.Reset();
 
-		for (int j = 0; j < actual; j++)
+		if (powUsed >= powBudget && powBudget > 0)
+		{
+			return true;
+		}
+
+		powUsed++;
+		if (stepper.InitializeCpuIsUnity(candidates[0]))
+		{
+			return true;
+		}
+
+		for (int j = 1; j < actual; j++)
 		{
 			if (powUsed >= powBudget && powBudget > 0)
 			{
