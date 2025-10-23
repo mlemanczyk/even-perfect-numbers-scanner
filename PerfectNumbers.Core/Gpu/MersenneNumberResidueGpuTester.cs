@@ -143,8 +143,9 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
         while (bag.TryTake(out var resources))
         {
             if (resources.Capacity >= capacity)
-            {
-                resources.OrderBuffer.MemSetToZero();
+			{
+				// The caller always overwrites the required elements. We don't need to worry about clearing the output buffer.
+                // resources.OrderBuffer.MemSetToZero();
                 return resources;
             }
 
@@ -152,7 +153,8 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
         }
 
         var created = new ResidueResources(accelerator, capacity);
-        created.OrderBuffer.MemSetToZero();
+		// The caller always overwrites the required elements. We don't need to worry about clearing the output buffer.
+        // created.OrderBuffer.MemSetToZero();
         return created;
     }
 

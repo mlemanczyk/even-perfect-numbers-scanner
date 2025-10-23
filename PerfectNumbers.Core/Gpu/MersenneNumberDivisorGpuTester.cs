@@ -41,7 +41,8 @@ public sealed class MersenneNumberDivisorGpuTester
         var accelerator = gpu.Accelerator;
         var kernel = GetKernel(accelerator);
         var resultBuffer = _resultBuffers.GetOrAdd(accelerator, acc => acc.Allocate1D<byte>(1));
-        resultBuffer.MemSetToZero();
+		// There is no point in clearing this buffer. We always override item [0] and never use it beyond item [0]
+        // resultBuffer.MemSetToZero();
         kernel(1, exponent, divisor, resultBuffer.View);
         accelerator.Synchronize();
         Span<byte> result = stackalloc byte[1];

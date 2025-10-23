@@ -68,7 +68,6 @@ internal static class IncrementalKernels
             return;
         }
 
-        // TODO: Is this expected that the value of kStart is modified?
         GpuUInt128 k = kStart + (GpuUInt128)idx;
         GpuUInt128 q = twoP;
         GpuUInt128.Mul64(ref q, k.High, k.Low);
@@ -125,13 +124,16 @@ internal static class IncrementalKernels
         ulong exponent,
         GpuUInt128 twoP,
         GpuUInt128 kStart,
-        byte lastIsSeven,
+        byte _,
         ulong divMul,
         ResidueAutomatonArgs ra,
         ArrayView<int> found,
         ArrayView1D<ulong, Stride1D.Dense> smallCycles)
-    {
+	{
+		// TODO: Modify this kernel to always assign the required found element to the result of the calculations and
+		// remove any clearing of the output buffer in the caller methods.
         ulong idx = (ulong)index.X;
+		// TODO: Replace % operator in GPU and their outgoing paths with logical operations, where possible. 
         ulong idxMod3 = idx % 3UL;
         ulong idxMod5 = idx % 5UL;
         ulong r10 = ra.Q0M10 + (ra.Step10 * idx).Mod10(); r10 -= (r10 >= 10UL) ? 10UL : 0UL;

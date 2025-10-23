@@ -10,6 +10,8 @@ namespace PerfectNumbers.Core.Gpu;
 
 internal static partial class PrimeOrderGpuHeuristics
 {
+	/// This kernel always sets the result and operates within the allowed / required bounds, never accessing elements outside of them.
+	/// It sets the value only when it needs to. The callers don't need to clear the output / input buffers.
     internal static void PartialFactorKernel(
         Index1D index,
         ArrayView1D<uint, Stride1D.Dense> primes,
@@ -111,6 +113,8 @@ internal static partial class PrimeOrderGpuHeuristics
         }
     }
 
+	/// This kernel doesn't always set the result of the first element. It sets the value only when it needs to. The callers
+	/// must clean the output buffer before the call to get a deterministic result.
     internal static void CalculateOrderKernel(
         Index1D index,
         ulong prime,
@@ -126,7 +130,9 @@ internal static partial class PrimeOrderGpuHeuristics
             return;
         }
 
-        ArrayView1D<ulong, Stride1D.Dense> phiFactors = buffers.PhiFactors;
+		// TODO: Modify this kernel to always set the output result so that callers never need to clear any buffers and remove
+		// any existing cleaning of the buffers after that.
+		ArrayView1D<ulong, Stride1D.Dense> phiFactors = buffers.PhiFactors;
         ArrayView1D<int, Stride1D.Dense> phiExponents = buffers.PhiExponents;
         ArrayView1D<ulong, Stride1D.Dense> workFactors = buffers.WorkFactors;
         ArrayView1D<int, Stride1D.Dense> workExponents = buffers.WorkExponents;
@@ -143,15 +149,18 @@ internal static partial class PrimeOrderGpuHeuristics
         int maxPowChecks = config.MaxPowChecks;
         int mode = config.Mode;
 
-        statusOut[0] = (byte)PrimeOrderKernelStatus.Fallback;
+		statusOut[0] = (byte)PrimeOrderKernelStatus.Fallback;
 
-        if (prime <= 3UL)
-        {
-            ulong orderValue = prime == 3UL ? 2UL : 1UL;
-            resultOut[0] = orderValue;
-            statusOut[0] = (byte)PrimeOrderKernelStatus.Found;
-            return;
-        }
+		// TODO: Is this condition ever satisfied on EventPerfectBitScanner's execution paths? Comment it out with explanatory
+		// comment before it, if not. Otherwise add a comment explaining how it's used. If tests or benchmarks require this,
+		// modify such tests and benchmark to avoid that.
+		if (prime <= 3UL)
+		{
+			ulong orderValue = prime == 3UL ? 2UL : 1UL;
+			resultOut[0] = orderValue;
+			statusOut[0] = (byte)PrimeOrderKernelStatus.Found;
+			return;
+		}
 
         ulong phi = prime - 1UL;
 
@@ -1153,11 +1162,13 @@ internal static partial class PrimeOrderGpuHeuristics
         return order;
     }
 
-    internal static void Pow2ModKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> exponents, MontgomeryDivisorData divisor, ArrayView1D<ulong, Stride1D.Dense> remainders)
-    {
-        ulong exponent = exponents[index];
-        remainders[index] = ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponent);
-    }
+	/// This kernel always sets the result of the corresponding element. Callers don't need to clear the output buffers.
+
+	internal static void Pow2ModKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> exponents, MontgomeryDivisorData divisor, ArrayView1D<ulong, Stride1D.Dense> remainders)
+	{
+		ulong exponent = exponents[index];
+		remainders[index] = ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponent);
+	}
 
     private static Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>> GetPow2ModWideKernel(Accelerator accelerator)
     {
@@ -1169,6 +1180,7 @@ internal static partial class PrimeOrderGpuHeuristics
         });
     }
 
+	/// This kernel always sets the result of the corresponding element. Callers don't need to clear the output buffers.
     internal static void Pow2ModKernelWide(Index1D index, ArrayView1D<GpuUInt128, Stride1D.Dense> exponents, GpuUInt128 modulus, ArrayView1D<GpuUInt128, Stride1D.Dense> remainders)
     {
         GpuUInt128 exponent = exponents[index];

@@ -35,6 +35,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 			{
 				remaining = maxK - kStart + 1UL;
 				currentSize = remaining > (UInt128)batchSize ? batchSize : (int)remaining;
+				// This clear is required because the result may not always be set. Remove it after the kernels are modified to always set the result.
 				foundBuffer.MemSetToZero();
 				// Precompute residue automaton bases for this batch
                                 UInt128 q0 = twoP * kStart + 1UL;

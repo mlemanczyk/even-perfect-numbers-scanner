@@ -199,19 +199,21 @@ internal static partial class PrimeOrderGpuHeuristics
             AcceleratorStream stream = lease.Stream;
 
             var kernel = GetPartialFactorKernel(accelerator);
-            SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
+			SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
 
+			// TODO: We should create / reallocate these buffer only once or if the new required length is bigger than capacity. 
             var factorBuffer = accelerator.Allocate1D<ulong>(primeTargets.Length);
             var exponentBuffer = accelerator.Allocate1D<int>(exponentTargets.Length);
             var countBuffer = accelerator.Allocate1D<int>(1);
             var remainingBuffer = accelerator.Allocate1D<ulong>(1);
             var fullyFactoredBuffer = accelerator.Allocate1D<byte>(1);
 
-            factorBuffer.MemSetToZero();
-            exponentBuffer.MemSetToZero();
-            countBuffer.MemSetToZero();
-            remainingBuffer.MemSetToZero();
-            fullyFactoredBuffer.MemSetToZero();
+			// TODO: There is no need to clear these buffers because the kernel will always assign values within the required bounds.
+			// factorBuffer.MemSetToZero();
+            // exponentBuffer.MemSetToZero();
+            // countBuffer.MemSetToZero();
+            // remainingBuffer.MemSetToZero();
+            // fullyFactoredBuffer.MemSetToZero();
 
             kernel(
                 stream,
@@ -240,6 +242,7 @@ internal static partial class PrimeOrderGpuHeuristics
             fullyFactoredBuffer.View.CopyToCPU(ref fullyFactoredFlag, 1);
             fullyFactored = fullyFactoredFlag != 0;
 
+			// TODO: These buffers shouldn't be disposed but rather reused accross call with the assigned accelerator.
             factorBuffer.Dispose();
             exponentBuffer.Dispose();
             countBuffer.Dispose();
@@ -364,8 +367,11 @@ internal static partial class PrimeOrderGpuHeuristics
         AcceleratorStream stream = lease.Stream;
 
         var kernel = GetOrderKernel(accelerator);
-        SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
+		SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
 
+		// TODO: These buffers should be created reallocated once and assigned to an accelerator. Callers should use their own
+		// thread static cache to prevent other threads from using taking accelerators with pre-allocated buffers if they don't
+		// use them.
         var phiFactorBuffer = accelerator.Allocate1D<ulong>(GpuSmallPrimeFactorSlots);
         var phiExponentBuffer = accelerator.Allocate1D<int>(GpuSmallPrimeFactorSlots);
         var workFactorBuffer = accelerator.Allocate1D<ulong>(GpuSmallPrimeFactorSlots);
@@ -377,7 +383,8 @@ internal static partial class PrimeOrderGpuHeuristics
         var resultBuffer = accelerator.Allocate1D<ulong>(1);
         var statusBuffer = accelerator.Allocate1D<byte>(1);
 
-        phiFactorBuffer.MemSetToZero();
+		// TODO: Remove the cleaning after the order kernel is modified to always set the result.
+		phiFactorBuffer.MemSetToZero();
         phiExponentBuffer.MemSetToZero();
         workFactorBuffer.MemSetToZero();
         workExponentBuffer.MemSetToZero();
@@ -523,26 +530,31 @@ internal static partial class PrimeOrderGpuHeuristics
         Accelerator accelerator = lease.Accelerator;
         AcceleratorStream stream = lease.Stream;
         var kernel = GetPow2ModKernel(accelerator);
+		// TODO: These buffers should be allocated once per accelerator and only reallocated when the new length exceeds capacity.
+		// Modify the callers to use their own pool of buffers per accelerator, so that other threads don't use the accelerators
+		// with out preallocated buffers. Share the pool with Pow2ModWide kernel.
         var exponentBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
         var remainderBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
 
         exponentBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(exponents), exponents.Length);
-        remainderBuffer.MemSetToZero();
 
-        try
-        {
-            kernel(stream, exponents.Length, exponentBuffer.View, divisorData, remainderBuffer.View);
-            stream.Synchronize();
-        }
-        catch (Exception)
-        {
-            Console.WriteLine($"Exception for {prime} and exponents: {string.Join(",", exponents.ToArray())}.");
-            exponentBuffer.Dispose();
-            remainderBuffer.Dispose();
-            execution.Dispose();
-            lease.Dispose();
-            throw;
-        }
+		// Pow2Mod kernel always assigns the required output elements so we don't need to worry about clearing these.
+		// remainderBuffer.MemSetToZero();
+
+		try
+		{
+			kernel(stream, exponents.Length, exponentBuffer.View, divisorData, remainderBuffer.View);
+			stream.Synchronize();
+		}
+		catch (Exception)
+		{
+			Console.WriteLine($"Exception for {prime} and exponents: {string.Join(",", exponents.ToArray())}.");
+			exponentBuffer.Dispose();
+			remainderBuffer.Dispose();
+			execution.Dispose();
+			lease.Dispose();
+			throw;
+		}
 
         remainderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(results), exponents.Length);
         exponentBuffer.Dispose();
@@ -579,6 +591,9 @@ internal static partial class PrimeOrderGpuHeuristics
             Accelerator accelerator = lease.Accelerator;
             AcceleratorStream stream = lease.Stream;
             var kernel = GetPow2ModWideKernel(accelerator);
+			// TODO: These buffers should be allocated once per accelerator and only reallocated when the new length exceeds capacity.
+			// Modify the callers to use their own pool of buffers per accelerator, so that other threads don't use the accelerators
+			// with out preallocated buffers. Share the pool with Pow2Mod kernel.
             var exponentBuffer = accelerator.Allocate1D<GpuUInt128>(length);
             var remainderBuffer = accelerator.Allocate1D<GpuUInt128>(length);
 
@@ -592,7 +607,8 @@ internal static partial class PrimeOrderGpuHeuristics
             }
 
             exponentBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(exponentSpan), length);
-            remainderBuffer.MemSetToZero();
+			// Pow2ModWide kernel always assigns the required output elements so we don't need to worry about clearing these.
+            // remainderBuffer.MemSetToZero();
 
             GpuUInt128 modulus = (GpuUInt128)prime;
             kernel(stream, length, exponentBuffer.View, modulus, remainderBuffer.View);
