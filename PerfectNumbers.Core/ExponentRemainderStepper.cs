@@ -69,8 +69,9 @@ internal struct ExponentRemainderStepper
     {
         if (!IsValidModulus)
         {
-            _hasState = false;
-            return false;
+			throw new InvalidOperationException($"Modulus is invalid for exponent {exponent}");
+            // _hasState = false;
+            // return false;
         }
 
         if (!_hasState || exponent <= _previousExponent)
