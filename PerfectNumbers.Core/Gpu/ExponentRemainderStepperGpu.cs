@@ -21,7 +21,7 @@ internal struct ExponentRemainderStepperGpu
         _modulus = modulus;
         _modulusWide = divisor.ModulusWide;
         PreviousExponent = 0UL;
-        _currentResidue = new GpuUInt128(1UL);
+        _currentResidue = GpuUInt128.One;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -38,7 +38,7 @@ internal struct ExponentRemainderStepperGpu
     public void Reset()
     {
         PreviousExponent = 0UL;
-        _currentResidue = new GpuUInt128(1UL);
+        _currentResidue = GpuUInt128.One;
     }
 
     /// <summary>
