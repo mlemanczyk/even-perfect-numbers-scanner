@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using ILGPU.Algorithms;
 using PerfectNumbers.Core;
 
 namespace PerfectNumbers.Core.Gpu;
@@ -10,18 +9,19 @@ namespace PerfectNumbers.Core.Gpu;
 /// </summary>
 internal struct ExponentRemainderStepperGpu
 {
-    private const int WindowSizeMax = 8;
-
     private readonly ulong _modulus;
+    private readonly ReadOnlyGpuUInt128 _modulusWide;
     public ulong PreviousExponent;
-    private ulong _currentResidue;
+    private GpuUInt128 _currentResidue;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ExponentRemainderStepperGpu(in MontgomeryDivisorData divisor)
     {
-        _modulus = divisor.Modulus;
+        ulong modulus = divisor.Modulus;
+        _modulus = modulus;
+        _modulusWide = new ReadOnlyGpuUInt128(modulus);
         PreviousExponent = 0UL;
-        _currentResidue = 1UL;
+        _currentResidue = new GpuUInt128(1UL);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -38,7 +38,7 @@ internal struct ExponentRemainderStepperGpu
     public void Reset()
     {
         PreviousExponent = 0UL;
-        _currentResidue = 1UL;
+        _currentResidue = new GpuUInt128(1UL);
     }
 
     /// <summary>
@@ -51,7 +51,7 @@ internal struct ExponentRemainderStepperGpu
     public ulong InitializeGpu(ulong exponent)
     {
         InitializeStateGpu(exponent);
-        return _currentResidue;
+        return _currentResidue.Low;
     }
 
     /// <summary>
@@ -63,7 +63,7 @@ internal struct ExponentRemainderStepperGpu
     public bool InitializeIsUnityGpu(ulong exponent)
     {
         InitializeStateGpu(exponent);
-        return _currentResidue == 1UL;
+        return _currentResidue.Low == 1UL;
     }
 
     /// <summary>
@@ -76,7 +76,7 @@ internal struct ExponentRemainderStepperGpu
     public ulong ComputeNextGpu(ulong exponent)
     {
         AdvanceStateGpu(exponent);
-        return _currentResidue;
+        return _currentResidue.Low;
     }
 
     /// <summary>
@@ -90,13 +90,14 @@ internal struct ExponentRemainderStepperGpu
     public bool ComputeNextIsUnityGpu(ulong exponent)
     {
         AdvanceStateGpu(exponent);
-        return _currentResidue == 1UL;
+        return _currentResidue.Low == 1UL;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void InitializeStateGpu(ulong exponent)
     {
-        _currentResidue = Pow2ModWindowed(exponent, _modulus);
+        ulong residue = ULongExtensions.Pow2ModWindowedGpuKernel(exponent, _modulus);
+        _currentResidue = new GpuUInt128(residue);
         PreviousExponent = exponent;
     }
 
@@ -104,120 +105,8 @@ internal struct ExponentRemainderStepperGpu
     private void AdvanceStateGpu(ulong exponent)
     {
         ulong delta = exponent - PreviousExponent;
-        ulong multiplier = Pow2ModWindowed(delta, _modulus);
-        _currentResidue = MultiplyMod(_currentResidue, multiplier, _modulus);
+        ulong multiplier = ULongExtensions.Pow2ModWindowedGpuKernel(delta, _modulus);
+        _currentResidue.MulMod(multiplier, _modulusWide);
         PreviousExponent = exponent;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong Pow2ModWindowed(ulong exponent, ulong modulus)
-    {
-        // EvenPerfectBitScanner never provides zero exponents on the GPU path, so the guard stays commented out.
-        // if (exponent == 0UL)
-        // {
-        //     return 1UL;
-        // }
-
-        int bitLength = GetBitLength(exponent);
-        int windowSize = GetWindowSize(bitLength);
-        ulong result = 1UL;
-        int index = bitLength - 1;
-
-        while (index >= 0)
-        {
-            ulong currentBit = (exponent >> index) & 1UL;
-            ulong squared = MultiplyMod(result, result, modulus);
-            bool processWindow = currentBit != 0UL;
-
-            result = processWindow ? result : squared;
-            index -= (int)(currentBit ^ 1UL);
-
-            int windowStartCandidate = index - windowSize + 1;
-            int negativeMask = windowStartCandidate >> 31;
-            windowStartCandidate &= ~negativeMask;
-
-            int windowStart = processWindow ? GetNextSetBitIndex(exponent, windowStartCandidate) : windowStartCandidate;
-            int windowLength = processWindow ? index - windowStart + 1 : 0;
-
-            for (int square = 0; square < windowLength; square++)
-            {
-                result = MultiplyMod(result, result, modulus);
-            }
-
-            if (!processWindow)
-            {
-                continue;
-            }
-
-            ulong mask = (1UL << windowLength) - 1UL;
-            ulong windowValue = (exponent >> windowStart) & mask;
-            ulong multiplier = ComputeWindowedOddPower(windowValue, modulus);
-            result = MultiplyMod(result, multiplier, modulus);
-            index = windowStart - 1;
-        }
-
-        return result;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong MultiplyMod(ulong left, ulong right, ulong modulus)
-    {
-        // GpuUInt128.MulMod is the fastest GPU-compatible multiply-reduce helper available to this kernel path.
-        var product = new GpuUInt128(left);
-        return product.MulMod(right, modulus);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ComputeWindowedOddPower(ulong windowValue, ulong modulus)
-    {
-        // Production divisors on the GPU path always satisfy modulus ≥ 3 (q = 2kp + 1), so the base stays 2 without a reduction.
-        ulong baseValue = 2UL;
-        if (windowValue == 1UL)
-        {
-            // Single-bit windows occur frequently in production primes, so keep the fast return for window value 1.
-            return baseValue;
-        }
-
-        ulong result = baseValue;
-        ulong remaining = (windowValue - 1UL) >> 1;
-        ulong squareBase = MultiplyMod(baseValue, baseValue, modulus);
-
-        while (remaining != 0UL)
-        {
-            result = ((remaining & 1UL) != 0UL) ? MultiplyMod(result, squareBase, modulus) : result;
-            remaining >>= 1;
-            squareBase = (remaining != 0UL) ? MultiplyMod(squareBase, squareBase, modulus) : squareBase;
-        }
-
-        return result;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int GetBitLength(ulong value)
-    {
-        return value == 0UL ? 0 : 64 - XMath.LeadingZeroCount(value);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int GetWindowSize(int bitLength)
-    {
-        int window = WindowSizeMax;
-        window = bitLength <= 671 ? 7 : window;
-        window = bitLength <= 239 ? 6 : window;
-        window = bitLength <= 79 ? 5 : window;
-        window = bitLength <= 23 ? 4 : window;
-        int clamped = bitLength >= 1 ? bitLength : 1;
-        window = bitLength <= 6 ? clamped : window;
-        return window;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int GetNextSetBitIndex(ulong exponent, int startIndex)
-    {
-        ulong guard = (ulong)(((long)startIndex - 64) >> 63);
-        int shift = startIndex & 63;
-        ulong mask = (~0UL << shift) & guard;
-        ulong masked = exponent & mask;
-        return XMath.TrailingZeroCount(masked);
     }
 }

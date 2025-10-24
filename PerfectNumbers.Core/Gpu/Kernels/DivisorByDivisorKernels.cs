@@ -18,7 +18,7 @@ internal static class DivisorByDivisorKernels
         int globalIndex = index;
         ulong modulus = divisors[globalIndex];
         ulong exponent = exponents[globalIndex];
-        ulong result = ExponentRemainderStepperGpu.Pow2ModWindowed(exponent, modulus);
+        ulong result = ULongExtensions.Pow2ModWindowedGpuKernel(exponent, modulus);
         byte hit = result == 1UL ? (byte)1 : (byte)0;
         hits[globalIndex] = hit;
 

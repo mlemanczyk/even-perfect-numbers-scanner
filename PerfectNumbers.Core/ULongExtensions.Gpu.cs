@@ -109,6 +109,77 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	internal static ulong Pow2ModWindowedGpuKernel(ulong exponent, ulong modulus)
+	{
+		int bitLength = GetPortableBitLengthGpu(exponent);
+		int windowSize = GetWindowSizeGpu(bitLength);
+		ReadOnlyGpuUInt128 modulusWide = new(modulus);
+		GpuUInt128 result = new(1UL);
+		int index = bitLength - 1;
+
+		while (index >= 0)
+		{
+			ulong currentBit = (exponent >> index) & 1UL;
+			if (currentBit == 0UL)
+			{
+				result.MulMod(result.AsReadOnly(), modulusWide);
+				index--;
+				continue;
+			}
+
+			int windowStartCandidate = index - windowSize + 1;
+			int negativeMask = windowStartCandidate >> 31;
+			windowStartCandidate &= ~negativeMask;
+			int windowStart = GetNextSetBitIndexGpu(exponent, windowStartCandidate);
+			int windowLength = index - windowStart + 1;
+
+			for (int square = 0; square < windowLength; square++)
+			{
+				result.MulMod(result.AsReadOnly(), modulusWide);
+			}
+
+			ulong mask = (1UL << windowLength) - 1UL;
+			ulong windowValue = (exponent >> windowStart) & mask;
+			ulong multiplier = ComputeWindowedOddPowerGpuKernel(windowValue, modulusWide);
+			result.MulMod(multiplier, modulusWide);
+
+			index = windowStart - 1;
+		}
+
+		return result.Low;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static ulong ComputeWindowedOddPowerGpuKernel(ulong windowValue, in ReadOnlyGpuUInt128 modulus)
+	{
+		GpuUInt128 result = new(2UL);
+		if (windowValue == 1UL)
+		{
+			return 2UL;
+		}
+
+		ulong remaining = (windowValue - 1UL) >> 1;
+		GpuUInt128 squareBase = new(2UL);
+		squareBase.MulMod(squareBase.AsReadOnly(), modulus);
+
+		while (remaining != 0UL)
+		{
+			if ((remaining & 1UL) != 0UL)
+			{
+				result.MulMod(squareBase.AsReadOnly(), modulus);
+			}
+
+			remaining >>= 1;
+			if (remaining != 0UL)
+			{
+				squareBase.MulMod(squareBase.AsReadOnly(), modulus);
+			}
+		}
+
+		return result.Low;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static ulong Pow2MontgomeryModWindowedGpuKeepMontgomery(in MontgomeryDivisorData divisor, ulong exponent)
 	{
 		return Pow2MontgomeryModWindowedGpuMontgomeryResult(divisor, exponent);
