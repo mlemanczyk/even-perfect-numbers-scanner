@@ -79,7 +79,7 @@ public sealed class DivisorCycleCache
                 throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
             }
 
-            ObserveCycleCacheDivisor(divisor);
+            // ObserveCycleCacheDivisor(divisor);
             return cached;
         }
 
@@ -114,7 +114,7 @@ public sealed class DivisorCycleCache
                     throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
                 }
 
-                ObserveCycleCacheDivisor(divisor);
+                // ObserveCycleCacheDivisor(divisor);
                 cycles[i] = cached;
             }
             else
