@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;
@@ -8,21 +9,19 @@ namespace PerfectNumbers.Core.Gpu;
 
 internal static class DivisorByDivisorKernels
 {
+    private const int WindowSizeMax = 8;
     public static void CheckKernel(
         Index1D index,
-        ArrayView<MontgomeryDivisorData> divisors,
+        ArrayView<ulong> divisors,
         ArrayView<ulong> exponents,
         ArrayView<byte> hits,
         ArrayView<int> firstHit)
     {
         int globalIndex = index;
-        MontgomeryDivisorData divisor = divisors[globalIndex];
-        ulong modulus = divisor.Modulus;
-        // The GPU by-divisor pipeline only materializes odd moduli greater than one (q = 2kp + 1),
-        // so the defensive guard for invalid values stays disabled here to keep the kernel branch-free.
+        ulong modulus = divisors[globalIndex];
         ulong exponent = exponents[globalIndex];
-        ulong montgomeryResult = ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponent);
-        byte hit = montgomeryResult == 1UL ? (byte)1 : (byte)0;
+        ulong result = Pow2ModWindowedKernel(exponent, modulus);
+        byte hit = result == 1UL ? (byte)1 : (byte)0;
         hits[globalIndex] = hit;
 
         if (hit != 0)
@@ -31,6 +30,100 @@ internal static class DivisorByDivisorKernels
         }
     }
 
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong Pow2ModWindowedKernel(ulong exponent, ulong modulus)
+    {
+        int bitLength = GetBitLength(exponent);
+        int windowSize = GetWindowSize(bitLength);
+        ulong result = 1UL;
+        int index = bitLength - 1;
+
+        while (index >= 0)
+        {
+            result = ULongExtensions.MulMod64Gpu(result, result, modulus);
+
+            if (((exponent >> index) & 1UL) == 0UL)
+            {
+                index--;
+                continue;
+            }
+
+            int windowStart = index - windowSize + 1;
+            if (windowStart < 0)
+            {
+                windowStart = 0;
+            }
+
+            while (((exponent >> windowStart) & 1UL) == 0UL)
+            {
+                windowStart++;
+            }
+
+            int windowLength = index - windowStart + 1;
+
+            for (int square = 1; square < windowLength; square++)
+            {
+                result = ULongExtensions.MulMod64Gpu(result, result, modulus);
+            }
+
+            ulong mask = (1UL << windowLength) - 1UL;
+            ulong windowValue = (exponent >> windowStart) & mask;
+            ulong multiplier = ComputeWindowedOddPower(windowValue, modulus);
+            result = ULongExtensions.MulMod64Gpu(result, multiplier, modulus);
+
+            index = windowStart - 1;
+        }
+
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ComputeWindowedOddPower(ulong windowValue, ulong modulus)
+    {
+        ulong baseValue = 2UL % modulus;
+        ulong result = baseValue;
+        ulong remaining = (windowValue - 1UL) >> 1;
+        ulong squareBase = ULongExtensions.MulMod64Gpu(baseValue, baseValue, modulus);
+
+        while (remaining != 0UL)
+        {
+            if ((remaining & 1UL) != 0UL)
+            {
+                result = ULongExtensions.MulMod64Gpu(result, squareBase, modulus);
+            }
+
+            remaining >>= 1;
+
+            if (remaining == 0UL)
+            {
+                break;
+            }
+
+            squareBase = ULongExtensions.MulMod64Gpu(squareBase, squareBase, modulus);
+        }
+
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetBitLength(ulong value)
+    {
+        return 64 - XMath.LeadingZeroCount(value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetWindowSize(int bitLength)
+    {
+        int window = WindowSizeMax;
+        window = bitLength <= 671 ? 7 : window;
+        window = bitLength <= 239 ? 6 : window;
+        window = bitLength <= 79 ? 5 : window;
+        window = bitLength <= 23 ? 4 : window;
+        int clamped = bitLength >= 1 ? bitLength : 1;
+        window = bitLength <= 6 ? clamped : window;
+        return window;
+    }
     public static void EvaluateDivisorWithStepperKernel(
         Index1D _,
         MontgomeryDivisorData divisor,
