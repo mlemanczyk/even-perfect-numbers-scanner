@@ -471,15 +471,26 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             }
 
             ulong cycle = divisorCycle;
-            // EvenPerfectBitScanner resolves divisor cycles before scheduling GPU work, so the zero-cycle fallback stays disabled.
-            // if (cycle == 0UL)
-            // {
-            //     throw new InvalidOperationException("GPU divisor cycle length must be non-zero.");
-            // }
-
             ulong firstPrime = primes[0];
+
+            if (cycle == 0UL)
+            {
+                if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(divisor, firstPrime, cachedData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
+                {
+                    cycle = MersenneDivisorCycles.CalculateCycleLength(divisor, cachedData, skipPrimeOrderHeuristic: primeOrderFailed);
+                }
+                else
+                {
+                    cycle = computedCycle;
+                }
+
+                if (cycle == 0UL)
+                {
+                    throw new InvalidOperationException("GPU divisor cycle length must be non-zero.");
+                }
+            }
+
             // Precompute the initial cycle remainder on the host to keep the GPU kernel branch-free.
-            // EvenPerfectBitScanner resolves divisor cycles before scheduling GPU work, so cycle never equals zero here.
             ulong firstRemainder = firstPrime % cycle;
 
             Monitor.Enter(_lease.ExecutionLock);
