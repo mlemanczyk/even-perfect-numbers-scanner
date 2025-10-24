@@ -196,7 +196,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 // }
                 // else
                 {
-                    if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(
+                    if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
                             candidate,
                             prime,
                             divisorData,

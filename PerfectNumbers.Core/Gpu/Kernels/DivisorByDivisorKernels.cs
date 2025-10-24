@@ -41,37 +41,34 @@ internal static class DivisorByDivisorKernels
 
         while (index >= 0)
         {
-            result = ULongExtensions.MulMod64Gpu(result, result, modulus);
+            ulong currentBit = (exponent >> index) & 1UL;
+            ulong squared = MultiplyMod(result, result, modulus);
+            bool processWindow = currentBit != 0UL;
 
-            if (((exponent >> index) & 1UL) == 0UL)
+            result = processWindow ? result : squared;
+            index -= (int)(currentBit ^ 1UL);
+
+            int windowStartCandidate = index - windowSize + 1;
+            int negativeMask = windowStartCandidate >> 31;
+            windowStartCandidate &= ~negativeMask;
+
+            int windowStart = processWindow ? GetNextSetBitIndex(exponent, windowStartCandidate) : windowStartCandidate;
+            int windowLength = processWindow ? index - windowStart + 1 : 0;
+
+            for (int square = 0; square < windowLength; square++)
             {
-                index--;
+                result = MultiplyMod(result, result, modulus);
+            }
+
+            if (!processWindow)
+            {
                 continue;
-            }
-
-            int windowStart = index - windowSize + 1;
-            if (windowStart < 0)
-            {
-                windowStart = 0;
-            }
-
-            while (((exponent >> windowStart) & 1UL) == 0UL)
-            {
-                windowStart++;
-            }
-
-            int windowLength = index - windowStart + 1;
-
-            for (int square = 1; square < windowLength; square++)
-            {
-                result = ULongExtensions.MulMod64Gpu(result, result, modulus);
             }
 
             ulong mask = (1UL << windowLength) - 1UL;
             ulong windowValue = (exponent >> windowStart) & mask;
             ulong multiplier = ComputeWindowedOddPower(windowValue, modulus);
-            result = ULongExtensions.MulMod64Gpu(result, multiplier, modulus);
-
+            result = MultiplyMod(result, multiplier, modulus);
             index = windowStart - 1;
         }
 
@@ -82,25 +79,29 @@ internal static class DivisorByDivisorKernels
     private static ulong ComputeWindowedOddPower(ulong windowValue, ulong modulus)
     {
         ulong baseValue = 2UL % modulus;
+        if (windowValue == 1UL)
+        {
+            return baseValue;
+        }
+
         ulong result = baseValue;
         ulong remaining = (windowValue - 1UL) >> 1;
-        ulong squareBase = ULongExtensions.MulMod64Gpu(baseValue, baseValue, modulus);
+        ulong squareBase = MultiplyMod(baseValue, baseValue, modulus);
 
         while (remaining != 0UL)
         {
             if ((remaining & 1UL) != 0UL)
             {
-                result = ULongExtensions.MulMod64Gpu(result, squareBase, modulus);
+                result = MultiplyMod(result, squareBase, modulus);
             }
 
             remaining >>= 1;
-
             if (remaining == 0UL)
             {
                 break;
             }
 
-            squareBase = ULongExtensions.MulMod64Gpu(squareBase, squareBase, modulus);
+            squareBase = MultiplyMod(squareBase, squareBase, modulus);
         }
 
         return result;
@@ -124,6 +125,65 @@ internal static class DivisorByDivisorKernels
         window = bitLength <= 6 ? clamped : window;
         return window;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetNextSetBitIndex(ulong exponent, int startIndex)
+    {
+        ulong guard = (ulong)(((long)startIndex - 64) >> 63);
+        int shift = startIndex & 63;
+        ulong mask = (~0UL << shift) & guard;
+        ulong masked = exponent & mask;
+        return XMath.TrailingZeroCount(masked);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong MultiplyMod(ulong left, ulong right, ulong modulus)
+    {
+        if (left == 0UL || right == 0UL)
+        {
+            return 0UL;
+        }
+
+        ulong threshold = ulong.MaxValue / left;
+        if (right <= threshold)
+        {
+            ulong product = left * right;
+            return product % modulus;
+        }
+
+        return MultiplyModWide(left, right, modulus);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong MultiplyModWide(ulong left, ulong right, ulong modulus)
+    {
+        ulong result = 0UL;
+        ulong addend = left;
+        ulong remaining = right;
+
+        while (remaining != 0UL)
+        {
+            if ((remaining & 1UL) != 0UL)
+            {
+                result += addend;
+                if (result >= modulus)
+                {
+                    result -= modulus;
+                }
+            }
+
+            addend <<= 1;
+            if (addend >= modulus)
+            {
+                addend -= modulus;
+            }
+
+            remaining >>= 1;
+        }
+
+        return result;
+    }
+
     public static void EvaluateDivisorWithStepperKernel(
         Index1D _,
         MontgomeryDivisorData divisor,
@@ -140,7 +200,7 @@ internal static class DivisorByDivisorKernels
         //     return;
         // }
 
-        var exponentStepper = new ExponentRemainderStepper(divisor);
+        var exponentStepper = new ExponentRemainderStepperGpu(divisor);
         ulong firstPrime = exponents[0];
         bool firstUnity = exponentStepper.InitializeGpuIsUnity(firstPrime);
         // EvenPerfectBitScanner only schedules divisors with non-zero cycle lengths (equal to the tested prime),

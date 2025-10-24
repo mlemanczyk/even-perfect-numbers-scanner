@@ -81,7 +81,7 @@ public class MersenneDivisorCycles
             return heuristicCycle == exponent;
         }
 
-        if (TryCalculateCycleLengthForExponent(divisor, exponent, divisorData, out ulong cycleLength, out bool _) && cycleLength != 0UL)
+        if (TryCalculateCycleLengthForExponentCpu(divisor, exponent, divisorData, out ulong cycleLength, out bool _) && cycleLength != 0UL)
         {
             return cycleLength == exponent;
         }
@@ -245,7 +245,88 @@ public class MersenneDivisorCycles
         return order;
     }
 
-    public static bool TryCalculateCycleLengthForExponent(
+    public static bool TryCalculateCycleLengthForExponentCpu(
+        ulong divisor,
+        ulong exponent,
+        in MontgomeryDivisorData divisorData,
+        out ulong cycleLength,
+        out bool primeOrderFailed)
+    {
+        cycleLength = 0UL;
+        primeOrderFailed = false;
+
+        if ((divisor & (divisor - 1UL)) == 0UL)
+        {
+            cycleLength = 1UL;
+            return true;
+        }
+
+        if (divisor <= 3UL || exponent <= 1UL)
+        {
+            cycleLength = CalculateCycleLength(divisor, divisorData);
+            return true;
+        }
+
+        ulong computedOrder = PrimeOrderCalculator.Calculate(
+            divisor,
+            previousOrder: null,
+            divisorData,
+            PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
+            PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
+        if (computedOrder != 0UL)
+        {
+            cycleLength = computedOrder;
+            return true;
+        }
+
+        primeOrderFailed = true;
+
+        ulong phi = divisor - 1UL;
+        // A zero totient would imply divisor == 0, which never occurs on the tested path. Keep the guard documented without
+        // branching in the hot loop.
+        // if (phi == 0UL)
+        // {
+        //     return false;
+        // }
+
+        int twoCount = BitOperations.TrailingZeroCount(phi);
+        ulong reducedPhi = phi >> twoCount;
+        if (reducedPhi == 0UL || (reducedPhi % exponent) != 0UL)
+        {
+            return false;
+        }
+
+        ulong k = reducedPhi / exponent;
+        // k == 0 would indicate reducedPhi < exponent, which the EvenPerfectBitScanner call flow prevents. Document the
+        // assumption instead of branching.
+        // if (k == 0UL)
+        // {
+        //     return false;
+        // }
+
+        Dictionary<ulong, int> factorCounts = ThreadStaticPools.RentFactorCountDictionary();
+        bool success = false;
+
+        if (twoCount > 0)
+        {
+            factorCounts[2UL] = twoCount;
+        }
+
+        bool exponentAccumulated = AccumulateFactors(exponent, factorCounts);
+        bool factorsAccumulated = exponentAccumulated && AccumulateFactors(k, factorCounts);
+
+        if (factorsAccumulated)
+        {
+            cycleLength = ReduceOrder(divisorData, phi, factorCounts);
+            success = true;
+            primeOrderFailed = false;
+        }
+
+        factorCounts.Clear();
+        ThreadStaticPools.ReturnFactorCountDictionary(factorCounts);
+        return success;
+    }
+    public static bool TryCalculateCycleLengthForExponentGpu(
         ulong divisor,
         ulong exponent,
         in MontgomeryDivisorData divisorData,
@@ -482,7 +563,7 @@ public class MersenneDivisorCycles
         ulong[]? heapCandidateArray = null;
         bool[]? heapEvaluationArray = null;
 
-        ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
+        ExponentRemainderStepperCpu stepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 
         ulong order = initialOrder;
         for (int i = 0; i < count; i++)
@@ -513,7 +594,7 @@ public class MersenneDivisorCycles
             ProcessReduceOrderPrime(heapCandidateArray.AsSpan(0, multiplicity), heapEvaluationArray.AsSpan(0, multiplicity), ref order, prime, multiplicity, ref stepper);
         }
 
-        ThreadStaticPools.ReturnExponentStepper(stepper);
+        ThreadStaticPools.ReturnExponentStepperCpu(stepper);
         ThreadStaticPools.UlongPool.Return(primes);
 
         if (heapCandidateArray is not null)
@@ -525,7 +606,7 @@ public class MersenneDivisorCycles
         return order;
     }
 
-    private static void ProcessReduceOrderPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong prime, int multiplicity, ref ExponentRemainderStepper stepper)
+    private static void ProcessReduceOrderPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong prime, int multiplicity, ref ExponentRemainderStepperCpu stepper)
     {
         ulong working = order;
         int actual = 0;

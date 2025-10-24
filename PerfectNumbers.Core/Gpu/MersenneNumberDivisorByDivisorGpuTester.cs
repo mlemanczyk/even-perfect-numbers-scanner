@@ -307,7 +307,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ResolveDivisorCycle(ulong divisor, ulong prime, in MontgomeryDivisorData divisorData)
     {
-        if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(divisor, prime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
+        if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentGpu(divisor, prime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
         {
             return MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
         }
@@ -318,7 +318,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool CandidatePassesHeuristics(ulong candidate, bool lastIsSeven)
     {
-        // Mirror the CPU heuristics so the GPU path rejects obvious composites before computing cycles.
+        // Mirror the CPU-side divisor screen so the GPU path rejects multiples of 3, 5, 7, and 11
+        // before resolving cycles, keeping cache lookups aligned with the persisted snapshot.
         ulong remainder10 = candidate % 10UL;
         bool accept10 = lastIsSeven
             ? (remainder10 == 3UL || remainder10 == 7UL || remainder10 == 9UL)
@@ -469,7 +470,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
             if (cycle == 0UL)
             {
-                if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(divisor, firstPrime, cachedData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
+                if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentGpu(divisor, firstPrime, cachedData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
                 {
                     cycle = MersenneDivisorCycles.CalculateCycleLength(divisor, cachedData, skipPrimeOrderHeuristic: primeOrderFailed);
                 }
