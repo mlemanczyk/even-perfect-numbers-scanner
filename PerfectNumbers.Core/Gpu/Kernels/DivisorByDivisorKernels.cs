@@ -30,7 +30,7 @@ internal static class DivisorByDivisorKernels
 
     public static void EvaluateDivisorWithStepperKernel(
         Index1D _,
-        MontgomeryDivisorData divisor,
+        GpuDivisorPartialData divisor,
         ulong divisorCycle,
         ulong firstCycleRemainder,
         ArrayView<ulong> exponents,
@@ -101,12 +101,12 @@ internal static class DivisorByDivisorKernels
         hits[globalIndex] = montgomeryResult == 1UL ? (byte)1 : (byte)0;
     }
 
-    public static void ComputeMontgomeryExponentKernel(Index1D index, MontgomeryDivisorData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
+    public static void ComputeMontgomeryExponentKernel(Index1D index, GpuDivisorPartialData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
     {
         ulong modulus = divisor.Modulus;
         // Each divisor flowing through this kernel follows q = 2kp + 1 with k >= 1, so modulus is always odd and exceeds one.
         ulong exponent = exponents[index];
-        ulong montgomeryResult = ULongExtensions.Pow2MontgomeryModWindowedGpuKeepMontgomery(divisor, exponent);
+        ulong montgomeryResult = ULongExtensions.Pow2MontgomeryModWindowedGpuKeepMontgomery(divisor.MontgomeryData, exponent);
         results[index] = montgomeryResult;
     }
 }

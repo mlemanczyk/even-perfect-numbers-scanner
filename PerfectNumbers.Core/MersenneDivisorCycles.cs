@@ -408,6 +408,22 @@ public class MersenneDivisorCycles
         return success;
     }
 
+    internal static bool TryCalculateCycleLengthForExponentGpu(
+        ulong divisor,
+        ulong exponent,
+        in GpuDivisorPartialData divisorData,
+        out ulong cycleLength,
+        out bool primeOrderFailed) =>
+        TryCalculateCycleLengthForExponentGpu(divisor, exponent, divisorData.MontgomeryData, out cycleLength, out primeOrderFailed);
+
+    internal static ulong CalculateCycleLengthGpu(
+        ulong divisor,
+        in GpuDivisorPartialData divisorData,
+        bool skipPrimeOrderHeuristic = false)
+    {
+        return CalculateCycleLength(divisor, divisorData.MontgomeryData, skipPrimeOrderHeuristic);
+    }
+
     private static bool AccumulateFactors(
         ulong value,
         Dictionary<ulong, int> counts)

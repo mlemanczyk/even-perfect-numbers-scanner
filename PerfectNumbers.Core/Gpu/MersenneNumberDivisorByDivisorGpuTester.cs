@@ -11,7 +11,7 @@ using ILGPU.Runtime;
 namespace PerfectNumbers.Core.Gpu;
 
 /// <summary>
-/// Scans Mersenne divisors on the GPU for prime exponents p >= 31 using per-divisor Montgomery data.
+/// Scans Mersenne divisors on the GPU for prime exponents p >= 31 using cached GPU divisor partial data.
 /// Consumers must call <see cref="ConfigureFromMaxPrime"/> before invoking other members so the divisor limits are populated.
 /// </summary>
 public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDivisorByDivisorTester
@@ -24,7 +24,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     // private bool _isConfigured;
 
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>> _kernelCache = new();
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, MontgomeryDivisorData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>>> _stepperKernelCache = new(AcceleratorReferenceComparer.Instance);
+    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, GpuDivisorPartialData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>>> _stepperKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, ConcurrentBag<BatchResources>> _resourcePools = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentBag<GpuContextPool.GpuContextLease> _acceleratorPool = new();
     private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
@@ -32,8 +32,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     private Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> GetKernel(Accelerator accelerator) =>
         _kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>(DivisorByDivisorKernels.CheckKernel));
 
-    private Action<Index1D, MontgomeryDivisorData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>> GetStepperKernel(Accelerator accelerator) =>
-        _stepperKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, MontgomeryDivisorData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>>(DivisorByDivisorKernels.EvaluateDivisorWithStepperKernel));
+    private Action<Index1D, GpuDivisorPartialData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>> GetStepperKernel(Accelerator accelerator) =>
+        _stepperKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, GpuDivisorPartialData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>>(DivisorByDivisorKernels.EvaluateDivisorWithStepperKernel));
 
 
     public int GpuBatchSize
@@ -258,7 +258,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             for (int i = 0; i < filteredCount; i++)
             {
                 ulong divisorValue = filteredDivisorsSpan[i];
-                MontgomeryDivisorData divisorDataValue = MontgomeryDivisorData.FromModulus(divisorValue);
+                GpuDivisorPartialData divisorDataValue = GpuDivisorPartialData.Create(divisorValue);
                 ulong divisorCycle = ResolveDivisorCycle(divisorValue, prime, divisorDataValue);
                 if (divisorCycle != prime)
                 {
@@ -305,11 +305,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ResolveDivisorCycle(ulong divisor, ulong prime, in MontgomeryDivisorData divisorData)
+    private static ulong ResolveDivisorCycle(ulong divisor, ulong prime, in GpuDivisorPartialData divisorData)
     {
         if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentGpu(divisor, prime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
         {
-            return MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
+            return MersenneDivisorCycles.CalculateCycleLengthGpu(divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
         }
 
         return computedCycle;
@@ -384,7 +384,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
         private readonly GpuContextPool.GpuContextLease _lease;
         private readonly Accelerator _accelerator;
-        private Action<Index1D, MontgomeryDivisorData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>> _stepperKernel = null!;
+        private Action<Index1D, GpuDivisorPartialData, ulong, ulong, ArrayView<ulong>, ArrayView<byte>> _stepperKernel = null!;
         private MemoryBuffer1D<ulong, Stride1D.Dense> _exponentsBuffer = null!;
         private MemoryBuffer1D<byte, Stride1D.Dense> _hitBuffer = null!;
         private ulong[] _hostBuffer = null!;
@@ -459,10 +459,10 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             //     return;
             // }
 
-            MontgomeryDivisorData cachedData = divisorData;
+            GpuDivisorPartialData cachedData = GpuDivisorPartialData.FromMontgomery(divisorData);
             if (cachedData.Modulus != divisor)
             {
-                cachedData = MontgomeryDivisorData.FromModulus(divisor);
+                cachedData = GpuDivisorPartialData.Create(divisor);
             }
 
             ulong cycle = divisorCycle;
@@ -472,7 +472,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             {
                 if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentGpu(divisor, firstPrime, cachedData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
                 {
-                    cycle = MersenneDivisorCycles.CalculateCycleLength(divisor, cachedData, skipPrimeOrderHeuristic: primeOrderFailed);
+                    cycle = MersenneDivisorCycles.CalculateCycleLengthGpu(divisor, cachedData, skipPrimeOrderHeuristic: primeOrderFailed);
                 }
                 else
                 {

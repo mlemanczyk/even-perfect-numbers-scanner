@@ -15,17 +15,17 @@ internal struct ExponentRemainderStepperGpu
     private GpuUInt128 _currentResidue;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ExponentRemainderStepperGpu(in MontgomeryDivisorData divisor)
+    public ExponentRemainderStepperGpu(in GpuDivisorPartialData divisor)
     {
         ulong modulus = divisor.Modulus;
         _modulus = modulus;
-        _modulusWide = new ReadOnlyGpuUInt128(modulus);
+        _modulusWide = divisor.ModulusWide;
         PreviousExponent = 0UL;
         _currentResidue = new GpuUInt128(1UL);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool MatchesDivisor(in MontgomeryDivisorData divisor)
+    public bool MatchesDivisor(in GpuDivisorPartialData divisor)
     {
         return _modulus == divisor.Modulus;
     }
