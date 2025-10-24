@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using ILGPU;
@@ -18,6 +19,7 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[Obsolete("Deprecated: use ULongExtensions.MulMod64 for CPU code and GpuUInt128.MulMod inside GPU kernels.")]
 	public static ulong MulMod64Gpu(this ulong a, ulong b, ulong modulus)
 	{
 		// TODO: Remove this GPU-compatible shim from production once callers migrate to MulMod64,
@@ -71,7 +73,7 @@ public static partial class ULongExtensions
 		while (index >= 0)
 		{
 			ulong currentBit = (exponent >> index) & 1UL;
-			ulong squared = result.MulMod64Gpu(result, modulus);
+			ulong squared = result.MulMod64(result, modulus);
 			result = currentBit == 0UL ? squared : result;
 			index = currentBit == 0UL ? index - 1 : index;
 			if (currentBit == 0UL)
@@ -91,14 +93,14 @@ public static partial class ULongExtensions
 			int windowLength = index - windowStart + 1;
 			for (int square = 0; square < windowLength; square++)
 			{
-				result = result.MulMod64Gpu(result, modulus);
+				result = result.MulMod64(result, modulus);
 			}
 
 			ulong mask = (1UL << windowLength) - 1UL;
 			ulong windowValue = (exponent >> windowStart) & mask;
 			int tableIndex = (int)((windowValue - 1UL) >> 1);
 			ulong multiplier = oddPowers[tableIndex];
-			result = result.MulMod64Gpu(multiplier, modulus);
+			result = result.MulMod64(multiplier, modulus);
 
 			index = windowStart - 1;
 		}
@@ -301,11 +303,11 @@ public static partial class ULongExtensions
 			return;
 		}
 
-		ulong square = baseValue.MulMod64Gpu(baseValue, modulus);
+		ulong square = baseValue.MulMod64(baseValue, modulus);
 		for (int i = 1; i < oddPowers.Length; i++)
 		{
 			ulong previous = oddPowers[i - 1];
-			oddPowers[i] = previous.MulMod64Gpu(square, modulus);
+			oddPowers[i] = previous.MulMod64(square, modulus);
 		}
 	}
 
