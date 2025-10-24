@@ -74,10 +74,6 @@ public class GpuKernelCompilationTests
         typeof(MersenneNumberDivisorByDivisorGpuTester).GetMethod("GetKernel", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("MersenneNumberDivisorByDivisorGpuTester.GetKernel not found.");
 
-    private static readonly MethodInfo DivisorByDivisorGetExponentKernelMethod =
-        typeof(MersenneNumberDivisorByDivisorGpuTester).GetMethod("GetStepperKernel", BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("MersenneNumberDivisorByDivisorGpuTester.GetKernelByPrimeExponent not found.");
-
     private static readonly MethodInfo DivisorTesterGetKernelMethod =
         typeof(MersenneNumberDivisorGpuTester).GetMethod("GetKernel", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("MersenneNumberDivisorGpuTester.GetKernel not found.");
@@ -149,7 +145,6 @@ public class GpuKernelCompilationTests
         yield return Loader("NttGpuMath.ForwardKernel", CompileNttForwardKernel);
         yield return Loader("NttGpuMath.InverseKernel", CompileNttInverseKernel);
         yield return Loader("MersenneNumberDivisorByDivisorGpuTester.CheckKernel", CompileDivisorByDivisorCheckKernel);
-        yield return Loader("MersenneNumberDivisorByDivisorGpuTester.EvaluateDivisorWithStepperKernel", CompileDivisorByDivisorExponentKernel);
         yield return Loader("MersenneNumberDivisorGpuTester.Kernel", CompileDivisorTesterKernel);
         yield return Loader("MersenneNumberLucasLehmerGpuTester.Kernel", CompileLucasLehmerKernel);
         yield return Loader("MersenneNumberLucasLehmerGpuTester.AddSmallKernel", CompileLucasLehmerAddSmallKernel);
@@ -269,12 +264,6 @@ public class GpuKernelCompilationTests
     {
         var tester = new MersenneNumberDivisorByDivisorGpuTester();
         _ = DivisorByDivisorGetKernelMethod.Invoke(tester, new object[] { accelerator });
-    }
-
-    private static void CompileDivisorByDivisorExponentKernel(Accelerator accelerator)
-    {
-        var tester = new MersenneNumberDivisorByDivisorGpuTester();
-        _ = DivisorByDivisorGetExponentKernelMethod.Invoke(tester, new object[] { accelerator });
     }
 
     private static void CompileDivisorTesterKernel(Accelerator accelerator)

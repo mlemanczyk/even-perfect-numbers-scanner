@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Cpu;
+using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core
 {
@@ -99,6 +100,18 @@ namespace PerfectNumbers.Core
             get
             {
                 return _montgomeryDivisorDataPool ??= ArrayPool<MontgomeryDivisorData>.Create();
+            }
+        }
+
+        [ThreadStatic]
+        private static ArrayPool<GpuDivisorPartialData>? _gpuDivisorPartialDataPool;
+
+        internal static ArrayPool<GpuDivisorPartialData> GpuDivisorPartialDataPool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _gpuDivisorPartialDataPool ??= ArrayPool<GpuDivisorPartialData>.Create();
             }
         }
 
