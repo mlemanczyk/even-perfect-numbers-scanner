@@ -258,7 +258,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             for (int i = 0; i < filteredCount; i++)
             {
                 ulong divisorValue = filteredDivisorsSpan[i];
-                GpuDivisorPartialData divisorDataValue = GpuDivisorPartialData.Create(divisorValue);
                 MontgomeryDivisorData montgomeryData = MontgomeryDivisorData.FromModulus(divisorValue);
                 ulong divisorCycle = ResolveDivisorCycle(divisorValue, prime, in montgomeryData);
                 if (divisorCycle != prime)
@@ -321,27 +320,38 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     {
         // Mirror the CPU-side divisor screen so the GPU path rejects multiples of 3, 5, 7, and 11
         // before resolving cycles, keeping cache lookups aligned with the persisted snapshot.
-        ulong remainder10 = candidate % 10UL;
-        bool accept10 = lastIsSeven
-            ? (remainder10 == 3UL || remainder10 == 7UL || remainder10 == 9UL)
-            : (remainder10 == 1UL || remainder10 == 3UL || remainder10 == 9UL);
-        if (!accept10)
+        const ushort DecimalMaskWhenLastIsSeven = (1 << 3) | (1 << 7) | (1 << 9);
+        const ushort DecimalMaskOtherwise = (1 << 1) | (1 << 3) | (1 << 9);
+        const byte AcceptableRemainder8Mask = 0b10000010;
+        const int NonZeroMod3Mask = 0b00000110;
+        const int NonZeroMod5Mask = 0b00011110;
+        const int NonZeroMod7Mask = 0b01111110;
+        const int NonZeroMod11Mask = 0b11111111110;
+        const int RequiredSmallPrimeMask = 0b1111;
+
+        int remainder10 = (int)(candidate % 10UL);
+        ushort decimalMask = lastIsSeven ? DecimalMaskWhenLastIsSeven : DecimalMaskOtherwise;
+        if (((decimalMask >> remainder10) & 1) == 0)
         {
             return false;
         }
 
-        ulong remainder8 = candidate & 7UL;
-        if (remainder8 != 1UL && remainder8 != 7UL)
+        int remainder8 = (int)(candidate & 7UL);
+        if (((AcceptableRemainder8Mask >> remainder8) & 1) == 0)
         {
             return false;
         }
 
-        if (candidate % 3UL == 0UL || candidate % 5UL == 0UL || candidate % 7UL == 0UL || candidate % 11UL == 0UL)
-        {
-            return false;
-        }
+        int remainder3 = (int)(candidate % 3UL);
+        int remainder5 = (int)(candidate % 5UL);
+        int remainder7 = (int)(candidate % 7UL);
+        int remainder11 = (int)(candidate % 11UL);
+        int smallPrimeBits = (NonZeroMod3Mask >> remainder3) & 1;
+        smallPrimeBits |= ((NonZeroMod5Mask >> remainder5) & 1) << 1;
+        smallPrimeBits |= ((NonZeroMod7Mask >> remainder7) & 1) << 2;
+        smallPrimeBits |= ((NonZeroMod11Mask >> remainder11) & 1) << 3;
 
-        return true;
+        return (smallPrimeBits & RequiredSmallPrimeMask) == RequiredSmallPrimeMask;
     }
 
 
@@ -460,7 +470,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             //     return;
             // }
 
-            GpuDivisorPartialData cachedData = GpuDivisorPartialData.Create(divisor);
+            GpuDivisorPartialData cachedData = new GpuDivisorPartialData(divisor);
 
             ulong cycle = divisorCycle;
             ulong firstPrime = primes[0];

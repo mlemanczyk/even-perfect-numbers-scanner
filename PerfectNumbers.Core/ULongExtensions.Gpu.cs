@@ -155,6 +155,8 @@ public static partial class ULongExtensions
 		GpuUInt128 result = new(2UL);
 		if (windowValue == 1UL)
 		{
+			// Single-bit windows show up whenever the bit scan finds an isolated exponent bit,
+			// which happens routinely on the GPU path, so keep the fast return enabled.
 			return 2UL;
 		}
 

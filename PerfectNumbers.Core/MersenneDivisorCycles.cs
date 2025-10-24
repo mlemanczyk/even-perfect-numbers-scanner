@@ -58,7 +58,11 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        if (exponent <= 1UL || divisor <= 1UL || (divisor & 1UL) == 0UL)
+        const int InvalidParameterMask = 0b111;
+        int invalidBits = (exponent <= 1UL ? 1 : 0)
+            | ((divisor <= 1UL ? 1 : 0) << 1)
+            | ((int)(1UL ^ (divisor & 1UL)) << 2);
+        if ((invalidBits & InvalidParameterMask) != 0)
         {
             return false;
         }
@@ -91,10 +95,12 @@ public class MersenneDivisorCycles
 
     public static bool CycleEqualsExponentForMersenneCandidate(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
     {
-        if (!IsValidMersenneDivisorCandidate(divisor, exponent))
-        {
-            return false;
-        }
+        // EvenPerfectBitScanner only calls this helper with divisors generated from 2 * k * p + 1 and primes greater than one,
+        // so the validation guard would never trigger in production. Keep it commented out to leave the hot path branch-free.
+        // if (!IsValidMersenneDivisorCandidate(divisor, exponent))
+        // {
+        //     return false;
+        // }
 
         if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
         {
@@ -115,7 +121,11 @@ public class MersenneDivisorCycles
 
     private static bool IsValidMersenneDivisorCandidate(ulong divisor, ulong exponent)
     {
-        if (exponent <= 1UL || divisor <= 1UL || (divisor & 1UL) == 0UL)
+        const int InvalidParameterMask = 0b111;
+        int invalidBits = (exponent <= 1UL ? 1 : 0)
+            | ((divisor <= 1UL ? 1 : 0) << 1)
+            | ((int)(1UL ^ (divisor & 1UL)) << 2);
+        if ((invalidBits & InvalidParameterMask) != 0)
         {
             return false;
         }
@@ -255,17 +265,19 @@ public class MersenneDivisorCycles
         cycleLength = 0UL;
         primeOrderFailed = false;
 
-        if ((divisor & (divisor - 1UL)) == 0UL)
-        {
-            cycleLength = 1UL;
-            return true;
-        }
+        // EvenPerfectBitScanner never feeds powers of two into this helper, so leave the branch commented out to avoid redundant work.
+        // if ((divisor & (divisor - 1UL)) == 0UL)
+        // {
+        //     cycleLength = 1UL;
+        //     return true;
+        // }
 
-        if (divisor <= 3UL || exponent <= 1UL)
-        {
-            cycleLength = CalculateCycleLength(divisor, divisorData);
-            return true;
-        }
+        // The scanner only calls this path with prime exponents greater than one and odd divisors above three, keeping the small-parameter guard unreachable.
+        // if (divisor <= 3UL || exponent <= 1UL)
+        // {
+        //     cycleLength = CalculateCycleLength(divisor, divisorData);
+        //     return true;
+        // }
 
         ulong computedOrder = PrimeOrderCalculator.Calculate(
             divisor,

@@ -8,16 +8,16 @@ internal readonly struct GpuDivisorPartialData
     public readonly ReadOnlyGpuUInt128 ModulusWide;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private GpuDivisorPartialData(ulong modulus, in ReadOnlyGpuUInt128 modulusWide)
+    public GpuDivisorPartialData(ulong modulus)
     {
         Modulus = modulus;
-        ModulusWide = modulusWide;
+        ModulusWide = new ReadOnlyGpuUInt128(modulus);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static GpuDivisorPartialData Create(ulong modulus)
+    public GpuDivisorPartialData(ulong modulus, in ReadOnlyGpuUInt128 modulusWide)
     {
-        ReadOnlyGpuUInt128 modulusWide = new(modulus);
-        return new GpuDivisorPartialData(modulus, in modulusWide);
+        Modulus = modulus;
+        ModulusWide = modulusWide;
     }
 }

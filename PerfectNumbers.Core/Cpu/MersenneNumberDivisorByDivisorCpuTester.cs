@@ -175,17 +175,31 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         // Keep the divisibility filters aligned with the divisor-cycle generator so the
         // CPU path never requests cycles that were skipped during cache creation.
         bool lastIsSeven = (prime & 3UL) == 3UL;
+        const ushort DecimalMaskWhenLastIsSeven = (1 << 3) | (1 << 7) | (1 << 9);
+        const ushort DecimalMaskOtherwise = (1 << 1) | (1 << 3) | (1 << 9);
+        const byte AcceptableRemainder8Mask = 0b10000010;
+        const int NonZeroMod3Mask = 0b00000110;
+        const int NonZeroMod5Mask = 0b00011110;
+        const int NonZeroMod7Mask = 0b01111110;
+        const int NonZeroMod11Mask = 0b11111111110;
+        const int RequiredSmallPrimeMask = 0b1111;
 
         while (divisor.CompareTo(limit) <= 0)
         {
             ulong candidate = divisor.Low;
             processedCount++;
 
-            bool admissible = lastIsSeven
-                ? (remainder10 == 3 || remainder10 == 7 || remainder10 == 9)
-                : (remainder10 == 1 || remainder10 == 3 || remainder10 == 9);
+            ushort decimalMask = lastIsSeven ? DecimalMaskWhenLastIsSeven : DecimalMaskOtherwise;
+            bool admissible = ((decimalMask >> remainder10) & 1) != 0;
 
-            if (admissible && (remainder8 == 1 || remainder8 == 7) && remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0)
+            bool passesOctalMask = ((AcceptableRemainder8Mask >> remainder8) & 1) != 0;
+            int smallPrimeBits = ((NonZeroMod3Mask >> remainder3) & 1)
+                | (((NonZeroMod5Mask >> remainder5) & 1) << 1)
+                | (((NonZeroMod7Mask >> remainder7) & 1) << 2)
+                | (((NonZeroMod11Mask >> remainder11) & 1) << 3);
+            bool passesSmallPrimeMasks = (smallPrimeBits & RequiredSmallPrimeMask) == RequiredSmallPrimeMask;
+
+            if (admissible && passesOctalMask && passesSmallPrimeMasks)
             {
                 MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(candidate);
                 ulong divisorCycle;
