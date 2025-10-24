@@ -58,11 +58,7 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        const int InvalidParameterMask = 0b111;
-        int invalidBits = (exponent <= 1UL ? 1 : 0)
-            | ((divisor <= 1UL ? 1 : 0) << 1)
-            | ((int)(1UL ^ (divisor & 1UL)) << 2);
-        if ((invalidBits & InvalidParameterMask) != 0)
+        if (exponent <= 1UL || divisor <= 1UL || (divisor & 1UL) == 0UL)
         {
             return false;
         }
@@ -121,11 +117,7 @@ public class MersenneDivisorCycles
 
     private static bool IsValidMersenneDivisorCandidate(ulong divisor, ulong exponent)
     {
-        const int InvalidParameterMask = 0b111;
-        int invalidBits = (exponent <= 1UL ? 1 : 0)
-            | ((divisor <= 1UL ? 1 : 0) << 1)
-            | ((int)(1UL ^ (divisor & 1UL)) << 2);
-        if ((invalidBits & InvalidParameterMask) != 0)
+        if (exponent <= 1UL || divisor <= 1UL || (divisor & 1UL) == 0UL)
         {
             return false;
         }

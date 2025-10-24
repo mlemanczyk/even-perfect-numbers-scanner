@@ -188,9 +188,7 @@ internal static partial class PrimeOrderCalculator
 	private static ulong InitializeStartingOrderCpu(ulong prime, ulong phi, in MontgomeryDivisorData divisorData)
 	{
 		ulong order = phi;
-		const int AcceptablePrimeResidueMask = (1 << 1) | (1 << 7);
-		int residue = (int)(prime & 7UL);
-		if (((AcceptablePrimeResidueMask >> residue) & 1) != 0)
+		if ((prime & 7UL) == 1UL || (prime & 7UL) == 7UL)
 		{
 			ulong half = phi >> 1;
 			if (Pow2EqualsOneCpu(half, prime, divisorData))
