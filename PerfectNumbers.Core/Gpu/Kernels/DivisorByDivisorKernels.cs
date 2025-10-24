@@ -83,30 +83,4 @@ internal static class DivisorByDivisorKernels
         }
     }
 
-    public static void ConvertMontgomeryResultsToHitsKernel(
-        Index1D index,
-        ArrayView<ulong> results,
-        ArrayView<byte> hits)
-    {
-        int globalIndex = index;
-        // EvenPerfectBitScanner launches this kernel with an extent matching the result and hit spans,
-        // so the defensive bounds guard stays commented out to keep the conversion branch-free.
-        // int length = (int)results.Length;
-        // if (globalIndex >= length)
-        // {
-        //     return;
-        // }
-
-        ulong montgomeryResult = results[globalIndex];
-        hits[globalIndex] = montgomeryResult == 1UL ? (byte)1 : (byte)0;
-    }
-
-    public static void ComputeMontgomeryExponentKernel(Index1D index, GpuDivisorPartialData divisor, ArrayView<ulong> exponents, ArrayView<ulong> results)
-    {
-        ulong modulus = divisor.Modulus;
-        // Each divisor flowing through this kernel follows q = 2kp + 1 with k >= 1, so modulus is always odd and exceeds one.
-        ulong exponent = exponents[index];
-        ulong montgomeryResult = ULongExtensions.Pow2MontgomeryModWindowedGpuKeepMontgomery(divisor.MontgomeryData, exponent);
-        results[index] = montgomeryResult;
-    }
 }
