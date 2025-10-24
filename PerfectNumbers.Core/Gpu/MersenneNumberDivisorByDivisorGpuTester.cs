@@ -324,10 +324,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool CandidatePassesHeuristics(ulong candidate, bool lastIsSeven)
     {
+        // Keep the divisibility filters aligned with the divisor-cycle snapshot so we never
+        // request missing entries from the cache.
         ulong remainder10 = candidate % 10UL;
         bool accept10 = lastIsSeven
             ? (remainder10 == 3UL || remainder10 == 7UL || remainder10 == 9UL)
-            : (remainder10 == 1UL || remainder10 == 3UL || remainder10 == 7UL || remainder10 == 9UL);
+            : (remainder10 == 1UL || remainder10 == 3UL || remainder10 == 9UL);
         if (!accept10)
         {
             return false;
@@ -339,12 +341,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             return false;
         }
 
-        if (candidate % 5UL == 0UL)
+        if (candidate % 3UL == 0UL || candidate % 5UL == 0UL || candidate % 7UL == 0UL || candidate % 11UL == 0UL)
         {
             return false;
         }
 
-        return candidate % 3UL != 0UL;
+        return true;
     }
 
 
