@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Runtime.InteropServices;
 
@@ -14,7 +15,8 @@ public static class MersenneNumberDivisorByDivisorTester
 			Action markComposite,
 			Action clearComposite,
 			Action<ulong, bool, bool, bool> printResult,
-			int threadCount)
+			int threadCount,
+			int primesPerTask)
 	{
 		if (candidates.Count == 0)
 		{
@@ -233,6 +235,8 @@ public static class MersenneNumberDivisorByDivisorTester
 		//     workerCount = 1;
 		// }
 
+		int chunkSize = primesPerTask <= 0 ? 1 : primesPerTask;
+
 		void ProcessPrime(ulong prime)
 		{
 			bool isPrime = tester.IsPrime(prime, out bool divisorsExhausted);
@@ -264,7 +268,20 @@ public static class MersenneNumberDivisorByDivisorTester
 				TaskScheduler = scheduler
 			};
 
-			Parallel.ForEach(filteredPrimes, options, ProcessPrime);
+			int totalCount = filteredPrimes.Count;
+			int partitionSize = chunkSize < 1 ? 1 : chunkSize;
+			if (partitionSize > totalCount)
+			{
+				partitionSize = totalCount;
+			}
+
+			Parallel.ForEach(Partitioner.Create(0, totalCount, partitionSize), options, range =>
+			{
+				for (int index = range.Item1; index < range.Item2; index++)
+				{
+					ProcessPrime(filteredPrimes[index]);
+				}
+			});
 		}
 	}
 }
