@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Cpu;
+using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core
 {
@@ -99,6 +100,18 @@ namespace PerfectNumbers.Core
             get
             {
                 return _montgomeryDivisorDataPool ??= ArrayPool<MontgomeryDivisorData>.Create();
+            }
+        }
+
+        [ThreadStatic]
+        private static ArrayPool<GpuDivisorPartialData>? _gpuDivisorPartialDataPool;
+
+        internal static ArrayPool<GpuDivisorPartialData> GpuDivisorPartialDataPool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _gpuDivisorPartialDataPool ??= ArrayPool<GpuDivisorPartialData>.Create();
             }
         }
 
@@ -329,31 +342,31 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
-        private static ExponentRemainderStepper _exponentRemainderStepper;
+        private static ExponentRemainderStepperCpu _exponentRemainderStepperCpu;
 
         [ThreadStatic]
-        private static bool _hasExponentRemainderStepper;
+        private static bool _hasExponentRemainderStepperCpu;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static ExponentRemainderStepper RentExponentStepper(in MontgomeryDivisorData divisorData)
+        internal static ExponentRemainderStepperCpu RentExponentStepperCpu(in MontgomeryDivisorData divisorData)
         {
-            if (_hasExponentRemainderStepper && _exponentRemainderStepper.MatchesDivisor(divisorData))
+            if (_hasExponentRemainderStepperCpu && _exponentRemainderStepperCpu.MatchesDivisor(divisorData))
             {
-                ExponentRemainderStepper stepper = _exponentRemainderStepper;
-                _hasExponentRemainderStepper = false;
+                ExponentRemainderStepperCpu stepper = _exponentRemainderStepperCpu;
+                _hasExponentRemainderStepperCpu = false;
                 stepper.Reset();
                 return stepper;
             }
 
-            return new ExponentRemainderStepper(divisorData);
+            return new ExponentRemainderStepperCpu(divisorData);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void ReturnExponentStepper(ExponentRemainderStepper stepper)
+        internal static void ReturnExponentStepperCpu(ExponentRemainderStepperCpu stepper)
         {
             stepper.Reset();
-            _exponentRemainderStepper = stepper;
-            _hasExponentRemainderStepper = true;
+            _exponentRemainderStepperCpu = stepper;
+            _hasExponentRemainderStepperCpu = true;
         }
     }
 }

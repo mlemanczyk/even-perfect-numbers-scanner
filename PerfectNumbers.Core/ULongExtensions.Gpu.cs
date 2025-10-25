@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using ILGPU;
@@ -18,6 +19,7 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[Obsolete("Use ULongExtensions.MulModGpu for GPU-compatible host code or GpuUInt128.MulMod inside kernels.")]
 	public static ulong MulMod64Gpu(this ulong a, ulong b, ulong modulus)
 	{
 		// TODO: Remove this GPU-compatible shim from production once callers migrate to MulMod64,
@@ -27,12 +29,20 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[Obsolete("Use ULongExtensions.MulModGpu for GPU-compatible host code or GpuUInt128.MulMod inside kernels.")]
 	public static ulong MulMod64GpuDeferred(this ulong a, ulong b, ulong modulus)
 	{
 		// TODO: Move this deferred helper to the benchmark suite; the baseline MulMod64 avoids the
 		// 5-40× slowdown seen across real-world operand distributions.
 		GpuUInt128 state = new(a);
 		return state.MulModWithNativeModulo(b, modulus);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static ulong MulModGpu(this ulong left, ulong right, ulong modulus)
+	{
+		GpuUInt128 state = new(left);
+		return state.MulMod(right, modulus);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -71,7 +81,7 @@ public static partial class ULongExtensions
 		while (index >= 0)
 		{
 			ulong currentBit = (exponent >> index) & 1UL;
-			ulong squared = result.MulMod64Gpu(result, modulus);
+			ulong squared = result.MulModGpu(result, modulus);
 			result = currentBit == 0UL ? squared : result;
 			index = currentBit == 0UL ? index - 1 : index;
 			if (currentBit == 0UL)
@@ -91,14 +101,14 @@ public static partial class ULongExtensions
 			int windowLength = index - windowStart + 1;
 			for (int square = 0; square < windowLength; square++)
 			{
-				result = result.MulMod64Gpu(result, modulus);
+				result = result.MulModGpu(result, modulus);
 			}
 
 			ulong mask = (1UL << windowLength) - 1UL;
 			ulong windowValue = (exponent >> windowStart) & mask;
 			int tableIndex = (int)((windowValue - 1UL) >> 1);
 			ulong multiplier = oddPowers[tableIndex];
-			result = result.MulMod64Gpu(multiplier, modulus);
+			result = result.MulModGpu(multiplier, modulus);
 
 			index = windowStart - 1;
 		}
@@ -106,6 +116,79 @@ public static partial class ULongExtensions
 		ThreadStaticPools.UlongPool.Return(oddPowersArray);
 
 		return result;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	internal static ulong Pow2ModWindowedGpuKernel(ulong exponent, ulong modulus)
+	{
+		int bitLength = GetPortableBitLengthGpu(exponent);
+		int windowSize = GetWindowSizeGpu(bitLength);
+		ReadOnlyGpuUInt128 modulusWide = new(modulus);
+		GpuUInt128 result = new(1UL);
+		int index = bitLength - 1;
+
+		while (index >= 0)
+		{
+			ulong currentBit = (exponent >> index) & 1UL;
+			if (currentBit == 0UL)
+			{
+				result.MulMod(result.AsReadOnly(), modulusWide);
+				index--;
+				continue;
+			}
+
+			int windowStartCandidate = index - windowSize + 1;
+			int negativeMask = windowStartCandidate >> 31;
+			windowStartCandidate &= ~negativeMask;
+			int windowStart = GetNextSetBitIndexGpu(exponent, windowStartCandidate);
+			int windowLength = index - windowStart + 1;
+
+			for (int square = 0; square < windowLength; square++)
+			{
+				result.MulMod(result.AsReadOnly(), modulusWide);
+			}
+
+			ulong mask = (1UL << windowLength) - 1UL;
+			ulong windowValue = (exponent >> windowStart) & mask;
+			ulong multiplier = ComputeWindowedOddPowerGpuKernel(windowValue, modulusWide);
+			result.MulMod(multiplier, modulusWide);
+
+			index = windowStart - 1;
+		}
+
+		return result.Low;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static ulong ComputeWindowedOddPowerGpuKernel(ulong windowValue, in ReadOnlyGpuUInt128 modulus)
+	{
+		GpuUInt128 result = new(2UL);
+		if (windowValue == 1UL)
+		{
+			// Single-bit windows show up whenever the bit scan finds an isolated exponent bit,
+			// which happens routinely on the GPU path, so keep the fast return enabled.
+			return 2UL;
+		}
+
+		ulong remaining = (windowValue - 1UL) >> 1;
+		GpuUInt128 squareBase = new(2UL);
+		squareBase.MulMod(squareBase.AsReadOnly(), modulus);
+
+		while (remaining != 0UL)
+		{
+			if ((remaining & 1UL) != 0UL)
+			{
+				result.MulMod(squareBase.AsReadOnly(), modulus);
+			}
+
+			remaining >>= 1;
+			if (remaining != 0UL)
+			{
+				squareBase.MulMod(squareBase.AsReadOnly(), modulus);
+			}
+		}
+
+		return result.Low;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -228,11 +311,11 @@ public static partial class ULongExtensions
 			return;
 		}
 
-		ulong square = baseValue.MulMod64Gpu(baseValue, modulus);
+		ulong square = baseValue.MulModGpu(baseValue, modulus);
 		for (int i = 1; i < oddPowers.Length; i++)
 		{
 			ulong previous = oddPowers[i - 1];
-			oddPowers[i] = previous.MulMod64Gpu(square, modulus);
+			oddPowers[i] = previous.MulModGpu(square, modulus);
 		}
 	}
 

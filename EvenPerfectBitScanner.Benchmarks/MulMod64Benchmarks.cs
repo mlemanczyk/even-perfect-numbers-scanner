@@ -58,7 +58,7 @@ public class MulMod64Benchmarks
     }
 
     /// <summary>
-    /// Calls the UInt128-based <see cref="ULongExtensions.MulModSimplified(ulong, ulong, ulong)"/> helper; performance mirrors
+    /// Calls the UInt128-based <see cref="ULongExtensions.MulMod(ulong, ulong, ulong)"/> helper; performance mirrors
     /// the full helper with 5.24–5.95 ns on sparse inputs and 1.99 ns when zeros dominate, but 22.8–59.2 ns on dense blends.
     /// </summary>
     /// <remarks>
@@ -66,10 +66,10 @@ public class MulMod64Benchmarks
     /// PrimeSizedModulus 50.490 ns, SparseOperands 5.239 ns, ZeroOperands 1.986 ns.
     /// </remarks>
     [Benchmark]
-    public ulong GpuCompatibleMulModSimplifiedExtension()
+    public ulong MulModGpu()
     {
         GpuUInt128 gpuUInt128 = new(Input.Left);
-        return gpuUInt128.MulModSimplified(Input.Right, Input.Modulus);
+        return gpuUInt128.MulMod(Input.Right, Input.Modulus);
     }
 
     /// <summary>

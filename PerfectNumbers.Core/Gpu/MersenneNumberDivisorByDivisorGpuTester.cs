@@ -1,3 +1,4 @@
+using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
@@ -10,12 +11,11 @@ using ILGPU.Runtime;
 namespace PerfectNumbers.Core.Gpu;
 
 /// <summary>
-/// Scans Mersenne divisors on the GPU for prime exponents p >= 31 using per-divisor Montgomery data.
+/// Scans Mersenne divisors on the GPU for prime exponents p >= 31 using cached GPU divisor partial data.
+/// Consumers must call <see cref="ConfigureFromMaxPrime"/> before invoking other members so the divisor limits are populated.
 /// </summary>
 public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDivisorByDivisorTester
 {
-    private const int RemainderSlotCount = 4;
-
     private int _gpuBatchSize = GpuConstants.ScanBatchSize;
     // EvenPerfectBitScanner configures the GPU tester once before scanning and never mutates the configuration afterwards,
     // so the synchronization fields from the previous implementation remain commented out here.
@@ -23,57 +23,15 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     private ulong _divisorLimit;
     // private bool _isConfigured;
 
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>>> _kernelCache = new();
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>>> _kernelExponentCache = new();
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<byte>, byte>> _remainderDeltaKernelCache = new(AcceleratorReferenceComparer.Instance);
-    private readonly ConcurrentDictionary<Accelerator, Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte>> _remainderScanKernelCache = new(AcceleratorReferenceComparer.Instance);
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>>> _candidateMaskKernelCache = new(AcceleratorReferenceComparer.Instance);
-    private readonly ConcurrentDictionary<Accelerator, Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<int>>> _candidateCompactionKernelCache = new(AcceleratorReferenceComparer.Instance);
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<byte>, ArrayView<int>>> _hitDetectionKernelCache = new(AcceleratorReferenceComparer.Instance);
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<byte>>> _hitConversionKernelCache = new(AcceleratorReferenceComparer.Instance);
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>> _candidateGenerationKernelCache = new(AcceleratorReferenceComparer.Instance);
+    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>> _kernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, ConcurrentBag<BatchResources>> _resourcePools = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentBag<GpuContextPool.GpuContextLease> _acceleratorPool = new();
     private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
 
-    private Action<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
-        _kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>>(DivisorByDivisorKernels.CheckKernel));
+    private Action<Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> GetKernel(Accelerator accelerator) =>
+        _kernelCache.GetOrAdd(accelerator, acc =>
+            acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>(DivisorByDivisorKernels.CheckKernel));
 
-    private Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> GetKernelByPrimeExponent(Accelerator accelerator) =>
-        _kernelExponentCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>>(DivisorByDivisorKernels.ComputeMontgomeryExponentKernel));
-
-    private Action<Index1D, ArrayView<ulong>, ArrayView<byte>, byte> GetRemainderDeltaKernel(Accelerator accelerator) =>
-        _remainderDeltaKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>, byte>(DivisorByDivisorKernels.ComputeRemainderDeltasKernel));
-
-    private Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte> GetRemainderScanKernel(Accelerator accelerator) =>
-        _remainderScanKernelCache.GetOrAdd(
-            accelerator,
-            acc => acc.LoadStreamKernel<Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte>(DivisorByDivisorKernels.AccumulateRemaindersKernel));
-
-    private Action<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>> GetCandidateMaskKernel(Accelerator accelerator) =>
-        _candidateMaskKernelCache.GetOrAdd(
-            accelerator,
-            acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>>(DivisorByDivisorKernels.EvaluateCandidateMaskKernel));
-
-    private Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<int>> GetCandidateCompactionKernel(Accelerator accelerator) =>
-        _candidateCompactionKernelCache.GetOrAdd(
-            accelerator,
-            acc => acc.LoadStreamKernel<Index1D, ArrayView<byte>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<int>>(DivisorByDivisorKernels.CompactCandidateMaskKernel));
-
-    private Action<Index1D, ArrayView<byte>, ArrayView<int>> GetHitDetectionKernel(Accelerator accelerator) =>
-        _hitDetectionKernelCache.GetOrAdd(
-            accelerator,
-            acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<byte>, ArrayView<int>>(DivisorByDivisorKernels.PublishFirstHitKernel));
-
-    private Action<Index1D, ArrayView<ulong>, ArrayView<byte>> GetResultConversionKernel(Accelerator accelerator) =>
-        _hitConversionKernelCache.GetOrAdd(
-            accelerator,
-            acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(DivisorByDivisorKernels.ConvertMontgomeryResultsToHitsKernel));
-
-    private Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128> GetCandidateGenerationKernel(Accelerator accelerator) =>
-        _candidateGenerationKernelCache.GetOrAdd(
-            accelerator,
-            acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>(DivisorByDivisorKernels.GenerateCandidatesAndGapsKernel));
 
     public int GpuBatchSize
     {
@@ -144,30 +102,22 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         composite = CheckDivisors(
             prime,
             allowedMax,
-            accelerator,
             kernel,
-            resources.DivisorsBuffer,
+            resources.DivisorDataBuffer,
+            resources.OffsetBuffer,
+            resources.CountBuffer,
+            resources.CycleBuffer,
+            resources.FirstRemainderBuffer,
             resources.ExponentBuffer,
             resources.HitsBuffer,
             resources.HitIndexBuffer,
-            resources.CandidateBuffer,
-            resources.NextStartBuffer,
-            resources.DivisorDeltaBuffer,
-            resources.RemainderDeltaBuffer,
-            resources.RemainderBuffer,
-            resources.FilterCountBuffer,
-            resources.RemainderDeltaKernel,
-            resources.RemainderScanKernel,
-            resources.CandidateMaskKernel,
-            resources.CandidateCompactionKernel,
-            resources.CandidateGenerationKernel,
-            resources.HitDetectionKernel,
             resources.Divisors,
             resources.Exponents,
             resources.DivisorData,
-            resources.CycleCandidates,
-            resources.CycleLengths,
-            resources.CycleCapacity,
+            resources.Offsets,
+            resources.Counts,
+            resources.Cycles,
+            resources.FirstRemainders,
             out lastProcessed,
             out coveredRange,
             out processedCount);
@@ -218,46 +168,33 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     private static bool CheckDivisors(
         ulong prime,
         ulong allowedMax,
-        Accelerator accelerator,
-        Action<Index1D, ArrayView<MontgomeryDivisorData>, ArrayView<ulong>, ArrayView<byte>> kernel,
-        MemoryBuffer1D<MontgomeryDivisorData, Stride1D.Dense> divisorsBuffer,
+        Action<Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> kernel,
+        MemoryBuffer1D<GpuDivisorPartialData, Stride1D.Dense> divisorDataBuffer,
+        MemoryBuffer1D<int, Stride1D.Dense> offsetBuffer,
+        MemoryBuffer1D<int, Stride1D.Dense> countBuffer,
+        MemoryBuffer1D<ulong, Stride1D.Dense> cycleBuffer,
+        MemoryBuffer1D<ulong, Stride1D.Dense> firstRemainderBuffer,
         MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer,
         MemoryBuffer1D<byte, Stride1D.Dense> hitsBuffer,
         MemoryBuffer1D<int, Stride1D.Dense> hitIndexBuffer,
-        MemoryBuffer1D<ulong, Stride1D.Dense> candidateBuffer,
-        MemoryBuffer1D<GpuUInt128, Stride1D.Dense> nextStartBuffer,
-        MemoryBuffer1D<ulong, Stride1D.Dense> divisorDeltaBuffer,
-        MemoryBuffer1D<byte, Stride1D.Dense> remainderDeltaBuffer,
-        MemoryBuffer1D<byte, Stride1D.Dense> remainderBuffer,
-        MemoryBuffer1D<int, Stride1D.Dense> filterCountBuffer,
-        Action<Index1D, ArrayView<ulong>, ArrayView<byte>, byte> remainderDeltaKernel,
-        Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte> remainderScanKernel,
-        Action<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>> candidateMaskKernel,
-        Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<int>> candidateCompactionKernel,
-        Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128> candidateGenerationKernel,
-        Action<Index1D, ArrayView<byte>, ArrayView<int>> hitDetectionKernel,
         in ulong[] divisors,
         ulong[] exponents,
-        MontgomeryDivisorData[] divisorData,
-        ulong[] cycleCandidates,
-        ulong[] cycleLengths,
-        int cycleCapacity,
+        GpuDivisorPartialData[] divisorData,
+        int[] offsets,
+        int[] counts,
+        ulong[] cycles,
+        ulong[] firstRemainders,
         out ulong lastProcessed,
         out bool coveredRange,
         out ulong processedCount)
     {
-        int batchCapacity = (int)divisorsBuffer.Length;
+        int batchCapacity = (int)divisorDataBuffer.Length;
         bool composite = false;
         bool processedAll = false;
         processedCount = 0UL;
         lastProcessed = 0UL;
 
-        cycleCapacity = Math.Max(1, cycleCapacity);
-        int chunkCapacity = Math.Min(batchCapacity, cycleCapacity);
-        int maxThreadsPerGroup = (int)accelerator.MaxNumThreadsPerGroup;
-        bool clampThreads = maxThreadsPerGroup > 0;
-        chunkCapacity = clampThreads && chunkCapacity > maxThreadsPerGroup ? maxThreadsPerGroup : chunkCapacity;
-        chunkCapacity = chunkCapacity <= 0 ? cycleCapacity : chunkCapacity;
+        int chunkCapacity = Math.Max(1, batchCapacity);
 
         UInt128 twoP128 = (UInt128)prime << 1;
         UInt128 allowedMax128 = allowedMax;
@@ -280,111 +217,86 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         byte step8 = (byte)(twoP128 % 8UL);
         byte step5 = (byte)(twoP128 % 5UL);
         byte step3 = (byte)(twoP128 % 3UL);
+        byte step7 = (byte)(twoP128 % 7UL);
+        byte step11 = (byte)(twoP128 % 11UL);
 
         UInt128 currentDivisor128 = firstDivisor128;
         byte remainder10 = (byte)((ulong)(currentDivisor128 % 10UL));
         byte remainder8 = (byte)((ulong)(currentDivisor128 & 7UL));
         byte remainder5 = (byte)((ulong)(currentDivisor128 % 5UL));
         byte remainder3 = (byte)((ulong)(currentDivisor128 % 3UL));
+        byte remainder7 = (byte)((ulong)(currentDivisor128 % 7UL));
+        byte remainder11 = (byte)((ulong)(currentDivisor128 % 11UL));
         bool lastIsSeven = (prime & 3UL) == 3UL;
-        byte lastIsSevenFlag = lastIsSeven ? (byte)1 : (byte)0;
-        DivisorCycleCache cycleCache = DivisorCycleCache.Shared;
-        int remainderStride = (int)divisorDeltaBuffer.Length;
-        remainderStride = remainderStride <= 0 ? chunkCapacity : remainderStride;
 
         ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
         ulong[] filteredDivisors = ulongPool.Rent(chunkCapacity);
-        var viewCache = new BufferSliceCache(divisorDeltaBuffer, remainderDeltaBuffer, remainderBuffer, hitsBuffer, remainderStride);
-        Span<ulong> candidateStorage = cycleCandidates.AsSpan();
         Span<ulong> filteredStorage = filteredDivisors.AsSpan();
-        Span<ulong> cycleLengthStorage = cycleLengths.AsSpan();
-        Span<MontgomeryDivisorData> divisorDataStorage = divisorData.AsSpan();
         Span<ulong> divisorStorage = divisors.AsSpan();
         Span<ulong> exponentStorage = exponents.AsSpan();
+        Span<GpuDivisorPartialData> divisorDataStorage = divisorData.AsSpan();
+        Span<int> offsetStorage = offsets.AsSpan();
+        Span<int> countStorage = counts.AsSpan();
+        Span<ulong> cycleStorage = cycles.AsSpan();
+        Span<ulong> remainderStorage = firstRemainders.AsSpan();
 
         while (currentK <= maxK && !composite)
         {
             int chunkCount = Math.Min(chunkCapacity, batchCapacity);
             ulong remainingK = maxK - currentK + 1UL;
-            chunkCount = (ulong)chunkCount > remainingK ? (int)remainingK : chunkCount;
-            bool hasChunk = chunkCount > 0;
-            int effectiveCount = hasChunk ? chunkCount : 0;
-            if (!hasChunk)
+            if ((ulong)chunkCount > remainingK)
+            {
+                chunkCount = (int)remainingK;
+            }
+
+            if (chunkCount <= 0)
             {
                 processedAll = true;
                 break;
             }
 
-            Span<ulong> candidateSpan = candidateStorage[..effectiveCount];
+            int filteredCount = 0;
+            UInt128 nextDivisor128 = currentDivisor128;
 
-            viewCache.Ensure(effectiveCount);
+            byte localRemainder10 = remainder10;
+            byte localRemainder8 = remainder8;
+            byte localRemainder5 = remainder5;
+            byte localRemainder3 = remainder3;
+            byte localRemainder7 = remainder7;
+            byte localRemainder11 = remainder11;
 
-            ArrayView1D<ulong, Stride1D.Dense> gapView = viewCache.DivisorDelta;
-            ArrayView1D<byte, Stride1D.Dense> deltaView = viewCache.RemainderDelta;
-            ArrayView1D<byte, Stride1D.Dense> remainder10View = viewCache.Remainder10;
-            ArrayView1D<byte, Stride1D.Dense> remainder8View = viewCache.Remainder8;
-            ArrayView1D<byte, Stride1D.Dense> remainder5View = viewCache.Remainder5;
-            ArrayView1D<byte, Stride1D.Dense> remainder3View = viewCache.Remainder3;
-            ArrayView1D<byte, Stride1D.Dense> maskView = viewCache.Hits;
-            ArrayView1D<int, Stride1D.Dense> filteredCountView = filterCountBuffer.View;
-
-            UInt128 localDivisor = currentDivisor128;
-
-            ArrayView1D<ulong, Stride1D.Dense> candidateView = candidateBuffer.View.SubView(0, effectiveCount);
-            ArrayView1D<GpuUInt128, Stride1D.Dense> nextStartView = nextStartBuffer.View.SubView(0, 1);
-            GpuUInt128 gpuStartValue = new GpuUInt128(localDivisor);
-            GpuUInt128 gpuStride = new GpuUInt128(twoP128);
-            GpuUInt128 nextDivisorGpu = GenerateCandidatesOnGpu(
-                effectiveCount,
-                gpuStartValue,
-                gpuStride,
-                candidateView,
-                gapView,
-                nextStartView,
-                candidateGenerationKernel);
-            if (effectiveCount > 0)
+            for (int i = 0; i < chunkCount; i++)
             {
-                candidateView.CopyToCPU(ref MemoryMarshal.GetReference(candidateSpan), effectiveCount);
-                processedCount += (ulong)effectiveCount;
-                lastProcessed = candidateSpan[effectiveCount - 1];
-                currentDivisor128 = (UInt128)nextDivisorGpu;
+                ulong candidate = (ulong)nextDivisor128;
+
+                if (CandidatePassesHeuristics(localRemainder10, localRemainder8, localRemainder3, localRemainder5, localRemainder7, localRemainder11, lastIsSeven))
+                {
+                    filteredStorage[filteredCount++] = candidate;
+                }
+
+                nextDivisor128 += twoP128;
+                localRemainder10 = AddMod(localRemainder10, step10, 10);
+                localRemainder8 = AddMod(localRemainder8, step8, 8);
+                localRemainder5 = AddMod(localRemainder5, step5, 5);
+                localRemainder3 = AddMod(localRemainder3, step3, 3);
+                localRemainder7 = AddMod(localRemainder7, step7, 7);
+                localRemainder11 = AddMod(localRemainder11, step11, 11);
             }
 
-            ComputeRemaindersOnGpu(effectiveCount, remainder10, 10, gapView, deltaView, remainder10View, remainderDeltaKernel, remainderScanKernel);
-            ComputeRemaindersOnGpu(effectiveCount, remainder8, 8, gapView, deltaView, remainder8View, remainderDeltaKernel, remainderScanKernel);
-            ComputeRemaindersOnGpu(effectiveCount, remainder5, 5, gapView, deltaView, remainder5View, remainderDeltaKernel, remainderScanKernel);
-            ComputeRemaindersOnGpu(effectiveCount, remainder3, 3, gapView, deltaView, remainder3View, remainderDeltaKernel, remainderScanKernel);
+            remainder10 = localRemainder10;
+            remainder8 = localRemainder8;
+            remainder5 = localRemainder5;
+            remainder3 = localRemainder3;
+            remainder7 = localRemainder7;
+            remainder11 = localRemainder11;
 
-            BuildCandidateMaskOnGpu(effectiveCount, remainder10View, remainder8View, remainder5View, remainder3View, lastIsSevenFlag, maskView, candidateMaskKernel);
+            processedCount += (ulong)chunkCount;
 
-            byte lastRemainder10 = effectiveCount > 0 ? FetchLastRemainder(remainder10View, effectiveCount) : (byte)0;
-            byte lastRemainder8 = effectiveCount > 0 ? FetchLastRemainder(remainder8View, effectiveCount) : (byte)0;
-            byte lastRemainder5 = effectiveCount > 0 ? FetchLastRemainder(remainder5View, effectiveCount) : (byte)0;
-            byte lastRemainder3 = effectiveCount > 0 ? FetchLastRemainder(remainder3View, effectiveCount) : (byte)0;
+            UInt128 lastDivisor128 = nextDivisor128 - twoP128;
+            lastProcessed = (ulong)lastDivisor128;
+            currentDivisor128 = nextDivisor128;
 
-            remainder10 = AddModGpu(lastRemainder10, step10, 10);
-            remainder8 = AddModGpu(lastRemainder8, step8, 8);
-            remainder5 = AddModGpu(lastRemainder5, step5, 5);
-            remainder3 = AddModGpu(lastRemainder3, step3, 3);
-
-            int filteredCount = CompactCandidatesOnGpu(
-                effectiveCount,
-                maskView,
-                candidateView,
-                candidateView,
-                filteredCountView,
-                candidateCompactionKernel);
-
-            if (filteredCount > 0)
-            {
-                Span<ulong> filteredSlice = filteredStorage[..filteredCount];
-                ArrayView1D<ulong, Stride1D.Dense> filteredView = candidateView.SubView(0, filteredCount);
-                // The compaction kernel rewrites the accepted divisors into the front of the candidate buffer,
-                // so copying the compacted prefix is enough to build the CPU span for cycle checks.
-                filteredView.CopyToCPU(ref MemoryMarshal.GetReference(filteredSlice), filteredCount);
-            }
-
-            currentK += (ulong)effectiveCount;
+            currentK += (ulong)chunkCount;
             processedAll = currentK > maxK;
 
             if (filteredCount == 0)
@@ -393,15 +305,37 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             }
 
             Span<ulong> filteredDivisorsSpan = filteredStorage[..filteredCount];
-            Span<ulong> cycleSpan = cycleLengthStorage[..filteredCount];
-            cycleCache.GetCycleLengths(filteredDivisorsSpan, cycleSpan);
+
+            Span<ulong> divisorSpan = divisorStorage;
+            Span<ulong> exponentSpan = exponentStorage;
+            Span<GpuDivisorPartialData> divisorDataSpan = divisorDataStorage;
+            Span<int> offsetSpan = offsetStorage;
+            Span<int> countSpan = countStorage;
+            Span<ulong> cycleSpan = cycleStorage;
+            Span<ulong> remainderSpan = remainderStorage;
 
             int admissibleCount = 0;
+            int exponentIndex = 0;
             for (int i = 0; i < filteredCount; i++)
             {
-                int add = cycleSpan[i] == prime ? 1 : 0;
-                filteredDivisorsSpan[admissibleCount] = filteredDivisorsSpan[i];
-                admissibleCount += add;
+                ulong divisorValue = filteredDivisorsSpan[i];
+                MontgomeryDivisorData montgomeryData = MontgomeryDivisorData.FromModulus(divisorValue);
+                ulong divisorCycle = ResolveDivisorCycle(divisorValue, prime, in montgomeryData);
+                if (divisorCycle != prime)
+                {
+                    continue;
+                }
+
+                divisorSpan[admissibleCount] = divisorValue;
+                exponentSpan[exponentIndex] = prime;
+                divisorDataSpan[admissibleCount] = new GpuDivisorPartialData(divisorValue);
+                offsetSpan[admissibleCount] = exponentIndex;
+                countSpan[admissibleCount] = 1;
+                cycleSpan[admissibleCount] = divisorCycle;
+                remainderSpan[admissibleCount] = 0UL;
+
+                admissibleCount++;
+                exponentIndex++;
             }
 
             if (admissibleCount == 0)
@@ -409,27 +343,30 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                 continue;
             }
 
-            Span<MontgomeryDivisorData> divisorDataSpan = divisorDataStorage[..admissibleCount];
-            Span<ulong> divisorSpan = divisorStorage[..admissibleCount];
-            Span<ulong> exponentSpan = exponentStorage[..admissibleCount];
-            ArrayView1D<MontgomeryDivisorData, Stride1D.Dense> divisorView = divisorsBuffer.View.SubView(0, admissibleCount);
-            ArrayView1D<ulong, Stride1D.Dense> exponentView = exponentBuffer.View.SubView(0, admissibleCount);
-            ArrayView1D<byte, Stride1D.Dense> hitsView = hitsBuffer.View.SubView(0, admissibleCount);
+            ArrayView1D<GpuDivisorPartialData, Stride1D.Dense> divisorView = divisorDataBuffer.View.SubView(0, admissibleCount);
+            ArrayView1D<int, Stride1D.Dense> offsetView = offsetBuffer.View.SubView(0, admissibleCount);
+            ArrayView1D<int, Stride1D.Dense> countView = countBuffer.View.SubView(0, admissibleCount);
+            ArrayView1D<ulong, Stride1D.Dense> cycleView = cycleBuffer.View.SubView(0, admissibleCount);
+            ArrayView1D<ulong, Stride1D.Dense> remainderView = firstRemainderBuffer.View.SubView(0, admissibleCount);
+            ArrayView1D<ulong, Stride1D.Dense> exponentView = exponentBuffer.View.SubView(0, exponentIndex);
+            ArrayView1D<byte, Stride1D.Dense> hitsView = hitsBuffer.View.SubView(0, exponentIndex);
             ArrayView1D<int, Stride1D.Dense> hitIndexView = hitIndexBuffer.View.SubView(0, 1);
 
-            for (int i = 0; i < admissibleCount; i++)
-            {
-                ulong divisorValue = filteredDivisorsSpan[i];
-                divisorSpan[i] = divisorValue;
-                exponentSpan[i] = prime;
-                divisorDataSpan[i] = MontgomeryDivisorData.FromModulus(divisorValue);
-            }
-
             divisorView.CopyFromCPU(ref MemoryMarshal.GetReference(divisorDataSpan), admissibleCount);
-            exponentView.CopyFromCPU(ref MemoryMarshal.GetReference(exponentSpan), admissibleCount);
-            kernel(admissibleCount, divisorView, exponentView, hitsView);
+            offsetView.CopyFromCPU(ref MemoryMarshal.GetReference(offsetSpan), admissibleCount);
+            countView.CopyFromCPU(ref MemoryMarshal.GetReference(countSpan), admissibleCount);
+            cycleView.CopyFromCPU(ref MemoryMarshal.GetReference(cycleSpan), admissibleCount);
+            remainderView.CopyFromCPU(ref MemoryMarshal.GetReference(remainderSpan), admissibleCount);
+            exponentView.CopyFromCPU(ref MemoryMarshal.GetReference(exponentSpan), exponentIndex);
 
-            int hitIndex = FindFirstHitOnGpu(admissibleCount, hitsView, hitIndexView, hitDetectionKernel);
+            int sentinel = int.MaxValue;
+            hitIndexView.CopyFromCPU(ref sentinel, 1);
+
+            kernel(admissibleCount, divisorView, offsetView, countView, exponentView, cycleView, remainderView, hitsView, hitIndexView);
+
+            int firstHit = sentinel;
+            hitIndexView.CopyToCPU(ref firstHit, 1);
+            int hitIndex = firstHit >= admissibleCount ? -1 : firstHit;
             bool hitFound = hitIndex >= 0;
             composite = hitFound;
             int lastIndex = admissibleCount - 1;
@@ -442,217 +379,69 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         return composite;
     }
 
-    private ref struct BufferSliceCache
-    {
-        private readonly MemoryBuffer1D<ulong, Stride1D.Dense> _divisorDeltaBuffer;
-        private readonly MemoryBuffer1D<byte, Stride1D.Dense> _remainderDeltaBuffer;
-        private readonly MemoryBuffer1D<byte, Stride1D.Dense> _remainderBuffer;
-        private readonly MemoryBuffer1D<byte, Stride1D.Dense> _hitsBuffer;
-        private readonly int _remainderStride;
-        private int _length;
-        private ArrayView1D<ulong, Stride1D.Dense> _divisorDelta;
-        private ArrayView1D<byte, Stride1D.Dense> _remainderDelta;
-        private ArrayView1D<byte, Stride1D.Dense> _remainder10;
-        private ArrayView1D<byte, Stride1D.Dense> _remainder8;
-        private ArrayView1D<byte, Stride1D.Dense> _remainder5;
-        private ArrayView1D<byte, Stride1D.Dense> _remainder3;
-        private ArrayView1D<byte, Stride1D.Dense> _hits;
 
-        internal BufferSliceCache(
-            MemoryBuffer1D<ulong, Stride1D.Dense> divisorDeltaBuffer,
-            MemoryBuffer1D<byte, Stride1D.Dense> remainderDeltaBuffer,
-            MemoryBuffer1D<byte, Stride1D.Dense> remainderBuffer,
-            MemoryBuffer1D<byte, Stride1D.Dense> hitsBuffer,
-            int remainderStride)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ResolveDivisorCycle(ulong divisor, ulong prime, in MontgomeryDivisorData divisorData)
+    {
+        if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(divisor, prime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
         {
-            _divisorDeltaBuffer = divisorDeltaBuffer;
-            _remainderDeltaBuffer = remainderDeltaBuffer;
-            _remainderBuffer = remainderBuffer;
-            _hitsBuffer = hitsBuffer;
-            _remainderStride = remainderStride;
-            _length = -1;
-            _divisorDelta = default;
-            _remainderDelta = default;
-            _remainder10 = default;
-            _remainder8 = default;
-            _remainder5 = default;
-            _remainder3 = default;
-            _hits = default;
+            return MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
         }
 
-        internal void Ensure(int length)
-        {
-            if (_length == length)
-            {
-                return;
-            }
+        return computedCycle;
+    }
 
-            _length = length;
-            ArrayView1D<byte, Stride1D.Dense> remainderBaseView = _remainderBuffer.View;
-            _divisorDelta = _divisorDeltaBuffer.View.SubView(0, length);
-            _remainderDelta = _remainderDeltaBuffer.View.SubView(0, length);
-            _remainder10 = remainderBaseView.SubView(0, length);
-            _remainder8 = remainderBaseView.SubView(_remainderStride, length);
-            _remainder5 = remainderBaseView.SubView(_remainderStride * 2, length);
-            _remainder3 = remainderBaseView.SubView(_remainderStride * 3, length);
-            _hits = _hitsBuffer.View.SubView(0, length);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool CandidatePassesHeuristics(
+        byte remainder10,
+        byte remainder8,
+        byte remainder3,
+        byte remainder5,
+        byte remainder7,
+        byte remainder11,
+        bool lastIsSeven)
+    {
+        const ushort DecimalMaskWhenLastIsSeven = (1 << 3) | (1 << 7) | (1 << 9);
+        const ushort DecimalMaskOtherwise = (1 << 1) | (1 << 3) | (1 << 9);
+
+        ushort decimalMask = lastIsSeven ? DecimalMaskWhenLastIsSeven : DecimalMaskOtherwise;
+        if (((decimalMask >> remainder10) & 1) == 0)
+        {
+            return false;
         }
 
-        internal ArrayView1D<ulong, Stride1D.Dense> DivisorDelta => _divisorDelta;
+        if (remainder8 != 1 && remainder8 != 7)
+        {
+            return false;
+        }
 
-        internal ArrayView1D<byte, Stride1D.Dense> RemainderDelta => _remainderDelta;
+        if (remainder3 == 0 || remainder5 == 0 || remainder7 == 0 || remainder11 == 0)
+        {
+            return false;
+        }
 
-        internal ArrayView1D<byte, Stride1D.Dense> Remainder10 => _remainder10;
-
-        internal ArrayView1D<byte, Stride1D.Dense> Remainder8 => _remainder8;
-
-        internal ArrayView1D<byte, Stride1D.Dense> Remainder5 => _remainder5;
-
-        internal ArrayView1D<byte, Stride1D.Dense> Remainder3 => _remainder3;
-
-        internal ArrayView1D<byte, Stride1D.Dense> Hits => _hits;
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static GpuUInt128 GenerateCandidatesOnGpu(
-        int count,
-        GpuUInt128 startValue,
-        GpuUInt128 stride,
-        ArrayView1D<ulong, Stride1D.Dense> candidateView,
-        ArrayView1D<ulong, Stride1D.Dense> gapView,
-        ArrayView1D<GpuUInt128, Stride1D.Dense> nextStartView,
-        Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128> kernel)
-    {
-        // EvenPerfectBitScanner always launches this helper with a positive count,
-        // so the guard stays commented out to keep the hot path branch-free.
-        // if (count <= 0)
-        // {
-        //     return GpuUInt128.Zero;
-        // }
-
-        kernel(count, candidateView, gapView, nextStartView, startValue, stride);
-
-        GpuUInt128 nextStart = default;
-        nextStartView.SubView(0, 1).CopyToCPU(ref nextStart, 1);
-        return nextStart;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ComputeRemaindersOnGpu(
-        int count,
-        byte baseRemainder,
-        byte modulus,
-        ArrayView1D<ulong, Stride1D.Dense> gapView,
-        ArrayView1D<byte, Stride1D.Dense> deltaView,
-        ArrayView1D<byte, Stride1D.Dense> remainderView,
-        Action<Index1D, ArrayView<ulong>, ArrayView<byte>, byte> deltaKernel,
-        Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte> scanKernel)
-    {
-        // EvenPerfectBitScanner always supplies a positive count here,
-        // so the guard stays commented out to keep the hot path branch-free.
-        // if (count <= 0)
-        // {
-        //     return;
-        // }
-
-        deltaKernel(count, gapView, deltaView, modulus);
-        SharedMemoryConfig sharedMemoryConfig = SharedMemoryConfig.RequestDynamic<int>(count);
-        Index1D gridDim = new Index1D(1);
-        Index1D groupDim = new Index1D(count);
-        KernelConfig kernelConfig = new KernelConfig(gridDim, groupDim, sharedMemoryConfig);
-
-        scanKernel(kernelConfig, new Index1D(count), deltaView, remainderView, baseRemainder, modulus);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void BuildCandidateMaskOnGpu(
-        int count,
-        ArrayView1D<byte, Stride1D.Dense> remainder10View,
-        ArrayView1D<byte, Stride1D.Dense> remainder8View,
-        ArrayView1D<byte, Stride1D.Dense> remainder5View,
-        ArrayView1D<byte, Stride1D.Dense> remainder3View,
-        byte lastIsSevenFlag,
-        ArrayView1D<byte, Stride1D.Dense> maskView,
-        Action<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>> maskKernel)
-    {
-        // EvenPerfectBitScanner always supplies a positive count here,
-        // so the guard stays commented out to keep the hot path branch-free.
-        // if (count <= 0)
-        // {
-        //     return;
-        // }
-
-        maskKernel(count, remainder10View, remainder8View, remainder5View, remainder3View, lastIsSevenFlag, maskView);
-    }
-
-    private static int CompactCandidatesOnGpu(
-        int count,
-        ArrayView1D<byte, Stride1D.Dense> maskView,
-        ArrayView1D<ulong, Stride1D.Dense> sourceView,
-        ArrayView1D<ulong, Stride1D.Dense> destinationView,
-        ArrayView1D<int, Stride1D.Dense> countView,
-        Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<int>> compactionKernel)
-    {
-        // EvenPerfectBitScanner always compacts with a positive count,
-        // so the guard stays commented out to keep the hot path branch-free.
-        // if (count <= 0)
-        // {
-        //     return 0;
-        // }
-
-        SharedMemoryConfig sharedMemoryConfig = SharedMemoryConfig.RequestDynamic<int>(count * 3);
-        Index1D gridDim = new Index1D(1);
-        Index1D groupDim = new Index1D(count);
-        KernelConfig kernelConfig = new KernelConfig(gridDim, groupDim, sharedMemoryConfig);
-
-        compactionKernel(kernelConfig, new Index1D(count), maskView, sourceView, destinationView, countView);
-
-        int filteredCount = 0;
-        countView.SubView(0, 1).CopyToCPU(ref filteredCount, 1);
-        return filteredCount;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FindFirstHitOnGpu(
-        int count,
-        ArrayView1D<byte, Stride1D.Dense> hitsView,
-        ArrayView1D<int, Stride1D.Dense> hitIndexView,
-        Action<Index1D, ArrayView<byte>, ArrayView<int>> hitKernel)
-    {
-        // EvenPerfectBitScanner only calls this helper with positive counts,
-        // so the guard stays commented out to keep the hot path branch-free.
-        // if (count <= 0)
-        // {
-        //     return -1;
-        // }
-
-        int sentinel = int.MaxValue;
-        hitIndexView.SubView(0, 1).CopyFromCPU(ref sentinel, 1);
-
-        hitKernel(count, hitsView, hitIndexView);
-
-        int firstHit = sentinel;
-        hitIndexView.SubView(0, 1).CopyToCPU(ref firstHit, 1);
-        return firstHit >= count ? -1 : firstHit;
-    }
-
-    private static byte FetchLastRemainder(ArrayView1D<byte, Stride1D.Dense> remainderView, int count)
-    {
-        // Callers guard against zero counts before invoking this helper to keep the hot path branch-free.
-        byte value = 0;
-        remainderView.SubView(count - 1, 1).CopyToCPU(ref value, 1);
-        return value;
-    }
-
-    private static byte AddModGpu(byte value, byte delta, byte modulus)
+    private static byte AddMod(byte value, byte delta, byte modulus)
     {
         int result = value + delta;
-        int firstWrap = result >= modulus ? 1 : 0;
-        result -= firstWrap * modulus;
-        int secondWrap = result >= modulus ? 1 : 0;
-        result -= secondWrap * modulus;
+        if (result >= modulus)
+        {
+            result -= modulus;
+            if (result >= modulus)
+            {
+                result -= modulus;
+            }
+        }
+
         return (byte)result;
     }
+
+
+
+
 
     private static ulong ComputeDivisorLimitFromMaxPrimeGpu(ulong maxPrime)
     {
@@ -691,10 +480,14 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
         private readonly GpuContextPool.GpuContextLease _lease;
         private readonly Accelerator _accelerator;
-        private Action<Index1D, MontgomeryDivisorData, ArrayView<ulong>, ArrayView<ulong>> _kernel = null!;
-        private Action<Index1D, ArrayView<ulong>, ArrayView<byte>> _hitConversionKernel = null!;
+        private Action<Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> _kernel = null!;
+        private MemoryBuffer1D<GpuDivisorPartialData, Stride1D.Dense> _divisorBuffer = null!;
+        private MemoryBuffer1D<int, Stride1D.Dense> _offsetBuffer = null!;
+        private MemoryBuffer1D<int, Stride1D.Dense> _countBuffer = null!;
+        private MemoryBuffer1D<ulong, Stride1D.Dense> _cycleBuffer = null!;
+        private MemoryBuffer1D<ulong, Stride1D.Dense> _firstRemainderBuffer = null!;
+        private MemoryBuffer1D<int, Stride1D.Dense> _firstHitBuffer = null!;
         private MemoryBuffer1D<ulong, Stride1D.Dense> _exponentsBuffer = null!;
-        private MemoryBuffer1D<ulong, Stride1D.Dense> _resultsBuffer = null!;
         private MemoryBuffer1D<byte, Stride1D.Dense> _hitBuffer = null!;
         private ulong[] _hostBuffer = null!;
         private int _capacity;
@@ -713,14 +506,47 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             _disposed = false;
         }
 
-        private void EnsureExecutionResourcesLocked()
+        private void EnsureExecutionResourcesLocked(int requiredCapacity)
         {
-            _kernel = _owner.GetKernelByPrimeExponent(_accelerator);
-            _hitConversionKernel = _owner.GetResultConversionKernel(_accelerator);
-            _exponentsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
-            _resultsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
-            _hitBuffer = _accelerator.Allocate1D<byte>(_capacity);
-            _hostBuffer = ThreadStaticPools.UlongPool.Rent(_capacity);
+            if (_kernel == null)
+            {
+                _kernel = _owner.GetKernel(_accelerator);
+            }
+
+            if (_divisorBuffer == null)
+            {
+                _divisorBuffer = _accelerator.Allocate1D<GpuDivisorPartialData>(1);
+                _offsetBuffer = _accelerator.Allocate1D<int>(1);
+                _countBuffer = _accelerator.Allocate1D<int>(1);
+                _cycleBuffer = _accelerator.Allocate1D<ulong>(1);
+                _firstRemainderBuffer = _accelerator.Allocate1D<ulong>(1);
+                _firstHitBuffer = _accelerator.Allocate1D<int>(1);
+            }
+
+            bool allocateBuffers = _exponentsBuffer == null;
+            if (!allocateBuffers && _capacity < requiredCapacity)
+            {
+                _exponentsBuffer?.Dispose();
+                _hitBuffer?.Dispose();
+                if (_hostBuffer != null)
+                {
+                    ThreadStaticPools.UlongPool.Return(_hostBuffer, clearArray: false);
+                    _hostBuffer = null!;
+                }
+
+                _exponentsBuffer = null!;
+                _hitBuffer = null!;
+                allocateBuffers = true;
+            }
+
+            if (allocateBuffers)
+            {
+                int desiredCapacity = requiredCapacity > _capacity ? requiredCapacity : _capacity;
+                _capacity = desiredCapacity;
+                _exponentsBuffer = _accelerator.Allocate1D<ulong>(_capacity);
+                _hitBuffer = _accelerator.Allocate1D<byte>(_capacity);
+                _hostBuffer = ThreadStaticPools.UlongPool.Rent(_capacity);
+            }
         }
 
         public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes, Span<byte> hits)
@@ -731,7 +557,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             }
 
             int length = primes.Length;
-            // EvenPerfectBitScanner always supplies at least one exponent per divisor check, so the previous zero-length guard stays commented out.
+            // EvenPerfectBitScanner always supplies at least one exponent per divisor check, so the guard stays commented out.
             // if (length == 0)
             // {
             //     return;
@@ -745,42 +571,78 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             //     return;
             // }
 
+            ulong cycle = divisorCycle;
+            ulong firstPrime = primes[0];
+
+            if (cycle == 0UL)
+            {
+                if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(divisor, firstPrime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
+                {
+                    cycle = MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
+                }
+                else
+                {
+                    cycle = computedCycle;
+                }
+
+                if (cycle == 0UL)
+                {
+                    throw new InvalidOperationException("GPU divisor cycle length must be non-zero.");
+                }
+            }
+
+            ulong firstRemainder = cycle == 0UL ? 0UL : firstPrime % cycle;
+
             Monitor.Enter(_lease.ExecutionLock);
 
-            if (_kernel == null || _hitConversionKernel == null)
-            {
-                EnsureExecutionResourcesLocked();
-            }
+            EnsureExecutionResourcesLocked(length);
 
-            var kernel = _kernel!;
-            var hitConversionKernel = _hitConversionKernel!;
-
-            ArrayView1D<ulong, Stride1D.Dense> exponentsView = _exponentsBuffer.View;
-            ArrayView1D<ulong, Stride1D.Dense> resultsView = _resultsBuffer.View;
+            ArrayView1D<GpuDivisorPartialData, Stride1D.Dense> divisorView = _divisorBuffer.View;
+            ArrayView1D<int, Stride1D.Dense> offsetView = _offsetBuffer.View;
+            ArrayView1D<int, Stride1D.Dense> countView = _countBuffer.View;
+            ArrayView1D<ulong, Stride1D.Dense> cycleView = _cycleBuffer.View;
+            ArrayView1D<ulong, Stride1D.Dense> remainderView = _firstRemainderBuffer.View;
+            ArrayView1D<int, Stride1D.Dense> firstHitView = _firstHitBuffer.View;
+            ArrayView1D<ulong, Stride1D.Dense> exponentView = _exponentsBuffer.View;
             ArrayView1D<byte, Stride1D.Dense> hitView = _hitBuffer.View;
-            Span<ulong> hostSpan = _hostBuffer.AsSpan(0, _capacity);
 
-            int offset = 0;
-            while (offset < length)
+            GpuDivisorPartialData partialData = new GpuDivisorPartialData(divisor);
+            divisorView.SubView(0, 1).CopyFromCPU(ref partialData, 1);
+
+            int offsetValue = 0;
+            offsetView.SubView(0, 1).CopyFromCPU(ref offsetValue, 1);
+
+            int countValue = length;
+            countView.SubView(0, 1).CopyFromCPU(ref countValue, 1);
+
+            ulong cycleValue = cycle;
+            cycleView.SubView(0, 1).CopyFromCPU(ref cycleValue, 1);
+
+            ulong remainderValue = firstRemainder;
+            remainderView.SubView(0, 1).CopyFromCPU(ref remainderValue, 1);
+
+            Span<ulong> hostSpan = _hostBuffer.AsSpan(0, length);
+            primes.CopyTo(hostSpan);
+
+            ArrayView1D<ulong, Stride1D.Dense> exponentSlice = exponentView.SubView(0, length);
+            exponentSlice.CopyFromCPU(ref MemoryMarshal.GetReference(hostSpan), length);
+
+            ArrayView1D<byte, Stride1D.Dense> hitSliceView = hitView.SubView(0, length);
+
+            int sentinel = int.MaxValue;
+            firstHitView.SubView(0, 1).CopyFromCPU(ref sentinel, 1);
+
+            var kernel = _kernel;
+            if (kernel is null)
             {
-                int batchSize = Math.Min(_capacity, length - offset);
-                ReadOnlySpan<ulong> batch = primes.Slice(offset, batchSize);
-                batch.CopyTo(hostSpan);
-
-                ArrayView1D<ulong, Stride1D.Dense> exponentSlice = exponentsView.SubView(0, batchSize);
-                exponentSlice.CopyFromCPU(ref MemoryMarshal.GetReference(hostSpan), batchSize);
-
-                ArrayView1D<ulong, Stride1D.Dense> resultSlice = resultsView.SubView(0, batchSize);
-                kernel(batchSize, divisorData, exponentSlice, resultSlice);
-
-                ArrayView1D<byte, Stride1D.Dense> hitSliceView = hitView.SubView(0, batchSize);
-                hitConversionKernel(batchSize, resultSlice, hitSliceView);
-
-                Span<byte> hitSlice = hits.Slice(offset, batchSize);
-                hitSliceView.CopyToCPU(ref MemoryMarshal.GetReference(hitSlice), batchSize);
-
-                offset += batchSize;
+                Monitor.Exit(_lease.ExecutionLock);
+                throw new InvalidOperationException("GPU divisor kernel was not initialized.");
             }
+
+            kernel(1, divisorView, offsetView, countView, exponentSlice, cycleView, remainderView, hitSliceView, firstHitView);
+
+            Span<byte> hitSlice = hits.Slice(0, length);
+            hitSliceView.CopyToCPU(ref MemoryMarshal.GetReference(hitSlice), length);
 
             Monitor.Exit(_lease.ExecutionLock);
         }
@@ -796,6 +658,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             _owner._sessionPool.Add(this);
         }
     }
+
 
     public ulong DivisorLimit
     {
@@ -836,50 +699,49 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             return resources;
         }
 
-        return new BatchResources(this, accelerator, capacity);
+        return new BatchResources(accelerator, capacity);
     }
 
     private void ReturnBatchResources(Accelerator accelerator, BatchResources resources) => _resourcePools.GetOrAdd(accelerator, static _ => []).Add(resources);
 
     private sealed class BatchResources : IDisposable
     {
-        internal BatchResources(MersenneNumberDivisorByDivisorGpuTester owner, Accelerator accelerator, int capacity)
+        internal BatchResources(Accelerator accelerator, int capacity)
         {
-            int cycleCapacity = DivisorCycleCache.Shared.PreferredBatchSize;
-            if (cycleCapacity <= 0)
-            {
-                cycleCapacity = 1;
-            }
+            int actualCapacity = Math.Max(1, capacity);
 
-            int actualCapacity = Math.Max(capacity, cycleCapacity);
-
-            DivisorsBuffer = accelerator.Allocate1D<MontgomeryDivisorData>(actualCapacity);
+            DivisorDataBuffer = accelerator.Allocate1D<GpuDivisorPartialData>(actualCapacity);
+            OffsetBuffer = accelerator.Allocate1D<int>(actualCapacity);
+            CountBuffer = accelerator.Allocate1D<int>(actualCapacity);
+            CycleBuffer = accelerator.Allocate1D<ulong>(actualCapacity);
+            FirstRemainderBuffer = accelerator.Allocate1D<ulong>(actualCapacity);
             ExponentBuffer = accelerator.Allocate1D<ulong>(actualCapacity);
             HitsBuffer = accelerator.Allocate1D<byte>(actualCapacity);
             HitIndexBuffer = accelerator.Allocate1D<int>(1);
-            CandidateBuffer = accelerator.Allocate1D<ulong>(actualCapacity);
-            NextStartBuffer = accelerator.Allocate1D<GpuUInt128>(1);
-            DivisorDeltaBuffer = accelerator.Allocate1D<ulong>(actualCapacity);
-            RemainderDeltaBuffer = accelerator.Allocate1D<byte>(actualCapacity);
-            RemainderBuffer = accelerator.Allocate1D<byte>(actualCapacity * RemainderSlotCount);
-            FilterCountBuffer = accelerator.Allocate1D<int>(1);
+
             ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
+            ArrayPool<int> intPool = ThreadStaticPools.IntPool;
+            ArrayPool<GpuDivisorPartialData> partialPool = ThreadStaticPools.GpuDivisorPartialDataPool;
+
             Divisors = ulongPool.Rent(actualCapacity);
             Exponents = ulongPool.Rent(actualCapacity);
-            DivisorData = ThreadStaticPools.MontgomeryDivisorDataPool.Rent(actualCapacity);
-            CycleCandidates = ulongPool.Rent(cycleCapacity);
-            CycleLengths = ulongPool.Rent(cycleCapacity);
-            RemainderDeltaKernel = owner.GetRemainderDeltaKernel(accelerator);
-            RemainderScanKernel = owner.GetRemainderScanKernel(accelerator);
-            CandidateMaskKernel = owner.GetCandidateMaskKernel(accelerator);
-            CandidateCompactionKernel = owner.GetCandidateCompactionKernel(accelerator);
-            CandidateGenerationKernel = owner.GetCandidateGenerationKernel(accelerator);
-            HitDetectionKernel = owner.GetHitDetectionKernel(accelerator);
+            DivisorData = partialPool.Rent(actualCapacity);
+            Offsets = intPool.Rent(actualCapacity);
+            Counts = intPool.Rent(actualCapacity);
+            Cycles = ulongPool.Rent(actualCapacity);
+            FirstRemainders = ulongPool.Rent(actualCapacity);
             Capacity = actualCapacity;
-            CycleCapacity = cycleCapacity;
         }
 
-        internal readonly MemoryBuffer1D<MontgomeryDivisorData, Stride1D.Dense> DivisorsBuffer;
+        internal readonly MemoryBuffer1D<GpuDivisorPartialData, Stride1D.Dense> DivisorDataBuffer;
+
+        internal readonly MemoryBuffer1D<int, Stride1D.Dense> OffsetBuffer;
+
+        internal readonly MemoryBuffer1D<int, Stride1D.Dense> CountBuffer;
+
+        internal readonly MemoryBuffer1D<ulong, Stride1D.Dense> CycleBuffer;
+
+        internal readonly MemoryBuffer1D<ulong, Stride1D.Dense> FirstRemainderBuffer;
 
         internal readonly MemoryBuffer1D<ulong, Stride1D.Dense> ExponentBuffer;
 
@@ -887,60 +749,46 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         internal readonly MemoryBuffer1D<int, Stride1D.Dense> HitIndexBuffer;
 
-        internal readonly MemoryBuffer1D<ulong, Stride1D.Dense> CandidateBuffer;
-
-        internal readonly MemoryBuffer1D<GpuUInt128, Stride1D.Dense> NextStartBuffer;
-
-        internal readonly MemoryBuffer1D<ulong, Stride1D.Dense> DivisorDeltaBuffer;
-
-        internal readonly MemoryBuffer1D<byte, Stride1D.Dense> RemainderDeltaBuffer;
-
-        internal readonly MemoryBuffer1D<byte, Stride1D.Dense> RemainderBuffer;
-        internal readonly MemoryBuffer1D<int, Stride1D.Dense> FilterCountBuffer;
-
         internal readonly ulong[] Divisors;
 
         internal readonly ulong[] Exponents;
 
-        internal readonly MontgomeryDivisorData[] DivisorData;
+        internal readonly GpuDivisorPartialData[] DivisorData;
 
-        internal readonly ulong[] CycleCandidates;
+        internal readonly int[] Offsets;
 
-        internal readonly ulong[] CycleLengths;
+        internal readonly int[] Counts;
 
-        internal readonly Action<Index1D, ArrayView<ulong>, ArrayView<byte>, byte> RemainderDeltaKernel;
+        internal readonly ulong[] Cycles;
 
-        internal readonly Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<byte>, byte, byte> RemainderScanKernel;
-        internal readonly Action<Index1D, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>, byte, ArrayView<byte>> CandidateMaskKernel;
-        internal readonly Action<KernelConfig, Index1D, ArrayView<byte>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<int>> CandidateCompactionKernel;
-        internal readonly Action<Index1D, ArrayView<ulong>, ArrayView<ulong>, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128> CandidateGenerationKernel;
-        internal readonly Action<Index1D, ArrayView<byte>, ArrayView<int>> HitDetectionKernel;
+        internal readonly ulong[] FirstRemainders;
 
         internal readonly int Capacity;
 
-        internal readonly int CycleCapacity;
-
         public void Dispose()
         {
-            DivisorsBuffer.Dispose();
+            DivisorDataBuffer.Dispose();
+            OffsetBuffer.Dispose();
+            CountBuffer.Dispose();
+            CycleBuffer.Dispose();
+            FirstRemainderBuffer.Dispose();
             ExponentBuffer.Dispose();
             HitsBuffer.Dispose();
             HitIndexBuffer.Dispose();
-            CandidateBuffer.Dispose();
-            NextStartBuffer.Dispose();
-            DivisorDeltaBuffer.Dispose();
-            RemainderDeltaBuffer.Dispose();
-            RemainderBuffer.Dispose();
-            FilterCountBuffer.Dispose();
             ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
-            ArrayPool<MontgomeryDivisorData> divisorPool = ThreadStaticPools.MontgomeryDivisorDataPool;
+            ArrayPool<int> intPool = ThreadStaticPools.IntPool;
+            ArrayPool<GpuDivisorPartialData> partialPool = ThreadStaticPools.GpuDivisorPartialDataPool;
             ulongPool.Return(Divisors, clearArray: false);
             ulongPool.Return(Exponents, clearArray: false);
-            divisorPool.Return(DivisorData, clearArray: false);
-            ulongPool.Return(CycleCandidates, clearArray: false);
-            ulongPool.Return(CycleLengths, clearArray: false);
+            partialPool.Return(DivisorData, clearArray: false);
+            intPool.Return(Offsets, clearArray: false);
+            intPool.Return(Counts, clearArray: false);
+            ulongPool.Return(Cycles, clearArray: false);
+            ulongPool.Return(FirstRemainders, clearArray: false);
         }
     }
+
+
 
     private sealed class AcceleratorReferenceComparer : IEqualityComparer<Accelerator>
     {

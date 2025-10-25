@@ -163,12 +163,12 @@ internal static partial class PrimeOrderCalculator
 		Span<ulong> candidates = buffer[..actual];
 		candidates.Sort();
 
-		ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
+		ExponentRemainderStepperCpu stepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 		int candidateCount = candidates.Length;
 
 		if (stepper.InitializeCpuIsUnity(candidates[0]))
 		{
-			ThreadStaticPools.ReturnExponentStepper(stepper);
+			ThreadStaticPools.ReturnExponentStepperCpu(stepper);
 			return false;
 		}
 
@@ -176,12 +176,12 @@ internal static partial class PrimeOrderCalculator
 		{
 			if (stepper.ComputeNextIsUnity(candidates[i]))
 			{
-				ThreadStaticPools.ReturnExponentStepper(stepper);
+				ThreadStaticPools.ReturnExponentStepperCpu(stepper);
 				return false;
 			}
 		}
 
-		ThreadStaticPools.ReturnExponentStepper(stepper);
+		ThreadStaticPools.ReturnExponentStepperCpu(stepper);
 		return true;
 	}
 
@@ -219,7 +219,7 @@ internal static partial class PrimeOrderCalculator
 
 		buffer[..length].Sort(static (a, b) => a.Value.CompareTo(b.Value));
 
-		ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
+		ExponentRemainderStepperCpu stepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 
 		const int StackExponentCapacity = 16;
 		const int ExponentHardLimit = 256;
@@ -256,7 +256,7 @@ internal static partial class PrimeOrderCalculator
 			ProcessExponentLoweringPrime(heapCandidateArray.AsSpan(0, exponent), heapEvaluationArray.AsSpan(0, exponent), ref order, primeFactor, exponent, ref stepper);
 		}
 
-		ThreadStaticPools.ReturnExponentStepper(stepper);
+		ThreadStaticPools.ReturnExponentStepperCpu(stepper);
 
 		if (heapCandidateArray is not null)
 		{
@@ -268,7 +268,7 @@ internal static partial class PrimeOrderCalculator
 		return order;
 	}
 
-	private static void ProcessExponentLoweringPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong primeFactor, int exponent, ref ExponentRemainderStepper stepper)
+	private static void ProcessExponentLoweringPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong primeFactor, int exponent, ref ExponentRemainderStepperCpu stepper)
 	{
 		ulong working = order;
 		int actual = 0;
@@ -388,7 +388,7 @@ internal static partial class PrimeOrderCalculator
 		Span<ulong> stackBuffer = stackalloc ulong[StackExponentCapacity];
 
 		ulong[]? heapCandidateArray = null;
-		ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
+		ExponentRemainderStepperCpu stepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 		bool violates = false;
 
 		for (int i = 0; i < length; i++)
@@ -425,7 +425,7 @@ internal static partial class PrimeOrderCalculator
 			}
 		}
 
-		ThreadStaticPools.ReturnExponentStepper(stepper);
+		ThreadStaticPools.ReturnExponentStepperCpu(stepper);
 
 		if (heapCandidateArray is not null)
 		{
@@ -435,7 +435,7 @@ internal static partial class PrimeOrderCalculator
 		return !violates;
 	}
 
-	private static bool ValidateOrderForFactor(Span<ulong> buffer, ulong primeFactor, int exponent, ulong order, ref ExponentRemainderStepper stepper)
+	private static bool ValidateOrderForFactor(Span<ulong> buffer, ulong primeFactor, int exponent, ulong order, ref ExponentRemainderStepperCpu stepper)
 	{
 		ulong working = order;
 		int actual = 0;
@@ -547,7 +547,7 @@ internal static partial class PrimeOrderCalculator
 			int candidateCount = candidates.Count;
 			bool allowGpuBatch = true;
 			Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
-			ExponentRemainderStepper powStepper = ThreadStaticPools.RentExponentStepper(divisorData);
+			ExponentRemainderStepperCpu powStepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 			bool powStepperInitialized = false;
 
 			// DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
@@ -626,7 +626,7 @@ internal static partial class PrimeOrderCalculator
 
 						candidates.Clear();
 						ThreadStaticPools.ReturnUlongList(candidates);
-						ThreadStaticPools.ReturnExponentStepper(powStepper);
+						ThreadStaticPools.ReturnExponentStepperCpu(powStepper);
 						result = candidate;
 						return true;
 					}
@@ -666,7 +666,7 @@ internal static partial class PrimeOrderCalculator
 
 					candidates.Clear();
 					ThreadStaticPools.ReturnUlongList(candidates);
-					ThreadStaticPools.ReturnExponentStepper(powStepper);
+					ThreadStaticPools.ReturnExponentStepperCpu(powStepper);
 					result = candidate;
 					return true;
 				}
@@ -681,7 +681,7 @@ internal static partial class PrimeOrderCalculator
 
 			candidates.Clear();
 			ThreadStaticPools.ReturnUlongList(candidates);
-			ThreadStaticPools.ReturnExponentStepper(powStepper);
+			ThreadStaticPools.ReturnExponentStepperCpu(powStepper);
 			// DebugLog("No candidate confirmed");
 			return false;
 		}
@@ -892,7 +892,7 @@ internal static partial class PrimeOrderCalculator
 
 			Span<ulong> stackBuffer = stackalloc ulong[StackExponentCapacity];
 			ulong[]? heapCandidateArray = null;
-			ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
+			ExponentRemainderStepperCpu stepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 			bool violates = false;
 
 			for (int i = 0; i < length; i++)
@@ -929,7 +929,7 @@ internal static partial class PrimeOrderCalculator
 				}
 			}
 
-			ThreadStaticPools.ReturnExponentStepper(stepper);
+			ThreadStaticPools.ReturnExponentStepperCpu(stepper);
 
 			if (heapCandidateArray is not null)
 			{
@@ -944,7 +944,7 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
-	private static bool CheckCandidateViolation(Span<ulong> buffer, ulong primeFactor, int exponent, ulong candidate, ulong prime, ref int powUsed, int powBudget, ref ExponentRemainderStepper stepper)
+	private static bool CheckCandidateViolation(Span<ulong> buffer, ulong primeFactor, int exponent, ulong candidate, ulong prime, ref int powUsed, int powBudget, ref ExponentRemainderStepperCpu stepper)
 	{
 		ulong working = candidate;
 		int actual = 0;

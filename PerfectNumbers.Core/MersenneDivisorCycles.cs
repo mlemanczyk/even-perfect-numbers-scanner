@@ -81,7 +81,7 @@ public class MersenneDivisorCycles
             return heuristicCycle == exponent;
         }
 
-        if (TryCalculateCycleLengthForExponent(divisor, exponent, divisorData, out ulong cycleLength, out bool _) && cycleLength != 0UL)
+        if (TryCalculateCycleLengthForExponentCpu(divisor, exponent, divisorData, out ulong cycleLength, out bool _) && cycleLength != 0UL)
         {
             return cycleLength == exponent;
         }
@@ -91,10 +91,12 @@ public class MersenneDivisorCycles
 
     public static bool CycleEqualsExponentForMersenneCandidate(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
     {
-        if (!IsValidMersenneDivisorCandidate(divisor, exponent))
-        {
-            return false;
-        }
+        // EvenPerfectBitScanner only calls this helper with divisors generated from 2 * k * p + 1 and primes greater than one,
+        // so the validation guard would never trigger in production. Keep it commented out to leave the hot path branch-free.
+        // if (!IsValidMersenneDivisorCandidate(divisor, exponent))
+        // {
+        //     return false;
+        // }
 
         if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
         {
@@ -245,7 +247,7 @@ public class MersenneDivisorCycles
         return order;
     }
 
-    public static bool TryCalculateCycleLengthForExponent(
+    public static bool TryCalculateCycleLengthForExponentCpu(
         ulong divisor,
         ulong exponent,
         in MontgomeryDivisorData divisorData,
@@ -255,17 +257,19 @@ public class MersenneDivisorCycles
         cycleLength = 0UL;
         primeOrderFailed = false;
 
-        if ((divisor & (divisor - 1UL)) == 0UL)
-        {
-            cycleLength = 1UL;
-            return true;
-        }
+        // EvenPerfectBitScanner never feeds powers of two into this helper, so leave the branch commented out to avoid redundant work.
+        // if ((divisor & (divisor - 1UL)) == 0UL)
+        // {
+        //     cycleLength = 1UL;
+        //     return true;
+        // }
 
-        if (divisor <= 3UL || exponent <= 1UL)
-        {
-            cycleLength = CalculateCycleLength(divisor, divisorData);
-            return true;
-        }
+        // The scanner only calls this path with prime exponents greater than one and odd divisors above three, keeping the small-parameter guard unreachable.
+        // if (divisor <= 3UL || exponent <= 1UL)
+        // {
+        //     cycleLength = CalculateCycleLength(divisor, divisorData);
+        //     return true;
+        // }
 
         ulong computedOrder = PrimeOrderCalculator.Calculate(
             divisor,
@@ -482,7 +486,7 @@ public class MersenneDivisorCycles
         ulong[]? heapCandidateArray = null;
         bool[]? heapEvaluationArray = null;
 
-        ExponentRemainderStepper stepper = ThreadStaticPools.RentExponentStepper(divisorData);
+        ExponentRemainderStepperCpu stepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 
         ulong order = initialOrder;
         for (int i = 0; i < count; i++)
@@ -513,7 +517,7 @@ public class MersenneDivisorCycles
             ProcessReduceOrderPrime(heapCandidateArray.AsSpan(0, multiplicity), heapEvaluationArray.AsSpan(0, multiplicity), ref order, prime, multiplicity, ref stepper);
         }
 
-        ThreadStaticPools.ReturnExponentStepper(stepper);
+        ThreadStaticPools.ReturnExponentStepperCpu(stepper);
         ThreadStaticPools.UlongPool.Return(primes);
 
         if (heapCandidateArray is not null)
@@ -525,7 +529,7 @@ public class MersenneDivisorCycles
         return order;
     }
 
-    private static void ProcessReduceOrderPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong prime, int multiplicity, ref ExponentRemainderStepper stepper)
+    private static void ProcessReduceOrderPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong prime, int multiplicity, ref ExponentRemainderStepperCpu stepper)
     {
         ulong working = order;
         int actual = 0;

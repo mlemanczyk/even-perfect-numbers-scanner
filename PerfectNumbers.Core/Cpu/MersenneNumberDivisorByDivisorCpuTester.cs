@@ -175,17 +175,23 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         // Keep the divisibility filters aligned with the divisor-cycle generator so the
         // CPU path never requests cycles that were skipped during cache creation.
         bool lastIsSeven = (prime & 3UL) == 3UL;
+        const ushort DecimalMaskWhenLastIsSeven = (1 << 3) | (1 << 7) | (1 << 9);
+        const ushort DecimalMaskOtherwise = (1 << 1) | (1 << 3) | (1 << 9);
 
         while (divisor.CompareTo(limit) <= 0)
         {
             ulong candidate = divisor.Low;
             processedCount++;
 
-            bool admissible = lastIsSeven
-                ? (remainder10 == 3 || remainder10 == 7 || remainder10 == 9)
-                : (remainder10 == 1 || remainder10 == 3 || remainder10 == 9);
+            ushort decimalMask = lastIsSeven ? DecimalMaskWhenLastIsSeven : DecimalMaskOtherwise;
+            bool admissible = ((decimalMask >> remainder10) & 1) != 0;
 
-            if (admissible && (remainder8 == 1 || remainder8 == 7) && remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0)
+            if (admissible
+                && (remainder8 == 1 || remainder8 == 7)
+                && remainder3 != 0
+                && remainder5 != 0
+                && remainder7 != 0
+                && remainder11 != 0)
             {
                 MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(candidate);
                 ulong divisorCycle;
@@ -196,7 +202,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 // }
                 // else
                 {
-                    if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponent(
+                    if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
                             candidate,
                             prime,
                             divisorData,

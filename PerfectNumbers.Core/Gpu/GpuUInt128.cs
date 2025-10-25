@@ -11,9 +11,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
 
     private const int NativeModuloChunkBits = 8;
     private const int NativeModuloChunkBitsMinusOne = NativeModuloChunkBits - 1;
-    private const int NativeModuloBitMaskTableSize = 1024;
     private const ulong NativeModuloChunkMask = (1UL << NativeModuloChunkBits) - 1UL;
-    private static readonly ulong[] NativeModuloBitMasks = CreateNativeModuloBitMasks();
 
     private const int Pow2WindowSizeBits = 8;
     private const int Pow2WindowOddPowerCount = 1 << (Pow2WindowSizeBits - 1);
@@ -903,23 +901,6 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly ulong MulMod(ulong value, ulong modulus)
     {
-        ulong a = Low % modulus;
-        ulong b = value % modulus;
-
-        if (a == 0UL || b == 0UL)
-        {
-            return 0UL;
-        }
-
-        ulong ulongRange = ulong.MaxValue / a;
-        return b <= ulongRange
-            ? (a * b) % modulus
-            : MulMod64(a, b, modulus);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly ulong MulModSimplified(ulong value, ulong modulus)
-    {
         ulong modulusLocal = modulus;
         ulong a = Low % modulusLocal;
         ulong b = value % modulusLocal;
@@ -1028,10 +1009,10 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     private static ulong MultiplyChunkModulo(ulong value, ulong chunk, ulong modulus)
     {
         ulong result = 0UL;
-        ulong[] nativeModuloBitMasks = NativeModuloBitMasks;
-        for (int bit = 0; bit < NativeModuloChunkBits; bit++)
+        ulong bitMask = 1UL;
+        for (int bit = 0; bit < NativeModuloChunkBits; bit++, bitMask <<= 1)
         {
-            if ((chunk & nativeModuloBitMasks[bit]) != 0UL)
+            if ((chunk & bitMask) != 0UL)
             {
                 result = (result + value) % modulus;
             }
@@ -1548,16 +1529,6 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         high = hi;
     }
 
-    private static ulong[] CreateNativeModuloBitMasks()
-    {
-        ulong[] masks = new ulong[NativeModuloBitMaskTableSize];
-        for (int bit = 0; bit < NativeModuloBitMaskTableSize; bit++)
-        {
-            masks[bit] = bit < 64 ? 1UL << bit : 0UL;
-        }
-
-        return masks;
-    }
 }
 
 // TODO: Check if the TODO below is still relevant.
