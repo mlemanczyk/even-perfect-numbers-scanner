@@ -19,7 +19,7 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	[Obsolete("Deprecated: use ULongExtensions.MulMod64 for CPU code and GpuUInt128.MulMod inside GPU kernels.")]
+	[Obsolete("Use ULongExtensions.GpuCompatibleMulModSimplifiedExtension for GPU-compatible host code or GpuUInt128.MulMod inside kernels.")]
 	public static ulong MulMod64Gpu(this ulong a, ulong b, ulong modulus)
 	{
 		// TODO: Remove this GPU-compatible shim from production once callers migrate to MulMod64,
@@ -29,12 +29,20 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[Obsolete("Use ULongExtensions.GpuCompatibleMulModSimplifiedExtension for GPU-compatible host code or GpuUInt128.MulMod inside kernels.")]
 	public static ulong MulMod64GpuDeferred(this ulong a, ulong b, ulong modulus)
 	{
 		// TODO: Move this deferred helper to the benchmark suite; the baseline MulMod64 avoids the
 		// 5-40× slowdown seen across real-world operand distributions.
 		GpuUInt128 state = new(a);
 		return state.MulModWithNativeModulo(b, modulus);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static ulong GpuCompatibleMulModSimplifiedExtension(this ulong left, ulong right, ulong modulus)
+	{
+		GpuUInt128 state = new(left);
+		return state.MulModSimplified(right, modulus);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

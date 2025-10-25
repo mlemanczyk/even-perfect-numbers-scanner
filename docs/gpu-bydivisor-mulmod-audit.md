@@ -6,7 +6,8 @@ This note tracks every `MulMod` call site in the GPU-only `--mersenne=bydivisor`
 
 | Location | Notes |
 | --- | --- |
-| `ULongExtensions.MulMod64Gpu` | Marked as deprecated to steer new code toward `MulMod64` on the CPU and `GpuUInt128.MulMod` inside GPU kernels. The shim remains only for legacy callers that require the GPU-compatible arithmetic façade.【F:PerfectNumbers.Core/ULongExtensions.Gpu.cs†L1-L33】 |
+| `ULongExtensions.GpuCompatibleMulModSimplifiedExtension` | Wraps `GpuUInt128.MulModSimplified` so host code mirrors the benchmark winner without reimplementing GPU logic.【F:PerfectNumbers.Core/ULongExtensions.Gpu.cs†L23-L31】 |
+| `ULongExtensions.MulMod64Gpu` | Marked obsolete; migrate to `ULongExtensions.GpuCompatibleMulModSimplifiedExtension` for GPU-compatible host code or `GpuUInt128.MulMod` when running inside kernels.【F:PerfectNumbers.Core/ULongExtensions.Gpu.cs†L17-L24】 |
 | `ULongExtensions.Pow2ModWindowedGpu` | Migrated to call `MulMod64` for every square and multiply, eliminating the 6–18× slowdown that the shim introduced while executing on the host.【F:PerfectNumbers.Core/ULongExtensions.Gpu.cs†L39-L109】 |
 | `ULongExtensions.InitializeStandardOddPowers` | Populates the odd-power table through `MulMod64`, so the host setup costs now match the CPU benchmark baseline.【F:PerfectNumbers.Core/ULongExtensions.Gpu.cs†L286-L309】 |
 
