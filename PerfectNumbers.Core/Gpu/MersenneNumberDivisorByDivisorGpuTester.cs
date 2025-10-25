@@ -113,6 +113,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             resources.HitIndexBuffer,
             resources.Divisors,
             resources.Exponents,
+            resources.FilteredDivisors,
             resources.DivisorData,
             resources.Offsets,
             resources.Counts,
@@ -177,8 +178,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer,
         MemoryBuffer1D<byte, Stride1D.Dense> hitsBuffer,
         MemoryBuffer1D<int, Stride1D.Dense> hitIndexBuffer,
-        in ulong[] divisors,
+        ulong[] divisors,
         ulong[] exponents,
+        ulong[] filteredDivisors,
         GpuDivisorPartialData[] divisorData,
         int[] offsets,
         int[] counts,
@@ -229,8 +231,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         byte remainder11 = (byte)((ulong)(currentDivisor128 % 11UL));
         bool lastIsSeven = (prime & 3UL) == 3UL;
 
-        ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
-        ulong[] filteredDivisors = ulongPool.Rent(chunkCapacity);
         Span<ulong> filteredStorage = filteredDivisors.AsSpan();
         Span<ulong> divisorStorage = divisors.AsSpan();
         Span<ulong> exponentStorage = exponents.AsSpan();
@@ -372,8 +372,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             int lastIndex = admissibleCount - 1;
             lastProcessed = hitFound ? divisorSpan[hitIndex] : divisorSpan[lastIndex];
         }
-
-        ulongPool.Return(filteredDivisors, clearArray: false);
 
         coveredRange = composite || processedAll || (currentDivisor128 > allowedMax128);
         return composite;
@@ -725,6 +723,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
             Divisors = ulongPool.Rent(actualCapacity);
             Exponents = ulongPool.Rent(actualCapacity);
+            FilteredDivisors = ulongPool.Rent(actualCapacity);
             DivisorData = partialPool.Rent(actualCapacity);
             Offsets = intPool.Rent(actualCapacity);
             Counts = intPool.Rent(actualCapacity);
@@ -753,6 +752,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         internal readonly ulong[] Exponents;
 
+        internal readonly ulong[] FilteredDivisors;
+
         internal readonly GpuDivisorPartialData[] DivisorData;
 
         internal readonly int[] Offsets;
@@ -780,6 +781,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             ArrayPool<GpuDivisorPartialData> partialPool = ThreadStaticPools.GpuDivisorPartialDataPool;
             ulongPool.Return(Divisors, clearArray: false);
             ulongPool.Return(Exponents, clearArray: false);
+            ulongPool.Return(FilteredDivisors, clearArray: false);
             partialPool.Return(DivisorData, clearArray: false);
             intPool.Return(Offsets, clearArray: false);
             intPool.Return(Counts, clearArray: false);
