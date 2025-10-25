@@ -8,8 +8,8 @@ This note tracks every `MulMod` call site in the GPU-only `--mersenne=bydivisor`
 | --- | --- |
 | `ULongExtensions.GpuCompatibleMulModSimplifiedExtension` | Wraps `GpuUInt128.MulModSimplified` so host code mirrors the benchmark winner without reimplementing GPU logic.【F:PerfectNumbers.Core/ULongExtensions.Gpu.cs†L23-L31】 |
 | `ULongExtensions.MulMod64Gpu` | Marked obsolete; migrate to `ULongExtensions.GpuCompatibleMulModSimplifiedExtension` for GPU-compatible host code or `GpuUInt128.MulMod` when running inside kernels.【F:PerfectNumbers.Core/ULongExtensions.Gpu.cs†L17-L24】 |
-| `ULongExtensions.Pow2ModWindowedGpu` | Migrated to call `MulMod64` for every square and multiply, eliminating the 6–18× slowdown that the shim introduced while executing on the host.【F:PerfectNumbers.Core/ULongExtensions.Gpu.cs†L39-L109】 |
-| `ULongExtensions.InitializeStandardOddPowers` | Populates the odd-power table through `MulMod64`, so the host setup costs now match the CPU benchmark baseline.【F:PerfectNumbers.Core/ULongExtensions.Gpu.cs†L286-L309】 |
+| `ULongExtensions.Pow2ModWindowedGpu` | Migrated to call `GpuCompatibleMulModSimplifiedExtension` for every square and multiply, eliminating the 6–18× slowdown that the shim introduced while executing on the host and aligning host math with the new production helper.【F:PerfectNumbers.Core/ULongExtensions.Gpu.cs†L39-L109】 |
+| `ULongExtensions.InitializeStandardOddPowers` | Populates the odd-power table through `GpuCompatibleMulModSimplifiedExtension`, so the host setup costs now match the GPU-compatible benchmark winner.【F:PerfectNumbers.Core/ULongExtensions.Gpu.cs†L286-L309】 |
 
 All host-executed `MulMod` operations in the GPU pipeline now target the optimized CPU helper.
 
