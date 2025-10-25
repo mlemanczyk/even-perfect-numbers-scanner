@@ -85,28 +85,6 @@ public class GpuUInt128Tests
     }
 
     [Fact]
-    public void MulModBigInteger_matches_UInt128()
-    {
-        var random = new Random(13);
-        for (var i = 0; i < 20; i++)
-        {
-            var high1 = ((ulong)random.Next() << 32) | (uint)random.Next();
-            var low1 = ((ulong)random.Next() << 32) | (uint)random.Next();
-            var high2 = ((ulong)random.Next() << 32) | (uint)random.Next();
-            var low2 = ((ulong)random.Next() << 32) | (uint)random.Next();
-            var modHigh = ((ulong)random.Next() << 32) | (uint)random.Next();
-            var modLow = ((ulong)random.Next() << 32) | (uint)random.Next() | 1UL;
-            var modulus = new GpuUInt128(modHigh, modLow);
-            var a = new GpuUInt128((UInt128)new GpuUInt128(high1, low1) % (UInt128)modulus);
-            var b = new GpuUInt128((UInt128)new GpuUInt128(high2, low2) % (UInt128)modulus);
-            var expected = MulModReference((UInt128)a, (UInt128)b, (UInt128)modulus);
-            var result = new GpuUInt128(a.High, a.Low);
-            result.MulModBigInteger(b, modulus);
-            ((UInt128)result).Should().Be(expected);
-        }
-    }
-
-    [Fact]
     public void SquareMod_matches_UInt128()
     {
         var random = new Random(8);

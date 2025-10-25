@@ -19,19 +19,17 @@ public sealed class MersenneNumberTester(
     bool useIncremental = true,
     bool useOrderCache = false,
     GpuKernelType kernelType = GpuKernelType.Incremental,
-    bool useModuloWorkaround = false,
     bool useOrder = false,
     bool useGpuLucas = true,
     bool useGpuScan = true,
     bool useGpuOrder = true,
-        bool useResidue = true,
+    bool useResidue = true,
     ulong maxK = 5_000_000UL)
 {
     private readonly bool _useResidue = useResidue;
     private readonly bool _useIncremental = useIncremental && !useResidue;
         private readonly ulong _maxK = maxK;
 	private readonly GpuKernelType _kernelType = kernelType;
-    private readonly bool _useModuloWorkaround = useModuloWorkaround;
     private readonly bool _useGpuLucas = useGpuLucas;
     private readonly bool _useGpuScan = useGpuScan;     // device for pow2mod/incremental scanning
     private readonly bool _useGpuOrder = useGpuOrder;   // device for order computations
@@ -96,8 +94,6 @@ public sealed class MersenneNumberTester(
 					continue;
 				}
 
-                                // TODO: Swap this fallback to the shared windowed order helper once CalculateOrder migrates
-                                // to the ProcessEightBitWindows pipeline so warm-ups stop invoking the slower legacy powmod.
                                 ulong ord = q.CalculateOrder();
                                 OrderCache[q] = ord;
                         }
@@ -186,8 +182,6 @@ public sealed class MersenneNumberTester(
                                         ulong order = orders[i];
                                         if (order == 0UL)
                                         {
-                                                // TODO: Replace this CalculateOrder call with the upcoming windowed helper so
-                                                // GPU warm-ups reuse the faster pow2 ladder measured in the CPU order benchmarks.
                                                 order = qs[offset + i].CalculateOrder();
                                         }
 
@@ -325,8 +319,6 @@ public sealed class MersenneNumberTester(
         private static void LegacyOrderKernel(Index1D index, ulong exponent, ArrayView<UInt128> qs, ArrayView<ulong> orders)
         {
                 UInt128 q = qs[index];
-                // TODO: Swap this legacy kernel over to the ProcessEightBitWindows helper so GPU order scans share the
-                // eight-bit window pow2 implementation that beat the classic PowMod path in the GpuPow2Mod benchmarks.
                 UInt128 pow = exponent.PowMod(q);
                 orders[index] = pow == 1UL ? exponent : 0UL;
         }

@@ -1,5 +1,3 @@
-using System;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core;
@@ -46,31 +44,4 @@ public readonly struct MontgomeryDivisorData(ulong modulus, ulong nPrime, ulong 
             montgomeryTwoSquared);
     }
 
-}
-
-internal static class MontgomeryDivisorDataCache
-{
-    [ThreadStatic]
-    private static bool s_hasCachedValue;
-
-    [ThreadStatic]
-    private static ulong s_cachedModulus;
-
-    [ThreadStatic]
-    private static MontgomeryDivisorData s_cachedData;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static MontgomeryDivisorData Get(ulong modulus)
-    {
-        if (s_hasCachedValue && s_cachedModulus == modulus)
-        {
-            return s_cachedData;
-        }
-
-        MontgomeryDivisorData computed = MontgomeryDivisorData.FromModulus(modulus);
-        s_cachedModulus = modulus;
-        s_cachedData = computed;
-        s_hasCachedValue = true;
-        return computed;
-    }
 }

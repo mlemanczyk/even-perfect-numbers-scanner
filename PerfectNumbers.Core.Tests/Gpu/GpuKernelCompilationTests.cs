@@ -1,10 +1,7 @@
-using System;
-using System.Collections.Generic;
 using System.Reflection;
 using FluentAssertions;
 using ILGPU;
 using ILGPU.Runtime;
-using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 using Xunit;
 
@@ -77,18 +74,6 @@ public class GpuKernelCompilationTests
         typeof(MersenneNumberDivisorByDivisorGpuTester).GetMethod("GetKernel", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("MersenneNumberDivisorByDivisorGpuTester.GetKernel not found.");
 
-    private static readonly MethodInfo DivisorByDivisorGetExponentKernelMethod =
-        typeof(MersenneNumberDivisorByDivisorGpuTester).GetMethod("GetKernelByPrimeExponent", BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("MersenneNumberDivisorByDivisorGpuTester.GetKernelByPrimeExponent not found.");
-
-    private static readonly MethodInfo DivisorByDivisorGetRemainderDeltaKernelMethod =
-        typeof(MersenneNumberDivisorByDivisorGpuTester).GetMethod("GetRemainderDeltaKernel", BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("MersenneNumberDivisorByDivisorGpuTester.GetRemainderDeltaKernel not found.");
-
-    private static readonly MethodInfo DivisorByDivisorGetRemainderScanKernelMethod =
-        typeof(MersenneNumberDivisorByDivisorGpuTester).GetMethod("GetRemainderScanKernel", BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("MersenneNumberDivisorByDivisorGpuTester.GetRemainderScanKernel not found.");
-
     private static readonly MethodInfo DivisorTesterGetKernelMethod =
         typeof(MersenneNumberDivisorGpuTester).GetMethod("GetKernel", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("MersenneNumberDivisorGpuTester.GetKernel not found.");
@@ -134,22 +119,13 @@ public class GpuKernelCompilationTests
         ?? throw new InvalidOperationException("PrimeOrderGpuHeuristics.GetPow2ModWideKernel not found.");
 
     private static readonly Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> MersenneDivisorCyclesKernel =
-        (Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>)Delegate.CreateDelegate(
-            typeof(Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>),
-            typeof(MersenneDivisorCycles).GetMethod("GpuDivisorCycleKernel", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("MersenneDivisorCycles.GpuDivisorCycleKernel not found."));
+        DivisorCycleKernels.GpuDivisorCycleKernel;
 
     private static readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>> PrimeTesterSmallPrimeKernel =
-        (Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>>)Delegate.CreateDelegate(
-            typeof(Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>>),
-            typeof(PrimeTester).GetMethod("SmallPrimeSieveKernel", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("PrimeTester.SmallPrimeSieveKernel not found."));
+        PrimeTesterKernels.SmallPrimeSieveKernel;
 
     private static readonly Action<Index1D, ArrayView<ulong>, ArrayView<byte>> PrimeTesterSharesFactorKernel =
-        (Action<Index1D, ArrayView<ulong>, ArrayView<byte>>)Delegate.CreateDelegate(
-            typeof(Action<Index1D, ArrayView<ulong>, ArrayView<byte>>),
-            typeof(PrimeTester).GetMethod("SharesFactorKernel", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("PrimeTester.SharesFactorKernel not found."));
+        PrimeTesterKernels.SharesFactorKernel;
 
     public static IEnumerable<object[]> KernelLoaders()
     {
@@ -169,9 +145,6 @@ public class GpuKernelCompilationTests
         yield return Loader("NttGpuMath.ForwardKernel", CompileNttForwardKernel);
         yield return Loader("NttGpuMath.InverseKernel", CompileNttInverseKernel);
         yield return Loader("MersenneNumberDivisorByDivisorGpuTester.CheckKernel", CompileDivisorByDivisorCheckKernel);
-        yield return Loader("MersenneNumberDivisorByDivisorGpuTester.ComputeMontgomeryExponentKernel", CompileDivisorByDivisorExponentKernel);
-        yield return Loader("MersenneNumberDivisorByDivisorGpuTester.ComputeRemainderDeltasKernel", CompileDivisorByDivisorRemainderDeltaKernel);
-        yield return Loader("MersenneNumberDivisorByDivisorGpuTester.AccumulateRemaindersKernel", CompileDivisorByDivisorRemainderScanKernel);
         yield return Loader("MersenneNumberDivisorGpuTester.Kernel", CompileDivisorTesterKernel);
         yield return Loader("MersenneNumberLucasLehmerGpuTester.Kernel", CompileLucasLehmerKernel);
         yield return Loader("MersenneNumberLucasLehmerGpuTester.AddSmallKernel", CompileLucasLehmerAddSmallKernel);
@@ -183,9 +156,9 @@ public class GpuKernelCompilationTests
         yield return Loader("PrimeOrderGpuHeuristics.CalculateOrderKernel", CompilePrimeOrderKernel);
         yield return Loader("PrimeOrderGpuHeuristics.Pow2ModKernel", CompilePrimeOrderPow2ModKernel);
         yield return Loader("PrimeOrderGpuHeuristics.Pow2ModKernelWide", CompilePrimeOrderPow2ModWideKernel);
-        yield return Loader("MersenneDivisorCycles.GpuDivisorCycleKernel", CompileMersenneDivisorCyclesKernel);
-        yield return Loader("PrimeTester.SmallPrimeSieveKernel", CompilePrimeTesterSmallPrimeKernel);
-        yield return Loader("PrimeTester.SharesFactorKernel", CompilePrimeTesterSharesFactorKernel);
+        yield return Loader("DivisorCycleKernels.GpuDivisorCycleKernel", CompileMersenneDivisorCyclesKernel);
+        yield return Loader("PrimeTesterKernels.SmallPrimeSieveKernel", CompilePrimeTesterSmallPrimeKernel);
+        yield return Loader("PrimeTesterKernels.SharesFactorKernel", CompilePrimeTesterSharesFactorKernel);
         yield return Loader("GpuKernelPool.KernelLeaseKernels", CompileGpuKernelPoolKernels);
     }
 
@@ -291,24 +264,6 @@ public class GpuKernelCompilationTests
     {
         var tester = new MersenneNumberDivisorByDivisorGpuTester();
         _ = DivisorByDivisorGetKernelMethod.Invoke(tester, new object[] { accelerator });
-    }
-
-    private static void CompileDivisorByDivisorExponentKernel(Accelerator accelerator)
-    {
-        var tester = new MersenneNumberDivisorByDivisorGpuTester();
-        _ = DivisorByDivisorGetExponentKernelMethod.Invoke(tester, new object[] { accelerator });
-    }
-
-    private static void CompileDivisorByDivisorRemainderDeltaKernel(Accelerator accelerator)
-    {
-        var tester = new MersenneNumberDivisorByDivisorGpuTester();
-        _ = DivisorByDivisorGetRemainderDeltaKernelMethod.Invoke(tester, new object[] { accelerator });
-    }
-
-    private static void CompileDivisorByDivisorRemainderScanKernel(Accelerator accelerator)
-    {
-        var tester = new MersenneNumberDivisorByDivisorGpuTester();
-        _ = DivisorByDivisorGetRemainderScanKernelMethod.Invoke(tester, new object[] { accelerator });
     }
 
     private static void CompileDivisorTesterKernel(Accelerator accelerator)

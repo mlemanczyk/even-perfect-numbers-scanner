@@ -22,8 +22,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
                 {
                         GpuKernelType.Pow2Mod => gpuLease.Pow2ModOrderKernel,
                         _ => gpuLease.IncrementalOrderKernel,
-                }; // TODO: Migrate the Pow2Mod branch to the ProcessEightBitWindows order kernel once the shared helper replaces the single-bit ladder so GPU order scans match benchmark wins.
-                // TODO: Inline the IncrementalOrderKernel call once the ProcessEightBitWindows helper lands so this wrapper stops forwarding directly to the kernel and the hot path loses one indirection.
+                };
 
                 var foundBuffer = accelerator.Allocate1D<int>(1); // TODO: Replace this allocation with the pooled device buffer from GpuOrderKernelBenchmarks so repeated scans reuse the pinned staging memory instead of allocating per run.
                 exponent.Mod10_8_5_3Steps(out ulong step10, out ulong step8, out ulong step5, out ulong step3);
@@ -36,6 +35,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 			{
 				remaining = maxK - kStart + 1UL;
 				currentSize = remaining > (UInt128)batchSize ? batchSize : (int)remaining;
+				// This clear is required because the result may not always be set. Remove it after the kernels are modified to always set the result.
 				foundBuffer.MemSetToZero();
 				// Precompute residue automaton bases for this batch
                                 UInt128 q0 = twoP * kStart + 1UL;

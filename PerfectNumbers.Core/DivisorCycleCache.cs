@@ -1,10 +1,8 @@
-using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
@@ -22,6 +20,12 @@ public sealed class DivisorCycleCache
     private volatile bool _useGpuGeneration = true;
     private readonly int _divisorCyclesBatchSize;
     private static int _sharedDivisorCyclesBatchSize = GpuConstants.GpuCycleStepsPerInvocation;
+
+    private const int CycleCacheTrackingLimit = 500_000;
+    private static readonly HashSet<ulong> CycleCacheTrackedDivisors = new();
+    private static readonly object CycleCacheTrackingLock = new();
+    private static ulong CycleCacheHitCount;
+    private static bool CycleCacheTrackingDisabled;
 
     public static void SetDivisorCyclesBatchSize(int divisorCyclesBatchSize)
     {
@@ -48,12 +52,39 @@ public sealed class DivisorCycleCache
         _snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
     }
 
-    public ulong GetCycleLength(ulong divisor)
+    public ulong GetCycleLength(ulong divisor, bool skipPrimeOrderHeuristic = false)
     {
-        Span<ulong> result = stackalloc ulong[1];
-        ReadOnlySpan<ulong> singleDivisor = stackalloc ulong[1] { divisor };
-        GetCycleLengths(singleDivisor, result);
-        return result[0];
+        if (!skipPrimeOrderHeuristic)
+        {
+            Span<ulong> result = stackalloc ulong[1];
+            ReadOnlySpan<ulong> singleDivisor = stackalloc ulong[1] { divisor };
+            GetCycleLengths(singleDivisor, result);
+            return result[0];
+        }
+
+        // The skipPrimeOrderHeuristic path is only used for divisors produced by the CPU by-divisor scanner,
+        // which always generates values greater than one. Keep this guard disabled here to avoid repeating the
+        // validation already performed by the general GetCycleLengths path.
+        // if (divisor <= 1UL)
+        // {
+        //     throw new InvalidDataException("Divisor must be > 1");
+        // }
+
+        ulong[] snapshot = _snapshot;
+        if (divisor < (ulong)snapshot.Length)
+        {
+            ulong cached = snapshot[divisor];
+            if (cached == 0UL)
+            {
+                throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
+            }
+
+            // ObserveCycleCacheDivisor(divisor);
+            return cached;
+        }
+
+        MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
+        return MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData, skipPrimeOrderHeuristic: true);
     }
 
     public void GetCycleLengths(ReadOnlySpan<ulong> divisors, Span<ulong> cycles)
@@ -83,6 +114,7 @@ public sealed class DivisorCycleCache
                     throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
                 }
 
+                // ObserveCycleCacheDivisor(divisor);
                 cycles[i] = cached;
             }
             else
@@ -107,6 +139,43 @@ public sealed class DivisorCycleCache
         if (rentedMissing is not null)
         {
             ArrayPool<int>.Shared.Return(rentedMissing, clearArray: false);
+        }
+    }
+
+    private static void ObserveCycleCacheDivisor(ulong divisor)
+    {
+        bool logHit = false;
+        ulong hitNumber = 0UL;
+        bool trackingDisabledNow = false;
+
+        lock (CycleCacheTrackingLock)
+        {
+            if (CycleCacheTrackingDisabled)
+            {
+                return;
+            }
+
+            if (!CycleCacheTrackedDivisors.Add(divisor))
+            {
+                CycleCacheHitCount++;
+                hitNumber = CycleCacheHitCount;
+                logHit = true;
+            }
+            else if (CycleCacheTrackedDivisors.Count >= CycleCacheTrackingLimit)
+            {
+                CycleCacheTrackingDisabled = true;
+                CycleCacheTrackedDivisors.Clear();
+                trackingDisabledNow = true;
+            }
+        }
+
+        if (logHit)
+        {
+            Console.WriteLine($"Cycle cache hit for divisor {divisor} ({hitNumber})");
+        }
+        else if (trackingDisabledNow)
+        {
+            Console.WriteLine("Cycle cache hit tracking disabled after exceeding the tracking limit.");
         }
     }
 
@@ -246,80 +315,7 @@ public sealed class DivisorCycleCache
 
     private static Action<Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> LoadKernel(Accelerator accelerator)
     {
-        return accelerator.LoadAutoGroupedStreamKernel<Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>(GpuAdvanceDivisorCyclesKernel);
-    }
-
-    private static void GpuAdvanceDivisorCyclesKernel(
-        Index1D index,
-        int steps,
-        ArrayView1D<ulong, Stride1D.Dense> divisors,
-        ArrayView1D<ulong, Stride1D.Dense> pow,
-        ArrayView1D<ulong, Stride1D.Dense> order,
-        ArrayView1D<ulong, Stride1D.Dense> cycles,
-        ArrayView1D<byte, Stride1D.Dense> status)
-    {
-        if (status[index] != ByteZero)
-        {
-            return;
-        }
-
-        ulong divisor = divisors[index];
-
-        if ((divisor & (divisor - 1UL)) == 0UL)
-        {
-            cycles[index] = 1UL;
-            status[index] = ByteOne;
-            pow[index] = 1UL;
-            order[index] = 1UL;
-            return;
-        }
-
-        ulong currentPow = pow[index];
-        ulong currentOrder = order[index];
-
-        if (divisor <= 3UL)
-        {
-            while (currentPow != 1UL)
-            {
-                currentPow += currentPow;
-                if (currentPow >= divisor)
-                {
-                    currentPow -= divisor;
-                }
-
-                currentOrder++;
-            }
-
-            cycles[index] = currentOrder;
-            status[index] = ByteOne;
-            pow[index] = currentPow;
-            order[index] = currentOrder;
-            return;
-        }
-
-        do
-        {
-            currentPow += currentPow;
-            if (currentPow >= divisor)
-            {
-                currentPow -= divisor;
-            }
-
-            currentOrder++;
-
-            if (currentPow == 1UL)
-            {
-                cycles[index] = currentOrder;
-                status[index] = ByteOne;
-                pow[index] = currentPow;
-                order[index] = currentOrder;
-                return;
-            }
-        }
-        while (--steps != 0);
-
-        pow[index] = currentPow;
-        order[index] = currentOrder;
+        return accelerator.LoadAutoGroupedStreamKernel<Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>(DivisorCycleKernels.GpuAdvanceDivisorCyclesKernel);
     }
 
     private sealed class AcceleratorReferenceComparer : IEqualityComparer<Accelerator>

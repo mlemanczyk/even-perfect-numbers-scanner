@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using ILGPU;
@@ -15,59 +16,77 @@ public sealed class PrimeTester(bool useInternal = false)
         // indirection shows up when we sieve millions of candidates per second.
         IsPrimeInternal(n, ct);
 
+    public static bool IsPrimeGpu(ulong n) => new PrimeTester().IsPrimeGpu(n, CancellationToken.None);
+
     // Optional GPU-assisted primality: batched small-prime sieve on device.
     public bool IsPrimeGpu(ulong n, CancellationToken ct)
     {
-        if (GpuContextPool.ForceCpu)
-        {
-            return IsPrimeInternal(n, ct);
-        }
+        // EvenPerfectBitScanner never enqueues exponents <= 3 on the GPU path; keep the legacy guard commented out
+        // so ad-hoc callers that expect that behavior must re-enable it intentionally.
+        // if (n <= 3UL)
+        // {
+        //     return n >= 2UL;
+        // }
 
+        // Candidate generation (Add/AddPrimes transforms plus ModResidueTracker) already strips even values and multiples of five.
+        // The downstream small-factor sweep and Pollard routines factor divisors q = 2kp + 1 with k >= 1 without feeding new
+        // exponents back into this path, so the GPU sees the same odd sequence that already passed the CPU residues.
+
+        // EvenPerfectBitScanner seeds p at 136,279,841 and advances monotonically, so production scans never hit the GPU with
+        // exponents below 31. Leave this CPU redirect commented out to keep the wrapper branchless while documenting the guard.
+        // The ternary fallback below still routes sub-31 values through IsPrimeInternal for correctness when ad-hoc callers bypass
+        // the scanner pipeline.
+        // if (n < 31UL)
+        // {
+        //     return IsPrimeInternal(n, ct);
+        // }
+
+        bool forceCpu = GpuContextPool.ForceCpu;
         Span<ulong> one = stackalloc ulong[1];
         Span<byte> outFlags = stackalloc byte[1];
         // TODO: Inline the single-value GPU sieve fast path from GpuModularArithmeticBenchmarks so this wrapper
         // can skip stackalloc buffers and reuse the pinned upload span the benchmark identified as fastest.
         one[0] = n;
-        IsPrimeBatchGpu(one, outFlags);
+        outFlags[0] = 0;
 
-        if (outFlags[0] != 0)
+        if (!forceCpu)
         {
-            return true;
+            IsPrimeBatchGpu(one, outFlags);
         }
 
-        // Defensive fallback: GPU sieve produced a composite verdict.
-        // Confirm with CPU logic to prevent false negatives observed on
-        // some accelerators.
-        return IsPrimeInternal(n, ct);
+        bool belowGpuRange = n < 31UL;
+        bool gpuReportedPrime = !forceCpu && !belowGpuRange && outFlags[0] != 0;
+        bool requiresCpuFallback = forceCpu || belowGpuRange || !gpuReportedPrime;
+
+        // Defensive fallback: GPU sieve produced a composite verdict or execution was skipped.
+        // Confirm with CPU logic to prevent false negatives observed on some accelerators.
+        return requiresCpuFallback ? IsPrimeInternal(n, ct) : true;
     }
+
 
     // Note: GPU-backed primality path is implemented via IsPrimeGpu/IsPrimeBatchGpu and is routed
     // from EvenPerfectBitScanner based on --primes-device.
 
     internal static bool IsPrimeInternal(ulong n, CancellationToken ct)
     {
-        bool result = true;
-        if (n <= 3UL)
+        // EvenPerfectBitScanner streams monotonically increasing odd exponents that start at 136,279,841 and already exclude
+        // multiples of five. Factorization helpers (PrimeOrderCalculator, Pollard routines, and divisor-cycle warmups) reuse
+        // this path for arbitrary residues and cofactors, so keep the boolean guards even though the scanner never trips them.
+        bool isTwo = n == 2UL;
+        bool isOdd = (n & 1UL) != 0UL;
+        // TODO: Replace this modulo check with ULongExtensions.Mod5 so the CPU hot path reuses the benchmarked helper instead of `%`.
+        ulong mod5 = n % 5UL;
+        bool divisibleByFive = n > 5UL && mod5 == 0UL;
+
+        bool result = n >= 2UL && (isTwo || isOdd) && !divisibleByFive;
+        bool requiresTrialDivision = result && n >= 7UL && !isTwo;
+
+        if (requiresTrialDivision)
         {
-            result = n >= 2UL;
-        }
-        else if ((n & 1UL) == 0)
-        {
-            result = false;
-        }
-        else if (n > 5UL && (n % 5UL) == 0UL)
-        {
-            // TODO: Replace this modulo check with ULongExtensions.Mod5 so the CPU hot path
-            // reuses the benchmarked helper instead of `%` when sieving large prime ranges.
-            result = false;
-        }
-        else
-        {
-            if (n.Mod10() == 1UL && SharesFactorWithMaxExponent(n))
-            {
-                result = false;
-            }
-            else
+            bool sharesMaxExponentFactor = n.Mod10() == 1UL && SharesFactorWithMaxExponent(n);
+            result &= !sharesMaxExponentFactor;
+
+            if (result)
             {
                 var smallPrimeDivisorsLength = PrimesGenerator.SmallPrimes.Length;
                 uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
@@ -101,7 +120,7 @@ public sealed class PrimeTester(bool useInternal = false)
     {
         // Limit concurrency and declare variables outside loops for performance and reuse
         var limiter = GpuPrimeWorkLimiter.Acquire();
-        var gpu = GpuContextPool.Rent();
+        var gpu = PrimeTesterGpuContextPool.Rent();
 
         try
         {
@@ -154,6 +173,92 @@ public sealed class PrimeTester(bool useInternal = false)
         }
     }
 
+    private static class PrimeTesterGpuContextPool
+    {
+        internal sealed class PooledContext : IDisposable
+        {
+            private bool _disposed;
+
+            public Context Context { get; }
+
+            public Accelerator Accelerator { get; }
+
+            public object ExecutionLock { get; } = new();
+
+            public PooledContext()
+            {
+                Context = Context.CreateDefault();
+                Accelerator = Context.GetPreferredDevice(false).CreateAccelerator(Context);
+            }
+
+            public void Dispose()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                PrimeTester.ClearGpuCaches(Accelerator);
+                Accelerator.Dispose();
+                Context.Dispose();
+                _disposed = true;
+            }
+        }
+
+        private static readonly ConcurrentQueue<PooledContext> Pool = new();
+        private static readonly object CreationLock = new();
+
+        internal static PrimeTesterGpuContextLease Rent()
+        {
+            if (Pool.TryDequeue(out var ctx))
+            {
+                return new PrimeTesterGpuContextLease(ctx);
+            }
+
+            lock (CreationLock)
+            {
+                return new PrimeTesterGpuContextLease(new PooledContext());
+            }
+        }
+
+        internal static void DisposeAll()
+        {
+            while (Pool.TryDequeue(out var ctx))
+            {
+                ctx.Dispose();
+            }
+        }
+
+        private static void Return(PooledContext ctx)
+        {
+            ctx.Accelerator.Synchronize();
+            Pool.Enqueue(ctx);
+        }
+
+        internal struct PrimeTesterGpuContextLease : IDisposable
+        {
+            private PooledContext? _ctx;
+
+            internal PrimeTesterGpuContextLease(PooledContext ctx)
+            {
+                _ctx = ctx;
+            }
+
+            public Accelerator Accelerator => _ctx!.Accelerator;
+
+            public object ExecutionLock => _ctx!.ExecutionLock;
+
+            public void Dispose()
+            {
+                if (_ctx is { } ctx)
+                {
+                    Return(ctx);
+                    _ctx = null;
+                }
+            }
+        }
+    }
+
     // Per-accelerator GPU state for prime sieve (kernel + uploaded primes).
     private sealed class KernelState
     {
@@ -169,7 +274,7 @@ public sealed class PrimeTester(bool useInternal = false)
         {
             _accel = accelerator;
             // Compile once per accelerator and upload primes once.
-            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>>(SmallPrimeSieveKernel);
+            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
 
             var primes = PrimesGenerator.SmallPrimes;
             DevicePrimes = accelerator.Allocate1D<uint>(primes.Length);
@@ -266,54 +371,9 @@ public sealed class PrimeTester(bool useInternal = false)
         GpuKernelState.Clear(accelerator);
     }
 
-    // GPU kernel: small-prime sieve only. Returns 1 if passes sieve (probable prime), 0 otherwise.
-    private static void SmallPrimeSieveKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<uint> smallPrimes, ArrayView<byte> results)
+    internal static void DisposeGpuContexts()
     {
-        ulong n = numbers[index];
-        if (n <= 3UL)
-        {
-            results[index] = (byte)(n >= 2UL ? 1 : 0);
-            return;
-        }
-
-        if ((n & 1UL) == 0UL || (n > 5UL && (n % 5UL) == 0UL))
-        {
-            // TODO: Replace the `% 5` branch with the GPU Mod5 helper once the sieve kernel can
-            // reuse the benchmarked bitmask reduction instead of modulo on every candidate.
-            results[index] = 0;
-            return;
-        }
-
-        if (n.Mod10() == 1UL)
-        {
-            // Early reject special GCD heuristic with floor(log2 n)
-            ulong m = 63UL - (ulong)ILGPU.Algorithms.XMath.LeadingZeroCount(n);
-            if (BinaryGcdGpu(n, m) != 1UL)
-            {
-                results[index] = 0;
-                return;
-            }
-        }
-
-        long len = smallPrimes.Length;
-        for (int i = 0; i < len; i++)
-        {
-            ulong p = smallPrimes[i];
-            if (p * p > n)
-            {
-                break;
-            }
-
-            if ((n % p) == 0UL)
-            {
-                // TODO: Route this modulo through the shared divisor-cycle cache once exposed to GPU kernels
-                // so batched sieves avoid per-prime `%` operations that profiling showed expensive.
-                results[index] = 0;
-                return;
-            }
-        }
-
-        results[index] = 1;
+        PrimeTesterGpuContextPool.DisposeAll();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -331,9 +391,9 @@ public sealed class PrimeTester(bool useInternal = false)
         // TODO: Route this batch helper through the shared GPU kernel pool from
         // GpuUInt128BinaryGcdBenchmarks so we reuse cached kernels, pinned host buffers,
         // and divisor-cycle staging instead of allocating new device buffers per call.
-        var gpu = GpuContextPool.Rent();
+        var gpu = PrimeTesterGpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
-        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(SharesFactorKernel);
+        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SharesFactorKernel);
 
         int length = values.Length;
         var inputBuffer = accelerator.Allocate1D<ulong>(length);
@@ -384,45 +444,4 @@ public sealed class PrimeTester(bool useInternal = false)
 
         return u << shift;
     }
-
-    private static void SharesFactorKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<byte> results)
-    {
-        ulong n = numbers[index];
-        ulong m = 63UL - (ulong)XMath.LeadingZeroCount(n);
-        ulong gcd = BinaryGcdGpu(n, m);
-        results[index] = gcd == 1UL ? (byte)0 : (byte)1;
     }
-
-    private static ulong BinaryGcdGpu(ulong u, ulong v)
-    {
-        // TODO: Replace this inline GPU binary GCD with the kernel extracted from
-        // GpuUInt128BinaryGcdBenchmarks via GpuKernelPool so device callers reuse the
-        // fully unrolled ladder instead of this branchy fallback.
-        if (u == 0UL)
-        {
-            return v;
-        }
-
-        if (v == 0UL)
-        {
-            return u;
-        }
-
-        int shift = XMath.TrailingZeroCount(u | v);
-        u >>= XMath.TrailingZeroCount(u);
-
-        do
-        {
-            v >>= XMath.TrailingZeroCount(v);
-            if (u > v)
-            {
-				(u, v) = (v, u);
-            }
-
-            v -= u;
-        }
-        while (v != 0UL);
-
-        return u << shift;
-    }
-}

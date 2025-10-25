@@ -1,6 +1,7 @@
 #r "nuget: ILGPU, 1.5.3"
 #r "nuget: PeterO.Numbers, 1.8.1"
 #r "nuget: Open.Numeric.Primes, 4.0.4"
+#load "../PerfectNumbers.Core/Gpu/Kernels/NumericProbeKernels.cs"
 
 using System;
 using System.Numerics;
@@ -9,6 +10,7 @@ using ILGPU.Runtime;
 using ILGPU.Runtime.CPU;
 using PeterO.Numbers;
 using Open.Numeric.Primes;
+using PerfectNumbers.Core.Gpu;
 
 var context = Context.CreateDefault();
 var accelerator = context.CreateCPUAccelerator(0);
@@ -53,7 +55,7 @@ static ProbeResult ProbeBigInteger(Accelerator accelerator)
 {
     try
     {
-        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<int, Stride1D.Dense>>(BigIntegerKernel);
+        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<int, Stride1D.Dense>>(NumericProbeKernels.BigIntegerKernel);
         using var buffer = accelerator.Allocate1D<int>(1);
         var extent = new Index1D((int)buffer.Length);
         kernel(extent, buffer.View);
@@ -72,7 +74,7 @@ static ProbeResult ProbeEInteger(Accelerator accelerator)
 {
     try
     {
-        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<int, Stride1D.Dense>>(EIntegerKernel);
+        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<int, Stride1D.Dense>>(NumericProbeKernels.EIntegerKernel);
         using var buffer = accelerator.Allocate1D<int>(1);
         kernel(new Index1D((int)buffer.Length), buffer.View);
         accelerator.Synchronize();
@@ -92,7 +94,7 @@ static ProbeResult ProbeERational(Accelerator accelerator)
 
     try
     {
-        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<int, Stride1D.Dense>>(ERationalKernel);
+        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<int, Stride1D.Dense>>(NumericProbeKernels.ERationalKernel);
         using var buffer = accelerator.Allocate1D<int>(1);
         kernel(new Index1D((int)buffer.Length), buffer.View);
         accelerator.Synchronize();
@@ -119,7 +121,7 @@ static ProbeResult ProbeOpenNumericPrimesIsPrime(Accelerator accelerator)
 {
     try
     {
-        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<int, Stride1D.Dense>>(OpenNumericPrimesIsPrimeKernel);
+        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<int, Stride1D.Dense>>(NumericProbeKernels.OpenNumericPrimesIsPrimeKernel);
         using var buffer = accelerator.Allocate1D<int>(4);
         kernel(new Index1D((int)buffer.Length), buffer.View);
         accelerator.Synchronize();
@@ -131,47 +133,6 @@ static ProbeResult ProbeOpenNumericPrimesIsPrime(Accelerator accelerator)
     {
         return ProbeResult.Failure("Open.Numeric.Primes.Prime.Numbers.IsPrime", ex);
     }
-}
-
-static void OpenNumericPrimesIsPrimeKernel(Index1D index, ArrayView1D<int, Stride1D.Dense> data)
-{
-    ulong value = (ulong)(index + 2);
-    bool isPrime = Prime.Numbers.IsPrime(value);
-    data[index] = isPrime ? 1 : 0;
-}
-
-static void BigIntegerKernel(Index1D index, ArrayView1D<int, Stride1D.Dense> data)
-{
-    BigInteger value = new BigInteger(data[index]);
-    value += BigInteger.One;
-    value -= BigInteger.One;
-    value *= new BigInteger(2);
-    value /= new BigInteger(3);
-    value %= new BigInteger(5);
-    int comparison = value.CompareTo(BigInteger.Zero);
-    data[index] = comparison;
-}
-
-static void EIntegerKernel(Index1D index, ArrayView1D<int, Stride1D.Dense> data)
-{
-    EInteger value = EInteger.FromInt32(data[index]);
-    value = value + EInteger.One;
-    value = value - EInteger.One;
-    value = value * EInteger.FromInt32(2);
-    value = value.Divide(EInteger.FromInt32(3));
-    value = value.Remainder(EInteger.FromInt32(5));
-    int comparison = value.CompareTo(EInteger.Zero);
-    data[index] = comparison;
-}
-
-static void ERationalKernel(Index1D index, ArrayView1D<int, Stride1D.Dense> data)
-{
-    ERational value = ERational.FromInt32(data[index]);
-    ERational adjusted = (value + ERational.FromInt32(1)) - ERational.FromInt32(1);
-    ERational product = adjusted * ERational.FromInt32(2);
-    ERational quotient = product / ERational.FromInt32(3);
-    int comparison = quotient.CompareTo(ERational.FromInt32(0));
-    data[index] = comparison;
 }
 
 static bool HasERationalRemainder()

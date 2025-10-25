@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
 using FluentAssertions;
-using PerfectNumbers.Core;
 using Xunit;
 
 namespace PerfectNumbers.Core.Tests;
@@ -26,7 +23,8 @@ public class MersenneNumberDivisorByDivisorTesterTests
             markComposite: () => compositeMarks++,
             clearComposite: () => clearedMarks++,
             printResult: (prime, searched, detailed, passed) => results.Add((prime, searched, detailed, passed)),
-            threadCount: 1);
+            threadCount: 1,
+            primesPerTask: 2);
 
         tester.ConfiguredMaxPrime.Should().Be(13UL);
         compositeMarks.Should().Be(2);

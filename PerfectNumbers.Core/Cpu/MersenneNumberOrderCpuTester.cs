@@ -35,8 +35,6 @@ public class MersenneNumberOrderCpuTester(GpuKernelType kernelType)
 			{
                                 if (_kernelType == GpuKernelType.Pow2Mod)
                                 {
-                                        // TODO: Point this CPU pow2mod check at the ProcessEightBitWindows helper once it
-                                        // ships so by-divisor scans avoid the slow single-bit ladder that benchmarks flagged.
                                         if (exponent.PowModWithCycle(q, qCycle) == 1UL)
                                         {
                                                 Volatile.Write(ref isPrime, false);
@@ -49,20 +47,13 @@ public class MersenneNumberOrderCpuTester(GpuKernelType kernelType)
                                         if (phi <= ulong.MaxValue)
                                         {
                                                 ulong phi64 = (ulong)phi;
-                                                // TODO: Switch these phi-based powmods to the shared windowed helper so CPU
-                                                // fallback paths keep pace with the optimized GPU kernels on large divisors.
                                                 if (phi64.PowModWithCycle(q, qCycle) == 1UL)
                                                 {
-                                                        // TODO: Reuse the windowed pow2 helper for halfPow as soon as it is
-                                                        // available instead of recalculating via square-and-multiply.
                                                         UInt128 halfPow = (phi64 >> 1).PowModWithCycle(q, qCycle) - 1UL;
                                                         if (halfPow.BinaryGcd(q) == 1UL)
                                                         {
                                                                 ulong divMul = (ulong)((((UInt128)1 << 64) - 1UL) / exponent) + 1UL;
                                                                 ulong div = phi64.FastDiv64(exponent, divMul);
-                                                                // TODO: Replace this divisor powmod with the ProcessEightBitWindows
-                                                                // implementation so order scans stop paying the slower bit-serial
-                                                                // loop measured in the MulMod benchmarks.
                                                                 UInt128 divPow = div.PowModWithCycle(q, qCycle) - 1UL;
                                                                 if (divPow.BinaryGcd(q) == 1UL)
                                                                 {

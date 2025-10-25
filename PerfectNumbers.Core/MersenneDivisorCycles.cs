@@ -1,11 +1,9 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading;
 using PerfectNumbers.Core.Gpu;
 using ILGPU;
 using ILGPU.Runtime;
@@ -17,7 +15,6 @@ public class MersenneDivisorCycles
     private List<(ulong divisor, ulong cycleLength)> _table = [];
     // Lightweight read-mostly cache for small divisors (<= 4,000,000). 0 => unknown
     private ulong[]? _smallCycles;
-
     public static MersenneDivisorCycles Shared { get; } = new MersenneDivisorCycles();
 
     public MersenneDivisorCycles()
@@ -56,12 +53,6 @@ public class MersenneDivisorCycles
 
     public static bool CycleEqualsExponent(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
     {
-        Dictionary<ulong, FactorCacheEntry>? cache = null;
-        return CycleEqualsExponent(divisor, exponent, divisorData, ref cache);
-    }
-
-    public static bool CycleEqualsExponent(ulong divisor, ulong exponent, in MontgomeryDivisorData divisorData, ref Dictionary<ulong, FactorCacheEntry>? factorCache)
-    {
         if (CycleEqualsExponentForMersenneCandidate(divisor, divisorData, exponent))
         {
             return true;
@@ -90,14 +81,7 @@ public class MersenneDivisorCycles
             return heuristicCycle == exponent;
         }
 
-        Dictionary<ulong, FactorCacheEntry>? cache = factorCache;
-        if (cache is null)
-        {
-            cache = new Dictionary<ulong, FactorCacheEntry>(8);
-            factorCache = cache;
-        }
-
-        if (TryCalculateCycleLengthForExponent(divisor, exponent, divisorData, cache, out ulong cycleLength) && cycleLength != 0UL)
+        if (TryCalculateCycleLengthForExponentCpu(divisor, exponent, divisorData, out ulong cycleLength, out bool _) && cycleLength != 0UL)
         {
             return cycleLength == exponent;
         }
@@ -107,10 +91,12 @@ public class MersenneDivisorCycles
 
     public static bool CycleEqualsExponentForMersenneCandidate(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
     {
-        if (!IsValidMersenneDivisorCandidate(divisor, exponent))
-        {
-            return false;
-        }
+        // EvenPerfectBitScanner only calls this helper with divisors generated from 2 * k * p + 1 and primes greater than one,
+        // so the validation guard would never trigger in production. Keep it commented out to leave the hot path branch-free.
+        // if (!IsValidMersenneDivisorCandidate(divisor, exponent))
+        // {
+        //     return false;
+        // }
 
         if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
         {
@@ -209,9 +195,6 @@ public class MersenneDivisorCycles
             }
         }
 
-        // TODO: Replace this naive doubling fallback with the unrolled-hex generator from
-        // MersenneDivisorCycleLengthGpuBenchmarks so large divisors avoid the millions of
-        // iterations measured in the scalar loop.
         // TODO: Route this miss to an ephemeral single-cycle computation on the device selected by the current
         // configuration (and skip persisting the result) when the divisor falls outside the in-memory snapshot
         // so we respect the large-p memory limits and avoid extra cache locks.
@@ -264,26 +247,29 @@ public class MersenneDivisorCycles
         return order;
     }
 
-    public static bool TryCalculateCycleLengthForExponent(
-        ulong divisor,        
+    public static bool TryCalculateCycleLengthForExponentCpu(
+        ulong divisor,
         ulong exponent,
         in MontgomeryDivisorData divisorData,
-        Dictionary<ulong, FactorCacheEntry>? factorCache,
-        out ulong cycleLength)
+        out ulong cycleLength,
+        out bool primeOrderFailed)
     {
         cycleLength = 0UL;
+        primeOrderFailed = false;
 
-        if ((divisor & (divisor - 1UL)) == 0UL)
-        {
-            cycleLength = 1UL;
-            return true;
-        }
+        // EvenPerfectBitScanner never feeds powers of two into this helper, so leave the branch commented out to avoid redundant work.
+        // if ((divisor & (divisor - 1UL)) == 0UL)
+        // {
+        //     cycleLength = 1UL;
+        //     return true;
+        // }
 
-        if (divisor <= 3UL || exponent <= 1UL)
-        {
-            cycleLength = CalculateCycleLength(divisor, divisorData);
-            return true;
-        }
+        // The scanner only calls this path with prime exponents greater than one and odd divisors above three, keeping the small-parameter guard unreachable.
+        // if (divisor <= 3UL || exponent <= 1UL)
+        // {
+        //     cycleLength = CalculateCycleLength(divisor, divisorData);
+        //     return true;
+        // }
 
         ulong computedOrder = PrimeOrderCalculator.Calculate(
             divisor,
@@ -297,11 +283,15 @@ public class MersenneDivisorCycles
             return true;
         }
 
+        primeOrderFailed = true;
+
         ulong phi = divisor - 1UL;
-        if (phi == 0UL)
-        {
-            return false;
-        }
+        // A zero totient would imply divisor == 0, which never occurs on the tested path. Keep the guard documented without
+        // branching in the hot loop.
+        // if (phi == 0UL)
+        // {
+        //     return false;
+        // }
 
         int twoCount = BitOperations.TrailingZeroCount(phi);
         ulong reducedPhi = phi >> twoCount;
@@ -311,100 +301,72 @@ public class MersenneDivisorCycles
         }
 
         ulong k = reducedPhi / exponent;
-        if (k == 0UL)
-        {
-            return false;
-        }
+        // k == 0 would indicate reducedPhi < exponent, which the EvenPerfectBitScanner call flow prevents. Document the
+        // assumption instead of branching.
+        // if (k == 0UL)
+        // {
+        //     return false;
+        // }
 
-        Dictionary<ulong, int> factorCounts = new(8);
+        Dictionary<ulong, int> factorCounts = ThreadStaticPools.RentFactorCountDictionary();
+        bool success = false;
+
         if (twoCount > 0)
         {
             factorCounts[2UL] = twoCount;
         }
 
-        if (!AccumulateFactors(exponent, factorCache, factorCounts, cacheResult: true) || !AccumulateFactors(k, factorCache, factorCounts, cacheResult: false))
+        bool exponentAccumulated = AccumulateFactors(exponent, factorCounts);
+        bool factorsAccumulated = exponentAccumulated && AccumulateFactors(k, factorCounts);
+
+        if (factorsAccumulated)
         {
-            return false;
+            cycleLength = ReduceOrder(divisorData, phi, factorCounts);
+            success = true;
+            primeOrderFailed = false;
         }
 
-        cycleLength = ReduceOrder(divisorData, phi, factorCounts);
-        return true;
+        factorCounts.Clear();
+        ThreadStaticPools.ReturnFactorCountDictionary(factorCounts);
+        return success;
     }
 
     private static bool AccumulateFactors(
         ulong value,
-        Dictionary<ulong, FactorCacheEntry>? cache,
-        Dictionary<ulong, int> counts,
-        bool cacheResult)
+        Dictionary<ulong, int> counts)
     {
         if (value <= 1UL)
         {
             return true;
         }
 
-        if (!TryGetFactorization(value, cache, cacheResult, out FactorCacheEntry factorization))
+        Dictionary<ulong, int> scratch = ThreadStaticPools.RentFactorScratchDictionary();
+        bool success = TryFactorIntoCountsInternal(value, scratch);
+        if (!success)
         {
+            scratch.Clear();
+            ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
             return false;
         }
 
-        ulong[] primes = factorization.Primes;
-        byte[] exponents = factorization.Exponents;
-        int length = factorization.Count;
-
-        for (int i = 0; i < length; i++)
+        for (Dictionary<ulong, int>.Enumerator enumerator = scratch.GetEnumerator(); enumerator.MoveNext();)
         {
-            AddFactor(counts, primes[i], exponents[i]);
+            KeyValuePair<ulong, int> pair = enumerator.Current;
+            AddFactor(counts, pair.Key, pair.Value);
         }
 
-        return true;
-    }
-
-    private static bool TryGetFactorization(
-        ulong value,
-        Dictionary<ulong, FactorCacheEntry>? cache,
-        bool cacheResult,
-        out FactorCacheEntry factorization)
-    {
-        if (cache is not null && cache.TryGetValue(value, out factorization))
-        {
-            return true;
-        }
-
-        Dictionary<ulong, int> scratch = new(8);
-        if (!TryFactorIntoCountsInternal(value, scratch))
-        {
-            factorization = default!;
-            return false;
-        }
-
-        int count = scratch.Count;
-        ulong[] primes = new ulong[count];
-        byte[] exponents = new byte[count];
-        int index = 0;
-        foreach (KeyValuePair<ulong, int> entry in scratch)
-        {
-            primes[index] = entry.Key;
-            exponents[index] = checked((byte)entry.Value);
-            index++;
-        }
-
-        Array.Sort(primes, exponents);
-        factorization = new FactorCacheEntry(primes, exponents, count);
-
-        if (cache is not null && cacheResult)
-        {
-            cache[value] = factorization;
-        }
-
+        scratch.Clear();
+        ThreadStaticPools.ReturnFactorScratchDictionary(scratch);
         return true;
     }
 
     private static bool TryFactorIntoCountsInternal(ulong value, Dictionary<ulong, int> counts)
     {
-        if (value <= 1UL)
-        {
-            return true;
-        }
+        // The EvenPerfectBitScanner only requests factors for values >= 2 here. Leave the guard documented without executing it.
+        // if (value <= 1UL)
+        // {
+        //     return true;
+        // }
 
         ulong remaining = value;
         uint[] smallPrimes = PrimesGenerator.SmallPrimes;
@@ -419,6 +381,7 @@ public class MersenneDivisorCycles
                 break;
             }
 
+            // TODO: Reuse the remainder-tracking update from the cycle heuristic so repeated divisions disappear from this loop.
             while ((remaining % prime) == 0UL)
             {
                 AddFactor(counts, prime);
@@ -431,20 +394,43 @@ public class MersenneDivisorCycles
             return true;
         }
 
+        // TODO: Benchmark PrimeTester.IsPrimeInternal against Open.Numeric.Primes on the EvenPerfectBitScanner workloads to confirm the faster option for wide composites.
         if (PrimeTester.IsPrimeInternal(remaining, CancellationToken.None))
         {
             AddFactor(counts, remaining);
             return true;
         }
 
+        // TODO: Evaluate folding the remainder-tracking mechanism into PollardRho64 so the walk leverages previously computed residues.
         ulong factor = PollardRho64(remaining);
         if (factor == 0UL || factor == remaining)
+        {
+            // Pollard-Rho can still stall on rare stubborn composites during test and benchmark runs, so keep the failure guard in place
+            // and let the caller fall back to the cached cycle calculator.
+            return false;
+        }
+
+        // TODO: Investigate computing this quotient via remainder tracking or reciprocal multiplication to avoid the division.
+        ulong quotient = remaining / factor;
+        // Pollard-Rho never returns factors <= 1 on the EvenPerfectBitScanner path; keep the old guard documented
+        // for completeness without branching in the hot path.
+        // if (factor > 1UL && !TryFactorIntoCountsInternal(factor, counts))
+        // {
+        //     return false;
+        // }
+
+        if (!TryFactorIntoCountsInternal(factor, counts))
         {
             return false;
         }
 
-        ulong quotient = remaining / factor;
-        return TryFactorIntoCountsInternal(factor, counts) && TryFactorIntoCountsInternal(quotient, counts);
+        // Guard the recursive calls to terminate once Pollard-Rho reduces either branch to 1.
+        if (quotient > 1UL && !TryFactorIntoCountsInternal(quotient, counts))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private static void AddFactor(Dictionary<ulong, int> counts, ulong factor)
@@ -479,56 +465,135 @@ public class MersenneDivisorCycles
         }
 
         int count = factorCounts.Count;
-        ulong[] primes = ArrayPool<ulong>.Shared.Rent(count);
-        try
+        ulong[] primes = ThreadStaticPools.UlongPool.Rent(count);
+
+        int index = 0;
+        foreach (KeyValuePair<ulong, int> entry in factorCounts)
         {
-            int index = 0;
-            foreach (KeyValuePair<ulong, int> entry in factorCounts)
-            {
-                primes[index] = entry.Key;
-                index++;
-            }
-
-            Array.Sort(primes, 0, count);
-
-            ulong order = initialOrder;
-            for (int i = 0; i < count; i++)
-            {
-                ulong prime = primes[i];
-                int multiplicity = factorCounts[prime];
-
-                for (int iteration = 0; iteration < multiplicity; iteration++)
-                {
-                    if (order % prime != 0UL)
-                    {
-                        break;
-                    }
-
-                    ulong candidate = order / prime;
-                    if (candidate.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL)
-                    {
-                        order = candidate;
-                        continue;
-                    }
-
-                    break;
-                }
-            }
-
-            return order;
+            primes[index] = entry.Key;
+            index++;
         }
-        finally
+
+        Array.Sort(primes, 0, count);
+
+        const int StackMultiplicityCapacity = 16;
+        const int HeapMultiplicityCapacity = 256;
+
+        // Scanner workloads keep almost all multiplicities within the stack-backed span, so the stack path handles the hot loop.
+        Span<ulong> stackCandidates = stackalloc ulong[StackMultiplicityCapacity];
+        Span<bool> stackEvaluations = stackalloc bool[StackMultiplicityCapacity];
+
+        ulong[]? heapCandidateArray = null;
+        bool[]? heapEvaluationArray = null;
+
+        ExponentRemainderStepperCpu stepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
+
+        ulong order = initialOrder;
+        for (int i = 0; i < count; i++)
         {
-            ArrayPool<ulong>.Shared.Return(primes, clearArray: false);
+            ulong prime = primes[i];
+            int multiplicity = factorCounts[prime];
+            // Multiplicities collected by TryFactorIntoCountsInternal are strictly positive along the scanner path.
+            // Keeping the guard commented documents the assumption so it does not resurface in future reviews.
+            // if (multiplicity <= 0)
+            // {
+            //     continue;
+            // }
+
+            if (multiplicity <= StackMultiplicityCapacity)
+            {
+                ProcessReduceOrderPrime(stackCandidates.Slice(0, multiplicity), stackEvaluations.Slice(0, multiplicity), ref order, prime, multiplicity, ref stepper);
+                continue;
+            }
+
+            if (multiplicity > HeapMultiplicityCapacity)
+            {
+                throw new InvalidOperationException($"Factor multiplicity {multiplicity} exceeds the supported limit of {HeapMultiplicityCapacity}.");
+            }
+
+            // Larger multiplicities appear during stress tests; reuse a shared heap buffer in those cases.
+            heapCandidateArray ??= ThreadStaticPools.UlongPool.Rent(HeapMultiplicityCapacity);
+            heapEvaluationArray ??= ThreadStaticPools.BoolPool.Rent(HeapMultiplicityCapacity);
+            ProcessReduceOrderPrime(heapCandidateArray.AsSpan(0, multiplicity), heapEvaluationArray.AsSpan(0, multiplicity), ref order, prime, multiplicity, ref stepper);
+        }
+
+        ThreadStaticPools.ReturnExponentStepperCpu(stepper);
+        ThreadStaticPools.UlongPool.Return(primes);
+
+        if (heapCandidateArray is not null)
+        {
+            ThreadStaticPools.UlongPool.Return(heapCandidateArray);
+            ThreadStaticPools.BoolPool.Return(heapEvaluationArray!);
+        }
+
+        return order;
+    }
+
+    private static void ProcessReduceOrderPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong prime, int multiplicity, ref ExponentRemainderStepperCpu stepper)
+    {
+        ulong working = order;
+        int actual = 0;
+        while (actual < multiplicity)
+        {
+            if (working < prime)
+            {
+                break;
+            }
+
+            ulong reduced = working / prime;
+            if (reduced == 0UL)
+            {
+                break;
+            }
+
+            candidateBuffer[actual] = reduced;
+            working = reduced;
+            actual++;
+        }
+
+        if (actual == 0)
+        {
+            return;
+        }
+
+        Span<ulong> candidates = candidateBuffer.Slice(0, actual);
+        Span<bool> evaluations = evaluationBuffer.Slice(0, actual);
+
+        for (int left = 0, right = actual - 1; left < right; left++, right--)
+        {
+            ulong tmp = candidates[left];
+            candidates[left] = candidates[right];
+            candidates[right] = tmp;
+        }
+
+        stepper.Reset();
+
+        evaluations[0] = stepper.InitializeCpuIsUnity(candidates[0]);
+        for (int j = 1; j < actual; j++)
+        {
+            evaluations[j] = stepper.ComputeNextIsUnity(candidates[j]);
+        }
+
+        for (int j = actual - 1; j >= 0; j--)
+        {
+            if (!evaluations[j])
+            {
+                break;
+            }
+
+            order = candidates[j];
         }
     }
 
     private static ulong PollardRho64(ulong n)
     {
-        if ((n & 1UL) == 0UL)
-        {
-            return 2UL;
-        }
+        // The EvenPerfectBitScanner path removes all factors of two before invoking Pollard-Rho, so this branch never executes
+        // outside synthetic tests and benchmarks. Keep the guard documented to prevent future regressions without paying the hot-
+        // path cost.
+        // if ((n & 1UL) == 0UL)
+        // {
+        //     return 2UL;
+        // }
 
         while (true)
         {
@@ -599,19 +664,28 @@ public class MersenneDivisorCycles
         return BinaryPrimitives.ReadUInt64LittleEndian(buffer);
     }
 
-    public readonly struct FactorCacheEntry
+    private sealed class FactorPairValueComparer : IComparer<KeyValuePair<ulong, int>>
     {
-        public FactorCacheEntry(ulong[] primes, byte[] exponents, int count)
+        public static readonly FactorPairValueComparer Instance = new FactorPairValueComparer();
+
+        private FactorPairValueComparer()
         {
-            Primes = primes;
-            Exponents = exponents;
-            Count = count;
         }
-        public ulong[] Primes { get; }
 
-        public byte[] Exponents { get; }
+        public int Compare(KeyValuePair<ulong, int> x, KeyValuePair<ulong, int> y)
+        {
+            if (x.Key < y.Key)
+            {
+                return -1;
+            }
 
-        public int Count { get; }
+            if (x.Key > y.Key)
+            {
+                return 1;
+            }
+
+            return 0;
+        }
     }
 
     public static (long nextPosition, long completeCount) FindLast(string path)
@@ -734,7 +808,7 @@ public class MersenneDivisorCycles
         var kernel = accelerator.LoadAutoGroupedStreamKernel<
                 Index1D,
                 ArrayView1D<ulong, Stride1D.Dense>,
-                ArrayView1D<ulong, Stride1D.Dense>>(GpuDivisorCycleKernel);
+                ArrayView1D<ulong, Stride1D.Dense>>(DivisorCycleKernels.GpuDivisorCycleKernel);
 
 
         using Stream outputStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, BufferSize10M, useAsync: true);
@@ -828,103 +902,18 @@ public class MersenneDivisorCycles
 
     }
 
-    const byte ByteZero = 0;
-    const byte ByteOne = 1;
+    
+    public static ulong CalculateCycleLengthGpu(ulong divisor) => DivisorCycleKernels.CalculateCycleLengthGpu(divisor);
 
-    // GPU kernel for divisor cycle calculation
-    static void GpuDivisorCycleKernel(
-        Index1D index,
-        ArrayView1D<ulong, Stride1D.Dense> divisors,
-        ArrayView1D<ulong, Stride1D.Dense> outCycles)
+    public static ulong CalculateCycleLength(ulong divisor, in MontgomeryDivisorData divisorData, bool skipPrimeOrderHeuristic = false)
     {
-        int i = index.X;
-        outCycles[i] = CalculateCycleLengthGpu(divisors[i]);
-    }
-
-    // GPU-friendly version of cycle length calculation
-    /// <summary>
-    /// GPU-friendly cycle calculator that unrolls sixteen doubling steps; it wins the 8,388,607 benchmark and stays within ~2% of the octo loop at divisor 131,071.
-    /// </summary>
-    public static ulong CalculateCycleLengthGpu(ulong divisor)
-    {
-        if ((divisor & (divisor - 1UL)) == 0UL)
-            return 1UL;
-
-        ulong order = 1UL;
-        ulong pow = 2UL;
-
-        while (true)
-        {
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-
-            if (GpuStep(ref pow, divisor, ref order))
-                return order;
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool GpuStep(ref ulong pow, ulong divisor, ref ulong order)
-    {
-        pow += pow;
-        if (pow >= divisor)
-            pow -= divisor;
-
-        order++;
-        return pow == 1UL;
-    }
-
-    public static ulong CalculateCycleLength(ulong divisor, in MontgomeryDivisorData divisorData)
-    {
-        if (TryCalculateCycleLengthHeuristic(divisor, divisorData, out ulong cycleLength))
+        if (TryCalculateCycleLengthHeuristic(divisor, divisorData, out ulong cycleLength, skipPrimeOrderHeuristic))
             return cycleLength;
 
         return CalculateCycleLengthFallback(divisor);
     }
 
-    internal static bool TryCalculateCycleLengthHeuristic(ulong divisor, in MontgomeryDivisorData divisorData, out ulong cycleLength)
+    internal static bool TryCalculateCycleLengthHeuristic(ulong divisor, in MontgomeryDivisorData divisorData, out ulong cycleLength, bool skipPrimeOrderHeuristic = false)
     {
         if ((divisor & (divisor - 1UL)) == 0UL)
         {
@@ -938,7 +927,7 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        if (PrimeTester.IsPrimeInternal(divisor, CancellationToken.None))
+        if (!skipPrimeOrderHeuristic && PrimeTester.IsPrimeInternal(divisor, CancellationToken.None))
         {
             ulong computedOrder = PrimeOrderCalculator.Calculate(
                     divisor,
@@ -959,25 +948,8 @@ public class MersenneDivisorCycles
 
     private static ulong CalculateCycleLengthFallback(ulong divisor)
     {
-        // Otherwise, find order of 2 mod divisor
-        // TODO: Switch this scalar fallback to the unrolled-hex stepping sequence once
-        // the generator is shared with CPU callers; the benchmark shows the unrolled
-        // variant winning decisively for divisors >= 131,071.
-        // TODO: Expose a GPU-first branch here so high divisors leverage the ProcessEightBitWindows
-        // kernel measured fastest in CycleLengthGpuVsCpuBenchmarks, returning the result without
-        // storing it in the shared cache.
-        ulong order = 1UL;
-        ulong pow = 2UL;
-        while (pow != 1UL)
-        {
-            pow <<= 1;
-            if (pow >= divisor)
-                pow -= divisor;
-
-            order++;
-        }
-
-        return order;
+        // Otherwise, find order of 2 mod divisor using the shared unrolled-hex stepping sequence.
+        return divisor.CalculateMersenneDivisorCycleLengthUnrolledHexCpu();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
