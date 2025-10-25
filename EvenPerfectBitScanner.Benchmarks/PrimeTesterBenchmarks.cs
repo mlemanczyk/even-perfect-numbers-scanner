@@ -97,21 +97,21 @@ public class PrimeTesterBenchmarks
     {
         yield return PrimeBenchmarkCase.FromRange(
             "≤100",
-            "Odd values ≤ 100 that are not divisible by 5",
+            "Admissible odd values ≤ 100 (k ≤ 5, not divisible by 5)",
             3UL,
             100UL,
             int.MaxValue);
 
         yield return PrimeBenchmarkCase.FromRange(
             "≤4_000_000",
-            "Sampled odd values ≤ 4,000,000 that are not divisible by 5",
+            "Sampled admissible odd values ≤ 4,000,000 (k ≤ 5, not divisible by 5)",
             3UL,
             4_000_000UL,
             4_096);
 
         yield return PrimeBenchmarkCase.FromRange(
             "≥138_000_000",
-            "Sampled odd values ≥ 138,000,000 that are not divisible by 5",
+            "Sampled admissible odd values ≥ 138,000,000 (k ≤ 5, not divisible by 5)",
             138_000_001UL,
             138_500_000UL,
             4_096);
@@ -150,7 +150,7 @@ public class PrimeTesterBenchmarks
 
         for (ulong value = startInclusive; value <= endInclusive && count < maxCount; value++)
         {
-            if ((value & 1UL) == 0UL || value % 5UL == 0UL)
+            if (!IsAdmissibleMersenneDivisorCandidate(value))
             {
                 continue;
             }
@@ -171,5 +171,37 @@ public class PrimeTesterBenchmarks
         ulong[] result = new ulong[count];
         Array.Copy(buffer, result, count);
         return result;
+    }
+
+    private static bool IsAdmissibleMersenneDivisorCandidate(ulong value)
+    {
+        if ((value & 1UL) == 0UL || value % 5UL == 0UL || value <= 1UL)
+        {
+            return false;
+        }
+
+        ulong qMinusOne = value - 1UL;
+
+        for (ulong k = 1; k <= 5; k++)
+        {
+            ulong denominator = k << 1;
+            if (qMinusOne % denominator != 0UL)
+            {
+                continue;
+            }
+
+            ulong p = qMinusOne / denominator;
+            if (p < 2UL)
+            {
+                continue;
+            }
+
+            if (Prime.Numbers.IsPrime(p))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
