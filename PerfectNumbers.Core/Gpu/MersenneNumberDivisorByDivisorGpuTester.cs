@@ -26,6 +26,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>> _kernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, ConcurrentBag<BatchResources>> _resourcePools = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentBag<GpuContextPool.GpuContextLease> _acceleratorPool = new();
+    private readonly SemaphoreSlim _acceleratorAvailable = new(0);
+    private int _createdAccelerators;
+    // Limit GPU context concurrency to avoid replicating the large batch buffers across thousands of worker threads.
+    private int _acceleratorLimit = 1;
+    private int _waitingAcceleratorCount;
     private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
 
     private Action<Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> GetKernel(Accelerator accelerator) =>
@@ -679,15 +684,58 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
     private GpuContextPool.GpuContextLease RentAccelerator()
     {
-        if (_acceleratorPool.TryTake(out var lease))
+        while (true)
         {
-            return lease;
-        }
+            if (_acceleratorPool.TryTake(out var lease))
+            {
+                return lease;
+            }
 
-        return GpuContextPool.RentPreferred(preferCpu: false);
+            if (TryCreateAccelerator(out lease))
+            {
+                return lease;
+            }
+
+            Interlocked.Increment(ref _waitingAcceleratorCount);
+            try
+            {
+                _acceleratorAvailable.Wait();
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _waitingAcceleratorCount);
+            }
+        }
     }
 
-    private void ReturnAccelerator(GpuContextPool.GpuContextLease lease) => _acceleratorPool.Add(lease);
+    private bool TryCreateAccelerator(out GpuContextPool.GpuContextLease lease)
+    {
+        while (true)
+        {
+            int created = Volatile.Read(ref _createdAccelerators);
+            int limit = Volatile.Read(ref _acceleratorLimit);
+            if (created >= limit)
+            {
+                lease = default;
+                return false;
+            }
+
+            if (Interlocked.CompareExchange(ref _createdAccelerators, created + 1, created) == created)
+            {
+                lease = GpuContextPool.RentPreferred(preferCpu: false);
+                return true;
+            }
+        }
+    }
+
+    private void ReturnAccelerator(GpuContextPool.GpuContextLease lease)
+    {
+        _acceleratorPool.Add(lease);
+        if (Volatile.Read(ref _waitingAcceleratorCount) > 0)
+        {
+            _acceleratorAvailable.Release();
+        }
+    }
 
     private BatchResources RentBatchResources(Accelerator accelerator, int capacity)
     {
