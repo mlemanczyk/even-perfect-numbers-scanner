@@ -14,7 +14,6 @@ internal static class DivisorByDivisorKernels
         ArrayView<int> exponentCounts,
         ArrayView<ulong> exponents,
         ArrayView<ulong> divisorCycles,
-        ArrayView<ulong> firstCycleRemainders,
         ArrayView<byte> hits,
         ArrayView<int> firstHit)
     {
@@ -28,7 +27,6 @@ internal static class DivisorByDivisorKernels
         int offset = exponentOffsets[globalIndex];
         GpuDivisorPartialData divisor = divisors[globalIndex];
         ulong cycleLength = divisorCycles[globalIndex];
-        ulong firstCycleRemainder = firstCycleRemainders[globalIndex];
 
         var stepper = new ExponentRemainderStepperGpu(divisor);
 
@@ -44,7 +42,7 @@ internal static class DivisorByDivisorKernels
         }
         else
         {
-            cycleRemainder = firstCycleRemainder;
+            cycleRemainder = firstExponent % cycleLength;
             firstHitValue = cycleRemainder == 0UL && firstUnity ? (byte)1 : (byte)0;
         }
 
