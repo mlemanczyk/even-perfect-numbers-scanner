@@ -901,23 +901,6 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly ulong MulMod(ulong value, ulong modulus)
     {
-        ulong a = Low % modulus;
-        ulong b = value % modulus;
-
-        if (a == 0UL || b == 0UL)
-        {
-            return 0UL;
-        }
-
-        ulong ulongRange = ulong.MaxValue / a;
-        return b <= ulongRange
-            ? (a * b) % modulus
-            : MulMod64(a, b, modulus);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public readonly ulong MulModSimplified(ulong value, ulong modulus)
-    {
         ulong modulusLocal = modulus;
         ulong a = Low % modulusLocal;
         ulong b = value % modulusLocal;

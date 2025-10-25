@@ -13,8 +13,8 @@ namespace EvenPerfectBitScanner.Benchmarks;
 
 /// <summary>
 /// GPU benchmarks for 64-bit modular multiplication helpers.
-/// Windows 11 results ranged from 0.62 ms to 1.63 ms, and GpuCompatibleMulModSimplifiedExtension led the PrimeSizedModulus case at 0.641 ms.
-/// Recommended helper for p ≥ 138,000,000 is GpuCompatibleMulModSimplifiedExtension.
+/// Windows 11 results ranged from 0.62 ms to 1.63 ms, and MulModGpu led the PrimeSizedModulus case at 0.641 ms.
+/// Recommended helper for p ≥ 138,000,000 is MulModGpu.
 /// </summary>
 [SimpleJob(RuntimeMoniker.Net80)]
 [MemoryDiagnoser]
@@ -106,7 +106,7 @@ public class MulMod64BenchmarksGpu : IDisposable
     /// Recommended for production GPU scans, especially for large p ≥ 138,000,000.
     /// </summary>
     [Benchmark]
-    public void GpuCompatibleMulModSimplifiedExtension()
+    public void MulModGpu()
     {
         LaunchKernel(_gpuCompatibleSimplifiedKernel);
     }
@@ -249,7 +249,7 @@ public class MulMod64BenchmarksGpu : IDisposable
 
         MulMod64GpuKernelInput input = inputs[index];
         GpuUInt128 state = new(input.Left);
-        results[index] = state.MulModSimplified(input.Right, input.Modulus);
+        results[index] = state.MulMod(input.Right, input.Modulus);
     }
 
     private static void InlineKernel(Index1D index, ArrayView<MulMod64GpuKernelInput> inputs, ArrayView<ulong> results)

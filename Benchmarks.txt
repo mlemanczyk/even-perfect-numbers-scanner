@@ -23,7 +23,7 @@ Job=.NET 8.0  Runtime=.NET 8.0
 |------------------------------------------- |------------------ |-----------:|----------:|----------:|------:|--------:|----------:|------------:|
 | ExtensionBaseline                          | CrossWordBlend    |   3.606 ns | 0.0030 ns | 0.0025 ns |  1.00 |    0.00 |         - |          NA |
 | GpuCompatibleMulModExtension               | CrossWordBlend    |  22.870 ns | 0.1463 ns | 0.1297 ns |  6.34 |    0.04 |         - |          NA |
-| GpuCompatibleMulModSimplifiedExtension     | CrossWordBlend    |  22.780 ns | 0.4463 ns | 0.8600 ns |  6.32 |    0.23 |         - |          NA |
+| MulModGpu     | CrossWordBlend    |  22.780 ns | 0.4463 ns | 0.8600 ns |  6.32 |    0.23 |         - |          NA |
 | InlineUInt128Operands                      | CrossWordBlend    |  22.218 ns | 0.0319 ns | 0.0266 ns |  6.16 |    0.01 |         - |          NA |
 | InlineUInt128OperandsWithReductionFirst    | CrossWordBlend    |  22.626 ns | 0.0553 ns | 0.0517 ns |  6.27 |    0.02 |         - |          NA |
 | InlineUInt128OperandsWithOperandReduction  | CrossWordBlend    |  22.548 ns | 0.0487 ns | 0.0432 ns |  6.25 |    0.01 |         - |          NA |
@@ -35,7 +35,7 @@ Job=.NET 8.0  Runtime=.NET 8.0
 |                                            |                   |            |           |           |       |         |           |             |
 | ExtensionBaseline                          | MixedBitPattern   |   3.564 ns | 0.0059 ns | 0.0052 ns |  1.00 |    0.00 |         - |          NA |
 | GpuCompatibleMulModExtension               | MixedBitPattern   |  64.800 ns | 0.3399 ns | 0.3179 ns | 18.17 |    0.09 |         - |          NA |
-| GpuCompatibleMulModSimplifiedExtension     | MixedBitPattern   |  59.165 ns | 0.4243 ns | 0.3969 ns | 16.60 |    0.11 |         - |          NA |
+| MulModGpu     | MixedBitPattern   |  59.165 ns | 0.4243 ns | 0.3969 ns | 16.60 |    0.11 |         - |          NA |
 | InlineUInt128Operands                      | MixedBitPattern   |  30.539 ns | 0.1396 ns | 0.1306 ns |  8.57 |    0.03 |         - |          NA |
 | InlineUInt128OperandsWithReductionFirst    | MixedBitPattern   |  31.237 ns | 0.1013 ns | 0.0898 ns |  8.76 |    0.03 |         - |          NA |
 | InlineUInt128OperandsWithOperandReduction  | MixedBitPattern   |  30.210 ns | 0.1323 ns | 0.1237 ns |  8.48 |    0.04 |         - |          NA |
@@ -47,7 +47,7 @@ Job=.NET 8.0  Runtime=.NET 8.0
 |                                            |                   |            |           |           |       |         |           |             |
 | ExtensionBaseline                          | NearFullRange     |   3.583 ns | 0.0105 ns | 0.0098 ns |  1.00 |    0.00 |         - |          NA |
 | GpuCompatibleMulModExtension               | NearFullRange     |   5.708 ns | 0.0520 ns | 0.0486 ns |  1.59 |    0.02 |         - |          NA |
-| GpuCompatibleMulModSimplifiedExtension     | NearFullRange     |   5.952 ns | 0.1253 ns | 0.1172 ns |  1.66 |    0.04 |         - |          NA |
+| MulModGpu     | NearFullRange     |   5.952 ns | 0.1253 ns | 0.1172 ns |  1.66 |    0.04 |         - |          NA |
 | InlineUInt128Operands                      | NearFullRange     |  27.159 ns | 0.0936 ns | 0.0781 ns |  7.58 |    0.03 |         - |          NA |
 | InlineUInt128OperandsWithReductionFirst    | NearFullRange     |   4.357 ns | 0.0205 ns | 0.0182 ns |  1.22 |    0.00 |         - |          NA |
 | InlineUInt128OperandsWithOperandReduction  | NearFullRange     |   4.319 ns | 0.0158 ns | 0.0140 ns |  1.21 |    0.00 |         - |          NA |
@@ -59,7 +59,7 @@ Job=.NET 8.0  Runtime=.NET 8.0
 |                                            |                   |            |           |           |       |         |           |             |
 | ExtensionBaseline                          | PrimeSizedModulus |   3.593 ns | 0.0039 ns | 0.0037 ns |  1.00 |    0.00 |         - |          NA |
 | GpuCompatibleMulModExtension               | PrimeSizedModulus |  52.766 ns | 0.3086 ns | 0.2887 ns | 14.69 |    0.08 |         - |          NA |
-| GpuCompatibleMulModSimplifiedExtension     | PrimeSizedModulus |  50.490 ns | 0.1977 ns | 0.1752 ns | 14.05 |    0.05 |         - |          NA |
+| MulModGpu     | PrimeSizedModulus |  50.490 ns | 0.1977 ns | 0.1752 ns | 14.05 |    0.05 |         - |          NA |
 | InlineUInt128Operands                      | PrimeSizedModulus |  31.409 ns | 0.0984 ns | 0.0920 ns |  8.74 |    0.03 |         - |          NA |
 | InlineUInt128OperandsWithReductionFirst    | PrimeSizedModulus |  32.176 ns | 0.3427 ns | 0.3206 ns |  8.96 |    0.09 |         - |          NA |
 | InlineUInt128OperandsWithOperandReduction  | PrimeSizedModulus |  31.786 ns | 0.1483 ns | 0.1387 ns |  8.85 |    0.04 |         - |          NA |
@@ -71,7 +71,7 @@ Job=.NET 8.0  Runtime=.NET 8.0
 |                                            |                   |            |           |           |       |         |           |             |
 | ExtensionBaseline                          | SparseOperands    |   3.555 ns | 0.0087 ns | 0.0082 ns |  1.00 |    0.00 |         - |          NA |
 | GpuCompatibleMulModExtension               | SparseOperands    |   5.671 ns | 0.0043 ns | 0.0036 ns |  1.60 |    0.00 |         - |          NA |
-| GpuCompatibleMulModSimplifiedExtension     | SparseOperands    |   5.239 ns | 0.0103 ns | 0.0096 ns |  1.47 |    0.00 |         - |          NA |
+| MulModGpu     | SparseOperands    |   5.239 ns | 0.0103 ns | 0.0096 ns |  1.47 |    0.00 |         - |          NA |
 | InlineUInt128Operands                      | SparseOperands    |   3.563 ns | 0.0217 ns | 0.0203 ns |  1.00 |    0.01 |         - |          NA |
 | InlineUInt128OperandsWithReductionFirst    | SparseOperands    |   4.617 ns | 0.0095 ns | 0.0089 ns |  1.30 |    0.00 |         - |          NA |
 | InlineUInt128OperandsWithOperandReduction  | SparseOperands    |   4.282 ns | 0.0193 ns | 0.0181 ns |  1.20 |    0.01 |         - |          NA |
@@ -83,7 +83,7 @@ Job=.NET 8.0  Runtime=.NET 8.0
 |                                            |                   |            |           |           |       |         |           |             |
 | ExtensionBaseline                          | ZeroOperands      |   3.599 ns | 0.0069 ns | 0.0065 ns |  1.00 |    0.00 |         - |          NA |
 | GpuCompatibleMulModExtension               | ZeroOperands      |   1.976 ns | 0.0053 ns | 0.0049 ns |  0.55 |    0.00 |         - |          NA |
-| GpuCompatibleMulModSimplifiedExtension     | ZeroOperands      |   1.986 ns | 0.0048 ns | 0.0045 ns |  0.55 |    0.00 |         - |          NA |
+| MulModGpu     | ZeroOperands      |   1.986 ns | 0.0048 ns | 0.0045 ns |  0.55 |    0.00 |         - |          NA |
 | InlineUInt128Operands                      | ZeroOperands      |   3.542 ns | 0.0125 ns | 0.0117 ns |  0.98 |    0.00 |         - |          NA |
 | InlineUInt128OperandsWithReductionFirst    | ZeroOperands      |   4.286 ns | 0.0178 ns | 0.0167 ns |  1.19 |    0.01 |         - |          NA |
 | InlineUInt128OperandsWithOperandReduction  | ZeroOperands      |   4.256 ns | 0.0116 ns | 0.0097 ns |  1.18 |    0.00 |         - |          NA |
@@ -97,7 +97,7 @@ Job=.NET 8.0  Runtime=.NET 8.0
 Outliers
   MulMod64Benchmarks.ExtensionBaseline: .NET 8.0                          -> 2 outliers were removed (4.92 ns, 5.01 ns)
   MulMod64Benchmarks.GpuCompatibleMulModExtension: .NET 8.0               -> 1 outlier  was  removed, 2 outliers were detected (23.75 ns, 25.37 ns)
-  MulMod64Benchmarks.GpuCompatibleMulModSimplifiedExtension: .NET 8.0     -> 2 outliers were removed, 3 outliers were detected (22.07 ns, 26.53 ns, 26.65 ns)
+  MulMod64Benchmarks.MulModGpu: .NET 8.0     -> 2 outliers were removed, 3 outliers were detected (22.07 ns, 26.53 ns, 26.65 ns)
   MulMod64Benchmarks.InlineUInt128Operands: .NET 8.0                      -> 2 outliers were removed (23.62 ns, 23.64 ns)
   MulMod64Benchmarks.InlineUInt128OperandsWithOperandReduction: .NET 8.0  -> 1 outlier  was  removed (24.42 ns)
   MulMod64Benchmarks.MultiplyHighDecomposition: .NET 8.0                  -> 2 outliers were removed (25.12 ns, 25.31 ns)
@@ -112,7 +112,7 @@ Outliers
   MulMod64Benchmarks.InlineUInt128Operands: .NET 8.0                      -> 2 outliers were removed (29.01 ns, 29.49 ns)
   MulMod64Benchmarks.InlineUInt128OperandsWithReductionFirst: .NET 8.0    -> 1 outlier  was  removed (5.72 ns)
   MulMod64Benchmarks.InlineUInt128OperandsWithOperandReduction: .NET 8.0  -> 1 outlier  was  removed (5.73 ns)
-  MulMod64Benchmarks.GpuCompatibleMulModSimplifiedExtension: .NET 8.0     -> 1 outlier  was  removed, 3 outliers were detected (51.41 ns, 51.47 ns, 52.10 ns)
+  MulMod64Benchmarks.MulModGpu: .NET 8.0     -> 1 outlier  was  removed, 3 outliers were detected (51.41 ns, 51.47 ns, 52.10 ns)
   MulMod64Benchmarks.InlineUInt128Operands: .NET 8.0                      -> 1 outlier  was  detected (32.44 ns)
   MulMod64Benchmarks.InlineUInt128WithLocals: .NET 8.0                    -> 2 outliers were removed (33.47 ns, 34.46 ns)
   MulMod64Benchmarks.MultiplyHighDecomposition: .NET 8.0                  -> 1 outlier  was  removed (33.93 ns)

@@ -19,7 +19,7 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	[Obsolete("Use ULongExtensions.GpuCompatibleMulModSimplifiedExtension for GPU-compatible host code or GpuUInt128.MulMod inside kernels.")]
+	[Obsolete("Use ULongExtensions.MulModGpu for GPU-compatible host code or GpuUInt128.MulMod inside kernels.")]
 	public static ulong MulMod64Gpu(this ulong a, ulong b, ulong modulus)
 	{
 		// TODO: Remove this GPU-compatible shim from production once callers migrate to MulMod64,
@@ -29,7 +29,7 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	[Obsolete("Use ULongExtensions.GpuCompatibleMulModSimplifiedExtension for GPU-compatible host code or GpuUInt128.MulMod inside kernels.")]
+	[Obsolete("Use ULongExtensions.MulModGpu for GPU-compatible host code or GpuUInt128.MulMod inside kernels.")]
 	public static ulong MulMod64GpuDeferred(this ulong a, ulong b, ulong modulus)
 	{
 		// TODO: Move this deferred helper to the benchmark suite; the baseline MulMod64 avoids the
@@ -39,10 +39,10 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong GpuCompatibleMulModSimplifiedExtension(this ulong left, ulong right, ulong modulus)
+	public static ulong MulModGpu(this ulong left, ulong right, ulong modulus)
 	{
 		GpuUInt128 state = new(left);
-		return state.MulModSimplified(right, modulus);
+		return state.MulMod(right, modulus);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -81,7 +81,7 @@ public static partial class ULongExtensions
 		while (index >= 0)
 		{
 			ulong currentBit = (exponent >> index) & 1UL;
-			ulong squared = result.GpuCompatibleMulModSimplifiedExtension(result, modulus);
+			ulong squared = result.MulModGpu(result, modulus);
 			result = currentBit == 0UL ? squared : result;
 			index = currentBit == 0UL ? index - 1 : index;
 			if (currentBit == 0UL)
@@ -101,14 +101,14 @@ public static partial class ULongExtensions
 			int windowLength = index - windowStart + 1;
 			for (int square = 0; square < windowLength; square++)
 			{
-				result = result.GpuCompatibleMulModSimplifiedExtension(result, modulus);
+				result = result.MulModGpu(result, modulus);
 			}
 
 			ulong mask = (1UL << windowLength) - 1UL;
 			ulong windowValue = (exponent >> windowStart) & mask;
 			int tableIndex = (int)((windowValue - 1UL) >> 1);
 			ulong multiplier = oddPowers[tableIndex];
-			result = result.GpuCompatibleMulModSimplifiedExtension(multiplier, modulus);
+			result = result.MulModGpu(multiplier, modulus);
 
 			index = windowStart - 1;
 		}
@@ -311,11 +311,11 @@ public static partial class ULongExtensions
 			return;
 		}
 
-		ulong square = baseValue.GpuCompatibleMulModSimplifiedExtension(baseValue, modulus);
+		ulong square = baseValue.MulModGpu(baseValue, modulus);
 		for (int i = 1; i < oddPowers.Length; i++)
 		{
 			ulong previous = oddPowers[i - 1];
-			oddPowers[i] = previous.GpuCompatibleMulModSimplifiedExtension(square, modulus);
+			oddPowers[i] = previous.MulModGpu(square, modulus);
 		}
 	}
 
