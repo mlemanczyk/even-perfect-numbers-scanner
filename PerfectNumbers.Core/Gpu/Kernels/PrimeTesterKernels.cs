@@ -41,6 +41,17 @@ internal static class PrimeTesterKernels
         results[index] = composite ? (byte)0 : (byte)1;
     }
 
+    public static void HeuristicTrialDivisionKernel(Index1D index, ArrayView<ulong> divisors, ulong n, ArrayView<byte> results)
+    {
+        ulong divisor = divisors[index];
+        if (divisor <= 1UL)
+        {
+            results[index] = 0;
+            return;
+        }
+
+        results[index] = n % divisor == 0UL ? (byte)1 : (byte)0;
+    }
 
     public static void SharesFactorKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<byte> results)
     {
