@@ -118,29 +118,24 @@ The plan incorporates the updated divisor-class heuristics (Groups A/B, wheels, 
 3. [done] **Design shared heuristic scaffolding**
    * [done] Introduced `HeuristicDivisorEnumerator` and stackalloc-backed Group B sequence states so CPU/GPU heuristics share the Group A/B wheel metadata and candidate ordering.
    * [done] Surface helpers that accept the precomputed `R = ⌊√n⌋` and `nMod10` values from callers via the new overload of `HeuristicIsPrimeCpu`; PrimeTester still computes them locally until call sites forward the parameters.
-   * [done] Added `HeuristicTrialDivisionSummary` instrumentation capturing `A_max(n)`, minimum Group B candidates, hit metadata, and divisor counts for downstream telemetry.
+   * [done] Simplified the heuristic execution path so it runs without cancellation tokens or callback plumbing while keeping the shared enumerator available to other components.
 4. **Share residue and wheel state with by-divisor sessions**
    * [done] Extracted the rolling-modulus helpers (mod 10/8/5/3/7/11) and decimal masks from `MersenneNumberDivisorByDivisorCpuTester.CheckDivisors` into the shared `MersenneDivisorResidueStepper` so heuristic prime tests and by-divisor sessions consume the same filters.
    * [done] Audited how `MersenneCpuDivisorScanSession` advances residues via `ExponentRemainderStepperCpu`/`CycleRemainderStepper` and updated the GPU by-divisor path to reuse `MersenneDivisorResidueStepper`, keeping CPU/GPU residue stepping aligned.
-   * [done] Publish wheel iterators that can stream candidates directly into `DivisorCycleCache`, GPU hit buffers, or CPU Montgomery checks without recomputing offsets by exposing `PrimeTester.CreateHeuristicDivisorEnumerator`, the reusable `HeuristicGroupBSequenceState` buffer, and the shared summary updater.
+   * [done] Publish wheel iterators that can stream candidates directly into `DivisorCycleCache`, GPU hit buffers, or CPU Montgomery checks without recomputing offsets by exposing `PrimeTester.CreateHeuristicDivisorEnumerator` and the reusable `HeuristicGroupBSequenceState` buffer.
 5. **Expose cycle-preparation helpers**
    * [done] Extend the heuristic scaffolding so it returns `MontgomeryDivisorData` descriptors and cycle-length hints for each candidate divisor via `HeuristicDivisorPreparation` and `PrepareHeuristicDivisor`.
    * Wire these outputs into the existing cycle calculators to avoid duplicate cache lookups inside the CPU/GPU divisor scans.
 6. [done] **Implement `HeuristicIsPrimeCpu`**
    * Baseline Group A/B enumeration now executes inside `HeuristicIsPrimeCpu` via `HeuristicDivisorEnumerator`, computing `⌊√n⌋` locally and short-circuiting on the first divisor.
-   * [done] Trial-division summaries reset their state per invocation and capture `HeuristicDivisorPreparation` payloads whenever a divisor is found so downstream consumers can reuse Montgomery parameters and cycle hints.
-   * [done] Added `HeuristicTrialDivisionCallbacks` so telemetry sinks can observe candidate ordering, hits, and completion summaries without duplicating enumeration logic.
-   * [done] Resolved cycle lengths and Montgomery unity checks for detected divisors so hit summaries reuse the by-divisor stepping helpers and report whether the divisor confirms the corresponding Mersenne candidate.
-   * [done] Surfaced the resolved cycle data via `HeuristicDivisorHitResolution` and `TryExportHeuristicHit` so GPU heuristics and by-divisor sessions can reuse the confirmation telemetry captured during CPU scans.
+   * [done] The CPU heuristic now operates as a pure trial-division sweep without maintaining per-call summaries, relying on `PrepareHeuristicDivisor` only when downstream consumers request Montgomery data.
 7. [done] **Implement `HeuristicIsPrimeGpu`**
    * [done] Mirror CPU structure while batching divisor checks on the accelerator via `HeuristicTrialDivisionGpu`, reusing caller-provided `sqrtLimit`/`nMod10` inputs and falling back to CPU when GPUs are disabled.
    * [done] Added `PrimeTesterKernels.HeuristicTrialDivisionKernel` so GPU batches respect Group A/B ordering while emitting hit flags for early exits.
    * [done] Kept GPU divisibility in standard modular arithmetic while reserving Montgomery transforms for CPU confirmation logic.
-   * [done] Added optional CPU confirmation hooks via `PrimeTester.HeuristicGpuConfirmation` so validation builds can recheck GPU hits and prime outcomes on the CPU before production rollout.
 8. [done] **Refactor by-divisor CPU/GPU testers to reuse heuristics**
-   * [done] Drove `MersenneNumberDivisorByDivisorCpuTester.CheckDivisors` from `PrimeTester.CreateMersenneDivisorEnumerator`, eliminating the bespoke residue loop while preserving status reporting through the shared summary helpers.
+   * [done] Drove `MersenneNumberDivisorByDivisorCpuTester.CheckDivisors` from `PrimeTester.CreateMersenneDivisorEnumerator`, eliminating the bespoke residue loop while preserving the existing status counters.
    * [done] Streamed GPU batches from the same enumerator and Montgomery preparation data, removing the filtered-divisor scratch arrays while continuing to feed the existing kernel and hit bookkeeping.
-   * [done] Populated `processedCount`, `lastProcessed`, and range-coverage flags directly from the shared enumerator so CPU/GPU telemetry now flows through the common heuristic infrastructure.
 9. [done] **Route legacy prime checks through heuristics**
    * [done] Update `IsPrimeInternal` and `IsPrimeGpu` to delegate to the heuristic implementations when `EnableHeuristicPrimeTesting` is enabled, while allowing `PrimeTester(useInternal: true)` to force the legacy CPU/GPU paths.
    * [done] Maintain legacy paths for benchmarking via `LegacyIsPrimeInternal`, `LegacyIsPrimeGpu`, and the global `EnableHeuristicPrimeTesting` switch so benchmark harnesses can compare behaviours.

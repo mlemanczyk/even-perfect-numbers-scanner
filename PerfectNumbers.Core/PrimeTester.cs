@@ -84,150 +84,6 @@ public sealed class PrimeTester(bool useInternal = false)
         }
     }
 
-    internal struct HeuristicTrialDivisionSummary
-    {
-        public ulong MaxGroupADivisor;
-
-        public ulong MinGroupBDivisor;
-
-        public ulong LastTestedDivisor;
-
-        public ulong HitDivisor;
-
-        public HeuristicDivisorGroup HitGroup;
-
-        public HeuristicDivisorPreparation HitPreparation;
-
-        public ulong HitCycleLength;
-
-        public bool HitCycleFromHint;
-
-        public bool HitCycleComputed;
-
-        public bool HitPrimeOrderFailed;
-
-        public bool HitMontgomeryIsUnity;
-
-        public bool HitConfirmsMersenne;
-
-        public uint TotalDivisorsTested;
-
-        public byte MinGroupBEnding;
-
-        public byte MinGroupBPriorityIndex;
-
-        public byte HitEnding;
-
-        public byte HitPriorityIndex;
-
-        public bool SawGroupAConstant;
-
-        public bool SawGroupAWheel;
-
-        public bool SawGroupB;
-
-        public bool HasHitPreparation;
-
-        public bool Hit;
-    }
-
-    internal readonly struct HeuristicDivisorHitResolution
-    {
-        public HeuristicDivisorPreparation Preparation { get; }
-
-        public ulong CycleLength { get; }
-
-        public bool CycleFromHint { get; }
-
-        public bool CycleComputed { get; }
-
-        public bool PrimeOrderFailed { get; }
-
-        public bool MontgomeryIsUnity { get; }
-
-        public bool ConfirmsMersenne { get; }
-
-        public HeuristicDivisorHitResolution(
-            in HeuristicDivisorPreparation preparation,
-            ulong cycleLength,
-            bool cycleFromHint,
-            bool cycleComputed,
-            bool primeOrderFailed,
-            bool montgomeryIsUnity,
-            bool confirmsMersenne)
-        {
-            Preparation = preparation;
-            CycleLength = cycleLength;
-            CycleFromHint = cycleFromHint;
-            CycleComputed = cycleComputed;
-            PrimeOrderFailed = primeOrderFailed;
-            MontgomeryIsUnity = montgomeryIsUnity;
-            ConfirmsMersenne = confirmsMersenne;
-        }
-    }
-
-    [Flags]
-    public enum HeuristicGpuConfirmationMode : byte
-    {
-        None = 0,
-        OnHit = 1,
-        OnPrime = 2,
-        Always = OnHit | OnPrime,
-    }
-
-
-    internal delegate void HeuristicDivisorCandidateCallback(in HeuristicDivisorCandidate candidate, in HeuristicTrialDivisionSummary summary);
-
-    internal delegate void HeuristicDivisorHitCallback(in HeuristicDivisorPreparation preparation, in HeuristicTrialDivisionSummary summary);
-
-    internal delegate void HeuristicTrialDivisionCompletedCallback(in HeuristicTrialDivisionSummary summary, bool isPrime);
-
-    internal readonly struct HeuristicTrialDivisionCallbacks
-    {
-        public HeuristicDivisorCandidateCallback? OnCandidate { get; }
-
-        public HeuristicDivisorHitCallback? OnHit { get; }
-
-        public HeuristicTrialDivisionCompletedCallback? OnCompleted { get; }
-
-        public HeuristicTrialDivisionCallbacks(
-            HeuristicDivisorCandidateCallback? onCandidate,
-            HeuristicDivisorHitCallback? onHit,
-            HeuristicTrialDivisionCompletedCallback? onCompleted)
-        {
-            OnCandidate = onCandidate;
-            OnHit = onHit;
-            OnCompleted = onCompleted;
-        }
-
-        public bool RequiresSummary => OnCandidate is not null || OnHit is not null || OnCompleted is not null;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Candidate(in HeuristicDivisorCandidate candidate, in HeuristicTrialDivisionSummary summary)
-        {
-            OnCandidate?.Invoke(in candidate, in summary);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Hit(in HeuristicDivisorPreparation preparation, in HeuristicTrialDivisionSummary summary)
-        {
-            OnHit?.Invoke(in preparation, in summary);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Completed(in HeuristicTrialDivisionSummary summary, bool isPrime)
-        {
-            OnCompleted?.Invoke(in summary, isPrime);
-        }
-
-        public bool HasCandidate => OnCandidate is not null;
-
-        public bool HasHit => OnHit is not null;
-
-        public bool HasCompleted => OnCompleted is not null;
-    }
-
-
     public bool IsPrime(ulong n, CancellationToken ct)
     {
         if (_useLegacyPrimeTester)
@@ -240,8 +96,6 @@ public sealed class PrimeTester(bool useInternal = false)
 
     public static bool IsPrimeGpu(ulong n) => new PrimeTester().IsPrimeGpu(n, CancellationToken.None);
 
-    public static bool HeuristicIsPrimeGpu(ulong n) => new PrimeTester().HeuristicIsPrimeGpu(n, CancellationToken.None);
-
     // Optional GPU-assisted primality: batched small-prime sieve on device.
     public bool IsPrimeGpu(ulong n, CancellationToken ct)
     {
@@ -250,7 +104,7 @@ public sealed class PrimeTester(bool useInternal = false)
             return LegacyIsPrimeGpu(n, ct);
         }
 
-        return HeuristicIsPrimeGpu(n, ct);
+        return HeuristicIsPrimeGpu(n);
     }
 
     private static bool LegacyIsPrimeGpu(ulong n, CancellationToken ct)
@@ -297,252 +151,64 @@ public sealed class PrimeTester(bool useInternal = false)
         return requiresCpuFallback ? LegacyIsPrimeInternal(n, ct) : true;
     }
 
-    public bool HeuristicIsPrimeGpu(ulong n, CancellationToken ct)
+    public bool HeuristicIsPrimeGpu(ulong n)
     {
-        byte nMod10 = (byte)n.Mod10();
-        var summary = default(HeuristicTrialDivisionSummary);
-        return HeuristicIsPrimeGpu(n, 0UL, nMod10, ct, ref summary, collectSummary: false, callbacks: default);
+        return HeuristicIsPrimeGpu(n, 0UL, (byte)n.Mod10());
     }
 
-    internal bool HeuristicIsPrimeGpu(ulong n, CancellationToken ct, in HeuristicTrialDivisionCallbacks callbacks)
+    internal bool HeuristicIsPrimeGpu(ulong n, ulong sqrtLimit, byte nMod10)
     {
-        byte nMod10 = (byte)n.Mod10();
-        var summary = default(HeuristicTrialDivisionSummary);
-        return HeuristicIsPrimeGpu(n, 0UL, nMod10, ct, ref summary, collectSummary: false, in callbacks);
-    }
-
-    internal bool HeuristicIsPrimeGpu(ulong n, CancellationToken ct, ref HeuristicTrialDivisionSummary summary)
-    {
-        byte nMod10 = (byte)n.Mod10();
-        return HeuristicIsPrimeGpu(n, 0UL, nMod10, ct, ref summary, collectSummary: true, callbacks: default);
-    }
-
-    internal bool HeuristicIsPrimeGpu(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct)
-    {
-        var summary = default(HeuristicTrialDivisionSummary);
-        return HeuristicIsPrimeGpu(n, sqrtLimit, nMod10, ct, ref summary, collectSummary: false, callbacks: default);
-    }
-
-    internal bool HeuristicIsPrimeGpu(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct, in HeuristicTrialDivisionCallbacks callbacks)
-    {
-        var summary = default(HeuristicTrialDivisionSummary);
-        return HeuristicIsPrimeGpu(n, sqrtLimit, nMod10, ct, ref summary, collectSummary: false, in callbacks);
-    }
-
-    internal bool HeuristicIsPrimeGpu(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct, ref HeuristicTrialDivisionSummary summary)
-    {
-        return HeuristicIsPrimeGpu(n, sqrtLimit, nMod10, ct, ref summary, collectSummary: true, callbacks: default);
-    }
-
-    internal bool HeuristicIsPrimeGpu(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct, ref HeuristicTrialDivisionSummary summary, in HeuristicTrialDivisionCallbacks callbacks)
-    {
-        return HeuristicIsPrimeGpu(n, sqrtLimit, nMod10, ct, ref summary, collectSummary: true, in callbacks);
-    }
-
-
-    // Note: GPU-backed primality path is implemented via IsPrimeGpu/IsPrimeBatchGpu and is routed
-    // from EvenPerfectBitScanner based on --primes-device.
-
-    internal static bool HeuristicIsPrimeCpu(ulong n, CancellationToken ct)
-    {
-        var summary = default(HeuristicTrialDivisionSummary);
-        byte nMod10 = (byte)n.Mod10();
-        return HeuristicIsPrimeCpu(n, 0UL, nMod10, ct, ref summary, collectSummary: false, callbacks: default);
-    }
-
-    internal static bool HeuristicIsPrimeCpu(ulong n, CancellationToken ct, in HeuristicTrialDivisionCallbacks callbacks)
-    {
-        var summary = default(HeuristicTrialDivisionSummary);
-        byte nMod10 = (byte)n.Mod10();
-        return HeuristicIsPrimeCpu(n, 0UL, nMod10, ct, ref summary, collectSummary: false, in callbacks);
-    }
-
-    internal static bool HeuristicIsPrimeCpu(ulong n, CancellationToken ct, ref HeuristicTrialDivisionSummary summary)
-    {
-        byte nMod10 = (byte)n.Mod10();
-        return HeuristicIsPrimeCpu(n, 0UL, nMod10, ct, ref summary, collectSummary: true, callbacks: default);
-    }
-
-    internal static bool HeuristicIsPrimeCpu(ulong n, CancellationToken ct, ref HeuristicTrialDivisionSummary summary, in HeuristicTrialDivisionCallbacks callbacks)
-    {
-        byte nMod10 = (byte)n.Mod10();
-        return HeuristicIsPrimeCpu(n, 0UL, nMod10, ct, ref summary, collectSummary: true, in callbacks);
-    }
-
-    internal static bool HeuristicIsPrimeCpu(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct)
-    {
-        var summary = default(HeuristicTrialDivisionSummary);
-        return HeuristicIsPrimeCpu(n, sqrtLimit, nMod10, ct, ref summary, collectSummary: false, callbacks: default);
-    }
-
-    internal static bool HeuristicIsPrimeCpu(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct, in HeuristicTrialDivisionCallbacks callbacks)
-    {
-        var summary = default(HeuristicTrialDivisionSummary);
-        return HeuristicIsPrimeCpu(n, sqrtLimit, nMod10, ct, ref summary, collectSummary: false, in callbacks);
-    }
-
-    internal static bool HeuristicIsPrimeCpu(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct, ref HeuristicTrialDivisionSummary summary)
-    {
-        return HeuristicIsPrimeCpu(n, sqrtLimit, nMod10, ct, ref summary, collectSummary: true, callbacks: default);
-    }
-
-    internal static bool HeuristicIsPrimeCpu(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct, ref HeuristicTrialDivisionSummary summary, in HeuristicTrialDivisionCallbacks callbacks)
-    {
-        return HeuristicIsPrimeCpu(n, sqrtLimit, nMod10, ct, ref summary, collectSummary: true, in callbacks);
-    }
-
-    private static bool HeuristicIsPrimeCpu(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct, ref HeuristicTrialDivisionSummary summary, bool collectSummary, in HeuristicTrialDivisionCallbacks callbacks)
-    {
-        bool shouldResetSummary = collectSummary || callbacks.RequiresSummary;
-        if (TryResolveHeuristicTrivialCases(n, nMod10, shouldResetSummary, ref summary, out bool earlyResult))
+        if (TryResolveHeuristicTrivialCases(n, nMod10, out bool result))
         {
-            return earlyResult;
+            return result;
         }
 
         if (sqrtLimit == 0UL)
         {
-            sqrtLimit = ComputeSqrtLimit(n);
+            sqrtLimit = ComputeHeuristicSqrt(n);
         }
 
-        return HeuristicTrialDivision(n, sqrtLimit, nMod10, ct, ref summary, collectSummary, in callbacks);
-    }
+        if (sqrtLimit < 3UL)
+        {
+            return true;
+        }
 
-
-    private static bool HeuristicIsPrimeGpu(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct, ref HeuristicTrialDivisionSummary summary, bool collectSummary, in HeuristicTrialDivisionCallbacks callbacks)
-    {
         if (GpuContextPool.ForceCpu)
         {
-            return HeuristicIsPrimeCpu(n, sqrtLimit, nMod10, ct, ref summary, collectSummary, in callbacks);
+            return HeuristicIsPrimeCpu(n, sqrtLimit, nMod10);
         }
 
-        bool shouldResetSummary = collectSummary || callbacks.RequiresSummary;
-        if (TryResolveHeuristicTrivialCases(n, nMod10, shouldResetSummary, ref summary, out bool earlyResult))
+        bool compositeDetected = HeuristicTrialDivisionGpuDetectsDivisor(n, sqrtLimit, nMod10);
+        return !compositeDetected;
+    }
+
+    internal static bool HeuristicIsPrimeCpu(ulong n)
+    {
+        return HeuristicIsPrimeCpu(n, 0UL, (byte)n.Mod10());
+    }
+
+    internal static bool HeuristicIsPrimeCpu(ulong n, ulong sqrtLimit, byte nMod10)
+    {
+        if (TryResolveHeuristicTrivialCases(n, nMod10, out bool result))
         {
-            return earlyResult;
+            return result;
         }
 
         if (sqrtLimit == 0UL)
         {
-            sqrtLimit = ComputeSqrtLimit(n);
+            sqrtLimit = ComputeHeuristicSqrt(n);
         }
 
-        return HeuristicTrialDivisionGpu(n, sqrtLimit, nMod10, ct, ref summary, collectSummary, in callbacks);
+        if (sqrtLimit < 3UL)
+        {
+            return true;
+        }
+
+        return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryResolveHeuristicTrivialCases(ulong n, byte nMod10, bool resetSummary, ref HeuristicTrialDivisionSummary summary, out bool result)
+    private static bool HeuristicTrialDivisionCpu(ulong n, ulong sqrtLimit, byte nMod10)
     {
-        if (n < 2UL)
-        {
-            if (resetSummary)
-            {
-                summary = default;
-            }
-
-            result = false;
-            return true;
-        }
-
-        if (n == 2UL)
-        {
-            if (resetSummary)
-            {
-                summary = default;
-            }
-
-            result = true;
-            return true;
-        }
-
-        if ((n & 1UL) == 0UL)
-        {
-            if (resetSummary)
-            {
-                summary = default;
-            }
-
-            result = false;
-            return true;
-        }
-
-        if (n == 5UL)
-        {
-            if (resetSummary)
-            {
-                summary = default;
-            }
-
-            result = true;
-            return true;
-        }
-
-        if (n > 5UL && nMod10 == 5)
-        {
-            if (resetSummary)
-            {
-                summary = default;
-            }
-
-            result = false;
-            return true;
-        }
-
-        if (n <= 13UL)
-        {
-            if (resetSummary)
-            {
-                summary = default;
-            }
-
-            result = n == 3UL || n == 7UL || n == 11UL || n == 13UL;
-            return true;
-        }
-
-        if (nMod10 == 1 && SharesFactorWithMaxExponent(n))
-        {
-            if (resetSummary)
-            {
-                summary = default;
-            }
-
-            result = false;
-            return true;
-        }
-
-        result = false;
-        return false;
-    }
-
-    private static bool HeuristicTrialDivision(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct)
-    {
-        var summary = default(HeuristicTrialDivisionSummary);
-        return HeuristicTrialDivision(n, sqrtLimit, nMod10, ct, ref summary, collectSummary: false, callbacks: default);
-    }
-
-    private static bool HeuristicTrialDivision(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct, in HeuristicTrialDivisionCallbacks callbacks)
-    {
-        var summary = default(HeuristicTrialDivisionSummary);
-        return HeuristicTrialDivision(n, sqrtLimit, nMod10, ct, ref summary, collectSummary: false, in callbacks);
-    }
-
-    private static bool HeuristicTrialDivision(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct, ref HeuristicTrialDivisionSummary summary)
-    {
-        return HeuristicTrialDivision(n, sqrtLimit, nMod10, ct, ref summary, collectSummary: true, callbacks: default);
-    }
-
-    private static bool HeuristicTrialDivision(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct, ref HeuristicTrialDivisionSummary summary, in HeuristicTrialDivisionCallbacks callbacks)
-    {
-        return HeuristicTrialDivision(n, sqrtLimit, nMod10, ct, ref summary, collectSummary: true, in callbacks);
-    }
-
-    private static bool HeuristicTrialDivision(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct, ref HeuristicTrialDivisionSummary summary, bool collectSummary, in HeuristicTrialDivisionCallbacks callbacks)
-    {
-        bool shouldCollectSummary = collectSummary || callbacks.RequiresSummary;
-        if (shouldCollectSummary)
-        {
-            summary = default;
-        }
-
         Span<HeuristicGroupBSequenceState> groupBBuffer = stackalloc HeuristicGroupBSequenceState[MaxGroupBSequences];
         var enumerator = new HeuristicDivisorEnumerator(sqrtLimit, nMod10, groupBBuffer);
 
@@ -554,89 +220,17 @@ public sealed class PrimeTester(bool useInternal = false)
                 continue;
             }
 
-            if (shouldCollectSummary)
-            {
-                UpdateHeuristicSummaryForCandidate(ref summary, candidate);
-            }
-
-            if (callbacks.HasCandidate)
-            {
-                callbacks.Candidate(in candidate, in summary);
-            }
-
-            ct.ThrowIfCancellationRequested();
-
             if (n % divisor == 0UL)
             {
-                HeuristicDivisorPreparation preparation;
-                if (shouldCollectSummary)
-                {
-                    summary.Hit = true;
-                    summary.HitDivisor = divisor;
-                    summary.HitGroup = candidate.Group;
-                    summary.HitEnding = candidate.Ending;
-                    summary.HitPriorityIndex = candidate.PriorityIndex;
-                    summary.HitPreparation = PrepareHeuristicDivisor(in candidate);
-                    summary.HasHitPreparation = true;
-                    ResolveHeuristicHit(n, ref summary);
-                    preparation = summary.HitPreparation;
-                }
-                else
-                {
-                    preparation = PrepareHeuristicDivisor(in candidate);
-                }
-
-                if (callbacks.HasHit)
-                {
-                    callbacks.Hit(in preparation, in summary);
-                }
-
-                if (callbacks.HasCompleted)
-                {
-                    callbacks.Completed(in summary, isPrime: false);
-                }
-
                 return false;
             }
-        }
-
-        if (shouldCollectSummary)
-        {
-            summary.Hit = false;
-            summary.HitDivisor = 0UL;
-            summary.HitGroup = HeuristicDivisorGroup.None;
-            summary.HitEnding = 0;
-            summary.HitPriorityIndex = 0;
-            summary.HitPreparation = default;
-            summary.HitCycleLength = 0UL;
-            summary.HitCycleFromHint = false;
-            summary.HitCycleComputed = false;
-            summary.HitPrimeOrderFailed = false;
-            summary.HitMontgomeryIsUnity = false;
-            summary.HitConfirmsMersenne = false;
-            summary.HasHitPreparation = false;
-        }
-
-        if (callbacks.HasCompleted)
-        {
-            callbacks.Completed(in summary, isPrime: true);
         }
 
         return true;
     }
 
-    private static bool HeuristicTrialDivisionGpu(ulong n, ulong sqrtLimit, byte nMod10, CancellationToken ct, ref HeuristicTrialDivisionSummary summary, bool collectSummary, in HeuristicTrialDivisionCallbacks callbacks)
+    private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong sqrtLimit, byte nMod10)
     {
-        bool shouldCollectSummary = collectSummary || callbacks.RequiresSummary;
-        if (shouldCollectSummary)
-        {
-            summary = default;
-        }
-
-        HeuristicGpuConfirmationMode confirmationMode = HeuristicGpuConfirmation;
-        bool confirmHits = (confirmationMode & HeuristicGpuConfirmationMode.OnHit) != 0;
-        bool confirmPrimes = (confirmationMode & HeuristicGpuConfirmationMode.OnPrime) != 0;
-
         Span<HeuristicGroupBSequenceState> groupBBuffer = stackalloc HeuristicGroupBSequenceState[MaxGroupBSequences];
         var enumerator = new HeuristicDivisorEnumerator(sqrtLimit, nMod10, groupBBuffer);
 
@@ -651,6 +245,7 @@ public sealed class PrimeTester(bool useInternal = false)
 
         var limiter = GpuPrimeWorkLimiter.Acquire();
         var gpu = PrimeTesterGpuContextPool.Rent();
+
         bool compositeDetected = false;
 
         try
@@ -669,68 +264,25 @@ public sealed class PrimeTester(bool useInternal = false)
                 {
                     int count = 0;
 
-                    static bool ProcessBatch(
-                        int length,
-                        ulong n,
-                        bool collectSummaryLocal,
-                        bool confirmHitsLocal,
-                        ref HeuristicTrialDivisionSummary summaryRef,
-                        in HeuristicTrialDivisionCallbacks callbacksRef,
-                        HeuristicDivisorCandidate[] candidateArrayLocal,
-                        ulong[] divisorArrayLocal,
-                        byte[] hitFlagsLocal,
-                        KernelState.ScratchBuffers scratchLocal,
-                        Accelerator acceleratorLocal,
-                        Action<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>> kernel)
+                    bool ProcessBatch(int length)
                     {
-                        scratchLocal.Input.View.CopyFromCPU(ref divisorArrayLocal[0], length);
-                        kernel(length, scratchLocal.Input.View, n, scratchLocal.Output.View);
-                        acceleratorLocal.Synchronize();
-                        scratchLocal.Output.View.CopyToCPU(ref hitFlagsLocal[0], length);
+                        scratch.Input.View.CopyFromCPU(ref divisorArray![0], length);
+                        state.HeuristicTrialDivisionKernel(length, scratch.Input.View, n, scratch.Output.View);
+                        accelerator.Synchronize();
+                        scratch.Output.View.CopyToCPU(ref hitFlags![0], length);
 
                         for (int i = 0; i < length; i++)
                         {
-                            if (hitFlagsLocal[i] == 0)
+                            if (hitFlags![i] == 0)
                             {
                                 continue;
                             }
 
-                            var candidate = candidateArrayLocal[i];
-
-                            if (confirmHitsLocal && n % candidate.Value != 0UL)
+                            ulong divisor = candidateArray![i].Value;
+                            if (divisor > 1UL && n % divisor == 0UL)
                             {
-                                throw new InvalidOperationException("GPU heuristic reported a divisor that CPU rejected.");
+                                return true;
                             }
-
-                            HeuristicDivisorPreparation preparation;
-                            if (collectSummaryLocal)
-                            {
-                                summaryRef.Hit = true;
-                                summaryRef.HitDivisor = candidate.Value;
-                                summaryRef.HitGroup = candidate.Group;
-                                summaryRef.HitEnding = candidate.Ending;
-                                summaryRef.HitPriorityIndex = candidate.PriorityIndex;
-                                summaryRef.HitPreparation = PrepareHeuristicDivisor(in candidate);
-                                summaryRef.HasHitPreparation = true;
-                                ResolveHeuristicHit(n, ref summaryRef);
-                                preparation = summaryRef.HitPreparation;
-                            }
-                            else
-                            {
-                                preparation = PrepareHeuristicDivisor(in candidate);
-                            }
-
-                            if (callbacksRef.HasHit)
-                            {
-                                callbacksRef.Hit(in preparation, in summaryRef);
-                            }
-
-                            if (callbacksRef.HasCompleted)
-                            {
-                                callbacksRef.Completed(in summaryRef, isPrime: false);
-                            }
-
-                            return true;
                         }
 
                         return false;
@@ -738,22 +290,10 @@ public sealed class PrimeTester(bool useInternal = false)
 
                     while (enumerator.TryGetNext(out HeuristicDivisorCandidate candidate))
                     {
-                        ct.ThrowIfCancellationRequested();
-
                         ulong divisor = candidate.Value;
                         if (divisor <= 1UL)
                         {
                             continue;
-                        }
-
-                        if (shouldCollectSummary)
-                        {
-                            UpdateHeuristicSummaryForCandidate(ref summary, in candidate);
-                        }
-
-                        if (callbacks.HasCandidate)
-                        {
-                            callbacks.Candidate(in candidate, in summary);
                         }
 
                         candidateArray[count] = candidate;
@@ -762,8 +302,7 @@ public sealed class PrimeTester(bool useInternal = false)
 
                         if (count == batchCapacity)
                         {
-                            ct.ThrowIfCancellationRequested();
-                            if (ProcessBatch(count, n, shouldCollectSummary, confirmHits, ref summary, in callbacks, candidateArray, divisorArray, hitFlags, scratch, accelerator, state.HeuristicTrialDivisionKernel))
+                            if (ProcessBatch(count))
                             {
                                 compositeDetected = true;
                                 break;
@@ -775,8 +314,7 @@ public sealed class PrimeTester(bool useInternal = false)
 
                     if (!compositeDetected && count > 0)
                     {
-                        ct.ThrowIfCancellationRequested();
-                        if (ProcessBatch(count, n, shouldCollectSummary, confirmHits, ref summary, in callbacks, candidateArray, divisorArray, hitFlags, scratch, accelerator, state.HeuristicTrialDivisionKernel))
+                        if (ProcessBatch(count))
                         {
                             compositeDetected = true;
                         }
@@ -809,49 +347,46 @@ public sealed class PrimeTester(bool useInternal = false)
             limiter.Dispose();
         }
 
-        if (compositeDetected)
-        {
-            return false;
-        }
-
-        if (confirmPrimes)
-        {
-            ct.ThrowIfCancellationRequested();
-            var confirmationSummary = default(HeuristicTrialDivisionSummary);
-            bool cpuPrime = HeuristicTrialDivision(n, sqrtLimit, nMod10, ct, ref confirmationSummary, collectSummary: false, callbacks: default);
-            if (!cpuPrime)
-            {
-                throw new InvalidOperationException("GPU heuristic reported a prime result that the CPU rejected.");
-            }
-        }
-
-        if (shouldCollectSummary)
-        {
-            summary.Hit = false;
-            summary.HitDivisor = 0UL;
-            summary.HitGroup = HeuristicDivisorGroup.None;
-            summary.HitEnding = 0;
-            summary.HitPriorityIndex = 0;
-            summary.HitPreparation = default;
-            summary.HitCycleLength = 0UL;
-            summary.HitCycleFromHint = false;
-            summary.HitCycleComputed = false;
-            summary.HitPrimeOrderFailed = false;
-            summary.HitMontgomeryIsUnity = false;
-            summary.HitConfirmsMersenne = false;
-            summary.HasHitPreparation = false;
-        }
-
-        if (callbacks.HasCompleted)
-        {
-            callbacks.Completed(in summary, isPrime: true);
-        }
-
-        return true;
+        return compositeDetected;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong ComputeSqrtLimit(ulong n)
+    private static bool TryResolveHeuristicTrivialCases(ulong n, byte nMod10, out bool result)
+    {
+        if (n < 2UL)
+        {
+            result = false;
+            return true;
+        }
+
+        if (n <= 3UL)
+        {
+            result = true;
+            return true;
+        }
+
+        if ((n & 1UL) == 0UL)
+        {
+            result = false;
+            return true;
+        }
+
+        if (n % 5UL == 0UL)
+        {
+            result = n == 5UL;
+            return true;
+        }
+
+        if (nMod10 == 1 && SharesFactorWithMaxExponent(n))
+        {
+            result = false;
+            return true;
+        }
+
+        result = false;
+        return false;
+    }
+
+    private static ulong ComputeHeuristicSqrt(ulong n)
     {
         ulong sqrt = (ulong)Math.Sqrt(n);
         UInt128 square = (UInt128)sqrt * sqrt;
@@ -892,7 +427,6 @@ public sealed class PrimeTester(bool useInternal = false)
     };
 
     private static int InitializeGroupBStates(byte nMod10, Span<HeuristicGroupBSequenceState> buffer)
-
     {
         ReadOnlySpan<byte> endings = GetGroupBEndingOrder(nMod10);
         int count = 0;
@@ -919,44 +453,6 @@ public sealed class PrimeTester(bool useInternal = false)
     internal static MersenneHeuristicDivisorEnumerator CreateMersenneDivisorEnumerator(ulong exponent, ulong maxDivisor)
     {
         return new MersenneHeuristicDivisorEnumerator(exponent, maxDivisor);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void UpdateHeuristicSummaryForCandidate(ref HeuristicTrialDivisionSummary summary, in HeuristicDivisorCandidate candidate)
-    {
-        ulong divisor = candidate.Value;
-        summary.TotalDivisorsTested++;
-        summary.LastTestedDivisor = divisor;
-
-        switch (candidate.Group)
-        {
-            case HeuristicDivisorGroup.GroupAConstant:
-                summary.SawGroupAConstant = true;
-                if (divisor > summary.MaxGroupADivisor)
-                {
-                    summary.MaxGroupADivisor = divisor;
-                }
-
-                break;
-            case HeuristicDivisorGroup.GroupAWheel:
-                summary.SawGroupAWheel = true;
-                if (divisor > summary.MaxGroupADivisor)
-                {
-                    summary.MaxGroupADivisor = divisor;
-                }
-
-                break;
-            case HeuristicDivisorGroup.GroupB:
-                summary.SawGroupB = true;
-                if (summary.MinGroupBDivisor == 0UL || divisor < summary.MinGroupBDivisor)
-                {
-                    summary.MinGroupBDivisor = divisor;
-                    summary.MinGroupBEnding = candidate.Ending;
-                    summary.MinGroupBPriorityIndex = candidate.PriorityIndex;
-                }
-
-                break;
-        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1007,76 +503,6 @@ public sealed class PrimeTester(bool useInternal = false)
         cycleFromHint = false;
         cycleComputed = resolvedCycle != 0UL;
         return resolvedCycle;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool TryExportHeuristicHit(in HeuristicTrialDivisionSummary summary, out HeuristicDivisorHitResolution resolution)
-    {
-        if (!summary.Hit || !summary.HasHitPreparation)
-        {
-            resolution = default;
-            return false;
-        }
-
-        HeuristicDivisorPreparation preparation = summary.HitPreparation;
-        resolution = new HeuristicDivisorHitResolution(
-            in preparation,
-            summary.HitCycleLength,
-            summary.HitCycleFromHint,
-            summary.HitCycleComputed,
-            summary.HitPrimeOrderFailed,
-            summary.HitMontgomeryIsUnity,
-            summary.HitConfirmsMersenne);
-        return true;
-    }
-
-
-    private static void ResolveHeuristicHit(ulong exponent, ref HeuristicTrialDivisionSummary summary)
-    {
-        if (!summary.HasHitPreparation)
-        {
-            return;
-        }
-
-        HeuristicDivisorPreparation preparation = summary.HitPreparation;
-        MontgomeryDivisorData divisorData = preparation.DivisorData;
-
-        bool cycleFromHint;
-        bool cycleComputed;
-        bool primeOrderFailed;
-
-        ulong cycleLength = ResolveHeuristicCycleLength(
-            exponent,
-            in preparation,
-            out cycleFromHint,
-            out cycleComputed,
-            out primeOrderFailed);
-
-        summary.HitCycleLength = cycleLength;
-        summary.HitCycleFromHint = cycleFromHint;
-        summary.HitCycleComputed = cycleComputed;
-        summary.HitPrimeOrderFailed = primeOrderFailed;
-
-        bool montgomeryUnity = false;
-        bool confirmsMersenne = false;
-
-        if (cycleComputed && cycleLength != 0UL)
-        {
-            ExponentRemainderStepperCpu stepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
-            try
-            {
-                montgomeryUnity = stepper.InitializeCpuIsUnity(exponent);
-            }
-            finally
-            {
-                ThreadStaticPools.ReturnExponentStepperCpu(stepper);
-            }
-
-            confirmsMersenne = montgomeryUnity && cycleLength == exponent;
-        }
-
-        summary.HitMontgomeryIsUnity = montgomeryUnity;
-        summary.HitConfirmsMersenne = confirmsMersenne;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1364,7 +790,7 @@ public sealed class PrimeTester(bool useInternal = false)
             return LegacyIsPrimeInternal(n, ct);
         }
 
-        return HeuristicIsPrimeCpu(n, ct);
+        return HeuristicIsPrimeCpu(n);
     }
 
     internal static bool LegacyIsPrimeInternal(ulong n, CancellationToken ct)
@@ -1419,7 +845,6 @@ public sealed class PrimeTester(bool useInternal = false)
 
     public static int HeuristicGpuDivisorBatchSize { get; set; } = 4_096;
 
-    public static HeuristicGpuConfirmationMode HeuristicGpuConfirmation { get; set; } = HeuristicGpuConfirmationMode.None;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void IsPrimeBatchGpu(ReadOnlySpan<ulong> values, Span<byte> results)

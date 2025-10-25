@@ -23,8 +23,6 @@ public class PrimeTesterBenchmarks
     public void GlobalSetup()
     {
         PrimeTester.EnableHeuristicPrimeTesting = true;
-        PrimeTester.HeuristicGpuConfirmation = PrimeTester.HeuristicGpuConfirmationMode.None;
-
         _cpuTester = new PrimeTester();
         _gpuTester = new PrimeTester();
         _candidates = BenchmarkCase.Candidates;
