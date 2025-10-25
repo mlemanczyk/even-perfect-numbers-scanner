@@ -419,6 +419,7 @@ internal static class Program
 
 			if (useByDivisor)
 			{
+				int byDivisorPrimeRange = Math.Max(1, _cliArguments.BlockSize);
 				MersenneNumberDivisorByDivisorTester.Run(
 						byDivisorCandidates,
 						_byDivisorTester!,
@@ -427,7 +428,8 @@ internal static class Program
 						static () => _lastCompositeP = true,
 						static () => _lastCompositeP = false,
 						static (candidate, searchedMersenne, detailedCheck, passedAllTests) => CalculationResultHandler.HandleResult(candidate, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP),
-						threadCount);
+						threadCount,
+						byDivisorPrimeRange);
 						
 				CalculationResultHandler.FlushBuffer();
 				CalculationResultHandler.ReleaseOutputBuffer();
