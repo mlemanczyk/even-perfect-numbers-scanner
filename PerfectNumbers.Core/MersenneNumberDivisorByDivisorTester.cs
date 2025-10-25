@@ -235,6 +235,7 @@ public static class MersenneNumberDivisorByDivisorTester
 
 		void ProcessPrime(ulong prime)
 		{
+			Console.WriteLine($"Task started {prime}");
 			bool isPrime = tester.IsPrime(prime, out bool divisorsExhausted);
 
 			if (!isPrime)
@@ -246,6 +247,7 @@ public static class MersenneNumberDivisorByDivisorTester
 
 			clearComposite();
 			printResult(prime, true, divisorsExhausted, true);
+			Console.WriteLine($"Task finished {prime}");
 		}
 
 		if (workerCount == 1)
