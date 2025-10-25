@@ -57,6 +57,8 @@ No other endings are allowed or reordered.
 4. **Group B**: read the precomputed `n mod 10` (made available by the caller configuration such as `--gpu-prime-batch`). Iterate candidates via wheel 210, maintaining ascending order and applying the ending-priority sequence above. Any hit marks `n` as composite and terminates the search.
 5. **Decision**: if no divisors were found up to `R`, report `n` as “prime by trial”. This outcome is final—no further confirmation runs are performed.
 
+> **Temporary status:** Current builds disable Group B via `UseHeuristicGroupBTrialDivision`. After exhausting Group A, `HeuristicIsPrime*` delegates to `Open.Numeric.Primes.Prime.Numbers.IsPrime`, preserving the Group B implementation for future use while ensuring production checks mirror the external library once Group A filters pass.
+
 ## Default Prime Tester Entry Points
 
 * `PrimeTester.IsPrime` and `PrimeTester.IsPrimeGpu` now delegate to the heuristic CPU/GPU implementations by default.

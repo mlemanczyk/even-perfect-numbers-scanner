@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
+using Open.Numeric.Primes;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -24,6 +25,9 @@ public sealed class PrimeTester(bool useInternal = false)
     private static readonly ushort[] Wheel210ResiduesEnding9 = { 19, 29, 59, 79, 89, 109, 139, 149, 169, 179, 199, 209 };
     private const ulong Wheel210 = 210UL;
     internal const int MaxGroupBSequences = 36;
+
+    private const bool UseHeuristicGroupBTrialDivision = false; // Temporary fallback gate for Group B.
+
 
     private readonly bool _useLegacyPrimeTester = useInternal;
 
@@ -158,11 +162,6 @@ public sealed class PrimeTester(bool useInternal = false)
 
     internal bool HeuristicIsPrimeGpu(ulong n, ulong sqrtLimit, byte nMod10)
     {
-        if (TryResolveHeuristicTrivialCases(n, nMod10, out bool result))
-        {
-            return result;
-        }
-
         if (sqrtLimit == 0UL)
         {
             sqrtLimit = ComputeHeuristicSqrt(n);
@@ -170,7 +169,12 @@ public sealed class PrimeTester(bool useInternal = false)
 
         if (sqrtLimit < 3UL)
         {
-            return true;
+            return EvaluateWithOpenNumericFallback(n);
+        }
+
+        if (!UseHeuristicGroupBTrialDivision)
+        {
+            return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10, includeGroupB: false);
         }
 
         if (GpuContextPool.ForceCpu)
@@ -189,11 +193,6 @@ public sealed class PrimeTester(bool useInternal = false)
 
     internal static bool HeuristicIsPrimeCpu(ulong n, ulong sqrtLimit, byte nMod10)
     {
-        if (TryResolveHeuristicTrivialCases(n, nMod10, out bool result))
-        {
-            return result;
-        }
-
         if (sqrtLimit == 0UL)
         {
             sqrtLimit = ComputeHeuristicSqrt(n);
@@ -201,19 +200,25 @@ public sealed class PrimeTester(bool useInternal = false)
 
         if (sqrtLimit < 3UL)
         {
-            return true;
+            return EvaluateWithOpenNumericFallback(n);
         }
 
-        return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10);
+        bool includeGroupB = UseHeuristicGroupBTrialDivision;
+        return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10, includeGroupB);
     }
 
-    private static bool HeuristicTrialDivisionCpu(ulong n, ulong sqrtLimit, byte nMod10)
+    private static bool HeuristicTrialDivisionCpu(ulong n, ulong sqrtLimit, byte nMod10, bool includeGroupB)
     {
         Span<HeuristicGroupBSequenceState> groupBBuffer = stackalloc HeuristicGroupBSequenceState[MaxGroupBSequences];
         var enumerator = new HeuristicDivisorEnumerator(sqrtLimit, nMod10, groupBBuffer);
 
         while (enumerator.TryGetNext(out HeuristicDivisorCandidate candidate))
         {
+            if (!includeGroupB && candidate.Group == HeuristicDivisorGroup.GroupB)
+            {
+                return EvaluateWithOpenNumericFallback(n);
+            }
+
             ulong divisor = candidate.Value;
             if (divisor <= 1UL)
             {
@@ -226,7 +231,7 @@ public sealed class PrimeTester(bool useInternal = false)
             }
         }
 
-        return true;
+        return includeGroupB ? true : EvaluateWithOpenNumericFallback(n);
     }
 
     private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong sqrtLimit, byte nMod10)
@@ -350,40 +355,9 @@ public sealed class PrimeTester(bool useInternal = false)
         return compositeDetected;
     }
 
-    private static bool TryResolveHeuristicTrivialCases(ulong n, byte nMod10, out bool result)
+    private static bool EvaluateWithOpenNumericFallback(ulong n)
     {
-        if (n < 2UL)
-        {
-            result = false;
-            return true;
-        }
-
-        if (n <= 3UL)
-        {
-            result = true;
-            return true;
-        }
-
-        if ((n & 1UL) == 0UL)
-        {
-            result = false;
-            return true;
-        }
-
-        if (n % 5UL == 0UL)
-        {
-            result = n == 5UL;
-            return true;
-        }
-
-        if (nMod10 == 1 && SharesFactorWithMaxExponent(n))
-        {
-            result = false;
-            return true;
-        }
-
-        result = false;
-        return false;
+        return Prime.Numbers.IsPrime(n);
     }
 
     private static ulong ComputeHeuristicSqrt(ulong n)

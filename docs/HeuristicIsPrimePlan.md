@@ -129,10 +129,12 @@ The plan incorporates the updated divisor-class heuristics (Groups A/B, wheels, 
 6. [done] **Implement `HeuristicIsPrimeCpu`**
    * Baseline Group A/B enumeration now executes inside `HeuristicIsPrimeCpu` via `HeuristicDivisorEnumerator`, computing `⌊√n⌋` locally and short-circuiting on the first divisor.
    * [done] The CPU heuristic now operates as a pure trial-division sweep without maintaining per-call summaries, relying on `PrepareHeuristicDivisor` only when downstream consumers request Montgomery data.
+   * [done] Introduced the temporary `UseHeuristicGroupBTrialDivision` gate so current builds execute Group A locally and then fall back to `Open.Numeric.Primes.Prime.Numbers.IsPrime`, keeping the full Group B implementation available for reactivation.
 7. [done] **Implement `HeuristicIsPrimeGpu`**
    * [done] Mirror CPU structure while batching divisor checks on the accelerator via `HeuristicTrialDivisionGpu`, reusing caller-provided `sqrtLimit`/`nMod10` inputs and falling back to CPU when GPUs are disabled.
-   * [done] Added `PrimeTesterKernels.HeuristicTrialDivisionKernel` so GPU batches respect Group A/B ordering while emitting hit flags for early exits.
+   * [done] Added `PrimeTesterKernels.HeuristicTrialDivisionKernel` so GPU batches respect Group A/B ordering while emitting hit flags for early exits.
    * [done] Kept GPU divisibility in standard modular arithmetic while reserving Montgomery transforms for CPU confirmation logic.
+   * [done] When the temporary Group B gate is disabled, delegate GPU calls to the CPU fallback so Group A coverage remains in place while the accelerator path stays available for future re-enablement.
 8. [done] **Refactor by-divisor CPU/GPU testers to reuse heuristics**
    * [done] Drove `MersenneNumberDivisorByDivisorCpuTester.CheckDivisors` from `PrimeTester.CreateMersenneDivisorEnumerator`, eliminating the bespoke residue loop while preserving the existing status counters.
    * [done] Streamed GPU batches from the same enumerator and Montgomery preparation data, removing the filtered-divisor scratch arrays while continuing to feed the existing kernel and hit bookkeeping.
