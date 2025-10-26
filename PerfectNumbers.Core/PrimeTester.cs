@@ -158,6 +158,7 @@ public sealed class PrimeTester
         var inputView = deviceInput.View;
         var outputView = deviceOutput.View;
         var primesView = state.DevicePrimes.View;
+        var primeSquaresView = state.DevicePrimeSquares.View;
         var stagingSpan = stagingBuffer;
         ref ulong stagingRef = ref MemoryMarshal.GetReference(stagingSpan);
 
@@ -175,7 +176,7 @@ public sealed class PrimeTester
             inputSlice.CopyFromCPU(ref stagingRef, count);
 
             var outputSlice = outputView.SubView(0, count);
-            state.Kernel(count, inputSlice, primesView, outputSlice);
+            state.Kernel(count, inputSlice, primesView, primeSquaresView, outputSlice);
             accelerator.Synchronize();
             outputSlice.CopyToCPU(ref results[pos], count);
 
@@ -272,9 +273,10 @@ public sealed class PrimeTester
     // Per-accelerator GPU state for prime sieve (kernel + uploaded primes).
     internal sealed class KernelState
     {
-        public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>> Kernel { get; }
+        public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<ulong>, ArrayView<byte>> Kernel { get; }
         public Action<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>> HeuristicTrialDivisionKernel { get; }
         public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimes { get; }
+        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimeSquares { get; }
         private readonly Accelerator _accel;
         private readonly System.Collections.Concurrent.ConcurrentBag<ScratchBuffers> _scratchPool = [];
         // TODO: Replace this ConcurrentBag with the lock-free ring buffer variant validated in
@@ -285,12 +287,15 @@ public sealed class PrimeTester
         {
             _accel = accelerator;
             // Compile once per accelerator and upload primes once.
-            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
+            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
             HeuristicTrialDivisionKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
             var primes = PrimesGenerator.SmallPrimes;
+            var primeSquares = PrimesGenerator.SmallPrimesPow2;
             DevicePrimes = accelerator.Allocate1D<uint>(primes.Length);
+            DevicePrimeSquares = accelerator.Allocate1D<ulong>(primeSquares.Length);
             DevicePrimes.View.CopyFromCPU(primes);
+            DevicePrimeSquares.View.CopyFromCPU(primeSquares);
         }
 
         internal sealed class ScratchBuffers : IDisposable
@@ -344,6 +349,7 @@ public sealed class PrimeTester
             }
 
             DevicePrimes.Dispose();
+            DevicePrimeSquares.Dispose();
         }
     }
 

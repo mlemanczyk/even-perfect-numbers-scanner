@@ -52,8 +52,9 @@ internal static partial class PrimeOrderCalculator
                 private readonly PrimeTester.KernelState.ScratchBuffers _primeScratch;
                 private readonly ulong[] _primeHostBuffer;
                 private readonly byte[] _primeFlagBuffer;
-                private readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>> _primeKernel;
+                private readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<ulong>, ArrayView<byte>> _primeKernel;
                 private readonly ArrayView1D<uint, Stride1D.Dense> _primeDevicePrimes;
+                private readonly ArrayView1D<ulong, Stride1D.Dense> _primeDevicePrimeSquares;
 
                 private PartialFactorGpuContext(
                         GpuKernelLease lease,
@@ -73,6 +74,7 @@ internal static partial class PrimeOrderCalculator
                         _primeFlagBuffer = primeFlagBuffer;
                         _primeKernel = primeState.Kernel;
                         _primeDevicePrimes = primeState.DevicePrimes.View;
+                        _primeDevicePrimeSquares = primeState.DevicePrimeSquares.View;
                 }
 
                 public Accelerator Accelerator => _lease.Accelerator;
@@ -109,7 +111,7 @@ internal static partial class PrimeOrderCalculator
                         ArrayView1D<ulong, Stride1D.Dense> inputSlice = PrimeDeviceInput.View.SubView(0, 1);
                         inputSlice.CopyFromCPU(ref host[0], 1);
                         ArrayView1D<byte, Stride1D.Dense> outputSlice = PrimeDeviceOutput.View.SubView(0, 1);
-                        _primeKernel(1, inputSlice.AsContiguous(), _primeDevicePrimes.AsContiguous(), outputSlice.AsContiguous());
+                        _primeKernel(1, inputSlice.AsContiguous(), _primeDevicePrimes.AsContiguous(), _primeDevicePrimeSquares.AsContiguous(), outputSlice.AsContiguous());
                         Accelerator.Synchronize();
                         Span<byte> flags = PrimeFlagSpan;
                         outputSlice.CopyToCPU(ref flags[0], 1);
