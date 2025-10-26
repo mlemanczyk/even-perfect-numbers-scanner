@@ -15,35 +15,32 @@ internal static class PrimeTesterKernels
         ArrayView<byte> results)
     {
         ulong n = numbers[index];
+        byte result = 1;
 
         // EvenPerfectBitScanner filters candidates so production GPU launches only see:
         //  - n >= 31 (the scanner starts at 136,279,841 and test mode seeds 31)
         //  - n odd (candidate generators and ModResidueTracker eliminate even exponents)
         //  - n not divisible by 5 (residue prefiltering and AddPrimes transform cover these composites)
         // Tests should honor the same constraints so the host wrapper can remain branchless.
-        ulong log2Estimate = 63UL - (ulong)XMath.LeadingZeroCount(n | 1UL);
-        ulong gcd = BinaryGcdGpu(n, log2Estimate);
-        bool heuristicActive = n.Mod10() == 1UL;
-        bool gcdReject = heuristicActive & (gcd != 1UL);
-
-        bool composite = gcdReject;
-        bool continueLoop = !gcdReject;
 
         long length = smallPrimes.Length;
         for (int i = 0; i < length; i++)
         {
             ulong prime = smallPrimes[i];
             ulong primeSquare = smallPrimeSquares[i];
-            bool withinRange = primeSquare <= n;
-            ulong remainder = n % prime;
-            bool divides = remainder == 0UL;
+            if (primeSquare > n)
+            {
+                break;
+            }
 
-            bool markComposite = continueLoop & withinRange & divides;
-            composite |= markComposite;
-            continueLoop &= withinRange & !divides;
+            if (n % prime == 0UL)
+            {
+                result = 0;
+                break;
+            }
         }
 
-        results[index] = composite ? (byte)0 : (byte)1;
+        results[index] = result;
     }
 
     public static void HeuristicTrialDivisionKernel(Index1D index, ArrayView<ulong> divisors, ulong n, ArrayView<byte> results)
