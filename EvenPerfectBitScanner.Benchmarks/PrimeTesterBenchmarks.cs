@@ -67,7 +67,46 @@ public class PrimeTesterBenchmarks
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (tester.IsPrimeGpu(values[i], cancellationToken))
+            if (tester.HeuristicIsPrimeGpu(values[i]))
+            {
+                primeCount++;
+            }
+        }
+
+        return primeCount;
+    }
+
+	// This benchmark is very slow. No point in comparing it.
+	// [Benchmark]
+	public int NonHeuristicGpu()
+	{
+		// PrimeTester tester = _gpuTester;
+		ulong[] values = _candidates;
+		CancellationToken cancellationToken = CancellationToken.None;
+		int primeCount = 0;
+
+		for (int i = 0; i < values.Length; i++)
+		{
+			if (PrimeTester.LegacyIsPrimeGpu(values[i], cancellationToken))
+			{
+				primeCount++;
+			}
+		}
+
+		return primeCount;
+	}
+
+    [Benchmark]
+    public int NonHeuristicCpu()
+    {
+        // PrimeTester tester = _gpuTester;
+			ulong[] values = _candidates;
+        CancellationToken cancellationToken = CancellationToken.None;
+        int primeCount = 0;
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (PrimeTester.LegacyIsPrimeInternal(values[i], cancellationToken))
             {
                 primeCount++;
             }

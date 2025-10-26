@@ -14,15 +14,19 @@ namespace PerfectNumbers.Core;
 
 public sealed class PrimeTester(bool useInternal = false)
 {
-    private static readonly ulong[] GroupAConstantDivisors = { 3UL, 7UL, 11UL, 13UL };
-    private static readonly byte[] GroupAIncrementPattern = { 20, 10 };
-    private static readonly byte[] GroupBEndingOrderMod1 = { 9, 1 };
-    private static readonly byte[] GroupBEndingOrderMod3 = { 9, 7 };
-    private static readonly byte[] GroupBEndingOrderMod7 = { 7, 1 };
-    private static readonly byte[] GroupBEndingOrderMod9 = { 9, 7, 1 };
-    private static readonly ushort[] Wheel210ResiduesEnding1 = { 1, 11, 31, 41, 61, 71, 101, 121, 131, 151, 181, 191 };
-    private static readonly ushort[] Wheel210ResiduesEnding7 = { 17, 37, 47, 67, 97, 107, 127, 137, 157, 167, 187, 197 };
-    private static readonly ushort[] Wheel210ResiduesEnding9 = { 19, 29, 59, 79, 89, 109, 139, 149, 169, 179, 199, 209 };
+	// TODO: Don't use these tiny arrays. Hard-code the values / checks instead
+
+    private static readonly ulong[] GroupAConstantDivisors = [3UL, 7UL, 11UL, 13UL];
+    private static readonly byte[] GroupAIncrementPattern = [20, 10];
+    private static readonly byte[] GroupBEndingOrderMod1 = [9, 1];
+    private static readonly byte[] GroupBEndingOrderMod3 = [9, 7];
+    private static readonly byte[] GroupBEndingOrderMod7 = [7, 1];
+	private static readonly byte[] GroupBEndingOrderMod9 = [9, 7, 1];
+
+	// TODO:: Would it speed up things if we implement something like ExponentRemainderStepper, MersenneDivisorResidueStepper, or CycleRemainderStepper work with these?
+    private static readonly ushort[] Wheel210ResiduesEnding1 = [1, 11, 31, 41, 61, 71, 101, 121, 131, 151, 181, 191];
+    private static readonly ushort[] Wheel210ResiduesEnding7 = [17, 37, 47, 67, 97, 107, 127, 137, 157, 167, 187, 197];
+    private static readonly ushort[] Wheel210ResiduesEnding9 = [19, 29, 59, 79, 89, 109, 139, 149, 169, 179, 199, 209];
     private const ulong Wheel210 = 210UL;
     internal const int MaxGroupBSequences = 36;
 
@@ -41,77 +45,62 @@ public sealed class PrimeTester(bool useInternal = false)
         GroupB = 3,
     }
 
-    internal readonly struct HeuristicDivisorCandidate
-    {
-        public ulong Value { get; }
+    internal readonly struct HeuristicDivisorCandidate(ulong value, HeuristicDivisorGroup group, byte ending, byte priorityIndex, ushort wheelResidue)
+	{
+		public readonly ulong Value = value;
+		public readonly HeuristicDivisorGroup Group = group;
+		public readonly byte Ending = ending;
+		public readonly byte PriorityIndex = priorityIndex;
+		public readonly ushort WheelResidue = wheelResidue;
+	}
 
-        public HeuristicDivisorGroup Group { get; }
+    internal readonly struct HeuristicDivisorPreparation(
+		in HeuristicDivisorCandidate candidate,
+		in MontgomeryDivisorData divisorData,
+		ulong cycleLengthHint,
+		bool hasCycleLengthHint)
+	{
+		public readonly HeuristicDivisorCandidate Candidate = candidate;
+		public readonly MontgomeryDivisorData DivisorData = divisorData;
+		public readonly ulong CycleLengthHint = cycleLengthHint;
+		public readonly bool HasCycleLengthHint = hasCycleLengthHint;
+		public readonly bool RequiresCycleComputation = !hasCycleLengthHint;
+	}
 
-        public byte Ending { get; }
+	public bool IsPrime(ulong n, CancellationToken ct)
+	{
+		if (_useLegacyPrimeTester)
+		{
+			return LegacyIsPrimeInternal(n, ct);
+		}
 
-        public byte PriorityIndex { get; }
+		return IsPrimeInternal(n, ct);
+	}
 
-        public ushort WheelResidue { get; }
+	[ThreadStatic]
+	private static PrimeTester? _tester;
+	
+	public static PrimeTester Exclusive => _tester ??= new();
 
-        public HeuristicDivisorCandidate(ulong value, HeuristicDivisorGroup group, byte ending, byte priorityIndex, ushort wheelResidue)
-        {
-            Value = value;
-            Group = group;
-            Ending = ending;
-            PriorityIndex = priorityIndex;
-            WheelResidue = wheelResidue;
-        }
-    }
+	public static bool IsPrimeGpu(ulong n, ulong limit, byte nMod10)
+	{
+		_tester ??= new();
+		return _tester.HeuristicIsPrimeGpu(n, limit, nMod10);
+	}
 
-    internal readonly struct HeuristicDivisorPreparation
-    {
-        public HeuristicDivisorCandidate Candidate { get; }
-
-        public MontgomeryDivisorData DivisorData { get; }
-
-        public ulong CycleLengthHint { get; }
-
-        public bool HasCycleLengthHint { get; }
-
-        public bool RequiresCycleComputation => !HasCycleLengthHint;
-
-        public HeuristicDivisorPreparation(
-            in HeuristicDivisorCandidate candidate,
-            in MontgomeryDivisorData divisorData,
-            ulong cycleLengthHint,
-            bool hasCycleLengthHint)
-        {
-            Candidate = candidate;
-            DivisorData = divisorData;
-            CycleLengthHint = cycleLengthHint;
-            HasCycleLengthHint = hasCycleLengthHint;
-        }
-    }
-
-    public bool IsPrime(ulong n, CancellationToken ct)
-    {
-        if (_useLegacyPrimeTester)
-        {
-            return LegacyIsPrimeInternal(n, ct);
-        }
-
-        return IsPrimeInternal(n, ct);
-    }
-
-    public static bool IsPrimeGpu(ulong n) => new PrimeTester().IsPrimeGpu(n, CancellationToken.None);
-
-    // Optional GPU-assisted primality: batched small-prime sieve on device.
+	// Optional GPU-assisted primality: batched small-prime sieve on device.
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsPrimeGpu(ulong n, CancellationToken ct)
     {
-        if (_useLegacyPrimeTester || !EnableHeuristicPrimeTesting)
-        {
-            return LegacyIsPrimeGpu(n, ct);
-        }
+        // if (_useLegacyPrimeTester || !EnableHeuristicPrimeTesting)
+        // {
+        //     return LegacyIsPrimeGpu(n, ct);
+        // }
 
         return HeuristicIsPrimeGpu(n);
     }
 
-    private static bool LegacyIsPrimeGpu(ulong n, CancellationToken ct)
+    public static bool LegacyIsPrimeGpu(ulong n, CancellationToken ct)
     {
         // EvenPerfectBitScanner never enqueues exponents <= 3 on the GPU path; keep the legacy guard commented out
         // so ad-hoc callers that expect that behavior must re-enable it intentionally.
@@ -133,7 +122,6 @@ public sealed class PrimeTester(bool useInternal = false)
         //     return LegacyIsPrimeInternal(n, ct);
         // }
 
-        bool forceCpu = GpuContextPool.ForceCpu;
         Span<ulong> one = stackalloc ulong[1];
         Span<byte> outFlags = stackalloc byte[1];
         // TODO: Inline the single-value GPU sieve fast path from GpuModularArithmeticBenchmarks so this wrapper
@@ -141,46 +129,36 @@ public sealed class PrimeTester(bool useInternal = false)
         one[0] = n;
         outFlags[0] = 0;
 
-        if (!forceCpu)
-        {
-            IsPrimeBatchGpu(one, outFlags);
-        }
+		IsPrimeBatchGpu(one, outFlags);
 
-        bool belowGpuRange = n < 31UL;
-        bool gpuReportedPrime = !forceCpu && !belowGpuRange && outFlags[0] != 0;
-        bool requiresCpuFallback = forceCpu || belowGpuRange || !gpuReportedPrime;
-
-        // Defensive fallback: GPU sieve produced a composite verdict or execution was skipped.
-        // Confirm with the legacy CPU logic to prevent false negatives observed on some accelerators.
-        return requiresCpuFallback ? LegacyIsPrimeInternal(n, ct) : true;
+        // bool belowGpuRange = n < 31UL;
+        return outFlags[0] != 0;
     }
 
     public bool HeuristicIsPrimeGpu(ulong n)
     {
-        return HeuristicIsPrimeGpu(n, 0UL, (byte)n.Mod10());
+		byte nMod10 = (byte)n.Mod10();
+        ulong sqrtLimit = ComputeHeuristicSqrt(n);
+		return HeuristicIsPrimeGpu(n, sqrtLimit, nMod10);
     }
 
-    internal bool HeuristicIsPrimeGpu(ulong n, ulong sqrtLimit, byte nMod10)
-    {
-        if (sqrtLimit == 0UL)
-        {
-            sqrtLimit = ComputeHeuristicSqrt(n);
-        }
-
+    private bool HeuristicIsPrimeGpu(ulong n, ulong sqrtLimit, byte nMod10)
+	{
+		// TODO: Is this condition every met on the execution path in EvenPerfectBitScanner?
         if (sqrtLimit < 3UL)
         {
             return EvaluateWithOpenNumericFallback(n);
         }
 
-        if (!UseHeuristicGroupBTrialDivision)
-        {
-            return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10, includeGroupB: false);
-        }
+        // if (!UseHeuristicGroupBTrialDivision)
+        // {
+        //     return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10, includeGroupB: false);
+        // }
 
-        if (GpuContextPool.ForceCpu)
-        {
-            return HeuristicIsPrimeCpu(n, sqrtLimit, nMod10);
-        }
+        // if (GpuContextPool.ForceCpu)
+        // {
+        //     return HeuristicIsPrimeCpu(n, sqrtLimit, nMod10);
+        // }
 
         bool compositeDetected = HeuristicTrialDivisionGpuDetectsDivisor(n, sqrtLimit, nMod10);
         return !compositeDetected;
@@ -241,116 +219,95 @@ public sealed class PrimeTester(bool useInternal = false)
 
         int batchCapacity = Math.Max(1, HeuristicGpuDivisorBatchSize);
         var candidatePool = ArrayPool<HeuristicDivisorCandidate>.Shared;
-        var divisorPool = ArrayPool<ulong>.Shared;
-        var hitPool = ArrayPool<byte>.Shared;
+		var divisorPool = ThreadStaticPools.UlongPool;// ArrayPool<ulong>.Shared;
+		var hitPool = ThreadStaticPools.BytePool;// ArrayPool<byte>.Shared;
 
-        HeuristicDivisorCandidate[]? candidateArray = null;
-        ulong[]? divisorArray = null;
-        byte[]? hitFlags = null;
 
         var limiter = GpuPrimeWorkLimiter.Acquire();
         var gpu = PrimeTesterGpuContextPool.Rent();
 
         bool compositeDetected = false;
 
-        try
-        {
-            candidateArray = candidatePool.Rent(batchCapacity);
-            divisorArray = divisorPool.Rent(batchCapacity);
-            hitFlags = hitPool.Rent(batchCapacity);
+        HeuristicDivisorCandidate[]? candidateArray = candidatePool.Rent(batchCapacity);
+        ulong[]? divisorArray = divisorPool.Rent(batchCapacity);
+		byte[]? hitFlags = hitPool.Rent(batchCapacity);		
+		var accelerator = gpu.Accelerator;
+		var state = GpuKernelState.GetOrCreate(accelerator);
+		var scratch = state.RentScratch(batchCapacity, accelerator);
+		int count = 0;
 
-            var accelerator = gpu.Accelerator;
-            var state = GpuKernelState.GetOrCreate(accelerator);
+		lock (gpu.ExecutionLock)
+		{
 
-            lock (gpu.ExecutionLock)
-            {
-                var scratch = state.RentScratch(batchCapacity, accelerator);
-                try
-                {
-                    int count = 0;
+			bool ProcessBatch(int length)
+			{
+				scratch.Input.View.CopyFromCPU(ref divisorArray![0], length);
+				state.HeuristicTrialDivisionKernel(length, scratch.Input.View, n, scratch.Output.View);
+				accelerator.Synchronize();
+				scratch.Output.View.CopyToCPU(ref hitFlags![0], length);
 
-                    bool ProcessBatch(int length)
-                    {
-                        scratch.Input.View.CopyFromCPU(ref divisorArray![0], length);
-                        state.HeuristicTrialDivisionKernel(length, scratch.Input.View, n, scratch.Output.View);
-                        accelerator.Synchronize();
-                        scratch.Output.View.CopyToCPU(ref hitFlags![0], length);
+				for (int i = 0; i < length; i++)
+				{
+					if (hitFlags![i] == 0)
+					{
+						continue;
+					}
 
-                        for (int i = 0; i < length; i++)
-                        {
-                            if (hitFlags![i] == 0)
-                            {
-                                continue;
-                            }
+					ulong divisor = candidateArray![i].Value;
 
-                            ulong divisor = candidateArray![i].Value;
-                            if (divisor > 1UL && n % divisor == 0UL)
-                            {
-                                return true;
-                            }
-                        }
+					// Kernel checks if n % divisor == 0 and sets hitFlags to 1 in that case. At this point we already know the
+					// residue.
+					
+					// if (divisor > 1UL && n % divisor == 0UL)
+					if (divisor > 1UL)
+					{
+						return true;
+					}
+				}
 
-                        return false;
-                    }
+				return false;
+			}
 
-                    while (enumerator.TryGetNext(out HeuristicDivisorCandidate candidate))
-                    {
-                        ulong divisor = candidate.Value;
-                        if (divisor <= 1UL)
-                        {
-                            continue;
-                        }
+			while (enumerator.TryGetNext(out HeuristicDivisorCandidate candidate))
+			{
+				ulong divisor = candidate.Value;
+				if (divisor <= 1UL)
+				{
+					continue;
+				}
 
-                        candidateArray[count] = candidate;
-                        divisorArray[count] = divisor;
-                        count++;
+				candidateArray[count] = candidate;
+				divisorArray[count] = divisor;
+				count++;
 
-                        if (count == batchCapacity)
-                        {
-                            if (ProcessBatch(count))
-                            {
-                                compositeDetected = true;
-                                break;
-                            }
+				if (count == batchCapacity)
+				{
+					if (ProcessBatch(count))
+					{
+						compositeDetected = true;
+						break;
+					}
 
-                            count = 0;
-                        }
-                    }
+					count = 0;
+				}
+			}
 
-                    if (!compositeDetected && count > 0)
-                    {
-                        if (ProcessBatch(count))
-                        {
-                            compositeDetected = true;
-                        }
-                    }
-                }
-                finally
-                {
-                    state.ReturnScratch(scratch);
-                }
-            }
-        }
-        finally
-        {
-            if (hitFlags is not null)
-            {
-                hitPool.Return(hitFlags);
-            }
+			if (!compositeDetected && count > 0)
+			{
+				if (ProcessBatch(count))
+				{
+					compositeDetected = true;
+				}
+			}
 
-            if (divisorArray is not null)
-            {
-                divisorPool.Return(divisorArray);
-            }
+			state.ReturnScratch(scratch);
+		}
 
-            if (candidateArray is not null)
-            {
-                candidatePool.Return(candidateArray);
-            }
-
-            gpu.Dispose();
-            limiter.Dispose();
-        }
+		hitPool.Return(hitFlags);
+		divisorPool.Return(divisorArray);
+		candidatePool.Return(candidateArray);
+		gpu.Dispose();
+		limiter.Dispose();
 
         return compositeDetected;
     }
@@ -360,7 +317,7 @@ public sealed class PrimeTester(bool useInternal = false)
         return Prime.Numbers.IsPrime(n);
     }
 
-    private static ulong ComputeHeuristicSqrt(ulong n)
+    internal static ulong ComputeHeuristicSqrt(ulong n)
     {
         ulong sqrt = (ulong)Math.Sqrt(n);
         UInt128 square = (UInt128)sqrt * sqrt;
@@ -523,17 +480,19 @@ public sealed class PrimeTester(bool useInternal = false)
         }
 
         public bool TryGetNext(out HeuristicDivisorCandidate candidate)
-        {
+		{
+			// TODO: Hard-code constant A divisor checks here instead of using an array
             while (groupAConstantIndex < GroupAConstantDivisors.Length)
             {
                 ulong value = GroupAConstantDivisors[groupAConstantIndex++];
-                if (value > sqrtLimit)
-                {
-                    groupAConstantIndex = GroupAConstantDivisors.Length;
-                    break;
-                }
+				if (value > sqrtLimit)
+				{
+					groupAConstantIndex = GroupAConstantDivisors.Length;
+					break;
+				}
 
-                candidate = new HeuristicDivisorCandidate(value, HeuristicDivisorGroup.GroupAConstant, (byte)(value % 10UL), 0, (ushort)(value % Wheel210));
+				// TODO: We're constantly dividing constants mod 10 which is constant too.
+                candidate = new HeuristicDivisorCandidate(value, HeuristicDivisorGroup.GroupAConstant, (byte)(value % 10UL), 0, (ushort)value);
                 return true;
             }
 
@@ -602,25 +561,14 @@ public sealed class PrimeTester(bool useInternal = false)
         }
     }
 
-    internal struct HeuristicGroupBSequenceState
-    {
-        public ulong Candidate;
+    internal struct HeuristicGroupBSequenceState(ushort residue, byte ending, byte priorityIndex)
+	{
+        public ulong Candidate = residue;
+        public byte PriorityIndex = priorityIndex;
+        public byte Ending = ending;
+        public ushort Residue = residue;
 
-        public byte PriorityIndex;
-
-        public byte Ending;
-
-        public ushort Residue;
-
-        public HeuristicGroupBSequenceState(ushort residue, byte ending, byte priorityIndex)
-        {
-            Candidate = residue;
-            Ending = ending;
-            Residue = residue;
-            PriorityIndex = priorityIndex;
-        }
-
-        public void TryNormalize()
+		public void TryNormalize()
         {
             ulong candidate = Candidate;
             if (candidate == ulong.MaxValue)
@@ -767,7 +715,7 @@ public sealed class PrimeTester(bool useInternal = false)
         return HeuristicIsPrimeCpu(n);
     }
 
-    internal static bool LegacyIsPrimeInternal(ulong n, CancellationToken ct)
+    public static bool LegacyIsPrimeInternal(ulong n, CancellationToken ct)
     {
         // EvenPerfectBitScanner streams monotonically increasing odd exponents that start at 136,279,841 and already exclude
         // multiples of five. Factorization helpers (PrimeOrderCalculator, Pollard routines, and divisor-cycle warmups) reuse
@@ -855,7 +803,7 @@ public sealed class PrimeTester(bool useInternal = false)
                         int count = remaining > batchSize ? batchSize : remaining;
 
                         values.Slice(pos, count).CopyTo(temp);
-                        input.View.CopyFromCPU(ref temp[0], count);
+						input.View.CopyFromCPU(ref temp[0], count);
 
                         state.Kernel(count, input.View, state.DevicePrimes.View, output.View);
                         accelerator.Synchronize();
