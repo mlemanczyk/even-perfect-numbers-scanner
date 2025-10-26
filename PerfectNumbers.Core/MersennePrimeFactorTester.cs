@@ -2,11 +2,15 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Numerics;
 using UInt128 = System.UInt128;
+using ILGPU;
 
 namespace PerfectNumbers.Core;
 
 public static class MersennePrimeFactorTester
 {
+	// private static ulong _isPrimeFactorHits;
+	// private static ulong _factor64Hits;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsPrimeFactor(ulong p, ulong q, CancellationToken ct)
     {
@@ -25,7 +29,11 @@ public static class MersennePrimeFactorTester
             return false;
         }
 
-        // if (!HeuristicPrimeTester.Exclusive.IsPrimeCpu(q, ct))
+        // if (!HeuristicPrimeTester.Exclusive.IsPrime(q, ct))
+
+		// Atomic.Add(ref _isPrimeFactorHits, 1UL);
+		// Console.WriteLine($"MersennePrimeFactorTester.IsPrimeFactor hits {Volatile.Read(ref _isPrimeFactorHits)}");
+
         if (!PrimeTester.IsPrimeCpu(q, ct))
         {
             return false;
@@ -234,7 +242,11 @@ public static class MersennePrimeFactorTester
                 continue;
             }
 
-            // if (HeuristicPrimeTester.Exclusive.IsPrimeCpu(m, ct))
+
+			// Atomic.Add(ref _factor64Hits, 1UL);
+			// Console.WriteLine($"MersennePrimeFactorTester.Factor64 hits {Volatile.Read(ref _factor64Hits)}");
+
+            // if (HeuristicPrimeTester.Exclusive.IsPrime(m, ct))
             if (PrimeTester.IsPrimeCpu(m, ct))
             {
                 dict[m] = 1;

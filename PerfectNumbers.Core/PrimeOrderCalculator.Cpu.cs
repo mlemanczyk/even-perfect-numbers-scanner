@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using ILGPU;
 using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
@@ -1019,6 +1020,10 @@ internal static partial class PrimeOrderCalculator
 		return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
 	}
 
+	// private static ulong _partialFactorHits;
+	// private static ulong _partialFactorPendingHits;
+	// private static ulong _partialFactorCofactorHits;
+
 	private static PartialFactorResult PartialFactor(ulong value, in PrimeOrderSearchConfig config)
 	{
 		if (value <= 1UL)
@@ -1070,7 +1075,7 @@ internal static partial class PrimeOrderCalculator
 			// if (!gpuPopulated)
 			// {
 			// 	throw new InvalidOperationException($"GPU didn't populate factors for {value}");
-				// counts.Clear();
+			// counts.Clear();
 			remaining = PopulateSmallPrimeFactorsCpu(value, limit, counts);
 			// }
 
@@ -1123,8 +1128,12 @@ internal static partial class PrimeOrderCalculator
 					// }
 
 					// bool isPrime = primeTester.HeuristicIsPrimeGpu(composite);
-					// bool isPrime = PrimeTester.IsPrimeCpu(composite, CancellationToken.None);
-					bool isPrime = PrimeTester.IsPrimeCpu(composite, CancellationToken.None);
+					// bool isPrime = PrimeTester.IsPrimeInternal(composite, CancellationToken.None);
+
+					// Atomic.Add(ref _partialFactorHits, 1UL);
+					// Console.WriteLine($"Partial factor hits {Volatile.Read(ref _partialFactorHits)}");
+
+					bool isPrime = PrimeTester.IsPrimeGpu(composite);
 					// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
 					if (isPrime)
@@ -1186,10 +1195,14 @@ internal static partial class PrimeOrderCalculator
 			if (!entry.HasKnownPrimality)
 			{
 				// bool isPrime = primeTester.HeuristicIsPrimeGpu(composite);
-				// bool isPrime = PrimeTester.IsPrimeCpu(composite, CancellationToken.None);
-				bool isPrime = PrimeTester.IsPrimeCpu(composite, CancellationToken.None);
+				// bool isPrime = PrimeTester.IsPrimeInternal(composite, CancellationToken.None);
+
+				// Atomic.Add(ref _partialFactorPendingHits, 1UL);
+				// Console.WriteLine($"Partial factor pending hits {Volatile.Read(ref _partialFactorPendingHits)}");
+
+				bool isPrime = PrimeTester.IsPrimeGpu(composite);
 				// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
-				
+
 				entry = entry.WithPrimality(isPrime);
 				pending[index] = entry;
 			}
@@ -1219,7 +1232,11 @@ internal static partial class PrimeOrderCalculator
 		else
 		{
 			// cofactorIsPrime = primeTester.HeuristicIsPrimeGpu(cofactor);
-			// cofactorIsPrime = PrimeTester.IsPrimeCpu(cofactor, CancellationToken.None);
+			// cofactorIsPrime = PrimeTester.IsPrimeInternal(cofactor, CancellationToken.None);
+
+			// Atomic.Add(ref _partialFactorCofactorHits, 1UL);
+			// Console.WriteLine($"Partial factor cofactor hits {Volatile.Read(ref _partialFactorCofactorHits)}");
+
 			cofactorIsPrime = PrimeTester.IsPrimeCpu(cofactor, CancellationToken.None);
 			// cofactorIsPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(cofactor);
 		}
@@ -1741,6 +1758,9 @@ internal static partial class PrimeOrderCalculator
 	{
 		FactorCompletely(value, counts, knownComposite: false);
 	}
+	
+	// private static ulong _factorCompletelyHits;
+	// private static ulong _factorCompletelyPollardRhoHits;
 
 	private static void FactorCompletely(ulong value, Dictionary<ulong, int> counts, bool knownComposite)
 	{
@@ -1749,7 +1769,9 @@ internal static partial class PrimeOrderCalculator
 			return;
 		}
 
-		PrimeTester primeTester = PrimeTester.Exclusive;
+		// Atomic.Add(ref _factorCompletelyHits, 1UL);
+		// Console.WriteLine($"Factor completely hits {Volatile.Read(ref _factorCompletelyHits)}");
+		// PrimeTester primeTester = PrimeTester.Exclusive;
 
 		// bool isPrime = primeTester.HeuristicIsPrimeGpu(value);
 		// bool isPrime = PrimeTester.IsPrimeCpu(value, CancellationToken.None);
@@ -1763,6 +1785,9 @@ internal static partial class PrimeOrderCalculator
 
 		ulong factor = PollardRhoStrict(value);
 		ulong quotient = value / factor;
+
+		// Atomic.Add(ref _factorCompletelyPollardRhoHits, 1UL);
+		// Console.WriteLine($"Factor completely after PollardRho hits {Volatile.Read(ref _factorCompletelyPollardRhoHits)}");
 
 		// isPrime = primeTester.HeuristicIsPrimeGpu(factor);
 		// isPrime = PrimeTester.IsPrimeCpu(factor, CancellationToken.None);
@@ -1797,7 +1822,11 @@ internal static partial class PrimeOrderCalculator
 		else
 		{
 			// isPrime = primeTester.HeuristicIsPrimeGpu(quotient);
-			// isPrime = PrimeTester.IsPrimeCpu(quotient, CancellationToken.None);
+			// isPrime = PrimeTester.IsPrimeInternal(quotient, CancellationToken.None);
+
+			// Atomic.Add(ref _partialFactorCofactorHits, 1UL);
+			// Console.WriteLine($"Partial factor cofactor hits {Volatile.Read(ref _partialFactorCofactorHits)}");
+
 			isPrime = PrimeTester.IsPrimeCpu(quotient, CancellationToken.None);
 			// isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(quotient);
 		}

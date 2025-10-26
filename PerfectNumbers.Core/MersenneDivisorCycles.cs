@@ -360,79 +360,81 @@ public class MersenneDivisorCycles
         return true;
     }
 
-    private static bool TryFactorIntoCountsInternal(ulong value, Dictionary<ulong, int> counts)
-    {
-        // The EvenPerfectBitScanner only requests factors for values >= 2 here. Leave the guard documented without executing it.
-        // if (value <= 1UL)
-        // {
-        //     return true;
-        // }
+	// private static ulong _tryFactorIntoCountsInternalHits;
+	// private static ulong _tryCalculateCycleLengthHeuristicHits;
 
-        ulong remaining = value;
-        uint[] smallPrimes = PrimesGenerator.SmallPrimes;
-        ulong[] smallPrimesSquared = PrimesGenerator.SmallPrimesPow2;
-        int smallLength = smallPrimes.Length;
+	private static bool TryFactorIntoCountsInternal(ulong value, Dictionary<ulong, int> counts)
+	{
+		// The EvenPerfectBitScanner only requests factors for values >= 2 here. Leave the guard documented without executing it.
+		// if (value <= 1UL)
+		// {
+		//     return true;
+		// }
 
-        for (int i = 0; i < smallLength; i++)
-        {
-            ulong prime = smallPrimes[i];
-            if (smallPrimesSquared[i] > remaining)
-            {
-                break;
-            }
+		ulong remaining = value;
+		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
+		ulong[] smallPrimesSquared = PrimesGenerator.SmallPrimesPow2;
+		int smallLength = smallPrimes.Length;
 
-            // TODO: Reuse the remainder-tracking update from the cycle heuristic so repeated divisions disappear from this loop.
-            while ((remaining % prime) == 0UL)
-            {
-                AddFactor(counts, prime);
-                remaining /= prime;
-            }
-        }
+		for (int i = 0; i < smallLength; i++)
+		{
+			ulong prime = smallPrimes[i];
+			if (smallPrimesSquared[i] > remaining)
+			{
+				break;
+			}
 
-        if (remaining == 1UL)
-        {
-            return true;
-        }
+			// TODO: Reuse the remainder-tracking update from the cycle heuristic so repeated divisions disappear from this loop.
+			while ((remaining % prime) == 0UL)
+			{
+				AddFactor(counts, prime);
+				remaining /= prime;
+			}
+		}
 
-        // TODO: Benchmark PrimeTester.IsPrimeCpu against Open.Numeric.Primes on the EvenPerfectBitScanner workloads to confirm the faster option for wide composites.
-        // if (HeuristicPrimeTester.Exclusive.IsPrimeCpu(remaining, CancellationToken.None))
-        if (PrimeTester.IsPrimeCpu(remaining, CancellationToken.None))
-        {
-            AddFactor(counts, remaining);
-            return true;
-        }
+		// TODO: Benchmark PrimeTester.IsPrimeInternal against Open.Numeric.Primes on the EvenPerfectBitScanner workloads to confirm the faster option for wide composites.
+		// if (HeuristicPrimeTester.Exclusive.IsPrime(remaining, CancellationToken.None))
 
-        // TODO: Evaluate folding the remainder-tracking mechanism into PollardRho64 so the walk leverages previously computed residues.
-        ulong factor = PollardRho64(remaining);
-        if (factor == 0UL || factor == remaining)
-        {
-            // Pollard-Rho can still stall on rare stubborn composites during test and benchmark runs, so keep the failure guard in place
-            // and let the caller fall back to the cached cycle calculator.
-            return false;
-        }
+		// Atomic.Add(ref _tryFactorIntoCountsInternalHits, 1UL);
+		// Console.WriteLine($"MersenneDivisorCycles.TryFactorIntoCountsInternal hits {Volatile.Read(ref _tryFactorIntoCountsInternalHits)}");
 
-        // TODO: Investigate computing this quotient via remainder tracking or reciprocal multiplication to avoid the division.
-        ulong quotient = remaining / factor;
-        // Pollard-Rho never returns factors <= 1 on the EvenPerfectBitScanner path; keep the old guard documented
-        // for completeness without branching in the hot path.
-        // if (factor > 1UL && !TryFactorIntoCountsInternal(factor, counts))
-        // {
-        //     return false;
-        // }
+		if (PrimeTester.IsPrimeCpu(remaining, CancellationToken.None))
+		{
+			AddFactor(counts, remaining);
+			return true;
+		}
 
-        if (!TryFactorIntoCountsInternal(factor, counts))
-        {
-            return false;
-        }
+		// TODO: Evaluate folding the remainder-tracking mechanism into PollardRho64 so the walk leverages previously computed residues.
+		ulong factor = PollardRho64(remaining);
+		if (factor == 0UL || factor == remaining)
+		{
+			// Pollard-Rho can still stall on rare stubborn composites during test and benchmark runs, so keep the failure guard in place
+			// and let the caller fall back to the cached cycle calculator.
+			return false;
+		}
 
-        // Guard the recursive calls to terminate once Pollard-Rho reduces either branch to 1.
-        if (quotient > 1UL && !TryFactorIntoCountsInternal(quotient, counts))
-        {
-            return false;
-        }
+		// TODO: Investigate computing this quotient via remainder tracking or reciprocal multiplication to avoid the division.
+		ulong quotient = remaining / factor;
+		// Pollard-Rho never returns factors <= 1 on the EvenPerfectBitScanner path; keep the old guard documented
+		// for completeness without branching in the hot path.
+		// if (factor > 1UL && !TryFactorIntoCountsInternal(factor, counts))
+		// {
+		//     return false;
+		// }
 
-        return true;
-    }
+		if (!TryFactorIntoCountsInternal(factor, counts))
+		{
+			return false;
+		}
+
+		// Guard the recursive calls to terminate once Pollard-Rho reduces either branch to 1.
+		if (quotient > 1UL && !TryFactorIntoCountsInternal(quotient, counts))
+		{
+			return false;
+		}
+
+		return true;
+	}
 
     private static void AddFactor(Dictionary<ulong, int> counts, ulong factor)
     {
@@ -927,6 +929,12 @@ public class MersenneDivisorCycles
             cycleLength = CalculateCycleLengthFallback(divisor);
             return true;
         }
+
+		// if (!skipPrimeOrderHeuristic)
+		// {
+		// 	Atomic.Add(ref _tryCalculateCycleLengthHeuristicHits, 1UL);
+		// 	Console.WriteLine($"MersenneDivisorCycles.CalculateCycleLengthFallback hits {Volatile.Read(ref _tryCalculateCycleLengthHeuristicHits)}");			
+		// }
 
         // if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.Exclusive.IsPrimeCpu(divisor, CancellationToken.None))
         if (!skipPrimeOrderHeuristic && PrimeTester.IsPrimeCpu(divisor, CancellationToken.None))
