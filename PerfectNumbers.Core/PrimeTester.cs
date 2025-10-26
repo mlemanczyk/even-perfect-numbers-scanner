@@ -93,10 +93,10 @@ public sealed class PrimeTester
         bool gpuReportedPrime = !forceCpu && !belowGpuRange && outFlags[0] != 0;
         bool requiresCpuFallback = forceCpu || belowGpuRange || !gpuReportedPrime;
 
-        return requiresCpuFallback ? IsPrimeCp(n, ct) : true;
+        return requiresCpuFallback ? IsPrimeCpu(n, ct) : true;
     }
 
-    public static bool IsPrimeCp(ulong n, CancellationToken ct)
+    public static bool IsPrimeCpu(ulong n, CancellationToken ct)
     {
         // Preserve the legacy entry point for callers that bypass the thread-local caches.
         return Exclusive.IsPrime(n, ct);

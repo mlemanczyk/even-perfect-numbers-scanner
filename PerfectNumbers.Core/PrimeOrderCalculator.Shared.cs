@@ -956,7 +956,7 @@ internal static partial class PrimeOrderCalculator
         if (value <= ulong.MaxValue)
         {
             // return HeuristicPrimeTester.Exclusive.IsPrimeCpu((ulong)value, CancellationToken.None);
-            return PrimeTester.IsPrimeCp((ulong)value, CancellationToken.None);
+            return PrimeTester.IsPrimeCpu((ulong)value, CancellationToken.None);
         }
 
         if ((value & UInt128.One) == UInt128.Zero)

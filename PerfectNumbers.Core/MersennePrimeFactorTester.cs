@@ -26,7 +26,7 @@ public static class MersennePrimeFactorTester
         }
 
         // if (!HeuristicPrimeTester.Exclusive.IsPrimeCpu(q, ct))
-        if (!PrimeTester.IsPrimeCp(q, ct))
+        if (!PrimeTester.IsPrimeCpu(q, ct))
         {
             return false;
         }
@@ -235,7 +235,7 @@ public static class MersennePrimeFactorTester
             }
 
             // if (HeuristicPrimeTester.Exclusive.IsPrimeCpu(m, ct))
-            if (PrimeTester.IsPrimeCp(m, ct))
+            if (PrimeTester.IsPrimeCpu(m, ct))
             {
                 dict[m] = 1;
                 continue;

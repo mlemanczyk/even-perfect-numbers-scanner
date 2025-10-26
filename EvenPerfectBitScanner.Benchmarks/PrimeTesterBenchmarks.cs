@@ -105,7 +105,7 @@ public class PrimeTesterBenchmarks
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (PrimeTester.IsPrimeCp(values[i], cancellationToken))
+            if (PrimeTester.IsPrimeCpu(values[i], cancellationToken))
             {
                 primeCount++;
             }

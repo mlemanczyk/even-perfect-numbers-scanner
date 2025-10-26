@@ -64,12 +64,12 @@ public bool IsPrimeGpu(ulong n, CancellationToken ct)
     bool gpuReportedPrime = !forceCpu && !belowGpuRange && outFlags[0] != 0;
     bool requiresCpuFallback = forceCpu || belowGpuRange || !gpuReportedPrime;
 
-    return requiresCpuFallback ? IsPrimeCp(n, ct) : true;
+    return requiresCpuFallback ? IsPrimeCpu(n, ct) : true;
 }
 ```
 
 ```csharp
-internal static bool IsPrimeCp(ulong n, CancellationToken ct)
+internal static bool IsPrimeCpu(ulong n, CancellationToken ct)
 {
     bool isTwo = n == 2UL;
     bool isOdd = (n & 1UL) != 0UL;
@@ -113,7 +113,7 @@ internal static bool IsPrimeCp(ulong n, CancellationToken ct)
 
 The plan incorporates the updated divisor-class heuristics (Groups A/B, wheels, residue priorities) and connects them to both CPU and GPU execution, including every by-divisor integration point. Items already completed are marked with `[done]`.
 
-1. [done] **Snapshot current implementations** – preserve `IsPrimeGpu` and `IsPrimeCp` as references for regression comparisons and migration checkpoints (see Section 2).
+1. [done] **Snapshot current implementations** – preserve `IsPrimeGpu` and `IsPrimeCpu` as references for regression comparisons and migration checkpoints (see Section 2).
 2. [done] **Introduce placeholder heuristic entry points** – add `IsPrimeCpu` and `IsPrimeGpu` by copying the current internal and GPU methods so subsequent commits can iterate without disrupting legacy behavior.
 3. [done] **Design shared heuristic scaffolding**
    * [done] Added `HeuristicPrimeSieves` to precompute 4M-entry Group A/B divisor tables so heuristic prime checks reuse cached sequences without regenerating wheel steps at runtime; the enumerator remains available for residue-driven consumers.
@@ -140,7 +140,7 @@ The plan incorporates the updated divisor-class heuristics (Groups A/B, wheels, 
    * [done] Streamed GPU batches from the same enumerator and Montgomery preparation data, removing the filtered-divisor scratch arrays while continuing to feed the existing kernel and hit bookkeeping.
 9. [done] **Route legacy prime checks through heuristics**
    * [done] Introduce `HeuristicPrimeTester` so heuristic CPU/GPU checks live alongside the legacy `PrimeTester` implementations while callers opt in explicitly.
-   * [done] Maintain legacy paths for benchmarking via `PrimeTester.IsPrimeCp`, `PrimeTester.Exclusive.IsPrimeGpu`, and the explicit `HeuristicPrimeTester` entry points so benchmark harnesses can compare behaviours without runtime switches.
+   * [done] Maintain legacy paths for benchmarking via `PrimeTester.IsPrimeCpu`, `PrimeTester.Exclusive.IsPrimeGpu`, and the explicit `HeuristicPrimeTester` entry points so benchmark harnesses can compare behaviours without runtime switches.
 10. **Validation and benchmarking**
     * Create targeted unit tests covering boundary cases for Group A/B transitions, wheel enumerations, residue deltas, and the stop-on-hit behaviour.
     * Expand GPU test harnesses to assert equivalence between CPU/GPU heuristics on sampled composite and prime inputs and to verify the residue-stream contract with by-divisor sessions.

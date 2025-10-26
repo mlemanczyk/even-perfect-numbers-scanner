@@ -62,7 +62,7 @@ No other endings are allowed or reordered.
 ## Default Prime Tester Entry Points
 
 * `PrimeTester.IsPrime` and `PrimeTester.IsPrimeGpu` continue to run the legacy trial-division and GPU sieve paths. Use `HeuristicPrimeTester` when the heuristic CPU/GPU flow is required.
-* `HeuristicPrimeTester` always executes the heuristic CPU/GPU implementations; opt into the legacy paths by calling `PrimeTester.IsPrimeCp` or `PrimeTester.Exclusive.IsPrimeGpu` directly.
+* `HeuristicPrimeTester` always executes the heuristic CPU/GPU implementations; opt into the legacy paths by calling `PrimeTester.IsPrimeCpu` or `PrimeTester.Exclusive.IsPrimeGpu` directly.
 * Benchmark harnesses can compare behaviours by calling the legacy helpers on `PrimeTester` alongside the heuristic equivalents on `HeuristicPrimeTester`.
 
 ## Integration with the By-Divisor Pipeline
