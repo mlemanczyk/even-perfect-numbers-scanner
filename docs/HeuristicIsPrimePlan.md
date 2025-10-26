@@ -140,7 +140,7 @@ The plan incorporates the updated divisor-class heuristics (Groups A/B, wheels, 
    * [done] Streamed GPU batches from the same enumerator and Montgomery preparation data, removing the filtered-divisor scratch arrays while continuing to feed the existing kernel and hit bookkeeping.
 9. [done] **Route legacy prime checks through heuristics**
    * [done] Introduce `HeuristicPrimeTester` so heuristic CPU/GPU checks live alongside the legacy `PrimeTester` implementations while callers opt in explicitly.
-   * [done] Maintain legacy paths for benchmarking via `PrimeTester.IsPrimeInternal`, `PrimeTester.IsPrimeGpuFallback`, and the global `HeuristicPrimeTester.EnableHeuristicPrimeTesting` switch so benchmark harnesses can compare behaviours.
+   * [done] Maintain legacy paths for benchmarking via `PrimeTester.IsPrimeInternal`, `PrimeTester.Exclusive.IsPrimeGpu`, and the global `HeuristicPrimeTester.EnableHeuristicPrimeTesting` switch so benchmark harnesses can compare behaviours.
 10. **Validation and benchmarking**
     * Create targeted unit tests covering boundary cases for Group A/B transitions, wheel enumerations, residue deltas, and the stop-on-hit behaviour.
     * Expand GPU test harnesses to assert equivalence between CPU/GPU heuristics on sampled composite and prime inputs and to verify the residue-stream contract with by-divisor sessions.

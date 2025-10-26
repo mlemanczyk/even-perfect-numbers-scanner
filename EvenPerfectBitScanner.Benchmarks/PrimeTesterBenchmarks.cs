@@ -86,7 +86,7 @@ public class PrimeTesterBenchmarks
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (PrimeTester.IsPrimeGpuFallback(values[i], cancellationToken))
+            if (PrimeTester.Exclusive.IsPrimeGpu(values[i], cancellationToken))
             {
                 primeCount++;
             }

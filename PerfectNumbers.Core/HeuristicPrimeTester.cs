@@ -102,7 +102,7 @@ public sealed class HeuristicPrimeTester
     {
         if (!EnableHeuristicPrimeTesting)
         {
-            return PrimeTester.IsPrimeGpuFallback(n, ct);
+            return PrimeTester.Exclusive.IsPrimeGpu(n, ct);
         }
 
         return IsPrimeGpu(n);
@@ -119,7 +119,7 @@ public sealed class HeuristicPrimeTester
     {
         if (!EnableHeuristicPrimeTesting)
         {
-            return PrimeTester.IsPrimeGpuFallback(n, CancellationToken.None);
+            return PrimeTester.Exclusive.IsPrimeGpu(n, CancellationToken.None);
         }
 
         return HeuristicIsPrimeGpuCore(n, sqrtLimit, nMod10);

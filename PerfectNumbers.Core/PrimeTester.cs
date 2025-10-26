@@ -72,18 +72,14 @@ public sealed class PrimeTester
         return Exclusive.IsPrimeGpu(n, CancellationToken.None);
     }
 
-    public static bool IsPrimeGpu(ulong n, ulong limit, byte nMod10)
-    {
-        return Exclusive.IsPrimeGpu(n, CancellationToken.None);
-    }
+    // Legacy overload retained for heuristic toggles; tests and benchmarks now call the thread-local instance directly.
+    // public static bool IsPrimeGpu(ulong n, ulong limit, byte nMod10)
+    // {
+    //     return Exclusive.IsPrimeGpu(n, CancellationToken.None);
+    // }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsPrimeGpu(ulong n, CancellationToken ct)
-    {
-        return IsPrimeGpuFallback(n, ct);
-    }
-
-    public static bool IsPrimeGpuFallback(ulong n, CancellationToken ct)
     {
         bool forceCpu = GpuContextPool.ForceCpu;
         Span<ulong> one = stackalloc ulong[1];
