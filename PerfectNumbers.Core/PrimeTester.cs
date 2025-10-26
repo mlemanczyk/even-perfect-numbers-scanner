@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using ILGPU;
 using ILGPU.Algorithms;
@@ -112,7 +113,6 @@ public sealed class PrimeTester
         var gpu = PrimeTesterGpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
         var state = GpuKernelState.GetOrCreate(accelerator);
-        int totalLength = values.Length;
         int batchSize = Math.Max(1, GpuBatchSize);
 
         lock (gpu.ExecutionLock)
@@ -123,28 +123,108 @@ public sealed class PrimeTester
             ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
             ulong[] temp = pool.Rent(batchSize);
 
-            int pos = 0;
-            while (pos < totalLength)
+            try
             {
-                int remaining = totalLength - pos;
-                int count = remaining > batchSize ? batchSize : remaining;
-
-                values.Slice(pos, count).CopyTo(temp);
-                input.View.CopyFromCPU(ref temp[0], count);
-
-                state.Kernel(count, input.View, state.DevicePrimes.View, output.View);
-                accelerator.Synchronize();
-                output.View.CopyToCPU(ref results[pos], count);
-
-                pos += count;
+                IsPrimeBatchGpu(values, results, accelerator, input, output, temp);
             }
-
-            pool.Return(temp, clearArray: false);
-            state.ReturnScratch(scratch);
+            finally
+            {
+                pool.Return(temp, clearArray: false);
+                state.ReturnScratch(scratch);
+            }
         }
 
         gpu.Dispose();
         limiter.Dispose();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IsPrimeBatchGpu(
+        ReadOnlySpan<ulong> values,
+        Span<byte> results,
+        Accelerator accelerator,
+        MemoryBuffer1D<ulong, Stride1D.Dense> deviceInput,
+        MemoryBuffer1D<byte, Stride1D.Dense> deviceOutput,
+        Span<ulong> stagingBuffer)
+    {
+        if (accelerator is null)
+        {
+            throw new ArgumentNullException(nameof(accelerator));
+        }
+
+        if (deviceInput is null)
+        {
+            throw new ArgumentNullException(nameof(deviceInput));
+        }
+
+        if (deviceOutput is null)
+        {
+            throw new ArgumentNullException(nameof(deviceOutput));
+        }
+
+        if (results.Length < values.Length)
+        {
+            throw new ArgumentException("The results span must be at least as long as the input values.", nameof(results));
+        }
+
+        if (values.IsEmpty)
+        {
+            return;
+        }
+
+        if (stagingBuffer.IsEmpty)
+        {
+            throw new ArgumentException("The staging buffer must contain at least one element.", nameof(stagingBuffer));
+        }
+
+        long inputLength = deviceInput.Length;
+        long outputLength = deviceOutput.Length;
+        if (inputLength <= 0)
+        {
+            throw new ArgumentException("The device input buffer must contain at least one element.", nameof(deviceInput));
+        }
+
+        if (outputLength <= 0)
+        {
+            throw new ArgumentException("The device output buffer must contain at least one element.", nameof(deviceOutput));
+        }
+
+        long stagingLength = stagingBuffer.Length;
+        long capacityLong = Math.Min(Math.Min(inputLength, outputLength), stagingLength);
+        if (capacityLong <= 0)
+        {
+            throw new ArgumentException("The provided buffers must be able to hold at least one element.");
+        }
+
+        int capacity = (int)Math.Min(capacityLong, int.MaxValue);
+
+        var state = GpuKernelState.GetOrCreate(accelerator);
+        var inputView = deviceInput.View;
+        var outputView = deviceOutput.View;
+        var primesView = state.DevicePrimes.View;
+        var stagingSpan = stagingBuffer;
+        ref ulong stagingRef = ref MemoryMarshal.GetReference(stagingSpan);
+
+        int totalLength = values.Length;
+        int pos = 0;
+        while (pos < totalLength)
+        {
+            int remaining = totalLength - pos;
+            int count = remaining > capacity ? capacity : remaining;
+
+            var stagingSlice = stagingSpan.Slice(0, count);
+            values.Slice(pos, count).CopyTo(stagingSlice);
+
+            var inputSlice = inputView.SubView(0, count);
+            inputSlice.CopyFromCPU(ref stagingRef, count);
+
+            var outputSlice = outputView.SubView(0, count);
+            state.Kernel(count, inputSlice, primesView, outputSlice);
+            accelerator.Synchronize();
+            outputSlice.CopyToCPU(ref results[pos], count);
+
+            pos += count;
+        }
     }
 
     internal static class PrimeTesterGpuContextPool
