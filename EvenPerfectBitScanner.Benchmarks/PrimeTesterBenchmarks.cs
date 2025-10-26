@@ -12,8 +12,8 @@ namespace EvenPerfectBitScanner.Benchmarks;
 [MemoryDiagnoser]
 public class PrimeTesterBenchmarks
 {
-    private PrimeTester _cpuTester = null!;
-    private PrimeTester _gpuTester = null!;
+    private HeuristicPrimeTester _cpuTester = null!;
+    private HeuristicPrimeTester _gpuTester = null!;
     private ulong[] _candidates = [];
 
     [ParamsSource(nameof(GetBenchmarkCases))]
@@ -22,9 +22,8 @@ public class PrimeTesterBenchmarks
     [GlobalSetup]
     public void GlobalSetup()
     {
-        PrimeTester.EnableHeuristicPrimeTesting = true;
-        _cpuTester = new PrimeTester();
-        _gpuTester = new PrimeTester();
+        _cpuTester = new HeuristicPrimeTester();
+        _gpuTester = new HeuristicPrimeTester();
         _candidates = BenchmarkCase.Candidates;
 
         if (_candidates.Length == 0)
@@ -33,22 +32,22 @@ public class PrimeTesterBenchmarks
         }
 
         CancellationToken cancellationToken = CancellationToken.None;
-        _cpuTester.IsPrime(_candidates[0], cancellationToken);
-        _gpuTester.IsPrimeGpu(_candidates[0], cancellationToken);
+        _cpuTester.IsPrimeCpu(_candidates[0], cancellationToken);
+        _gpuTester.IsPrimeGpu(_candidates[0]);
         _ = Prime.Numbers.IsPrime(_candidates[0]);
     }
 
     [Benchmark(Baseline = true)]
     public int HeuristicCpu()
     {
-        PrimeTester tester = _cpuTester;
+        HeuristicPrimeTester tester = _cpuTester;
         ulong[] values = _candidates;
         CancellationToken cancellationToken = CancellationToken.None;
         int primeCount = 0;
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (tester.IsPrime(values[i], cancellationToken))
+            if (tester.IsPrimeCpu(values[i], cancellationToken))
             {
                 primeCount++;
             }
@@ -60,14 +59,14 @@ public class PrimeTesterBenchmarks
     [Benchmark]
     public int HeuristicGpu()
     {
-        PrimeTester tester = _gpuTester;
+        HeuristicPrimeTester tester = _gpuTester;
         ulong[] values = _candidates;
         CancellationToken cancellationToken = CancellationToken.None;
         int primeCount = 0;
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (tester.HeuristicIsPrimeGpu(values[i]))
+            if (tester.IsPrimeGpu(values[i]))
             {
                 primeCount++;
             }
@@ -87,7 +86,7 @@ public class PrimeTesterBenchmarks
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (PrimeTester.LegacyIsPrimeGpu(values[i], cancellationToken))
+            if (PrimeTester.Exclusive.IsPrimeGpu(values[i], cancellationToken))
             {
                 primeCount++;
             }
@@ -106,7 +105,7 @@ public class PrimeTesterBenchmarks
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (PrimeTester.LegacyIsPrimeInternal(values[i], cancellationToken))
+            if (PrimeTester.IsPrimeCpu(values[i], cancellationToken))
             {
                 primeCount++;
             }

@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core;
@@ -85,14 +86,16 @@ public static class PrimesGenerator
 
                 if (candidate != 2U)
                 {
-                    if (lastOneCount < targetInt && IsAllowedForLastOne(candidate))
+                    LastDigit lastDigit = GetLastDigit(candidate);
+
+                    if (lastOneCount < targetInt && IsAllowedForLastOne(candidate, lastDigit))
                     {
                         lastOne[lastOneCount] = candidate;
                         lastOnePow2[lastOneCount] = checked((ulong)candidate * candidate);
                         lastOneCount++;
                     }
 
-                    if (lastSevenCount < targetInt && IsAllowedForLastSeven(candidate))
+                    if (lastSevenCount < targetInt && IsAllowedForLastSeven(candidate, lastDigit))
                     {
                         lastSeven[lastSevenCount] = candidate;
                         lastSevenPow2[lastSevenCount] = checked((ulong)candidate * candidate);
@@ -108,25 +111,40 @@ public static class PrimesGenerator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsAllowedForLastOne(uint prime)
+    private static LastDigit GetLastDigit(uint prime)
     {
-        // TODO: Swap the `% 10` usage for ULongExtensions.Mod10 so the hot classification path
-        // reuses the benchmarked residue helper instead of repeated divisions.
         return (prime % 10U) switch
         {
-            1U or 3U or 9U => true,
-            _ => prime == 7U || prime == 11U,
+            1U => LastDigit.One,
+            3U => LastDigit.Three,
+            5U => LastDigit.Five,
+            7U => LastDigit.Seven,
+            9U => LastDigit.Nine,
+            _ => throw new ArgumentOutOfRangeException(nameof(prime)),
         };
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsAllowedForLastSeven(uint prime)
+    private static bool IsAllowedForLastOne(uint prime, LastDigit lastDigit)
+    {
+        // TODO: Swap the `% 10` usage for ULongExtensions.Mod10 so the hot classification path
+        // reuses the benchmarked residue helper instead of repeated divisions.
+        return lastDigit switch
+        {
+            LastDigit.One or LastDigit.Three or LastDigit.Nine => true,
+            LastDigit.Seven => prime == 7U,
+            _ => prime == 11U,
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsAllowedForLastSeven(uint prime, LastDigit lastDigit)
     {
         // TODO: Route this `% 10` classification through ULongExtensions.Mod10 to match the faster
         // residue helper used elsewhere in the scanner.
-        return (prime % 10U) switch
+        return lastDigit switch
         {
-            3U or 7U or 9U => true,
+            LastDigit.Three or LastDigit.Seven or LastDigit.Nine => true,
             _ => prime == 11U,
         };
     }

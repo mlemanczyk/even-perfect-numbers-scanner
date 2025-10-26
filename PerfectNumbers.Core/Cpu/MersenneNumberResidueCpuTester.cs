@@ -5,7 +5,7 @@ public class MersenneNumberResidueCpuTester
 	private ModResidueTracker? _mersenneResidueTracker;
 
 	// CPU residue variant using tracker + unrolled residue updates (no method calls in the loop).
-	public void Scan(ulong exponent, UInt128 twoP, bool lastIsSeven, UInt128 maxK, ref bool isPrime)
+	public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
 		// Initialize/update Mersenne residue tracker and start a merge walk for ascending q divisors
 
@@ -29,9 +29,9 @@ public class MersenneNumberResidueCpuTester
                 step10 = step10.Mod10();
 
 		// Allowed last-digit sets for q depending on last digit of M_p
-		// lastIsSeven == true  => allow {7,9}
-		// lastIsSeven == false => allow {1,3,7,9}
-		int allowMask = lastIsSeven ? CpuConstants.LastSevenMask10 : CpuConstants.LastOneMask10;
+		// LastDigit.Seven => allow {7,9}
+		// otherwise       => allow {1,3,7,9}
+		int allowMask = lastDigit == LastDigit.Seven ? CpuConstants.LastSevenMask10 : CpuConstants.LastOneMask10;
 
 		// Predeclare temps to avoid redeclaration overhead in the loop
 		UInt128 remaining;

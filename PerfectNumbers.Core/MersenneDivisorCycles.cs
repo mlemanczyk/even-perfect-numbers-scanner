@@ -394,8 +394,9 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        // TODO: Benchmark PrimeTester.IsPrimeInternal against Open.Numeric.Primes on the EvenPerfectBitScanner workloads to confirm the faster option for wide composites.
-        if (PrimeTester.IsPrimeInternal(remaining, CancellationToken.None))
+        // TODO: Benchmark PrimeTester.IsPrimeCpu against Open.Numeric.Primes on the EvenPerfectBitScanner workloads to confirm the faster option for wide composites.
+        // if (HeuristicPrimeTester.Exclusive.IsPrimeCpu(remaining, CancellationToken.None))
+        if (PrimeTester.IsPrimeCpu(remaining, CancellationToken.None))
         {
             AddFactor(counts, remaining);
             return true;
@@ -927,7 +928,8 @@ public class MersenneDivisorCycles
             return true;
         }
 
-        if (!skipPrimeOrderHeuristic && PrimeTester.IsPrimeInternal(divisor, CancellationToken.None))
+        // if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.Exclusive.IsPrimeCpu(divisor, CancellationToken.None))
+        if (!skipPrimeOrderHeuristic && PrimeTester.IsPrimeCpu(divisor, CancellationToken.None))
         {
             ulong computedOrder = PrimeOrderCalculator.Calculate(
                     divisor,

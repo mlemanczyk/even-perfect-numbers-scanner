@@ -24,7 +24,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
     // requested by the caller, skip queuing additional block generation, and keep the snapshot cache untouched.
 
     // GPU residue variant: check 2^p % q == 1 for q = 2*p*k + 1.
-    public void Scan(ulong exponent, UInt128 twoP, bool lastIsSeven, UInt128 maxK, ref bool isPrime)
+    public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
     {
         var limiter = GpuPrimeWorkLimiter.Acquire();
         var gpuLease = RentAccelerator();
@@ -46,7 +46,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 
         UInt128 kStart = 1UL;
         UInt128 limit = maxK + UInt128.One;
-        byte last = lastIsSeven ? (byte)1 : (byte)0;
+        byte last = lastDigit == LastDigit.Seven ? (byte)1 : (byte)0;
         twoP.Mod10_8_5_3(out ulong step10, out ulong step8, out ulong step5, out ulong step3);
         step10 = step10.Mod10();
 

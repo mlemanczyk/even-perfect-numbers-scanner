@@ -5,7 +5,7 @@ public class MersenneNumberIncrementalCpuTester(GpuKernelType kernelType)
     private static readonly MersenneDivisorCycles _cycles = MersenneDivisorCycles.Shared;
     private readonly GpuKernelType _kernelType = kernelType;
 
-    public void Scan(ulong exponent, UInt128 twoP, bool lastIsSeven, UInt128 maxK, ref bool isPrime)
+    public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
     {
         UInt128 k = UInt128.One;
         UInt128 one = k;

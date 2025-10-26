@@ -1,4 +1,5 @@
 using FluentAssertions;
+using PerfectNumbers.Core;
 using PerfectNumbers.Core.Cpu;
 using Xunit;
 using UInt128 = System.UInt128;
@@ -7,7 +8,7 @@ namespace PerfectNumbers.Core.Tests;
 
 public class MersenneNumberResidueCpuTesterTests
 {
-    private static bool LastDigitIsSeven(ulong exponent) => (exponent & 3UL) == 3UL;
+    private static LastDigit GetLastDigit(ulong exponent) => (exponent & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
 
     [Fact]
     [Trait("Category", "Fast")]
@@ -24,7 +25,7 @@ public class MersenneNumberResidueCpuTesterTests
     private static void RunCase(MersenneNumberResidueCpuTester tester, ulong exponent, ulong maxK, bool expectedPrime)
     {
         bool isPrime = true;
-        tester.Scan(exponent, (UInt128)exponent << 1, LastDigitIsSeven(exponent), (UInt128)maxK, ref isPrime);
+        tester.Scan(exponent, (UInt128)exponent << 1, GetLastDigit(exponent), (UInt128)maxK, ref isPrime);
         isPrime.Should().Be(expectedPrime);
     }
 }
