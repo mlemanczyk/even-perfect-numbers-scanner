@@ -24,29 +24,27 @@ public sealed class PrimeTester
 
     public bool IsPrime(ulong n, CancellationToken ct)
     {
-        // EvenPerfectBitScanner feeds monotonically increasing odd exponents that start well above the
-        // small-prime cutoffs and already exclude multiples of five. These guards remain for targeted
-        // tests and diagnostics so ad-hoc callers can still probe small or even values when needed.
         if (n <= 1UL)
         {
             return false;
         }
 
-        // bool isTwo = n == 2UL;
+        if (n == 2UL)
+        {
+            throw new InvalidOperationException("PrimeTester.IsPrime encountered the sentinel input 2.");
+        }
+
         bool isOdd = (n & 1UL) != 0UL;
-        // ulong mod5 = n % 5UL;
-        // bool divisibleByFive = n > 5UL && mod5 == 0UL;
+        bool result = isOdd;
 
-        bool result = /*n >= 2UL && (isTwo || */ (n == 2UL || isOdd) /*) && !divisibleByFive*/;
-
-        // Production scans always fall through to trial division because n is already > 5 by the time this
-        // path executes. Keep the guard so synthetic callers that hammer tiny inputs can skip the loop.
-        bool requiresTrialDivision = result /*&& n >= 7UL && !isTwo*/ && n >= 7UL;
+        bool requiresTrialDivision = result && n >= 7UL;
 
         if (requiresTrialDivision)
         {
-            bool sharesMaxExponentFactor = n.Mod10() == 1UL && SharesFactorWithMaxExponent(n);
-            result &= !sharesMaxExponentFactor;
+            // EvenPerfectBitScanner streams exponents starting at 136,279,841, so the Mod10/GCD guard never fires on the
+            // production path. Leave the logic commented out as instrumentation for diagnostic builds.
+            // bool sharesMaxExponentFactor = n.Mod10() == 1UL && SharesFactorWithMaxExponent(n);
+            // result &= !sharesMaxExponentFactor;
 
             if (result)
             {
@@ -95,10 +93,10 @@ public sealed class PrimeTester
         bool gpuReportedPrime = !forceCpu && !belowGpuRange && outFlags[0] != 0;
         bool requiresCpuFallback = forceCpu || belowGpuRange || !gpuReportedPrime;
 
-        return requiresCpuFallback ? IsPrimeInternal(n, ct) : true;
+        return requiresCpuFallback ? IsPrimeCp(n, ct) : true;
     }
 
-    public static bool IsPrimeInternal(ulong n, CancellationToken ct)
+    public static bool IsPrimeCp(ulong n, CancellationToken ct)
     {
         // Preserve the legacy entry point for callers that bypass the thread-local caches.
         return Exclusive.IsPrime(n, ct);

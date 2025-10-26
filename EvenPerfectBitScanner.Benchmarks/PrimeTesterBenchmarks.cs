@@ -32,8 +32,8 @@ public class PrimeTesterBenchmarks
         }
 
         CancellationToken cancellationToken = CancellationToken.None;
-        _cpuTester.IsPrime(_candidates[0], cancellationToken);
-        _gpuTester.IsPrimeGpu(_candidates[0], cancellationToken);
+        _cpuTester.IsPrimeCpu(_candidates[0], cancellationToken);
+        _gpuTester.IsPrimeGpu(_candidates[0]);
         _ = Prime.Numbers.IsPrime(_candidates[0]);
     }
 
@@ -47,7 +47,7 @@ public class PrimeTesterBenchmarks
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (tester.IsPrime(values[i], cancellationToken))
+            if (tester.IsPrimeCpu(values[i], cancellationToken))
             {
                 primeCount++;
             }
@@ -105,7 +105,7 @@ public class PrimeTesterBenchmarks
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (PrimeTester.IsPrimeInternal(values[i], cancellationToken))
+            if (PrimeTester.IsPrimeCp(values[i], cancellationToken))
             {
                 primeCount++;
             }

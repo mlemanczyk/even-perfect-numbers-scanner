@@ -18,7 +18,7 @@ Divisor Cycle Cache & Generation
 - PerfectNumbers.Core/UInt128Extensions.cs:372: If the cache lacks this cycle, immediately schedule the configured device (GPU by default) to compute it on the fly and skip inserting it into the cache so wide-order factoring can still leverage cycle stepping without breaching the memory cap or introducing extra synchronization.
 
 Primality & Order Screening
-- PerfectNumbers.Core/MersenneDivisorCycles.cs:477: Benchmark PrimeTester.IsPrimeInternal against Open.Numeric.Primes on the EvenPerfectBitScanner workloads to confirm the faster option for wide composites.
+- PerfectNumbers.Core/MersenneDivisorCycles.cs:477: Benchmark PrimeTester.IsPrimeCp against Open.Numeric.Primes on the EvenPerfectBitScanner workloads to confirm the faster option for wide composites.
 - PerfectNumbers.Core/ULongExtensions.cs:119: When the shared cycle snapshot cannot serve this divisor, trigger an on-demand GPU computation (respecting the configured device) without promoting the result into the cache so the order calculator still benefits from cycle stepping while keeping the single-block memory plan intact.
 - PerfectNumbers.Core/ULongExtensions.cs:132: Replace this `%` driven factor peeling with the divisor-cycle aware factoring helper so large orders reuse the cached remainders highlighted in the latest divisor-cycle benchmarks instead of recomputing slow modulo checks.
 - PerfectNumbers.Core/ULongExtensions.cs:279: Swap this modulo check for the shared small-prime cycle filter once the divisor-cycle cache is mandatory, matching the PrimeTester improvements noted in the CPU sieve benchmarks.

@@ -516,7 +516,7 @@ internal static partial class PrimeOrderCalculator
 					return false;
 				}
 
-				// if (!PrimeTester.IsPrimeInternal(orderFactors.Cofactor, CancellationToken.None))
+				// if (!PrimeTester.IsPrimeCp(orderFactors.Cofactor, CancellationToken.None))
 				if (!orderFactors.CofactorIsPrime)
 				{
 					return false;
@@ -1123,8 +1123,8 @@ internal static partial class PrimeOrderCalculator
 					// }
 
 					// bool isPrime = primeTester.HeuristicIsPrimeGpu(composite);
-					// bool isPrime = PrimeTester.IsPrimeInternal(composite, CancellationToken.None);
-					bool isPrime = PrimeTester.IsPrimeInternal(composite, CancellationToken.None);
+					// bool isPrime = PrimeTester.IsPrimeCp(composite, CancellationToken.None);
+					bool isPrime = PrimeTester.IsPrimeCp(composite, CancellationToken.None);
 					// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
 					if (isPrime)
@@ -1186,8 +1186,8 @@ internal static partial class PrimeOrderCalculator
 			if (!entry.HasKnownPrimality)
 			{
 				// bool isPrime = primeTester.HeuristicIsPrimeGpu(composite);
-				// bool isPrime = PrimeTester.IsPrimeInternal(composite, CancellationToken.None);
-				bool isPrime = PrimeTester.IsPrimeInternal(composite, CancellationToken.None);
+				// bool isPrime = PrimeTester.IsPrimeCp(composite, CancellationToken.None);
+				bool isPrime = PrimeTester.IsPrimeCp(composite, CancellationToken.None);
 				// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 				
 				entry = entry.WithPrimality(isPrime);
@@ -1219,8 +1219,8 @@ internal static partial class PrimeOrderCalculator
 		else
 		{
 			// cofactorIsPrime = primeTester.HeuristicIsPrimeGpu(cofactor);
-			// cofactorIsPrime = PrimeTester.IsPrimeInternal(cofactor, CancellationToken.None);
-			cofactorIsPrime = PrimeTester.IsPrimeInternal(cofactor, CancellationToken.None);
+			// cofactorIsPrime = PrimeTester.IsPrimeCp(cofactor, CancellationToken.None);
+			cofactorIsPrime = PrimeTester.IsPrimeCp(cofactor, CancellationToken.None);
 			// cofactorIsPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(cofactor);
 		}
 
@@ -1752,8 +1752,8 @@ internal static partial class PrimeOrderCalculator
 		PrimeTester primeTester = PrimeTester.Exclusive;
 
 		// bool isPrime = primeTester.HeuristicIsPrimeGpu(value);
-		// bool isPrime = PrimeTester.IsPrimeInternal(value, CancellationToken.None);
-		bool isPrime = PrimeTester.IsPrimeInternal(value, CancellationToken.None);
+		// bool isPrime = PrimeTester.IsPrimeCp(value, CancellationToken.None);
+		bool isPrime = PrimeTester.IsPrimeCp(value, CancellationToken.None);
 		// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(value);
 		if (!knownComposite && isPrime)
 		{
@@ -1765,8 +1765,8 @@ internal static partial class PrimeOrderCalculator
 		ulong quotient = value / factor;
 
 		// isPrime = primeTester.HeuristicIsPrimeGpu(factor);
-		// isPrime = PrimeTester.IsPrimeInternal(factor, CancellationToken.None);
-		isPrime = PrimeTester.IsPrimeInternal(factor, CancellationToken.None);
+		// isPrime = PrimeTester.IsPrimeCp(factor, CancellationToken.None);
+		isPrime = PrimeTester.IsPrimeCp(factor, CancellationToken.None);
 		// isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factor);
 		if (isPrime)
 		{
@@ -1797,8 +1797,8 @@ internal static partial class PrimeOrderCalculator
 		else
 		{
 			// isPrime = primeTester.HeuristicIsPrimeGpu(quotient);
-			// isPrime = PrimeTester.IsPrimeInternal(quotient, CancellationToken.None);
-			isPrime = PrimeTester.IsPrimeInternal(quotient, CancellationToken.None);
+			// isPrime = PrimeTester.IsPrimeCp(quotient, CancellationToken.None);
+			isPrime = PrimeTester.IsPrimeCp(quotient, CancellationToken.None);
 			// isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(quotient);
 		}
 
