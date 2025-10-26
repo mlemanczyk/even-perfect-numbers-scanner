@@ -142,12 +142,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         if (divisor.CompareTo(limit) > 0)
         {
             processedAll = true;
-            divisor.High = 0UL;
-            divisor.Low = 0UL;
-            step.High = 0UL;
-            step.Low = 0UL;
-            limit.High = 0UL;
-            limit.Low = 0UL;
             return false;
         }
 
@@ -228,12 +222,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 {
                     // A cycle equal to the tested exponent (which is prime in this path) guarantees that the candidate divides
                     // the corresponding Mersenne number because the order of 2 modulo the divisor is exactly p.
-                    divisor.High = 0UL;
-                    divisor.Low = 0UL;
-                    step.High = 0UL;
-                    step.Low = 0UL;
-                    limit.High = 0UL;
-                    limit.Low = 0UL;
                     processedAll = true;
                     return true;
                 }
@@ -254,12 +242,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         }
 
         processedAll = divisor.CompareTo(limit) > 0;
-        divisor.High = 0UL;
-        divisor.Low = 0UL;
-        step.High = 0UL;
-        step.Low = 0UL;
-        limit.High = 0UL;
-        limit.Low = 0UL;
         return false;
     }
 
