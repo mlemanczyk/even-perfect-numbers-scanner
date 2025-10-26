@@ -106,13 +106,17 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         processedAll = false;
         processedCount = 0UL;
 
+        // var enumerator = HeuristicPrimeTester.CreateMersenneDivisorEnumerator(prime, allowedMax);
         var enumerator = PrimeTester.CreateMersenneDivisorEnumerator(prime, allowedMax);
 
+        // while (enumerator.TryGetNext(out HeuristicPrimeTester.HeuristicDivisorCandidate candidate))
         while (enumerator.TryGetNext(out PrimeTester.HeuristicDivisorCandidate candidate))
         {
             processedCount = enumerator.ProcessedCount;
 
+            // HeuristicPrimeTester.HeuristicDivisorPreparation preparation = HeuristicPrimeTester.PrepareHeuristicDivisor(in candidate);
             PrimeTester.HeuristicDivisorPreparation preparation = PrimeTester.PrepareHeuristicDivisor(in candidate);
+            // ulong divisorCycle = HeuristicPrimeTester.ResolveHeuristicCycleLength(
             ulong divisorCycle = PrimeTester.ResolveHeuristicCycleLength(
                 prime,
                 in preparation,

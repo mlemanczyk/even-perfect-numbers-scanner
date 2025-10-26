@@ -25,6 +25,7 @@ public static class MersennePrimeFactorTester
             return false;
         }
 
+        // if (!HeuristicPrimeTester.Exclusive.IsPrime(q, ct))
         if (!PrimeTester.IsPrimeInternal(q, ct))
         {
             return false;
@@ -233,6 +234,7 @@ public static class MersennePrimeFactorTester
                 continue;
             }
 
+            // if (HeuristicPrimeTester.Exclusive.IsPrime(m, ct))
             if (PrimeTester.IsPrimeInternal(m, ct))
             {
                 dict[m] = 1;

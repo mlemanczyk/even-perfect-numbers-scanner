@@ -189,6 +189,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         processedCount = 0UL;
         lastProcessed = 0UL;
 
+        // var enumerator = HeuristicPrimeTester.CreateMersenneDivisorEnumerator(prime, allowedMax);
         var enumerator = PrimeTester.CreateMersenneDivisorEnumerator(prime, allowedMax);
 
         Span<ulong> divisorSpan = divisors.AsSpan();
@@ -203,12 +204,15 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             int admissibleCount = 0;
             int exponentIndex = 0;
 
+            // while (admissibleCount < batchCapacity && enumerator.TryGetNext(out HeuristicPrimeTester.HeuristicDivisorCandidate candidate))
             while (admissibleCount < batchCapacity && enumerator.TryGetNext(out PrimeTester.HeuristicDivisorCandidate candidate))
             {
                 processedCount = enumerator.ProcessedCount;
                 ulong divisorValue = candidate.Value;
 
+                // HeuristicPrimeTester.HeuristicDivisorPreparation preparation = HeuristicPrimeTester.PrepareHeuristicDivisor(in candidate);
                 PrimeTester.HeuristicDivisorPreparation preparation = PrimeTester.PrepareHeuristicDivisor(in candidate);
+                // ulong divisorCycle = HeuristicPrimeTester.ResolveHeuristicCycleLength(
                 ulong divisorCycle = PrimeTester.ResolveHeuristicCycleLength(
                     prime,
                     in preparation,
