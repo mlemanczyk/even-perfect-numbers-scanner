@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Gpu;
 
 namespace EvenPerfectBitScanner.Benchmarks;
 
@@ -36,10 +37,7 @@ public class MulHighBenchmarks
     [Benchmark(Baseline = true)]
     public ulong CurrentImplementation()
     {
-        // TODO: Replace ULongExtensions.MulHigh with the UInt128-based helper on CPU paths; it was
-        // 11–14× faster in the latest benchmarks while the GPU-specific variant remains available
-        // separately.
-        return ULongExtensions.MulHigh(Input.X, Input.Y);
+        return ULongExtensions.MulHighCpu(Input.X, Input.Y);
     }
 
     /// <summary>
@@ -107,7 +105,9 @@ public class MulHighBenchmarks
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong MulHighWithGpuUInt128(ulong x, ulong y)
     {
-        return ULongExtensions.MulHighGpuCompatible(x, y);
+        GpuUInt128 product = new(x);
+        GpuUInt128.Mul64(ref product, 0UL, y);
+        return product.High;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
