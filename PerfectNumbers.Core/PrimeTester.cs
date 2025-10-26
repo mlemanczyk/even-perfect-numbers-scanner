@@ -27,16 +27,21 @@ public sealed class PrimeTester
         // EvenPerfectBitScanner feeds monotonically increasing odd exponents that start well above the
         // small-prime cutoffs and already exclude multiples of five. These guards remain for targeted
         // tests and diagnostics so ad-hoc callers can still probe small or even values when needed.
-        bool isTwo = n == 2UL;
-        bool isOdd = (n & 1UL) != 0UL;
-        ulong mod5 = n % 5UL;
-        bool divisibleByFive = n > 5UL && mod5 == 0UL;
+        if (n <= 1UL)
+        {
+            return false;
+        }
 
-        bool result = n >= 2UL && (isTwo || isOdd) && !divisibleByFive;
+        // bool isTwo = n == 2UL;
+        bool isOdd = (n & 1UL) != 0UL;
+        // ulong mod5 = n % 5UL;
+        // bool divisibleByFive = n > 5UL && mod5 == 0UL;
+
+        bool result = /*n >= 2UL && (isTwo || */ (n == 2UL || isOdd) /*) && !divisibleByFive*/;
 
         // Production scans always fall through to trial division because n is already > 5 by the time this
         // path executes. Keep the guard so synthetic callers that hammer tiny inputs can skip the loop.
-        bool requiresTrialDivision = result && n >= 7UL && !isTwo;
+        bool requiresTrialDivision = result /*&& n >= 7UL && !isTwo*/ && n >= 7UL;
 
         if (requiresTrialDivision)
         {
@@ -71,12 +76,6 @@ public sealed class PrimeTester
     {
         return Exclusive.IsPrimeGpu(n, CancellationToken.None);
     }
-
-    // Legacy overload retained for heuristic toggles; tests and benchmarks now call the thread-local instance directly.
-    // public static bool IsPrimeGpu(ulong n, ulong limit, byte nMod10)
-    // {
-    //     return Exclusive.IsPrimeGpu(n, CancellationToken.None);
-    // }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsPrimeGpu(ulong n, CancellationToken ct)
@@ -113,52 +112,41 @@ public sealed class PrimeTester
     {
         var limiter = GpuPrimeWorkLimiter.Acquire();
         var gpu = PrimeTesterGpuContextPool.Rent();
+        var accelerator = gpu.Accelerator;
+        var state = GpuKernelState.GetOrCreate(accelerator);
+        int totalLength = values.Length;
+        int batchSize = Math.Max(1, GpuBatchSize);
 
-        try
+        lock (gpu.ExecutionLock)
         {
-            var accelerator = gpu.Accelerator;
-            var state = GpuKernelState.GetOrCreate(accelerator);
-            int totalLength = values.Length;
-            int batchSize = Math.Max(1, GpuBatchSize);
+            var scratch = state.RentScratch(batchSize, accelerator);
+            var input = scratch.Input;
+            var output = scratch.Output;
+            ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
+            ulong[] temp = pool.Rent(batchSize);
 
-            lock (gpu.ExecutionLock)
+            int pos = 0;
+            while (pos < totalLength)
             {
-                var scratch = state.RentScratch(batchSize, accelerator);
-                var input = scratch.Input;
-                var output = scratch.Output;
-                ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
-                ulong[] temp = pool.Rent(batchSize);
+                int remaining = totalLength - pos;
+                int count = remaining > batchSize ? batchSize : remaining;
 
-                try
-                {
-                    int pos = 0;
-                    while (pos < totalLength)
-                    {
-                        int remaining = totalLength - pos;
-                        int count = remaining > batchSize ? batchSize : remaining;
+                values.Slice(pos, count).CopyTo(temp);
+                input.View.CopyFromCPU(ref temp[0], count);
 
-                        values.Slice(pos, count).CopyTo(temp);
-                        input.View.CopyFromCPU(ref temp[0], count);
+                state.Kernel(count, input.View, state.DevicePrimes.View, output.View);
+                accelerator.Synchronize();
+                output.View.CopyToCPU(ref results[pos], count);
 
-                        state.Kernel(count, input.View, state.DevicePrimes.View, output.View);
-                        accelerator.Synchronize();
-                        output.View.CopyToCPU(ref results[pos], count);
-
-                        pos += count;
-                    }
-                }
-                finally
-                {
-                    pool.Return(temp, clearArray: false);
-                    state.ReturnScratch(scratch);
-                }
+                pos += count;
             }
+
+            pool.Return(temp, clearArray: false);
+            state.ReturnScratch(scratch);
         }
-        finally
-        {
-            gpu.Dispose();
-            limiter.Dispose();
-        }
+
+        gpu.Dispose();
+        limiter.Dispose();
     }
 
     internal static class PrimeTesterGpuContextPool
