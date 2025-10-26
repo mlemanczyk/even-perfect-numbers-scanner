@@ -441,8 +441,8 @@ public static partial class ULongExtensions
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong MulHighGpu(this ulong x, ulong y)
 	{
-		// The CPU helpers rely on UInt128 via MulHighCpu; retain this manual decomposition for GPU-style
-		// arithmetic so callers can avoid the intrinsic when staging work for accelerators.
+		// Retain this manual decomposition for GPU-style arithmetic so callers staging accelerator work
+		// can avoid the UInt128 intrinsic while keeping parity with GpuUInt128.MulHigh.
 		ulong xLow = (uint)x;
 		ulong xHigh = x >> 32;
 		ulong yLow = (uint)y;

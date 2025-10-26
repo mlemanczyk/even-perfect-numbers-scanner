@@ -46,7 +46,6 @@ public sealed class KernelContainer
     public MemoryBuffer1D<int, Stride1D.Dense>? SmallPrimeFactorExponentSlots;
     public MemoryBuffer1D<int, Stride1D.Dense>? SmallPrimeFactorCountSlot;
     public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimeFactorRemainingSlot;
-    public MemoryBuffer1D<byte, Stride1D.Dense>? SmallPrimeFactorFullyFactoredSlot;
     public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastOne;
     public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimesPow2LastOne;
     public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastSeven;
@@ -108,20 +107,17 @@ public readonly struct SmallPrimeFactorScratch
     public readonly MemoryBuffer1D<int, Stride1D.Dense> ExponentSlots;
     public readonly MemoryBuffer1D<int, Stride1D.Dense> CountSlot;
     public readonly MemoryBuffer1D<ulong, Stride1D.Dense> RemainingSlot;
-    public readonly MemoryBuffer1D<byte, Stride1D.Dense> FullyFactoredSlot;
 
     public SmallPrimeFactorScratch(
         MemoryBuffer1D<ulong, Stride1D.Dense> primeSlots,
         MemoryBuffer1D<int, Stride1D.Dense> exponentSlots,
         MemoryBuffer1D<int, Stride1D.Dense> countSlot,
-        MemoryBuffer1D<ulong, Stride1D.Dense> remainingSlot,
-        MemoryBuffer1D<byte, Stride1D.Dense> fullyFactoredSlot)
+        MemoryBuffer1D<ulong, Stride1D.Dense> remainingSlot)
     {
         PrimeSlots = primeSlots;
         ExponentSlots = exponentSlots;
         CountSlot = countSlot;
         RemainingSlot = remainingSlot;
-        FullyFactoredSlot = fullyFactoredSlot;
     }
 
     public void Clear()
@@ -130,7 +126,6 @@ public readonly struct SmallPrimeFactorScratch
         ExponentSlots.MemSetToZero();
         CountSlot.MemSetToZero();
         RemainingSlot.MemSetToZero();
-        FullyFactoredSlot.MemSetToZero();
     }
 }
 
@@ -278,14 +273,7 @@ public class GpuKernelPool
                 kernels.SmallPrimeFactorRemainingSlot = remainingSlot;
             }
 
-            MemoryBuffer1D<byte, Stride1D.Dense>? fullyFactoredSlot = kernels.SmallPrimeFactorFullyFactoredSlot;
-            if (fullyFactoredSlot is null)
-            {
-                fullyFactoredSlot = accelerator.Allocate1D<byte>(1);
-                kernels.SmallPrimeFactorFullyFactoredSlot = fullyFactoredSlot;
-            }
-
-            return new SmallPrimeFactorScratch(primeSlots!, exponentSlots!, countSlot!, remainingSlot!, fullyFactoredSlot!);
+            return new SmallPrimeFactorScratch(primeSlots!, exponentSlots!, countSlot!, remainingSlot!);
         }
     }
 

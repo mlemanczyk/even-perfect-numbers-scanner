@@ -130,11 +130,7 @@ internal static partial class PrimeOrderGpuHeuristics
         });
     }
 
-
     public static bool TryPartialFactor(
-        Accelerator accelerator,
-        AcceleratorStream stream,
-        SmallPrimeFactorScratch scratch,
         ulong value,
         uint limit,
         Span<ulong> primeTargets,
@@ -146,64 +142,29 @@ internal static partial class PrimeOrderGpuHeuristics
         factorCount = 0;
         remaining = value;
         fullyFactored = false;
+
+        if (primeTargets.Length == 0 || exponentTargets.Length == 0)
+        {
+            return false;
+        }
 
         primeTargets.Clear();
         exponentTargets.Clear();
 
-        return TryPartialFactorCore(
-            accelerator,
-            stream,
-            scratch,
-            value,
-            limit,
-            primeTargets,
-            exponentTargets,
-            out factorCount,
-            out remaining,
-            out fullyFactored);
-    }
+        if (!TryLaunchPartialFactorKernel(
+                value,
+                limit,
+                primeTargets,
+                exponentTargets,
+                out int extracted,
+                out ulong leftover,
+                out bool kernelFullyFactored))
+        {
+            return false;
+        }
 
-    private static bool TryPartialFactorCore(
-        Accelerator accelerator,
-        AcceleratorStream stream,
-        SmallPrimeFactorScratch scratch,
-        ulong value,
-        uint limit,
-        Span<ulong> primeTargets,
-        Span<int> exponentTargets,
-        out int factorCount,
-        out ulong remaining,
-        out bool fullyFactored)
-    {
-        factorCount = 0;
-        remaining = value;
-        fullyFactored = false;
-
-        scratch.Clear();
-
-        var kernel = GetPartialFactorKernel(accelerator);
-        SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
-
-        kernel(
-            stream,
-            1,
-            cache.Primes!.View,
-            cache.Squares!.View,
-            cache.Count,
-            primeTargets.Length,
-            value,
-            limit,
-            scratch.PrimeSlots.View,
-            scratch.ExponentSlots.View,
-            scratch.CountSlot.View,
-            scratch.RemainingSlot.View,
-            scratch.FullyFactoredSlot.View);
-
-        stream.Synchronize();
-
-        scratch.CountSlot.View.CopyToCPU(ref factorCount, 1);
         int capacity = Math.Min(primeTargets.Length, exponentTargets.Length);
-        if (factorCount > capacity)
+        if (extracted > capacity)
         {
             factorCount = 0;
             remaining = value;
@@ -211,19 +172,102 @@ internal static partial class PrimeOrderGpuHeuristics
             return false;
         }
 
-        if (factorCount > 0)
-        {
-            scratch.PrimeSlots.View.CopyToCPU(ref MemoryMarshal.GetReference(primeTargets), factorCount);
-            scratch.ExponentSlots.View.CopyToCPU(ref MemoryMarshal.GetReference(exponentTargets), factorCount);
-        }
-
-        scratch.RemainingSlot.View.CopyToCPU(ref remaining, 1);
-
-        byte fullyFactoredFlag = 0;
-        scratch.FullyFactoredSlot.View.CopyToCPU(ref fullyFactoredFlag, 1);
-        bool kernelFullyFactored = fullyFactoredFlag != 0;
-        fullyFactored = kernelFullyFactored && remaining == 1UL;
+        factorCount = extracted;
+        remaining = leftover;
+        fullyFactored = kernelFullyFactored && leftover == 1UL;
         return true;
+    }
+
+    private static bool TryLaunchPartialFactorKernel(
+        ulong value,
+        uint limit,
+        Span<ulong> primeTargets,
+        Span<int> exponentTargets,
+        out int factorCount,
+        out ulong remaining,
+        out bool fullyFactored)
+    {
+        factorCount = 0;
+        remaining = value;
+        fullyFactored = false;
+
+        try
+        {
+            var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+            var execution = lease.EnterExecutionScope();
+            Accelerator accelerator = lease.Accelerator;
+            AcceleratorStream stream = lease.Stream;
+
+            var kernel = GetPartialFactorKernel(accelerator);
+			SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
+
+			// TODO: We should create / reallocate these buffer only once or if the new required length is bigger than capacity. 
+            var factorBuffer = accelerator.Allocate1D<ulong>(primeTargets.Length);
+            var exponentBuffer = accelerator.Allocate1D<int>(exponentTargets.Length);
+            var countBuffer = accelerator.Allocate1D<int>(1);
+            var remainingBuffer = accelerator.Allocate1D<ulong>(1);
+            var fullyFactoredBuffer = accelerator.Allocate1D<byte>(1);
+
+			// TODO: There is no need to clear these buffers because the kernel will always assign values within the required bounds.
+			// factorBuffer.MemSetToZero();
+            // exponentBuffer.MemSetToZero();
+            // countBuffer.MemSetToZero();
+            // remainingBuffer.MemSetToZero();
+            // fullyFactoredBuffer.MemSetToZero();
+
+            kernel(
+                stream,
+                1,
+                cache.Primes!.View,
+                cache.Squares!.View,
+                cache.Count,
+                primeTargets.Length,
+                value,
+                limit,
+                factorBuffer.View,
+                exponentBuffer.View,
+                countBuffer.View,
+                remainingBuffer.View,
+                fullyFactoredBuffer.View);
+
+            stream.Synchronize();
+
+            countBuffer.View.CopyToCPU(ref factorCount, 1);
+            factorCount = Math.Min(factorCount, primeTargets.Length);
+            factorBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(primeTargets), primeTargets.Length);
+            exponentBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(exponentTargets), exponentTargets.Length);
+            remainingBuffer.View.CopyToCPU(ref remaining, 1);
+
+            byte fullyFactoredFlag = 0;
+            fullyFactoredBuffer.View.CopyToCPU(ref fullyFactoredFlag, 1);
+            fullyFactored = fullyFactoredFlag != 0;
+
+			// TODO: These buffers shouldn't be disposed but rather reused accross call with the assigned accelerator.
+            factorBuffer.Dispose();
+            exponentBuffer.Dispose();
+            countBuffer.Dispose();
+            remainingBuffer.Dispose();
+            fullyFactoredBuffer.Dispose();
+            execution.Dispose();
+            lease.Dispose();
+            return true;
+        }
+        catch (CLException ex)
+        {
+            Console.WriteLine($"GPU ERROR ({ex.Error}): {ex.Message}");
+            factorCount = 0;
+            remaining = value;
+            fullyFactored = false;
+            return false;
+        }
+        catch (Exception ex) when (ex is AcceleratorException or InternalCompilerException or NotSupportedException or InvalidOperationException or AggregateException)
+        {
+            Console.WriteLine($"GPU ERROR: {ex.Message}");
+            factorCount = 0;
+            remaining = value;
+            fullyFactored = false;
+            return false;
+        }
     }
 
     public static GpuPow2ModStatus TryPow2Mod(ulong exponent, ulong prime, out ulong remainder, in MontgomeryDivisorData divisorData)

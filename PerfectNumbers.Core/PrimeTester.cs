@@ -3,7 +3,6 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using ILGPU;
 using ILGPU.Algorithms;
@@ -113,6 +112,7 @@ public sealed class PrimeTester
         var gpu = PrimeTesterGpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
         var state = GpuKernelState.GetOrCreate(accelerator);
+        int totalLength = values.Length;
         int batchSize = Math.Max(1, GpuBatchSize);
 
         lock (gpu.ExecutionLock)
@@ -123,65 +123,28 @@ public sealed class PrimeTester
             ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
             ulong[] temp = pool.Rent(batchSize);
 
-            try
+            int pos = 0;
+            while (pos < totalLength)
             {
-                IsPrimeBatchGpu(values, results, accelerator, input, output, temp);
+                int remaining = totalLength - pos;
+                int count = remaining > batchSize ? batchSize : remaining;
+
+                values.Slice(pos, count).CopyTo(temp);
+                input.View.CopyFromCPU(ref temp[0], count);
+
+                state.Kernel(count, input.View, state.DevicePrimes.View, output.View);
+                accelerator.Synchronize();
+                output.View.CopyToCPU(ref results[pos], count);
+
+                pos += count;
             }
-            finally
-            {
-                pool.Return(temp, clearArray: false);
-                state.ReturnScratch(scratch);
-            }
+
+            pool.Return(temp, clearArray: false);
+            state.ReturnScratch(scratch);
         }
 
         gpu.Dispose();
         limiter.Dispose();
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void IsPrimeBatchGpu(
-        ReadOnlySpan<ulong> values,
-        Span<byte> results,
-        Accelerator accelerator,
-        MemoryBuffer1D<ulong, Stride1D.Dense> deviceInput,
-        MemoryBuffer1D<byte, Stride1D.Dense> deviceOutput,
-        Span<ulong> stagingBuffer)
-    {
-        if (values.IsEmpty)
-        {
-            return;
-        }
-
-        int capacity = (int)Math.Min(Math.Min(deviceInput.Length, deviceOutput.Length), stagingBuffer.Length);
-
-        var state = GpuKernelState.GetOrCreate(accelerator);
-        var inputView = deviceInput.View;
-        var outputView = deviceOutput.View;
-        var primesView = state.DevicePrimes.View;
-        var primeSquaresView = state.DevicePrimeSquares.View;
-        var stagingSpan = stagingBuffer;
-        ref ulong stagingRef = ref MemoryMarshal.GetReference(stagingSpan);
-
-        int totalLength = values.Length;
-        int pos = 0;
-        while (pos < totalLength)
-        {
-            int remaining = totalLength - pos;
-            int count = remaining > capacity ? capacity : remaining;
-
-            var stagingSlice = stagingSpan.Slice(0, count);
-            values.Slice(pos, count).CopyTo(stagingSlice);
-
-            var inputSlice = inputView.SubView(0, count);
-            inputSlice.CopyFromCPU(ref stagingRef, count);
-
-            var outputSlice = outputView.SubView(0, count);
-            state.Kernel(count, inputSlice, primesView, primeSquaresView, outputSlice);
-            accelerator.Synchronize();
-            outputSlice.CopyToCPU(ref results[pos], count);
-
-            pos += count;
-        }
     }
 
     internal static class PrimeTesterGpuContextPool
@@ -273,10 +236,9 @@ public sealed class PrimeTester
     // Per-accelerator GPU state for prime sieve (kernel + uploaded primes).
     internal sealed class KernelState
     {
-        public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<ulong>, ArrayView<byte>> Kernel { get; }
+        public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>> Kernel { get; }
         public Action<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>> HeuristicTrialDivisionKernel { get; }
         public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimes { get; }
-        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimeSquares { get; }
         private readonly Accelerator _accel;
         private readonly System.Collections.Concurrent.ConcurrentBag<ScratchBuffers> _scratchPool = [];
         // TODO: Replace this ConcurrentBag with the lock-free ring buffer variant validated in
@@ -287,15 +249,12 @@ public sealed class PrimeTester
         {
             _accel = accelerator;
             // Compile once per accelerator and upload primes once.
-            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
+            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
             HeuristicTrialDivisionKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
             var primes = PrimesGenerator.SmallPrimes;
-            var primeSquares = PrimesGenerator.SmallPrimesPow2;
             DevicePrimes = accelerator.Allocate1D<uint>(primes.Length);
-            DevicePrimeSquares = accelerator.Allocate1D<ulong>(primeSquares.Length);
             DevicePrimes.View.CopyFromCPU(primes);
-            DevicePrimeSquares.View.CopyFromCPU(primeSquares);
         }
 
         internal sealed class ScratchBuffers : IDisposable
@@ -349,7 +308,6 @@ public sealed class PrimeTester
             }
 
             DevicePrimes.Dispose();
-            DevicePrimeSquares.Dispose();
         }
     }
 

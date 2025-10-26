@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using ILGPU;
 using ILGPU.Runtime;
 using ILGPU.Runtime.OpenCL;
@@ -26,45 +27,63 @@ internal static partial class PrimeOrderCalculator
 		{
 			var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
 			var execution = lease.EnterExecutionScope();
-			Accelerator accelerator = lease.Accelerator;
-			AcceleratorStream stream = lease.Stream;
-
-			SmallPrimeFactorScratch scratch = GpuKernelPool.EnsureSmallPrimeFactorScratch(accelerator, GpuSmallPrimeFactorSlots);
-
-			bool success = PrimeOrderGpuHeuristics.TryPartialFactor(
-				accelerator,
-				stream,
-				scratch,
-				value,
-				limit,
-				primeBuffer,
-				exponentBuffer,
-				out factorCount,
-				out remaining,
-				out _);
-
-			execution.Dispose();
-			lease.Dispose();
-
-			if (!success)
+			try
 			{
-				return false;
-			}
+				Accelerator accelerator = lease.Accelerator;
+				AcceleratorStream stream = lease.Stream;
 
-			for (int i = 0; i < factorCount; i++)
+				SmallPrimeFactorTables tables = GpuKernelPool.EnsureSmallPrimeFactorTables(accelerator);
+				SmallPrimeFactorScratch scratch = GpuKernelPool.EnsureSmallPrimeFactorScratch(accelerator, GpuSmallPrimeFactorSlots);
+				// scratch.Clear();
+
+				var kernel = lease.SmallPrimeFactorKernel;
+				kernel(
+					stream,
+					1,
+					value,
+					limit,
+					tables.PrimesView,
+					tables.SquaresView,
+					tables.Count,
+					scratch.PrimeSlots.View,
+					scratch.ExponentSlots.View,
+					scratch.CountSlot.View,
+					scratch.RemainingSlot.View);
+
+				stream.Synchronize();
+
+				factorCount = 0;
+				scratch.CountSlot.View.CopyToCPU(ref factorCount, 1);
+				factorCount = Math.Min(factorCount, GpuSmallPrimeFactorSlots);
+
+				if (factorCount > 0)
+				{
+					scratch.PrimeSlots.View.CopyToCPU(ref MemoryMarshal.GetReference(primeBuffer), factorCount);
+					scratch.ExponentSlots.View.CopyToCPU(ref MemoryMarshal.GetReference(exponentBuffer), factorCount);
+				}
+
+				scratch.RemainingSlot.View.CopyToCPU(ref remaining, 1);
+
+				for (int i = 0; i < factorCount; i++)
+				{
+					ulong primeValue = primeBuffer[i];
+					int exponent = exponentBuffer[i];
+					// This will never happen in production code
+					// if (primeValue == 0UL || exponent == 0)
+					// {
+					// 	continue;
+					// }
+
+					counts.Add(primeValue, exponent);
+				}
+
+				return true;
+			}
+			finally
 			{
-				ulong primeValue = primeBuffer[i];
-				int exponent = exponentBuffer[i];
-				// This will never happen in production code
-				// if (primeValue == 0UL || exponent == 0)
-				// {
-				//      continue;
-				// }
-
-				counts.Add(primeValue, exponent);
+				execution.Dispose();
+				lease.Dispose();
 			}
-
-			return true;
 		}
 		finally
 		{

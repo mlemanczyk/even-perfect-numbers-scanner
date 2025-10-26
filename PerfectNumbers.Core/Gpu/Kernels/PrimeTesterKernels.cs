@@ -7,12 +7,7 @@ namespace PerfectNumbers.Core.Gpu;
 internal static class PrimeTesterKernels
 {
     // GPU kernel: small-prime sieve only. Returns 1 if passes sieve (probable prime), 0 otherwise.
-    public static void SmallPrimeSieveKernel(
-        Index1D index,
-        ArrayView<ulong> numbers,
-        ArrayView<uint> smallPrimes,
-        ArrayView<ulong> smallPrimeSquares,
-        ArrayView<byte> results)
+    public static void SmallPrimeSieveKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<uint> smallPrimes, ArrayView<byte> results)
     {
         ulong n = numbers[index];
         byte result = 1;
@@ -27,7 +22,7 @@ internal static class PrimeTesterKernels
         for (int i = 0; i < length; i++)
         {
             ulong prime = smallPrimes[i];
-            ulong primeSquare = smallPrimeSquares[i];
+            ulong primeSquare = (ulong)prime * prime;
             if (primeSquare > n)
             {
                 break;
