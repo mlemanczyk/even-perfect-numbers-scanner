@@ -36,10 +36,8 @@ public class MulHighBenchmarks
     [Benchmark(Baseline = true)]
     public ulong CurrentImplementation()
     {
-        // TODO: Replace ULongExtensions.MulHigh with the UInt128-based helper on CPU paths; it was
-        // 11–14× faster in the latest benchmarks while the GPU-specific variant remains available
-        // separately.
-        return ULongExtensions.MulHigh(Input.X, Input.Y);
+        // Routes through the UInt128-based helper adopted by CPU hot paths after benchmarking.
+        return ULongExtensions.MulHighCpu(Input.X, Input.Y);
     }
 
     /// <summary>
@@ -107,7 +105,7 @@ public class MulHighBenchmarks
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong MulHighWithGpuUInt128(ulong x, ulong y)
     {
-        return ULongExtensions.MulHighGpuCompatible(x, y);
+        return ULongExtensions.MulHighGpu(x, y);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

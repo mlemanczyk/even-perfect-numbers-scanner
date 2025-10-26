@@ -760,7 +760,7 @@ public static class UInt128Extensions
     // expression tree around the shift. Mirroring the MulHigh layout lets RyuJIT
     // keep the intermediate sum in registers instead of reloading the partial
     // product from the stack.
-    ulong high = aLow.MulHigh(bLow);
+    ulong high = aLow.MulHighCpu(bLow);
     high += aLow * bHigh;
 
     return ((UInt128)high << 64) | low;

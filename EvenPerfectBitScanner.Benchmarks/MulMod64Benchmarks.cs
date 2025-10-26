@@ -240,7 +240,7 @@ public class MulMod64Benchmarks
         ulong left = a % modulus;
         ulong right = b % modulus;
         ulong low = left * right;
-        ulong high = left.MulHigh(right);
+        ulong high = left.MulHighCpu(right);
         UInt128 product = ((UInt128)high << 64) | low;
         return (ulong)(product % modulus);
     }

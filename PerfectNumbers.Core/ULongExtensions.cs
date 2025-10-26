@@ -430,14 +430,19 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static UInt128 Mul64(this ulong a, ulong b) => ((UInt128)a.MulHigh(b) << 64) | (UInt128)(a * b);
+	public static UInt128 Mul64(this ulong a, ulong b) => ((UInt128)a.MulHighCpu(b) << 64) | (UInt128)(a * b);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong MulHigh(this ulong x, ulong y)
+	public static ulong MulHighCpu(this ulong x, ulong y)
 	{
-		// TODO: Investigate replacing this manual decomposition with the UInt128-based implementation
-		// for CPU callers; the latest benchmarks show the intrinsic path is an order of magnitude
-		// faster, while GPU code can keep using GpuUInt128.MulHigh.
+		return (ulong)(((UInt128)x * y) >> 64);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static ulong MulHighGpu(this ulong x, ulong y)
+	{
+		// Retain this manual decomposition for GPU-style arithmetic so callers staging accelerator work
+		// can avoid the UInt128 intrinsic while keeping parity with GpuUInt128.MulHigh.
 		ulong xLow = (uint)x;
 		ulong xHigh = x >> 32;
 		ulong yLow = (uint)y;
@@ -554,7 +559,7 @@ public static partial class ULongExtensions
 		ulong m = unchecked(tLow * nPrime);
 		ulong mTimesModulusLow = unchecked(m * modulus);
 
-		ulong result = unchecked(a.MulHigh(b) + m.MulHigh(modulus) + (unchecked(tLow + mTimesModulusLow) < tLow ? 1UL : 0UL));
+		ulong result = unchecked(a.MulHighCpu(b) + m.MulHighCpu(modulus) + (unchecked(tLow + mTimesModulusLow) < tLow ? 1UL : 0UL));
 		if (result >= modulus)
 		{
 			result -= modulus;

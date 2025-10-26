@@ -11,6 +11,7 @@ namespace PerfectNumbers.Core;
 public static partial class ULongExtensions
 {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[Obsolete("Use ULongExtensions.MulHighCpu or ULongExtensions.MulHighGpu.")]
 	public static ulong MulHighGpuCompatible(this ulong x, ulong y)
 	{
 		GpuUInt128 product = new(x);

@@ -89,7 +89,7 @@ public class Mul64Benchmarks
     {
         ulong leftLow = (ulong)left;
         ulong rightLow = (ulong)right;
-        return ((UInt128)(leftLow * (ulong)(right >> 64) + leftLow.MulHigh(rightLow)) << 64) | (UInt128)(leftLow * rightLow);
+        return ((UInt128)(leftLow * (ulong)(right >> 64) + leftLow.MulHighCpu(rightLow)) << 64) | (UInt128)(leftLow * rightLow);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

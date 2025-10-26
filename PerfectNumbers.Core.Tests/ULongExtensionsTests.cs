@@ -131,11 +131,21 @@ public class ULongExtensionsTests
     [InlineData(0UL, 0UL)]
     [InlineData(ulong.MaxValue, 1UL)]
     [InlineData(123456789UL, 987654321UL)]
-    public void MulHigh_matches_high_bits(ulong x, ulong y)
+    public void MulHighCpu_matches_high_bits(ulong x, ulong y)
     {
         ulong expected = (ulong)(((UInt128)x * y) >> 64);
 
-        x.MulHigh(y).Should().Be(expected);
+        x.MulHighCpu(y).Should().Be(expected);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(0UL, 0UL)]
+    [InlineData(ulong.MaxValue, 1UL)]
+    [InlineData(123456789UL, 987654321UL)]
+    public void MulHighGpu_matches_cpu_baseline(ulong x, ulong y)
+    {
+        x.MulHighGpu(y).Should().Be(x.MulHighCpu(y));
     }
 
     [Theory]
