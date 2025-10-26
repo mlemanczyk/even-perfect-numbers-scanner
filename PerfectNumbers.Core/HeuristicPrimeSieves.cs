@@ -4,7 +4,7 @@ namespace PerfectNumbers.Core;
 
 public static class HeuristicPrimeSieves
 {
-    private const int SieveLength = PerfectNumberConstants.MaxQForDivisorCycles;
+    private const int SieveLength = PerfectNumberConstants.MaxQForDivisorCycles / 4;
     private const int Wheel210 = 210;
 
     private static readonly int[] GroupAConstants = [3, 7, 11, 13];
