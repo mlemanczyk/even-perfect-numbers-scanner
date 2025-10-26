@@ -58,7 +58,7 @@ public sealed class MersenneNumberTester(
 		}
 
                 UInt128 twoP = (UInt128)exponent << 1; // 2 * p
-                bool lastIsSeven = (exponent & 3UL) == 3UL;
+                LastDigit lastDigit = (exponent & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
                 // CPU path: compute orders directly and cache
                 if (!_useGpuOrder)
                 {
@@ -71,7 +71,7 @@ public sealed class MersenneNumberTester(
                                 remainder = q.Mod10();
                                 // TODO: Replace these repeated Mod10/Mod8/Mod3/Mod5 calls with a residue automaton walk so
                                 // order warmups reuse the optimized cycle stepping validated in the residue benchmarks.
-                                bool shouldCheck = lastIsSeven
+                                bool shouldCheck = lastDigit == LastDigit.Seven
                                         ? remainder == 7UL || remainder == 9UL || remainder == 3UL
                                         : remainder == 1UL || remainder == 3UL || remainder == 9UL;
 
@@ -112,7 +112,7 @@ public sealed class MersenneNumberTester(
                         remainder2 = q2.Mod10();
                         // TODO: Reuse the same residue-automaton fast path here so the GPU warmup staging avoids `%` and
                         // branches the benchmarks showed slower than the tracked stepping helper.
-                        bool shouldCheck2 = lastIsSeven
+                        bool shouldCheck2 = lastDigit == LastDigit.Seven
                                 ? remainder2 == 7UL || remainder2 == 9UL || remainder2 == 3UL
                                 : remainder2 == 1UL || remainder2 == 3UL || remainder2 == 9UL;
 
@@ -230,7 +230,7 @@ public sealed class MersenneNumberTester(
         UInt128 twoP = (UInt128)exponent << 1; // 2 * p
         // UInt128 maxDivisor = new(ulong.MaxValue, ulong.MaxValue);
         UInt128 maxK = UInt128Numbers.Two.Pow(exponent) / 2 + 1;
-        bool lastIsSeven = (exponent & 3UL) == 3UL;
+        LastDigit lastDigit = (exponent & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
 
         // In residue mode the residue scan is the final primality check.
         if (_useResidue)
@@ -242,11 +242,11 @@ public sealed class MersenneNumberTester(
 
             if (_useGpuScan)
             {
-                _residueGpuTester!.Scan(exponent, twoP, lastIsSeven, maxK, ref prePrime);
+                _residueGpuTester!.Scan(exponent, twoP, lastDigit, maxK, ref prePrime);
             }
             else
             {
-                _residueCpuTester!.Scan(exponent, twoP, lastIsSeven, maxK, ref prePrime);
+                _residueCpuTester!.Scan(exponent, twoP, lastDigit, maxK, ref prePrime);
             }
 
             return prePrime;
@@ -258,14 +258,14 @@ public sealed class MersenneNumberTester(
 			// Scan a limited range of k to quickly reject obvious cases.
 			UInt128 twoPPre = (UInt128)exponent << 1;
 			UInt128 maxKPre = (UInt128)PreLucasPreScanK;
-			bool lastIsSevenPre = (exponent & 3UL) == 3UL;
+			LastDigit lastDigitPre = (exponent & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
 			if (_useGpuScan)
 			{
-				_incrementalGpuTester.Scan(exponent, twoPPre, lastIsSevenPre, maxKPre, ref prePrime);
+				_incrementalGpuTester.Scan(exponent, twoPPre, lastDigitPre, maxKPre, ref prePrime);
 			}
 			else
 			{
-				_incrementalCpuTester.Scan(exponent, twoPPre, lastIsSevenPre, maxKPre, ref prePrime);
+				_incrementalCpuTester.Scan(exponent, twoPPre, lastDigitPre, maxKPre, ref prePrime);
 			}
 
 			if (!prePrime)
@@ -284,22 +284,22 @@ public sealed class MersenneNumberTester(
 		{
 			if (_useGpuOrder)
 			{
-				_orderGpuTester.Scan(exponent, twoP, lastIsSeven, maxK, ref isPrime);
+				_orderGpuTester.Scan(exponent, twoP, lastDigit, maxK, ref isPrime);
 			}
 			else
 			{
-				_orderCpuTester.Scan(exponent, twoP, lastIsSeven, maxK, ref isPrime);
+				_orderCpuTester.Scan(exponent, twoP, lastDigit, maxK, ref isPrime);
 			}
 		}
 		else
 		{
 			if (_useGpuScan)
 			{
-				_incrementalGpuTester.Scan(exponent, twoP, lastIsSeven, maxK, ref isPrime);
+				_incrementalGpuTester.Scan(exponent, twoP, lastDigit, maxK, ref isPrime);
 			}
 			else
 			{
-				_incrementalCpuTester.Scan(exponent, twoP, lastIsSeven, maxK, ref isPrime);
+				_incrementalCpuTester.Scan(exponent, twoP, lastDigit, maxK, ref isPrime);
 			}
 		}
 

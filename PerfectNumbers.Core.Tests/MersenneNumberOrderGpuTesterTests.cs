@@ -1,5 +1,6 @@
 using System.Reflection;
 using FluentAssertions;
+using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 using Xunit;
 using UInt128 = System.UInt128;
@@ -8,7 +9,7 @@ namespace PerfectNumbers.Core.Tests;
 
 public class MersenneNumberOrderGpuTesterTests
 {
-    private static bool LastDigitIsSeven(ulong exponent) => (exponent & 3UL) == 3UL;
+    private static LastDigit GetLastDigit(ulong exponent) => (exponent & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
 
     [Theory]
     [InlineData(GpuKernelType.Pow2Mod, false)]
@@ -64,7 +65,7 @@ public class MersenneNumberOrderGpuTesterTests
                 tester.Scan(
                     exponent,
                     (UInt128)exponent << 1,
-                    LastDigitIsSeven(exponent),
+                    GetLastDigit(exponent),
                     (UInt128)10UL,
                     ref isPrime);
 
@@ -86,7 +87,7 @@ public class MersenneNumberOrderGpuTesterTests
     private static void RunCase(MersenneNumberOrderGpuTester tester, ulong exponent, ulong maxK, bool expectedPrime)
     {
         bool isPrime = true;
-        tester.Scan(exponent, (UInt128)exponent << 1, LastDigitIsSeven(exponent), (UInt128)maxK, ref isPrime);
+        tester.Scan(exponent, (UInt128)exponent << 1, GetLastDigit(exponent), (UInt128)maxK, ref isPrime);
         isPrime.Should().Be(expectedPrime);
     }
 }

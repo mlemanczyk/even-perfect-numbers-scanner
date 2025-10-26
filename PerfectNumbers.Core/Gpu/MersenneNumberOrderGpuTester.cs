@@ -7,7 +7,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 	private readonly GpuKernelType _kernelType = kernelType;
 	private readonly bool _useGpuOrder = useGpuOrder;
 
-	public void Scan(ulong exponent, UInt128 twoP, bool lastIsSeven, UInt128 maxK, ref bool isPrime)
+	public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
 		var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder);
 		var execution = gpuLease.EnterExecutionScope();
@@ -16,7 +16,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 		int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy and avoids TDR
 		UInt128 kStart = UInt128.One;
 		ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
-		byte last = lastIsSeven ? (byte)1 : (byte)0; // ILGPU kernels do not support bool parameters
+		byte last = lastDigit == LastDigit.Seven ? (byte)1 : (byte)0; // ILGPU kernels do not support bool parameters
 
                 var kernel = _kernelType switch
                 {
