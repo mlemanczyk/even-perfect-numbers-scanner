@@ -116,7 +116,7 @@ The plan incorporates the updated divisor-class heuristics (Groups A/B, wheels, 
 1. [done] **Snapshot current implementations** – preserve `IsPrimeGpu` and `IsPrimeInternal` as references for regression comparisons and migration checkpoints (see Section 2).
 2. [done] **Introduce placeholder heuristic entry points** – add `HeuristicIsPrimeCpu` and `HeuristicIsPrimeGpu` by copying the current internal and GPU methods so subsequent commits can iterate without disrupting legacy behavior.
 3. [done] **Design shared heuristic scaffolding**
-   * [done] Introduced `HeuristicDivisorEnumerator` and stackalloc-backed Group B sequence states so CPU/GPU heuristics share the Group A/B wheel metadata and candidate ordering.
+   * [done] Added `HeuristicPrimeSieves` to precompute 4M-entry Group A/B divisor tables so heuristic prime checks reuse cached sequences without regenerating wheel steps at runtime; the enumerator remains available for residue-driven consumers.
    * [done] Surface helpers that accept the precomputed `R = ⌊√n⌋` and `nMod10` values from callers via the new overload of `HeuristicIsPrimeCpu`; PrimeTester still computes them locally until call sites forward the parameters.
    * [done] Simplified the heuristic execution path so it runs without cancellation tokens or callback plumbing while keeping the shared enumerator available to other components.
 4. **Share residue and wheel state with by-divisor sessions**
@@ -127,11 +127,11 @@ The plan incorporates the updated divisor-class heuristics (Groups A/B, wheels, 
    * [done] Extend the heuristic scaffolding so it returns `MontgomeryDivisorData` descriptors and cycle-length hints for each candidate divisor via `HeuristicDivisorPreparation` and `PrepareHeuristicDivisor`.
    * Wire these outputs into the existing cycle calculators to avoid duplicate cache lookups inside the CPU/GPU divisor scans.
 6. [done] **Implement `HeuristicIsPrimeCpu`**
-   * Baseline Group A/B enumeration now executes inside `HeuristicIsPrimeCpu` via `HeuristicDivisorEnumerator`, computing `⌊√n⌋` locally and short-circuiting on the first divisor.
+   * Baseline Group A/B enumeration now executes inside `HeuristicIsPrimeCpu` via the cached `HeuristicPrimeSieves` tables, computing `⌊√n⌋` locally and short-circuiting on the first divisor.
    * [done] The CPU heuristic now operates as a pure trial-division sweep without maintaining per-call summaries, relying on `PrepareHeuristicDivisor` only when downstream consumers request Montgomery data.
    * [done] Introduced the temporary `UseHeuristicGroupBTrialDivision` gate so current builds execute Group A locally and then fall back to `Open.Numeric.Primes.Prime.Numbers.IsPrime`, keeping the full Group B implementation available for reactivation.
 7. [done] **Implement `HeuristicIsPrimeGpu`**
-   * [done] Mirror CPU structure while batching divisor checks on the accelerator via `HeuristicTrialDivisionGpu`, reusing caller-provided `sqrtLimit`/`nMod10` inputs and falling back to CPU when GPUs are disabled.
+   * [done] Mirror CPU structure while batching divisor checks on the accelerator via `HeuristicTrialDivisionGpu`, drawing divisors from `HeuristicPrimeSieves`, reusing caller-provided `sqrtLimit`/`nMod10` inputs, and falling back to CPU when GPUs are disabled.
    * [done] Added `PrimeTesterKernels.HeuristicTrialDivisionKernel` so GPU batches respect Group A/B ordering while emitting hit flags for early exits.
    * [done] Kept GPU divisibility in standard modular arithmetic while reserving Montgomery transforms for CPU confirmation logic.
    * [done] When the temporary Group B gate is disabled, delegate GPU calls to the CPU fallback so Group A coverage remains in place while the accelerator path stays available for future re-enablement.

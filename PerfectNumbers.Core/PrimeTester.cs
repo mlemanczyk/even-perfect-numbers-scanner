@@ -14,6 +14,11 @@ namespace PerfectNumbers.Core;
 
 public sealed class PrimeTester(bool useInternal = false)
 {
+    static PrimeTester()
+    {
+        HeuristicPrimeSieves.EnsureInitialized();
+    }
+
     // TODO: Don't use these tiny arrays. Hard-code the values / checks instead
     private static readonly ulong[] GroupAConstantDivisors = [3UL, 7UL, 11UL, 13UL];
     private static readonly byte[] GroupAIncrementPattern = [20, 10];
@@ -197,20 +202,13 @@ public sealed class PrimeTester(bool useInternal = false)
 
     private static bool HeuristicTrialDivisionCpu(ulong n, ulong sqrtLimit, byte nMod10, bool includeGroupB)
     {
-        Span<HeuristicGroupBSequenceState> groupBBuffer = stackalloc HeuristicGroupBSequenceState[MaxGroupBSequences];
-        var enumerator = new HeuristicDivisorEnumerator(sqrtLimit, nMod10, groupBBuffer);
-
-        while (enumerator.TryGetNext(out HeuristicDivisorCandidate candidate))
+        ReadOnlySpan<int> groupADivisors = HeuristicPrimeSieves.GroupADivisors;
+        for (int i = 0; i < groupADivisors.Length; i++)
         {
-            if (!includeGroupB && candidate.Group == HeuristicDivisorGroup.GroupB)
+            ulong divisor = (ulong)groupADivisors[i];
+            if (divisor > sqrtLimit)
             {
-                return EvaluateWithOpenNumericFallback(n);
-            }
-
-            ulong divisor = candidate.Value;
-            if (divisor <= 1UL)
-            {
-                continue;
+                break;
             }
 
             if (n % divisor == 0UL)
@@ -219,20 +217,71 @@ public sealed class PrimeTester(bool useInternal = false)
             }
         }
 
-        return includeGroupB ? true : EvaluateWithOpenNumericFallback(n);
+        if (!includeGroupB)
+        {
+            return EvaluateWithOpenNumericFallback(n);
+        }
+
+        ReadOnlySpan<byte> endingOrder = GetGroupBEndingOrder(nMod10);
+        if (endingOrder.IsEmpty)
+        {
+            return EvaluateWithOpenNumericFallback(n);
+        }
+
+        Span<int> indices = endingOrder.Length <= 8
+            ? stackalloc int[endingOrder.Length]
+            : new int[endingOrder.Length];
+
+        while (true)
+        {
+            ulong bestCandidate = ulong.MaxValue;
+            int bestEndingIndex = -1;
+
+            for (int i = 0; i < endingOrder.Length; i++)
+            {
+                ReadOnlySpan<int> divisors = GetGroupBDivisors(endingOrder[i]);
+                int index = indices[i];
+                if ((uint)index >= (uint)divisors.Length)
+                {
+                    continue;
+                }
+
+                ulong candidate = (ulong)divisors[index];
+                if (candidate > sqrtLimit)
+                {
+                    indices[i] = divisors.Length;
+                    continue;
+                }
+
+                if (bestEndingIndex == -1 || candidate < bestCandidate)
+                {
+                    bestCandidate = candidate;
+                    bestEndingIndex = i;
+                }
+            }
+
+            if (bestEndingIndex == -1)
+            {
+                break;
+            }
+
+            if (n % bestCandidate == 0UL)
+            {
+                return false;
+            }
+
+            indices[bestEndingIndex]++;
+        }
+
+        return true;
     }
 
     private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong sqrtLimit, byte nMod10)
     {
-        Span<HeuristicGroupBSequenceState> groupBBuffer = stackalloc HeuristicGroupBSequenceState[MaxGroupBSequences];
-        var enumerator = new HeuristicDivisorEnumerator(sqrtLimit, nMod10, groupBBuffer);
-
         int batchCapacity = Math.Max(1, HeuristicGpuDivisorBatchSize);
-        var candidatePool = ArrayPool<HeuristicDivisorCandidate>.Shared;
         var divisorPool = ThreadStaticPools.UlongPool;
         var hitPool = ThreadStaticPools.BytePool;
 
-        HeuristicDivisorCandidate[]? candidateArray = null;
         ulong[]? divisorArray = null;
         byte[]? hitFlags = null;
 
@@ -243,7 +292,6 @@ public sealed class PrimeTester(bool useInternal = false)
 
         try
         {
-            candidateArray = candidatePool.Rent(batchCapacity);
             divisorArray = divisorPool.Rent(batchCapacity);
             hitFlags = hitPool.Rent(batchCapacity);
 
@@ -259,6 +307,11 @@ public sealed class PrimeTester(bool useInternal = false)
 
                     bool ProcessBatch(int length)
                     {
+                        if (length <= 0)
+                        {
+                            return false;
+                        }
+
                         scratch.Input.View.CopyFromCPU(ref divisorArray![0], length);
                         state.HeuristicTrialDivisionKernel(length, scratch.Input.View, n, scratch.Output.View);
                         accelerator.Synchronize();
@@ -271,7 +324,7 @@ public sealed class PrimeTester(bool useInternal = false)
                                 continue;
                             }
 
-                            ulong divisor = candidateArray![i].Value;
+                            ulong divisor = divisorArray![i];
                             if (divisor > 1UL && n % divisor == 0UL)
                             {
                                 return true;
@@ -281,36 +334,87 @@ public sealed class PrimeTester(bool useInternal = false)
                         return false;
                     }
 
-                    while (enumerator.TryGetNext(out HeuristicDivisorCandidate candidate))
+                    bool QueueDivisor(ulong divisor)
                     {
-                        ulong divisor = candidate.Value;
-                        if (divisor <= 1UL)
-                        {
-                            continue;
-                        }
-
-                        candidateArray[count] = candidate;
-                        divisorArray[count] = divisor;
+                        divisorArray![count] = divisor;
                         count++;
 
                         if (count == batchCapacity)
                         {
                             if (ProcessBatch(count))
                             {
-                                compositeDetected = true;
-                                break;
+                                return true;
                             }
 
                             count = 0;
+                        }
+
+                        return false;
+                    }
+
+                    ReadOnlySpan<int> groupADivisors = HeuristicPrimeSieves.GroupADivisors;
+                    for (int i = 0; i < groupADivisors.Length && !compositeDetected; i++)
+                    {
+                        ulong divisor = (ulong)groupADivisors[i];
+                        if (divisor > sqrtLimit)
+                        {
+                            break;
+                        }
+
+                        compositeDetected = QueueDivisor(divisor);
+                    }
+
+                    if (!compositeDetected)
+                    {
+                        ReadOnlySpan<byte> endingOrder = GetGroupBEndingOrder(nMod10);
+                        if (!endingOrder.IsEmpty)
+                        {
+                            Span<int> indices = endingOrder.Length <= 8
+                                ? stackalloc int[endingOrder.Length]
+                                : new int[endingOrder.Length];
+
+                            while (!compositeDetected)
+                            {
+                                ulong bestCandidate = ulong.MaxValue;
+                                int bestEndingIndex = -1;
+
+                                for (int i = 0; i < endingOrder.Length; i++)
+                                {
+                                    ReadOnlySpan<int> divisors = GetGroupBDivisors(endingOrder[i]);
+                                    int index = indices[i];
+                                    if ((uint)index >= (uint)divisors.Length)
+                                    {
+                                        continue;
+                                    }
+
+                                    ulong candidate = (ulong)divisors[index];
+                                    if (candidate > sqrtLimit)
+                                    {
+                                        indices[i] = divisors.Length;
+                                        continue;
+                                    }
+
+                                    if (bestEndingIndex == -1 || candidate < bestCandidate)
+                                    {
+                                        bestCandidate = candidate;
+                                        bestEndingIndex = i;
+                                    }
+                                }
+
+                                if (bestEndingIndex == -1)
+                                {
+                                    break;
+                                }
+
+                                compositeDetected = QueueDivisor(bestCandidate);
+                                indices[bestEndingIndex]++;
+                            }
                         }
                     }
 
                     if (!compositeDetected && count > 0)
                     {
-                        if (ProcessBatch(count))
-                        {
-                            compositeDetected = true;
-                        }
+                        compositeDetected = ProcessBatch(count);
                     }
                 }
                 finally
@@ -329,11 +433,6 @@ public sealed class PrimeTester(bool useInternal = false)
             if (divisorArray is not null)
             {
                 divisorPool.Return(divisorArray);
-            }
-
-            if (candidateArray is not null)
-            {
-                candidatePool.Return(candidateArray);
             }
 
             gpu.Dispose();
@@ -378,6 +477,15 @@ public sealed class PrimeTester(bool useInternal = false)
         7 => GroupBEndingOrderMod7,
         9 => GroupBEndingOrderMod9,
         _ => ReadOnlySpan<byte>.Empty,
+    };
+
+    private static ReadOnlySpan<int> GetGroupBDivisors(byte ending) => ending switch
+    {
+        1 => HeuristicPrimeSieves.GroupBDivisorsEnding1,
+        3 => HeuristicPrimeSieves.GroupBDivisorsEnding3,
+        7 => HeuristicPrimeSieves.GroupBDivisorsEnding7,
+        9 => HeuristicPrimeSieves.GroupBDivisorsEnding9,
+        _ => ReadOnlySpan<int>.Empty,
     };
 
     private static ReadOnlySpan<ushort> GetWheel210ResiduesForEnding(byte ending) => ending switch
