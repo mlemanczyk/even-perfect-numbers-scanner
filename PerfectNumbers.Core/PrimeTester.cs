@@ -147,56 +147,12 @@ public sealed class PrimeTester
         MemoryBuffer1D<byte, Stride1D.Dense> deviceOutput,
         Span<ulong> stagingBuffer)
     {
-        if (accelerator is null)
-        {
-            throw new ArgumentNullException(nameof(accelerator));
-        }
-
-        if (deviceInput is null)
-        {
-            throw new ArgumentNullException(nameof(deviceInput));
-        }
-
-        if (deviceOutput is null)
-        {
-            throw new ArgumentNullException(nameof(deviceOutput));
-        }
-
-        if (results.Length < values.Length)
-        {
-            throw new ArgumentException("The results span must be at least as long as the input values.", nameof(results));
-        }
-
         if (values.IsEmpty)
         {
             return;
         }
 
-        if (stagingBuffer.IsEmpty)
-        {
-            throw new ArgumentException("The staging buffer must contain at least one element.", nameof(stagingBuffer));
-        }
-
-        long inputLength = deviceInput.Length;
-        long outputLength = deviceOutput.Length;
-        if (inputLength <= 0)
-        {
-            throw new ArgumentException("The device input buffer must contain at least one element.", nameof(deviceInput));
-        }
-
-        if (outputLength <= 0)
-        {
-            throw new ArgumentException("The device output buffer must contain at least one element.", nameof(deviceOutput));
-        }
-
-        long stagingLength = stagingBuffer.Length;
-        long capacityLong = Math.Min(Math.Min(inputLength, outputLength), stagingLength);
-        if (capacityLong <= 0)
-        {
-            throw new ArgumentException("The provided buffers must be able to hold at least one element.");
-        }
-
-        int capacity = (int)Math.Min(capacityLong, int.MaxValue);
+        int capacity = (int)Math.Min(Math.Min(deviceInput.Length, deviceOutput.Length), stagingBuffer.Length);
 
         var state = GpuKernelState.GetOrCreate(accelerator);
         var inputView = deviceInput.View;

@@ -48,34 +48,79 @@ internal static partial class PrimeOrderCalculator
         {
                 private readonly GpuKernelLease _lease;
                 private readonly GpuKernelLease.ExecutionScope _executionScope;
+                private readonly PrimeTester.KernelState _primeState;
+                private readonly PrimeTester.KernelState.ScratchBuffers _primeScratch;
+                private readonly ulong[] _primeHostBuffer;
+                private readonly byte[] _primeFlagBuffer;
+                private readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>> _primeKernel;
+                private readonly ArrayView1D<uint, Stride1D.Dense> _primeDevicePrimes;
 
-                private PartialFactorGpuContext(GpuKernelLease lease, GpuKernelLease.ExecutionScope executionScope, Accelerator accelerator, AcceleratorStream stream, SmallPrimeFactorScratch scratch)
+                private PartialFactorGpuContext(
+                        GpuKernelLease lease,
+                        GpuKernelLease.ExecutionScope executionScope,
+                        SmallPrimeFactorScratch scratch,
+                        PrimeTester.KernelState primeState,
+                        PrimeTester.KernelState.ScratchBuffers primeScratch,
+                        ulong[] primeHostBuffer,
+                        byte[] primeFlagBuffer)
                 {
                         _lease = lease;
                         _executionScope = executionScope;
-                        Accelerator = accelerator;
-                        Stream = stream;
                         Scratch = scratch;
+                        _primeState = primeState;
+                        _primeScratch = primeScratch;
+                        _primeHostBuffer = primeHostBuffer;
+                        _primeFlagBuffer = primeFlagBuffer;
+                        _primeKernel = primeState.Kernel;
+                        _primeDevicePrimes = primeState.DevicePrimes.View;
                 }
 
-                public Accelerator Accelerator { get; }
+                public Accelerator Accelerator => _lease.Accelerator;
 
-                public AcceleratorStream Stream { get; }
+                public AcceleratorStream Stream => _lease.Stream;
 
                 public SmallPrimeFactorScratch Scratch { get; }
+
+                public Span<ulong> PrimeHostSpan => _primeHostBuffer.AsSpan(0, _primeScratch.Capacity);
+
+                public Span<byte> PrimeFlagSpan => _primeFlagBuffer.AsSpan(0, _primeScratch.Capacity);
+
+                public MemoryBuffer1D<ulong, Stride1D.Dense> PrimeDeviceInput => _primeScratch.Input;
+
+                public MemoryBuffer1D<byte, Stride1D.Dense> PrimeDeviceOutput => _primeScratch.Output;
 
                 public static PartialFactorGpuContext Rent()
                 {
                         var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
                         var execution = lease.EnterExecutionScope();
                         Accelerator accelerator = lease.Accelerator;
-                        AcceleratorStream stream = lease.Stream;
                         SmallPrimeFactorScratch scratch = GpuKernelPool.EnsureSmallPrimeFactorScratch(accelerator, GpuSmallPrimeFactorSlots);
-                        return new PartialFactorGpuContext(lease, execution, accelerator, stream, scratch);
+                        PrimeTester.KernelState primeState = PrimeTester.GpuKernelState.GetOrCreate(accelerator);
+                        PrimeTester.KernelState.ScratchBuffers primeScratch = primeState.RentScratch(1, accelerator);
+                        ulong[] primeHostBuffer = ThreadStaticPools.UlongPool.Rent(primeScratch.Capacity);
+                        byte[] primeFlagBuffer = ThreadStaticPools.BytePool.Rent(primeScratch.Capacity);
+                        return new PartialFactorGpuContext(lease, execution, scratch, primeState, primeScratch, primeHostBuffer, primeFlagBuffer);
+                }
+
+                public bool CheckPrime(ulong value)
+                {
+                        Span<ulong> host = PrimeHostSpan;
+                        host[0] = value;
+                        ArrayView1D<ulong, Stride1D.Dense> inputSlice = PrimeDeviceInput.View.SubView(0, 1);
+                        inputSlice.CopyFromCPU(ref host[0], 1);
+                        ArrayView1D<byte, Stride1D.Dense> outputSlice = PrimeDeviceOutput.View.SubView(0, 1);
+                        _primeKernel(1, inputSlice.AsContiguous(), _primeDevicePrimes.AsContiguous(), outputSlice.AsContiguous());
+                        Accelerator.Synchronize();
+                        Span<byte> flags = PrimeFlagSpan;
+                        outputSlice.CopyToCPU(ref flags[0], 1);
+                        return flags[0] != 0;
                 }
 
                 public void Dispose()
                 {
+                        _primeState.ReturnScratch(_primeScratch);
+                        ThreadStaticPools.UlongPool.Return(_primeHostBuffer, clearArray: false);
+                        ThreadStaticPools.BytePool.Return(_primeFlagBuffer, clearArray: false);
                         _executionScope.Dispose();
                         _lease.Dispose();
                 }
@@ -96,38 +141,21 @@ internal static partial class PrimeOrderCalculator
 			return gpuOrder;
 		}
 
-		PartialFactorGpuContext? gpuContext = null;
-		bool disposeContext = false;
+		PartialFactorGpuContext gpuContext = PartialFactorGpuContext.Rent();
+		PartialFactorResult phiFactors = PartialFactor(phi, config, gpuContext);
 
-		if (IsGpuHeuristicDevice)
+		if (phiFactors.Factors is null)
 		{
-			gpuContext = PartialFactorGpuContext.Rent();
-			disposeContext = true;
-		}
-
-		try
-		{
-			PartialFactorResult phiFactors = PartialFactor(phi, config, gpuContext);
-
-			ulong result;
-			if (phiFactors.Factors is null)
-			{
-				result = CalculateByFactorizationCpu(prime, divisorData);
-				phiFactors.Dispose();
-				return result;
-			}
-
-			result = RunHeuristicPipelineCpu(prime, previousOrder, config, divisorData, phi, phiFactors, gpuContext);
+			ulong fallback = CalculateByFactorizationCpu(prime, divisorData);
 			phiFactors.Dispose();
-			return result;
+			gpuContext.Dispose();
+			return fallback;
 		}
-		finally
-		{
-			if (disposeContext && gpuContext is not null)
-			{
-				gpuContext.Dispose();
-			}
-		}
+
+		ulong result = RunHeuristicPipelineCpu(prime, previousOrder, config, divisorData, phi, phiFactors, gpuContext);
+		phiFactors.Dispose();
+		gpuContext.Dispose();
+		return result;
 	}
 
 	private static ulong RunHeuristicPipelineCpu(
@@ -137,7 +165,7 @@ internal static partial class PrimeOrderCalculator
 		in MontgomeryDivisorData divisorData,
 		ulong phi,
 		PartialFactorResult phiFactors,
-		PartialFactorGpuContext? gpuContext)
+		PartialFactorGpuContext gpuContext)
 	{
 		if (phiFactors.FullyFactored && TrySpecialMaxCpu(phi, prime, phiFactors, divisorData))
 		{
@@ -388,7 +416,7 @@ internal static partial class PrimeOrderCalculator
 		ulong order,
 		in MontgomeryDivisorData divisorData,
 		in PrimeOrderSearchConfig config,
-		PartialFactorGpuContext? gpuContext,
+		PartialFactorGpuContext gpuContext,
 		out PartialFactorResult? reusableFactorization)
 	{
 		reusableFactorization = null;
@@ -551,7 +579,7 @@ internal static partial class PrimeOrderCalculator
 		in PrimeOrderSearchConfig config,
 		PartialFactorResult phiFactors,
 		PartialFactorResult? cachedOrderFactors,
-		PartialFactorGpuContext? gpuContext,
+		PartialFactorGpuContext gpuContext,
 		out ulong result)
 	{
 		result = 0UL;
@@ -918,7 +946,7 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
-	private static bool TryConfirmCandidateCpu(ulong prime, ulong candidate, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config, PartialFactorGpuContext? gpuContext, ref int powUsed, int powBudget)
+	private static bool TryConfirmCandidateCpu(ulong prime, ulong candidate, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config, PartialFactorGpuContext gpuContext, ref int powUsed, int powBudget)
 	{
 		PartialFactorResult factorization = PartialFactor(candidate, config, gpuContext);
 		try
@@ -1084,7 +1112,7 @@ internal static partial class PrimeOrderCalculator
 	// private static ulong _partialFactorPendingHits;
 	// private static ulong _partialFactorCofactorHits;
 
-	private static PartialFactorResult PartialFactor(ulong value, in PrimeOrderSearchConfig config, PartialFactorGpuContext? gpuContext = null)
+	private static PartialFactorResult PartialFactor(ulong value, in PrimeOrderSearchConfig config, PartialFactorGpuContext gpuContext)
 	{
 		if (value <= 1UL)
 		{
@@ -1093,17 +1121,6 @@ internal static partial class PrimeOrderCalculator
 
 		const int FactorSlotCount = GpuSmallPrimeFactorSlots;
 
-                PartialFactorGpuContext? localContext = gpuContext;
-                bool disposeContext = false;
-
-                if (IsGpuHeuristicDevice && localContext is null)
-                {
-                        localContext = PartialFactorGpuContext.Rent();
-                        disposeContext = true;
-                }
-
-                try
-                {
 		// stackalloc is faster than pooling
 		// ulong[] primeSlotsArray = ThreadStaticPools.UlongPool.Rent(FactorSlotCount);
 		// int[] exponentSlotsArray = ThreadStaticPools.IntPool.Rent(FactorSlotCount);
@@ -1122,30 +1139,21 @@ internal static partial class PrimeOrderCalculator
 		uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
 		ulong remaining = value;
 
-		bool gpuFactored = false;
-		if (IsGpuHeuristicDevice && localContext is not null)
-		{
-			gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(
-				localContext.Accelerator,
-				localContext.Stream,
-				localContext.Scratch,
-				value,
-				limit,
-				primeSlots,
-				exponentSlots,
-				out factorCount,
-				out remaining,
-				out _);
-		}
-		else if (IsGpuHeuristicDevice)
-		{
-			gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(value, limit, primeSlots, exponentSlots, out factorCount, out remaining, out _);
-		}
+		bool gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(
+			gpuContext.Accelerator,
+			gpuContext.Stream,
+			gpuContext.Scratch,
+			value,
+			limit,
+			primeSlots,
+			exponentSlots,
+			out factorCount,
+			out remaining,
+			out _);
 
 		List<PendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(2);
 		Stack<ulong>? compositeStack = null;
 		PartialFactorResult result;
-		PrimeTester primeTester = PrimeTester.Exclusive;
 
 		if (!gpuFactored)
 		{
@@ -1218,7 +1226,7 @@ internal static partial class PrimeOrderCalculator
 					// Atomic.Add(ref _partialFactorHits, 1UL);
 					// Console.WriteLine($"Partial factor hits {Volatile.Read(ref _partialFactorHits)}");
 
-					bool isPrime = PrimeTester.IsPrimeGpu(composite);
+					bool isPrime = gpuContext.CheckPrime(composite);
 					// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
 					if (isPrime)
@@ -1285,7 +1293,7 @@ internal static partial class PrimeOrderCalculator
 				// Atomic.Add(ref _partialFactorPendingHits, 1UL);
 				// Console.WriteLine($"Partial factor pending hits {Volatile.Read(ref _partialFactorPendingHits)}");
 
-				bool isPrime = PrimeTester.IsPrimeGpu(composite);
+				bool isPrime = gpuContext.CheckPrime(composite);
 				// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
 				entry = entry.WithPrimality(isPrime);
@@ -1322,7 +1330,7 @@ internal static partial class PrimeOrderCalculator
 			// Atomic.Add(ref _partialFactorCofactorHits, 1UL);
 			// Console.WriteLine($"Partial factor cofactor hits {Volatile.Read(ref _partialFactorCofactorHits)}");
 
-			cofactorIsPrime = PrimeTester.IsPrimeCpu(cofactor, CancellationToken.None);
+			cofactorIsPrime = gpuContext.CheckPrime(cofactor);
 			// cofactorIsPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(cofactor);
 		}
 
@@ -1413,14 +1421,6 @@ internal static partial class PrimeOrderCalculator
 		pending.Clear();
 		ThreadStaticPools.ReturnPrimeOrderPendingEntryList(pending);
 		return result;
-	}
-	finally
-	{
-		if (disposeContext && localContext is not null)
-		{
-			localContext.Dispose();
-		}
-	}
 	}
 
 	private static bool TryPopulateSmallPrimeFactorsCpu(

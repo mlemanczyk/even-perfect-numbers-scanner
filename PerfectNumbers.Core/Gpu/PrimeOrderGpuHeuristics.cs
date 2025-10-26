@@ -130,68 +130,6 @@ internal static partial class PrimeOrderGpuHeuristics
         });
     }
 
-    public static bool TryPartialFactor(
-        ulong value,
-        uint limit,
-        Span<ulong> primeTargets,
-        Span<int> exponentTargets,
-        out int factorCount,
-        out ulong remaining,
-        out bool fullyFactored)
-    {
-        factorCount = 0;
-        remaining = value;
-        fullyFactored = false;
-
-        if (primeTargets.Length == 0 || exponentTargets.Length == 0)
-        {
-            return false;
-        }
-
-        primeTargets.Clear();
-        exponentTargets.Clear();
-
-        try
-        {
-            var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
-            var execution = lease.EnterExecutionScope();
-            try
-            {
-                Accelerator accelerator = lease.Accelerator;
-                AcceleratorStream stream = lease.Stream;
-                SmallPrimeFactorScratch scratch = GpuKernelPool.EnsureSmallPrimeFactorScratch(accelerator, primeTargets.Length);
-                return TryPartialFactor(
-                    accelerator,
-                    stream,
-                    scratch,
-                    value,
-                    limit,
-                    primeTargets,
-                    exponentTargets,
-                    out factorCount,
-                    out remaining,
-                    out fullyFactored);
-            }
-            finally
-            {
-                execution.Dispose();
-                lease.Dispose();
-            }
-        }
-        catch (CLException ex)
-        {
-            Console.WriteLine($"GPU ERROR ({ex.Error}): {ex.Message}");
-        }
-        catch (Exception ex) when (ex is AcceleratorException or InternalCompilerException or NotSupportedException or InvalidOperationException or AggregateException)
-        {
-            Console.WriteLine($"GPU ERROR: {ex.Message}");
-        }
-
-        factorCount = 0;
-        remaining = value;
-        fullyFactored = false;
-        return false;
-    }
 
     public static bool TryPartialFactor(
         Accelerator accelerator,
@@ -212,33 +150,17 @@ internal static partial class PrimeOrderGpuHeuristics
         primeTargets.Clear();
         exponentTargets.Clear();
 
-        try
-        {
-            return TryPartialFactorCore(
-                accelerator,
-                stream,
-                scratch,
-                value,
-                limit,
-                primeTargets,
-                exponentTargets,
-                out factorCount,
-                out remaining,
-                out fullyFactored);
-        }
-        catch (CLException ex)
-        {
-            Console.WriteLine($"GPU ERROR ({ex.Error}): {ex.Message}");
-        }
-        catch (Exception ex) when (ex is AcceleratorException or InternalCompilerException or NotSupportedException or InvalidOperationException or AggregateException)
-        {
-            Console.WriteLine($"GPU ERROR: {ex.Message}");
-        }
-
-        factorCount = 0;
-        remaining = value;
-        fullyFactored = false;
-        return false;
+        return TryPartialFactorCore(
+            accelerator,
+            stream,
+            scratch,
+            value,
+            limit,
+            primeTargets,
+            exponentTargets,
+            out factorCount,
+            out remaining,
+            out fullyFactored);
     }
 
     private static bool TryPartialFactorCore(

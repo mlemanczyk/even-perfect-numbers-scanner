@@ -26,50 +26,45 @@ internal static partial class PrimeOrderCalculator
 		{
 			var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
 			var execution = lease.EnterExecutionScope();
-			try
+			Accelerator accelerator = lease.Accelerator;
+			AcceleratorStream stream = lease.Stream;
+
+			SmallPrimeFactorScratch scratch = GpuKernelPool.EnsureSmallPrimeFactorScratch(accelerator, GpuSmallPrimeFactorSlots);
+
+			bool success = PrimeOrderGpuHeuristics.TryPartialFactor(
+				accelerator,
+				stream,
+				scratch,
+				value,
+				limit,
+				primeBuffer,
+				exponentBuffer,
+				out factorCount,
+				out remaining,
+				out _);
+
+			execution.Dispose();
+			lease.Dispose();
+
+			if (!success)
 			{
-				Accelerator accelerator = lease.Accelerator;
-				AcceleratorStream stream = lease.Stream;
-
-				SmallPrimeFactorScratch scratch = GpuKernelPool.EnsureSmallPrimeFactorScratch(accelerator, GpuSmallPrimeFactorSlots);
-
-                                bool success = PrimeOrderGpuHeuristics.TryPartialFactor(
-                                        accelerator,
-                                        stream,
-                                        scratch,
-                                        value,
-                                        limit,
-                                        primeBuffer,
-                                        exponentBuffer,
-                                        out factorCount,
-                                        out remaining,
-                                        out _);
-
-                                if (!success)
-                                {
-                                        return false;
-                                }
-
-                                for (int i = 0; i < factorCount; i++)
-                                {
-                                        ulong primeValue = primeBuffer[i];
-                                        int exponent = exponentBuffer[i];
-                                        // This will never happen in production code
-                                        // if (primeValue == 0UL || exponent == 0)
-                                        // {
-                                        //      continue;
-                                        // }
-
-                                        counts.Add(primeValue, exponent);
-                                }
-
-                                return true;
+				return false;
 			}
-			finally
+
+			for (int i = 0; i < factorCount; i++)
 			{
-				execution.Dispose();
-				lease.Dispose();
+				ulong primeValue = primeBuffer[i];
+				int exponent = exponentBuffer[i];
+				// This will never happen in production code
+				// if (primeValue == 0UL || exponent == 0)
+				// {
+				//      continue;
+				// }
+
+				counts.Add(primeValue, exponent);
 			}
+
+			return true;
 		}
 		finally
 		{
