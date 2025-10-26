@@ -13,7 +13,7 @@ namespace PerfectNumbers.Core;
 
 public sealed class PrimeTester
 {
-    public PrimeTester(bool useInternal = false)
+    public PrimeTester()
     {
     }
 
@@ -24,7 +24,47 @@ public sealed class PrimeTester
 
     public bool IsPrime(ulong n, CancellationToken ct)
     {
-        return IsPrimeInternal(n, ct);
+        // EvenPerfectBitScanner feeds monotonically increasing odd exponents that start well above the
+        // small-prime cutoffs and already exclude multiples of five. These guards remain for targeted
+        // tests and diagnostics so ad-hoc callers can still probe small or even values when needed.
+        bool isTwo = n == 2UL;
+        bool isOdd = (n & 1UL) != 0UL;
+        ulong mod5 = n % 5UL;
+        bool divisibleByFive = n > 5UL && mod5 == 0UL;
+
+        bool result = n >= 2UL && (isTwo || isOdd) && !divisibleByFive;
+
+        // Production scans always fall through to trial division because n is already > 5 by the time this
+        // path executes. Keep the guard so synthetic callers that hammer tiny inputs can skip the loop.
+        bool requiresTrialDivision = result && n >= 7UL && !isTwo;
+
+        if (requiresTrialDivision)
+        {
+            bool sharesMaxExponentFactor = n.Mod10() == 1UL && SharesFactorWithMaxExponent(n);
+            result &= !sharesMaxExponentFactor;
+
+            if (result)
+            {
+                var smallPrimeDivisorsLength = PrimesGenerator.SmallPrimes.Length;
+                uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
+                ulong[] smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2;
+                for (int i = 0; i < smallPrimeDivisorsLength; i++)
+                {
+                    if (smallPrimeDivisorsMul[i] > n)
+                    {
+                        break;
+                    }
+
+                    if (n % smallPrimeDivisors[i] == 0)
+                    {
+                        result = false;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return result;
     }
 
     public static bool IsPrimeGpu(ulong n)
@@ -65,41 +105,8 @@ public sealed class PrimeTester
 
     public static bool IsPrimeInternal(ulong n, CancellationToken ct)
     {
-        bool isTwo = n == 2UL;
-        bool isOdd = (n & 1UL) != 0UL;
-        ulong mod5 = n % 5UL;
-        bool divisibleByFive = n > 5UL && mod5 == 0UL;
-
-        bool result = n >= 2UL && (isTwo || isOdd) && !divisibleByFive;
-        bool requiresTrialDivision = result && n >= 7UL && !isTwo;
-
-        if (requiresTrialDivision)
-        {
-            bool sharesMaxExponentFactor = n.Mod10() == 1UL && SharesFactorWithMaxExponent(n);
-            result &= !sharesMaxExponentFactor;
-
-            if (result)
-            {
-                var smallPrimeDivisorsLength = PrimesGenerator.SmallPrimes.Length;
-                uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
-                ulong[] smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2;
-                for (int i = 0; i < smallPrimeDivisorsLength; i++)
-                {
-                    if (smallPrimeDivisorsMul[i] > n)
-                    {
-                        break;
-                    }
-
-                    if (n % smallPrimeDivisors[i] == 0)
-                    {
-                        result = false;
-                        break;
-                    }
-                }
-            }
-        }
-
-        return result;
+        // Preserve the legacy entry point for callers that bypass the thread-local caches.
+        return Exclusive.IsPrime(n, ct);
     }
 
 
@@ -123,7 +130,8 @@ public sealed class PrimeTester
                 var scratch = state.RentScratch(batchSize, accelerator);
                 var input = scratch.Input;
                 var output = scratch.Output;
-                ulong[] temp = ArrayPool<ulong>.Shared.Rent(batchSize);
+                ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
+                ulong[] temp = pool.Rent(batchSize);
 
                 try
                 {
@@ -145,7 +153,7 @@ public sealed class PrimeTester
                 }
                 finally
                 {
-                    ArrayPool<ulong>.Shared.Return(temp);
+                    pool.Return(temp, clearArray: false);
                     state.ReturnScratch(scratch);
                 }
             }
@@ -385,13 +393,14 @@ public sealed class PrimeTester
         var inputBuffer = accelerator.Allocate1D<ulong>(length);
         var resultBuffer = accelerator.Allocate1D<byte>(length);
 
-        ulong[] temp = ArrayPool<ulong>.Shared.Rent(length);
+        ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
+        ulong[] temp = pool.Rent(length);
         values.CopyTo(temp);
         inputBuffer.View.CopyFromCPU(ref temp[0], length);
         kernel(length, inputBuffer.View, resultBuffer.View);
         accelerator.Synchronize();
         resultBuffer.View.CopyToCPU(ref results[0], length);
-        ArrayPool<ulong>.Shared.Return(temp);
+        pool.Return(temp, clearArray: false);
         resultBuffer.Dispose();
         inputBuffer.Dispose();
         gpu.Dispose();
