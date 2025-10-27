@@ -335,9 +335,15 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             return false;
         }
 
-        ulong threshold = limit - step;
+        if (divisor > limit)
+        {
+            processedAll = true;
+            return false;
+        }
 
-        while (divisor <= limit)
+        ulong remainingIterations = ((limit - divisor) / step) + 1UL;
+
+        while (true)
         {
             bool passesSmallModuli = remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0;
             if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
@@ -373,7 +379,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 }
             }
 
-            if (divisor > threshold)
+            remainingIterations--;
+            if (remainingIterations == 0UL)
             {
                 processedAll = true;
                 return false;
@@ -387,9 +394,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             remainder7 = AddMod7(remainder7, step7);
             remainder11 = AddMod11(remainder11, step11);
         }
-
-        processedAll = true;
-        return false;
     }
 
     private static byte CheckDivisor(ulong prime, ulong divisorCycle, in MontgomeryDivisorData divisorData)
