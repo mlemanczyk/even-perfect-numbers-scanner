@@ -19,9 +19,11 @@ This temporary map tracks the code paths exercised by the `--mersenne=bydivisor`
     - `DivisorByDivisorKernels.CheckKernel` → _Reviewed_
 
 - `MersenneDivisorCycles`
-  - `TryCalculateCycleLengthForExponentCpu` → _Queued_
+  - `TryCalculateCycleLengthForExponentCpu` → _Reviewed_
+  - `TryFactorIntoCountsInternal` → _Reviewed_
+  - `PollardRho64` → _Reviewed_
   - `ReduceOrder` (includes `ProcessReduceOrderPrime`) → _Reviewed_
 
 ## Next Steps
-- Audit `MersenneDivisorCycles.TryFactorIntoCountsInternal` and Pollard-Rho helpers to ensure their loops reuse remainders instead of recomputing invariant divisions.
+- Review the PrimeOrderCalculator CPU heuristic pipeline (`InitializeStartingOrderCpu`, `ExponentLoweringCpu`, and follow-on helpers) to confirm invariant work stays outside the hot loops.
 - Defer result aggregation and reporting reviews until instructed otherwise, keeping the focus on computation-only branches.
