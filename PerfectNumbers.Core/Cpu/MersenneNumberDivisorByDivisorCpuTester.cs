@@ -293,11 +293,49 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         processedAll = false;
 
         bool canAdvance = step <= limit;
-        ulong threshold = 0UL;
-        if (canAdvance)
+        if (!canAdvance)
         {
-            threshold = limit - step;
+            if (divisor <= limit)
+            {
+                if (remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0 && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
+                {
+                    MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
+                    ulong divisorCycle;
+                    if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
+                            divisor,
+                            prime,
+                            divisorData,
+                            out ulong computedCycle,
+                            out bool primeOrderFailed) || computedCycle == 0UL)
+                    {
+                        divisorCycle = MersenneDivisorCycles.CalculateCycleLength(
+                            divisor,
+                            divisorData,
+                            skipPrimeOrderHeuristic: primeOrderFailed);
+                    }
+                    else
+                    {
+                        divisorCycle = computedCycle;
+                    }
+
+                    if (divisorCycle == prime)
+                    {
+                        processedAll = true;
+                        return true;
+                    }
+
+                    if (divisorCycle == 0UL)
+                    {
+                        Console.WriteLine($"Divisor cycle was not calculated for {prime}");
+                    }
+                }
+            }
+
+            processedAll = true;
+            return false;
         }
+
+        ulong threshold = limit - step;
 
         while (divisor <= limit)
         {
@@ -335,7 +373,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 }
             }
 
-            if (!canAdvance || divisor > threshold)
+            if (divisor > threshold)
             {
                 processedAll = true;
                 return false;
