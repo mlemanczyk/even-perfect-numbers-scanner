@@ -8,26 +8,6 @@ internal static class DivisorGenerator
     private const ushort DecimalMaskWhenLastIsSeven = (1 << 3) | (1 << 7) | (1 << 9);
     private const ushort DecimalMaskOtherwise = (1 << 1) | (1 << 3) | (1 << 9);
 
-    private const int DecimalFilterLength = 10;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void PopulateDecimalFilter(LastDigit lastDigit, Span<byte> destination)
-    {
-        ushort mask = GetDecimalMask(lastDigit);
-        int length = destination.Length;
-        int limit = length < DecimalFilterLength ? length : DecimalFilterLength;
-
-        for (int index = 0; index < limit; index++)
-        {
-            destination[index] = (byte)((mask >> index) & 1);
-        }
-
-        for (int index = limit; index < length; index++)
-        {
-            destination[index] = 0;
-        }
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ushort GetDecimalMask(LastDigit lastDigit)
     {
