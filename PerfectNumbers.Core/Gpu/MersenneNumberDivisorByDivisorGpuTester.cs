@@ -236,7 +236,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         byte remainder7 = (byte)(currentDivisorValue % 7UL);
         byte remainder11 = (byte)(currentDivisorValue % 11UL);
         LastDigit lastDigit = (prime & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
-        ushort decimalMask = DivisorGenerator.GetDecimalMask(lastDigit);
+        Span<byte> decimalFilter = stackalloc byte[10];
+        DivisorGenerator.PopulateDecimalFilter(lastDigit, decimalFilter);
 
         Span<ulong> filteredStorage = filteredDivisors.AsSpan();
         Span<ulong> divisorStorage = divisors.AsSpan();
@@ -287,7 +288,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             {
                 ulong candidate = (ulong)nextDivisor128;
 
-                bool passesFilters = ((decimalMask >> localRemainder10) & 1) != 0
+                bool passesFilters = decimalFilter[localRemainder10] != 0
                     && (localRemainder8 == 1 || localRemainder8 == 7)
                     && localRemainder3 != 0
                     && localRemainder5 != 0

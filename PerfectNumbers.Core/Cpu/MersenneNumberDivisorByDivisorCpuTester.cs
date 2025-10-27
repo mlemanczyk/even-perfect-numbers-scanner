@@ -141,7 +141,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         // Keep the divisibility filters aligned with the divisor-cycle generator so the
         // CPU path never requests cycles that were skipped during cache creation.
         LastDigit lastDigit = (prime & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
-        ushort decimalMask = DivisorGenerator.GetDecimalMask(lastDigit);
+        Span<byte> decimalFilter = stackalloc byte[10];
+        DivisorGenerator.PopulateDecimalFilter(lastDigit, decimalFilter);
 
         byte step10;
         byte step8;
@@ -178,7 +179,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 stepLow,
                 limit.Low,
                 divisorLow,
-                decimalMask,
+                decimalFilter,
                 step10,
                 step8,
                 step5,
@@ -213,7 +214,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         {
             ulong candidate = divisor.Low;
 
-            bool admissible = ((decimalMask >> remainder10) & 1) != 0
+            bool admissible = decimalFilter[remainder10] != 0
                 && (remainder8 == 1 || remainder8 == 7)
                 && remainder3 != 0
                 && remainder5 != 0
@@ -273,7 +274,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             remainder7 = AddMod(remainder7, step7, (byte)7);
             remainder11 = AddMod(remainder11, step11, (byte)11);
         }
-        processedAll = divisor.CompareTo(limit) > 0;
+        processedAll = true;
         return false;
     }
 
@@ -282,7 +283,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         ulong step,
         ulong limit,
         ulong divisor,
-        ushort decimalMask,
+        ReadOnlySpan<byte> decimalFilter,
         byte step10,
         byte step8,
         byte step5,
@@ -301,7 +302,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         while (divisor <= limit)
         {
-            bool admissible = ((decimalMask >> remainder10) & 1) != 0
+            bool admissible = decimalFilter[remainder10] != 0
                 && (remainder8 == 1 || remainder8 == 7)
                 && remainder3 != 0
                 && remainder5 != 0
@@ -357,7 +358,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             remainder11 = AddMod(remainder11, step11, (byte)11);
         }
 
-        processedAll = divisor > limit;
+        processedAll = true;
         return false;
     }
 
