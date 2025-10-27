@@ -41,7 +41,6 @@ Montgomery Primitives
 Cycle-Aware Modular Arithmetic
 
 Status & Progress Reporting
-- PerfectNumbers.Core/Cpu/MersenneNumberDivisorByDivisorCpuTester.cs:296: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI status benchmarks so we avoid `%` in this hot loop while still wrapping progress correctly.
 
 Cycle Remainder Steppers
 - PerfectNumbers.Core/CycleRemainderStepper.cs:28: Inline this reset at the call sites so the hot loops reuse struct reinitialization measured fastest in MersenneDivisorCycleLengthGpuBenchmarks, avoiding the extra method call when scanners need to restart stepping.

@@ -14,7 +14,7 @@ internal static class CalculationResultsFile
                 using FileStream readStream = new(candidateFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 using StreamReader reader = new(readStream);
                 string? line;
-                ReadOnlySpan<char> span;
+                ReadOnlySpan<char> trimmed;
                 while ((line = reader.ReadLine()) is not null)
                 {
                         if (string.IsNullOrWhiteSpace(line))
@@ -22,36 +22,67 @@ internal static class CalculationResultsFile
                                 continue;
                         }
 
-                        span = line.AsSpan().Trim();
-                        if (span.IsEmpty || span[0] == '#')
+                        trimmed = line.AsSpan().Trim();
+                        if (trimmed.IsEmpty || trimmed[0] == '#')
                         {
                                 continue;
                         }
+
+                        int length = trimmed.Length;
                         int index = 0;
-                        while (index < span.Length)
+                        if (!maxPrimeConfigured)
                         {
-                                if (!char.IsDigit(span[index]))
+                                while (index < length)
                                 {
-                                        index++;
-                                        continue;
-                                }
+                                        char current = trimmed[index];
+                                        uint digit = (uint)(current - '0');
+                                        if (digit > 9U)
+                                        {
+                                                index++;
+                                                continue;
+                                        }
 
-                                int start = index;
-                                index++;
-                                while (index < span.Length && char.IsDigit(span[index]))
-                                {
-                                        index++;
-                                }
+                                        int start = index++;
+                                        while (index < length && (uint)(trimmed[index] - '0') <= 9U)
+                                        {
+                                                index++;
+                                        }
 
-                                if (Utf8CliParser.TryParseUInt64(span[start..index], out ulong parsed))
-                                {
-                                        if (!maxPrimeConfigured || (UInt128)parsed <= maxPrimeLimit)
+                                        if (Utf8CliParser.TryParseUInt64(trimmed[start..index], out ulong parsed))
                                         {
                                                 candidates.Add(parsed);
                                         }
-                                        else
+                                }
+                        }
+                        else
+                        {
+                                UInt128 limit = maxPrimeLimit;
+                                while (index < length)
+                                {
+                                        char current = trimmed[index];
+                                        uint digit = (uint)(current - '0');
+                                        if (digit > 9U)
                                         {
-                                                skippedByLimit++;
+                                                index++;
+                                                continue;
+                                        }
+
+                                        int start = index++;
+                                        while (index < length && (uint)(trimmed[index] - '0') <= 9U)
+                                        {
+                                                index++;
+                                        }
+
+                                        if (Utf8CliParser.TryParseUInt64(trimmed[start..index], out ulong parsed))
+                                        {
+                                                if ((UInt128)parsed <= limit)
+                                                {
+                                                        candidates.Add(parsed);
+                                                }
+                                                else
+                                                {
+                                                        skippedByLimit++;
+                                                }
                                         }
                                 }
                         }

@@ -202,14 +202,15 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--prime=", StringComparison.OrdinalIgnoreCase))
             {
-                startPrime = Utf8CliParser.ParseUInt64(argument.AsSpan(argument.IndexOf('=') + 1));
+                ReadOnlySpan<char> primeValue = argument.AsSpan("--prime=".Length);
+                startPrime = Utf8CliParser.ParseUInt64(primeValue);
                 startPrimeProvided = true;
                 continue;
             }
 
             if (argument.StartsWith("--max-prime=", StringComparison.OrdinalIgnoreCase))
             {
-                ReadOnlySpan<char> value = argument.AsSpan(argument.IndexOf('=') + 1);
+                ReadOnlySpan<char> value = argument.AsSpan("--max-prime=".Length);
                 if (UInt128.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out UInt128 parsedMaxPrime))
                 {
                     maxPrimeLimit = parsedMaxPrime;
@@ -238,13 +239,13 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--threads=", StringComparison.OrdinalIgnoreCase))
             {
-                threadCount = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan(argument.IndexOf('=') + 1)));
+                threadCount = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan("--threads=".Length)));
                 continue;
             }
 
             if (argument.StartsWith("--mersenne=", StringComparison.OrdinalIgnoreCase))
             {
-                ReadOnlySpan<char> value = argument.AsSpan(argument.IndexOf('=') + 1);
+                ReadOnlySpan<char> value = argument.AsSpan("--mersenne=".Length);
                 if (value.Equals("pow2mod", StringComparison.OrdinalIgnoreCase))
                 {
                     kernelType = GpuKernelType.Pow2Mod;
@@ -281,7 +282,7 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
             {
-                if (Utf8CliParser.TryParseUInt64(argument.AsSpan(argument.IndexOf('=') + 1), out ulong parsedLimit))
+                if (Utf8CliParser.TryParseUInt64(argument.AsSpan("--divisor-cycles-limit=".Length), out ulong parsedLimit))
                 {
                     divisorCyclesSearchLimit = parsedLimit;
                 }
@@ -291,7 +292,7 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--residue-max-k=", StringComparison.OrdinalIgnoreCase))
             {
-                if (Utf8CliParser.TryParseUInt64(argument.AsSpan(argument.IndexOf('=') + 1), out ulong parsedResidueMax))
+                if (Utf8CliParser.TryParseUInt64(argument.AsSpan("--residue-max-k=".Length), out ulong parsedResidueMax))
                 {
                     residueKMax = parsedResidueMax;
                 }
@@ -301,7 +302,7 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--mersenne-device=", StringComparison.OrdinalIgnoreCase))
             {
-                useMersenneOnGpu = !argument.AsSpan(argument.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                useMersenneOnGpu = !argument.AsSpan("--mersenne-device=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
                 continue;
             }
 
@@ -319,7 +320,7 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--order-warmup-limit=", StringComparison.OrdinalIgnoreCase))
             {
-                if (Utf8CliParser.TryParseUInt64(argument.AsSpan(argument.IndexOf('=') + 1), out ulong parsedLimit))
+                if (Utf8CliParser.TryParseUInt64(argument.AsSpan("--order-warmup-limit=".Length), out ulong parsedLimit))
                 {
                     orderWarmupLimitOverride = parsedLimit;
                 }
@@ -335,14 +336,14 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--ntt=", StringComparison.OrdinalIgnoreCase))
             {
-                ReadOnlySpan<char> value = argument.AsSpan(argument.IndexOf('=') + 1);
+                ReadOnlySpan<char> value = argument.AsSpan("--ntt=".Length);
                 nttBackend = value.Equals("staged", StringComparison.OrdinalIgnoreCase) ? NttBackend.Staged : NttBackend.Reference;
                 continue;
             }
 
             if (argument.StartsWith("--mod-reduction=", StringComparison.OrdinalIgnoreCase))
             {
-                ReadOnlySpan<char> value = argument.AsSpan(argument.IndexOf('=') + 1);
+                ReadOnlySpan<char> value = argument.AsSpan("--mod-reduction=".Length);
                 if (value.Equals("mont64", StringComparison.OrdinalIgnoreCase))
                 {
                     modReductionMode = ModReductionMode.Mont64;
@@ -365,25 +366,25 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--primes-device=", StringComparison.OrdinalIgnoreCase))
             {
-                forcePrimeKernelsOnCpu = argument.AsSpan(argument.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                forcePrimeKernelsOnCpu = argument.AsSpan("--primes-device=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
                 continue;
             }
 
             if (argument.StartsWith("--order-device=", StringComparison.OrdinalIgnoreCase))
             {
-                useOrderOnGpu = !argument.AsSpan(argument.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                useOrderOnGpu = !argument.AsSpan("--order-device=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
                 continue;
             }
 
             if (argument.StartsWith("--rle-blacklist=", StringComparison.OrdinalIgnoreCase))
             {
-                rleBlacklistPath = argument[(argument.IndexOf('=') + 1)..];
+                rleBlacklistPath = argument["--rle-blacklist=".Length..];
                 continue;
             }
 
             if (argument.StartsWith("--rle-hard-max=", StringComparison.OrdinalIgnoreCase))
             {
-                if (Utf8CliParser.TryParseUInt64(argument.AsSpan(argument.IndexOf('=') + 1), out ulong parsedMax))
+                if (Utf8CliParser.TryParseUInt64(argument.AsSpan("--rle-hard-max=".Length), out ulong parsedMax))
                 {
                     rleHardMaxP = parsedMax;
                 }
@@ -393,14 +394,14 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--rle-only-last7=", StringComparison.OrdinalIgnoreCase))
             {
-                ReadOnlySpan<char> value = argument.AsSpan(argument.IndexOf('=') + 1);
+                ReadOnlySpan<char> value = argument.AsSpan("--rle-only-last7=".Length);
                 rleOnlyLast7 = !value.Equals("false", StringComparison.OrdinalIgnoreCase) && !value.Equals("0", StringComparison.OrdinalIgnoreCase);
                 continue;
             }
 
             if (argument.StartsWith("--zero-hard=", StringComparison.OrdinalIgnoreCase))
             {
-                if (Utf8CliParser.TryParseDouble(argument.AsSpan(argument.IndexOf('=') + 1), out double zeroFraction))
+                if (Utf8CliParser.TryParseDouble(argument.AsSpan("--zero-hard=".Length), out double zeroFraction))
                 {
                     zeroFractionHard = zeroFraction;
                 }
@@ -410,7 +411,7 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--zero-conj=", StringComparison.OrdinalIgnoreCase))
             {
-                ReadOnlySpan<char> value = argument.AsSpan(argument.IndexOf('=') + 1);
+                ReadOnlySpan<char> value = argument.AsSpan("--zero-conj=".Length);
                 int colon = value.IndexOf(':');
                 if (colon > 0)
                 {
@@ -427,87 +428,97 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--lucas=", StringComparison.OrdinalIgnoreCase))
             {
-                useMersenneOnGpu = !argument.AsSpan(argument.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                useMersenneOnGpu = !argument.AsSpan("--lucas=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
                 continue;
             }
 
-            if (argument.StartsWith("--primes=", StringComparison.OrdinalIgnoreCase) ||
-                argument.StartsWith("--gpu-kernels=", StringComparison.OrdinalIgnoreCase) ||
-                argument.StartsWith("--accelerator=", StringComparison.OrdinalIgnoreCase))
+            if (argument.StartsWith("--primes=", StringComparison.OrdinalIgnoreCase))
             {
-                forcePrimeKernelsOnCpu = argument.AsSpan(argument.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                forcePrimeKernelsOnCpu = argument.AsSpan("--primes=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+
+            if (argument.StartsWith("--gpu-kernels=", StringComparison.OrdinalIgnoreCase))
+            {
+                forcePrimeKernelsOnCpu = argument.AsSpan("--gpu-kernels=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+
+            if (argument.StartsWith("--accelerator=", StringComparison.OrdinalIgnoreCase))
+            {
+                forcePrimeKernelsOnCpu = argument.AsSpan("--accelerator=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
                 continue;
             }
 
             if (argument.StartsWith("--results-dir=", StringComparison.OrdinalIgnoreCase))
             {
-                resultsDirectory = argument[(argument.IndexOf('=') + 1)..];
+                resultsDirectory = argument["--results-dir=".Length..];
                 continue;
             }
 
             if (argument.StartsWith("--results-prefix=", StringComparison.OrdinalIgnoreCase))
             {
-                resultsPrefix = argument[(argument.IndexOf('=') + 1)..];
+                resultsPrefix = argument["--results-prefix=".Length..];
                 continue;
             }
 
             if (argument.StartsWith("--gpu-prime-threads=", StringComparison.OrdinalIgnoreCase))
             {
-                gpuPrimeThreads = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan(argument.IndexOf('=') + 1)));
+                gpuPrimeThreads = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan("--gpu-prime-threads=".Length)));
                 continue;
             }
 
             if (argument.StartsWith("--gpu-prime-batch=", StringComparison.OrdinalIgnoreCase))
             {
-                gpuPrimeBatch = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan(argument.IndexOf('=') + 1)));
+                gpuPrimeBatch = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan("--gpu-prime-batch=".Length)));
                 continue;
             }
 
             if (argument.StartsWith("--ll-slice=", StringComparison.OrdinalIgnoreCase))
             {
-                sliceSize = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan(argument.IndexOf('=') + 1)));
+                sliceSize = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan("--ll-slice=".Length)));
                 continue;
             }
 
             if (argument.StartsWith("--gpu-scan-batch=", StringComparison.OrdinalIgnoreCase))
             {
-                scanBatchSize = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan(argument.IndexOf('=') + 1)));
+                scanBatchSize = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan("--gpu-scan-batch=".Length)));
                 continue;
             }
 
             if (argument.StartsWith("--block-size=", StringComparison.OrdinalIgnoreCase))
             {
-                blockSize = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan(argument.IndexOf('=') + 1)));
+                blockSize = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan("--block-size=".Length)));
                 continue;
             }
 
             if (argument.StartsWith("--filter-p=", StringComparison.OrdinalIgnoreCase))
             {
-                filterFile = argument[(argument.IndexOf('=') + 1)..];
+                filterFile = argument["--filter-p=".Length..];
                 continue;
             }
 
             if (argument.StartsWith("--write-batch-size=", StringComparison.OrdinalIgnoreCase))
             {
-                writeBatchSize = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan(argument.IndexOf('=') + 1)));
+                writeBatchSize = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan("--write-batch-size=".Length)));
                 continue;
             }
 
             if (argument.StartsWith("--divisor-cycles=", StringComparison.OrdinalIgnoreCase))
             {
-                cyclesPath = argument[(argument.IndexOf('=') + 1)..];
+                cyclesPath = argument["--divisor-cycles=".Length..];
                 continue;
             }
 
             if (argument.StartsWith("--divisor-cycles-device=", StringComparison.OrdinalIgnoreCase))
             {
-                useGpuCycles = !argument.AsSpan(argument.IndexOf('=') + 1).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                useGpuCycles = !argument.AsSpan("--divisor-cycles-device=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
                 continue;
             }
 
             if (argument.StartsWith("--divisor-cycles-batch=", StringComparison.OrdinalIgnoreCase))
             {
-                cyclesBatchSize = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan(argument.IndexOf('=') + 1)));
+                cyclesBatchSize = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan("--divisor-cycles-batch=".Length)));
                 continue;
             }
 

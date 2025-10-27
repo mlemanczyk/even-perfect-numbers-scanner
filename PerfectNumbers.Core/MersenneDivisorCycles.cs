@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Runtime.InteropServices;
 using PerfectNumbers.Core.Gpu;
 using ILGPU;
 using ILGPU.Runtime;
@@ -379,7 +380,8 @@ public class MersenneDivisorCycles
 		for (int i = 0; i < smallLength; i++)
 		{
 			ulong prime = smallPrimes[i];
-			if (smallPrimesSquared[i] > remaining)
+			ulong primeSquared = smallPrimesSquared[i];
+			if (primeSquared > remaining)
 			{
 				break;
 			}
@@ -439,26 +441,14 @@ public class MersenneDivisorCycles
 
     private static void AddFactor(Dictionary<ulong, int> counts, ulong factor)
     {
-        if (counts.TryGetValue(factor, out int existing))
-        {
-            counts[factor] = existing + 1;
-        }
-        else
-        {
-            counts[factor] = 1;
-        }
+        ref int entry = ref CollectionsMarshal.GetValueRefOrAddDefault(counts, factor, out bool exists);
+        entry = exists ? entry + 1 : 1;
     }
 
     private static void AddFactor(Dictionary<ulong, int> counts, ulong factor, int multiplicity)
     {
-        if (counts.TryGetValue(factor, out int existing))
-        {
-            counts[factor] = existing + multiplicity;
-        }
-        else
-        {
-            counts[factor] = multiplicity;
-        }
+        ref int entry = ref CollectionsMarshal.GetValueRefOrAddDefault(counts, factor, out bool exists);
+        entry = exists ? entry + multiplicity : multiplicity;
     }
 
     private static ulong ReduceOrder(in MontgomeryDivisorData divisorData, ulong initialOrder, Dictionary<ulong, int> factorCounts)
@@ -536,8 +526,8 @@ public class MersenneDivisorCycles
     private static void ProcessReduceOrderPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong prime, int multiplicity, ref ExponentRemainderStepperCpu stepper)
     {
         ulong working = order;
-        int actual = 0;
-        while (actual < multiplicity)
+        int writeIndex = multiplicity;
+        while (writeIndex > 0)
         {
             if (working < prime)
             {
@@ -550,25 +540,19 @@ public class MersenneDivisorCycles
                 break;
             }
 
-            candidateBuffer[actual] = reduced;
+            writeIndex--;
+            candidateBuffer[writeIndex] = reduced;
             working = reduced;
-            actual++;
         }
 
+        int actual = multiplicity - writeIndex;
         if (actual == 0)
         {
             return;
         }
 
-        Span<ulong> candidates = candidateBuffer.Slice(0, actual);
+        Span<ulong> candidates = candidateBuffer.Slice(writeIndex, actual);
         Span<bool> evaluations = evaluationBuffer.Slice(0, actual);
-
-        for (int left = 0, right = actual - 1; left < right; left++, right--)
-        {
-            ulong tmp = candidates[left];
-            candidates[left] = candidates[right];
-            candidates[right] = tmp;
-        }
 
         stepper.Reset();
 
@@ -599,24 +583,28 @@ public class MersenneDivisorCycles
         //     return 2UL;
         // }
 
+        ulong modulus = n;
+        ulong nMinus1 = modulus - 1UL;
+        ulong nMinus2 = modulus - 2UL;
+
         while (true)
         {
-            ulong c = (NextRandomUInt64() % (n - 1UL)) + 1UL;
-            ulong x = (NextRandomUInt64() % (n - 2UL)) + 2UL;
+            ulong c = (NextRandomUInt64() % nMinus1) + 1UL;
+            ulong x = (NextRandomUInt64() % nMinus2) + 2UL;
             ulong y = x;
             ulong d = 1UL;
 
             while (d == 1UL)
             {
-                x = AdvancePolynomial(x, c, n);
-                y = AdvancePolynomial(y, c, n);
-                y = AdvancePolynomial(y, c, n);
+                x = AdvancePolynomial(x, c, modulus);
+                y = AdvancePolynomial(y, c, modulus);
+                y = AdvancePolynomial(y, c, modulus);
 
                 ulong diff = x > y ? x - y : y - x;
-                d = BinaryGcd(diff, n);
+                d = BinaryGcd(diff, modulus);
             }
 
-            if (d != n)
+            if (d != modulus)
             {
                 return d;
             }

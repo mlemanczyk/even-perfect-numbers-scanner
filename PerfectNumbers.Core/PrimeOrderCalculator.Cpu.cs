@@ -299,22 +299,16 @@ internal static partial class PrimeOrderCalculator
 		Span<ulong> candidates = candidateBuffer[..actual];
 		Span<bool> evaluations = evaluationBuffer[..actual];
 
-		for (int left = 0, right = actual - 1; left < right; left++, right--)
-		{
-			ulong tmp = candidates[left];
-			candidates[left] = candidates[right];
-			candidates[right] = tmp;
-		}
-
 		stepper.Reset();
 
-		evaluations[0] = stepper.InitializeCpuIsUnity(candidates[0]);
-		for (int j = 1; j < actual; j++)
+		int last = actual - 1;
+		evaluations[last] = stepper.InitializeCpuIsUnity(candidates[last]);
+		for (int j = last - 1; j >= 0; j--)
 		{
 			evaluations[j] = stepper.ComputeNextIsUnity(candidates[j]);
 		}
 
-		for (int j = actual - 1; j >= 0; j--)
+		for (int j = 0; j < actual; j++)
 		{
 			if (!evaluations[j])
 			{
@@ -464,16 +458,16 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		Span<ulong> candidates = buffer[..actual];
-		candidates.Reverse();
 
 		stepper.Reset();
 
-		if (stepper.InitializeCpuIsUnity(candidates[0]))
+		int last = actual - 1;
+		if (stepper.InitializeCpuIsUnity(candidates[last]))
 		{
 			return true;
 		}
 
-		for (int j = 1; j < actual; j++)
+		for (int j = last - 1; j >= 0; j--)
 		{
 			if (stepper.ComputeNextIsUnity(candidates[j]))
 			{
@@ -694,13 +688,16 @@ internal static partial class PrimeOrderCalculator
 	private static void SortCandidates(ulong prime, ulong? previousOrder, List<ulong> candidates)
 	{
 		ulong previous = previousOrder ?? 0UL;
-		int previousGroup = previousOrder.HasValue ? GetGroup(previousOrder.Value, prime) : 1;
 		bool hasPrevious = previousOrder.HasValue;
+		ulong threshold1 = prime >> 3;
+		ulong threshold2 = prime >> 2;
+		ulong threshold3 = (prime * 3UL) >> 3;
+		int previousGroup = hasPrevious ? GetGroup(previous, threshold1, threshold2, threshold3) : 1;
 
 		candidates.Sort((x, y) =>
 		{
-			CandidateKey keyX = BuildKey(x, prime, previous, previousGroup, hasPrevious);
-			CandidateKey keyY = BuildKey(y, prime, previous, previousGroup, hasPrevious);
+			CandidateKey keyX = BuildKey(x, previous, previousGroup, hasPrevious, threshold1, threshold2, threshold3);
+			CandidateKey keyY = BuildKey(y, previous, previousGroup, hasPrevious, threshold1, threshold2, threshold3);
 			int compare = keyX.Primary.CompareTo(keyY.Primary);
 			if (compare != 0)
 			{
@@ -717,9 +714,9 @@ internal static partial class PrimeOrderCalculator
 		});
 	}
 
-	private static CandidateKey BuildKey(ulong value, ulong prime, ulong previous, int previousGroup, bool hasPrevious)
+	private static CandidateKey BuildKey(ulong value, ulong previous, int previousGroup, bool hasPrevious, ulong threshold1, ulong threshold2, ulong threshold3)
 	{
-		int group = GetGroup(value, prime);
+		int group = GetGroup(value, threshold1, threshold2, threshold3);
 		if (group == 0)
 		{
 			return new CandidateKey(int.MaxValue, long.MaxValue, long.MaxValue);
@@ -769,21 +766,18 @@ internal static partial class PrimeOrderCalculator
 		return groupOffset + (isGe ? 0 : 1);
 	}
 
-	private static int GetGroup(ulong value, ulong prime)
+	private static int GetGroup(ulong value, ulong threshold1, ulong threshold2, ulong threshold3)
 	{
-		ulong threshold1 = prime >> 3;
 		if (value <= threshold1)
 		{
 			return 1;
 		}
 
-		ulong threshold2 = prime >> 2;
 		if (value <= threshold2)
 		{
 			return 2;
 		}
 
-		ulong threshold3 = (prime * 3UL) >> 3;
 		if (value <= threshold3)
 		{
 			return 3;
@@ -828,9 +822,11 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		FactorEntry factor = factors[index];
+		int factorExponent = factor.Exponent;
 		ulong primeFactor = factor.Value;
 		ulong contribution = 1UL;
-		for (int exponent = 0; exponent <= factor.Exponent; exponent++)
+		ulong contributionLimit = factorExponent == 0 ? 0UL : order / primeFactor;
+		for (int exponent = 0; exponent <= factorExponent; exponent++)
 		{
 			ulong nextDivisor = divisorProduct * contribution;
 			if (nextDivisor > order)
@@ -844,12 +840,12 @@ internal static partial class PrimeOrderCalculator
 				return;
 			}
 
-			if (exponent == factor.Exponent)
+			if (exponent == factorExponent)
 			{
 				break;
 			}
 
-			if (contribution > order / primeFactor)
+			if (contribution > contributionLimit)
 			{
 				break;
 			}
@@ -973,24 +969,45 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		Span<ulong> candidates = buffer[..actual];
-		candidates.Reverse();
 
 		stepper.Reset();
+		int last = actual - 1;
 
-		if (powUsed >= powBudget && powBudget > 0)
+		bool enforceBudget = powBudget > 0;
+		if (!enforceBudget)
+		{
+			powUsed++;
+			if (stepper.InitializeCpuIsUnity(candidates[last]))
+			{
+				return true;
+			}
+
+			for (int j = last - 1; j >= 0; j--)
+			{
+				powUsed++;
+				if (stepper.ComputeNextIsUnity(candidates[j]))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		if (powUsed >= powBudget)
 		{
 			return true;
 		}
 
 		powUsed++;
-		if (stepper.InitializeCpuIsUnity(candidates[0]))
+		if (stepper.InitializeCpuIsUnity(candidates[last]))
 		{
 			return true;
 		}
 
-		for (int j = 1; j < actual; j++)
+		for (int j = last - 1; j >= 0; j--)
 		{
-			if (powUsed >= powBudget && powBudget > 0)
+			if (powUsed >= powBudget)
 			{
 				return true;
 			}
