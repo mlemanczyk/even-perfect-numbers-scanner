@@ -290,14 +290,10 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                     ulong divisorCycle = ResolveDivisorCycle(divisorValue, prime, in montgomeryData);
                     if (divisorCycle == prime)
                     {
-                        int targetIndex = admissibleCount;
-                        divisorSpan[targetIndex] = divisorValue;
-                        exponentSpan[targetIndex] = prime;
-                        divisorDataSpan[targetIndex] = new GpuDivisorPartialData(divisorValue);
-                        offsetSpan[targetIndex] = targetIndex;
-                        countSpan[targetIndex] = 1;
-                        cycleSpan[targetIndex] = divisorCycle;
-                        admissibleCount++;
+                        processedCount += (ulong)(i + 1);
+                        lastProcessed = divisorValue;
+                        coveredRange = true;
+                        return true;
                     }
                 }
 
