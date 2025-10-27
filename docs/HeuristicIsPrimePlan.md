@@ -136,7 +136,7 @@ The plan incorporates the updated divisor-class heuristics (Groups A/B, wheels, 
    * [done] Kept GPU divisibility in standard modular arithmetic while reserving Montgomery transforms for CPU confirmation logic.
    * [done] When the temporary Group B gate is disabled, delegate GPU calls to the CPU fallback so Group A coverage remains in place while the accelerator path stays available for future re-enablement.
 8. [done] **Refactor by-divisor CPU/GPU testers to reuse heuristics**
-   * [done] Drove `MersenneNumberDivisorByDivisorCpuTester.CheckDivisors` from `HeuristicPrimeTester.CreateMersenneDivisorEnumerator`, eliminating the bespoke residue loop while preserving the existing status counters.
+   * [done] Drove `MersenneNumberDivisorByDivisorCpuTester.CheckDivisors` from `HeuristicPrimeTester.CreateMersenneDivisorEnumerator`, eliminating the bespoke residue loop and retiring the legacy status counter.
    * [done] Streamed GPU batches from the same enumerator and Montgomery preparation data, removing the filtered-divisor scratch arrays while continuing to feed the existing kernel and hit bookkeeping.
 9. [done] **Route legacy prime checks through heuristics**
    * [done] Introduce `HeuristicPrimeTester` so heuristic CPU/GPU checks live alongside the legacy `PrimeTester` implementations while callers opt in explicitly.
