@@ -36,28 +36,30 @@ internal static class DivisorByDivisorKernels
         byte firstHitValue;
         ulong previousExponent = firstExponent;
         ulong cycleRemainder = 0UL;
-        if (cycleLength == 0UL)
-        {
-            firstHitValue = firstUnity ? (byte)1 : (byte)0;
-        }
-        else
+        bool hasCycle = cycleLength != 0UL;
+        if (hasCycle)
         {
             cycleRemainder = firstExponent % cycleLength;
             firstHitValue = cycleRemainder == 0UL && firstUnity ? (byte)1 : (byte)0;
+        }
+        else
+        {
+            firstHitValue = firstUnity ? (byte)1 : (byte)0;
         }
 
         hits[offset] = firstHitValue;
         byte anyHit = firstHitValue;
 
-        for (int i = 1; i < count; i++)
+        int endIndex = offset + count;
+        if (hasCycle)
         {
-            ulong exponent = exponents[offset + i];
-            ulong delta = exponent - previousExponent;
-            previousExponent = exponent;
-
-            if (cycleLength != 0UL)
+            GpuUInt128 remainderValue = new(cycleRemainder);
+            for (int exponentIndex = offset + 1; exponentIndex < endIndex; exponentIndex++)
             {
-                var remainderValue = new GpuUInt128(cycleRemainder);
+                ulong exponent = exponents[exponentIndex];
+                ulong delta = exponent - previousExponent;
+                previousExponent = exponent;
+
                 remainderValue.AddMod(delta, cycleLength);
                 cycleRemainder = remainderValue.Low;
 
@@ -67,13 +69,17 @@ internal static class DivisorByDivisorKernels
                     hit = stepper.ComputeNextIsUnityGpu(exponent) ? (byte)1 : (byte)0;
                 }
 
-                hits[offset + i] = hit;
+                hits[exponentIndex] = hit;
                 anyHit |= hit;
             }
-            else
+        }
+        else
+        {
+            for (int exponentIndex = offset + 1; exponentIndex < endIndex; exponentIndex++)
             {
+                ulong exponent = exponents[exponentIndex];
                 byte hit = stepper.ComputeNextIsUnityGpu(exponent) ? (byte)1 : (byte)0;
-                hits[offset + i] = hit;
+                hits[exponentIndex] = hit;
                 anyHit |= hit;
             }
         }

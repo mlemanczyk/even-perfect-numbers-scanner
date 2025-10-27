@@ -93,9 +93,15 @@ public static class MersenneNumberDivisorByDivisorTester
 			}
 			else
 			{
-				while (startIndex > 0 && candidates[startIndex - 1] >= startPrime)
+				while (startIndex > 0)
 				{
-					startIndex--;
+					int previousIndex = startIndex - 1;
+					if (candidates[previousIndex] < startPrime)
+					{
+						break;
+					}
+
+					startIndex = previousIndex;
 				}
 			}
 		}

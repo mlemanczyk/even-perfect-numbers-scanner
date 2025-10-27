@@ -8,6 +8,12 @@ internal static class DivisorGenerator
     private const ushort DecimalMaskOtherwise = (1 << 1) | (1 << 3) | (1 << 9);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ushort GetDecimalMask(LastDigit lastDigit)
+    {
+        return lastDigit == LastDigit.Seven ? DecimalMaskWhenLastIsSeven : DecimalMaskOtherwise;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsValidDivisor(
         byte remainder10,
         byte remainder8,
@@ -15,9 +21,8 @@ internal static class DivisorGenerator
         byte remainder5,
         byte remainder7,
         byte remainder11,
-        LastDigit lastDigit)
+        ushort decimalMask)
     {
-        ushort decimalMask = lastDigit == LastDigit.Seven ? DecimalMaskWhenLastIsSeven : DecimalMaskOtherwise;
         if (((decimalMask >> remainder10) & 1) == 0)
         {
             return false;
