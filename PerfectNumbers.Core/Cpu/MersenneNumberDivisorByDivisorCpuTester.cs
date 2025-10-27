@@ -7,10 +7,7 @@ namespace PerfectNumbers.Core.Cpu;
 
 public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDivisorByDivisorTester
 {
-    private readonly object _sync = new();
-
     private ulong _divisorLimit;
-    private ulong _lastStatusDivisor;
     private int _batchSize = 1_024;
 
     [ThreadStatic]
@@ -32,7 +29,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     public void ConfigureFromMaxPrime(ulong maxPrime)
     {
         _divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
-        _lastStatusDivisor = 0UL;
     }
 
     public ulong DivisorLimit
@@ -60,22 +56,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         //     return true;
         // }
 
-        ulong processedCount;
         bool processedAll;
 
         bool composite = CheckDivisors(
             prime,
             allowedMax,
-            out processedAll,
-            out processedCount);
-
-        if (processedCount > 0UL)
-        {
-            lock (_sync)
-            {
-                UpdateStatusUnsafe(processedCount);
-            }
-        }
+            out processedAll);
 
         if (composite)
         {
@@ -111,10 +97,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     private bool CheckDivisors(
         ulong prime,
         ulong allowedMax,
-        out bool processedAll,
-        out ulong processedCount)
+        out bool processedAll)
     {
-        processedCount = 0UL;
         processedAll = false;
 
         // The EvenPerfectBitScanner feeds primes >= 138,000,000 here, so allowedMax >= 3 in production runs.
@@ -151,44 +135,86 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         ulong stepHigh = step.High;
         ulong stepLow = step.Low;
-        byte step10 = (byte)((((stepHigh % 10UL) * 6UL) + (stepLow % 10UL)) % 10UL);
-        byte step8 = (byte)(stepLow % 8UL);
-        byte step5 = (byte)(((stepHigh % 5UL) + (stepLow % 5UL)) % 5UL);
-        byte step3 = (byte)(((stepHigh % 3UL) + (stepLow % 3UL)) % 3UL);
-        byte step7 = (byte)((((stepHigh % 7UL) * 2UL) + (stepLow % 7UL)) % 7UL);
-        byte step11 = (byte)((((stepHigh % 11UL) * 5UL) + (stepLow % 11UL)) % 11UL);
-
-        ulong divisorHigh = divisor.High;
+        ulong limitHigh = limit.High;
         ulong divisorLow = divisor.Low;
-        byte remainder10 = (byte)((((divisorHigh % 10UL) * 6UL) + (divisorLow % 10UL)) % 10UL);
-        byte remainder8 = (byte)(divisorLow % 8UL);
-        byte remainder5 = (byte)(((divisorHigh % 5UL) + (divisorLow % 5UL)) % 5UL);
-        byte remainder3 = (byte)(((divisorHigh % 3UL) + (divisorLow % 3UL)) % 3UL);
-        byte remainder7 = (byte)((((divisorHigh % 7UL) * 2UL) + (divisorLow % 7UL)) % 7UL);
-        byte remainder11 = (byte)((((divisorHigh % 11UL) * 5UL) + (divisorLow % 11UL)) % 11UL);
 
         // Keep the divisibility filters aligned with the divisor-cycle generator so the
         // CPU path never requests cycles that were skipped during cache creation.
         LastDigit lastDigit = (prime & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
-        bool lastIsSeven = lastDigit == LastDigit.Seven;
-        const ushort DecimalMaskWhenLastIsSeven = (1 << 3) | (1 << 7) | (1 << 9);
-        const ushort DecimalMaskOtherwise = (1 << 1) | (1 << 3) | (1 << 9);
+        ushort decimalMask = DivisorGenerator.GetDecimalMask(lastDigit);
+
+        byte step10;
+        byte step8;
+        byte step5;
+        byte step3;
+        byte step7;
+        byte step11;
+
+        byte remainder10;
+        byte remainder8;
+        byte remainder5;
+        byte remainder3;
+        byte remainder7;
+        byte remainder11;
+
+        if (stepHigh == 0UL && limitHigh == 0UL)
+        {
+            step10 = (byte)(stepLow % 10UL);
+            step8 = (byte)(stepLow & 7UL);
+            step5 = (byte)(stepLow % 5UL);
+            step3 = (byte)(stepLow % 3UL);
+            step7 = (byte)(stepLow % 7UL);
+            step11 = (byte)(stepLow % 11UL);
+
+            remainder10 = (byte)(divisorLow % 10UL);
+            remainder8 = (byte)(divisorLow & 7UL);
+            remainder5 = (byte)(divisorLow % 5UL);
+            remainder3 = (byte)(divisorLow % 3UL);
+            remainder7 = (byte)(divisorLow % 7UL);
+            remainder11 = (byte)(divisorLow % 11UL);
+
+            return CheckDivisors64(
+                prime,
+                stepLow,
+                limit.Low,
+                divisorLow,
+                decimalMask,
+                step10,
+                step8,
+                step5,
+                step3,
+                step7,
+                step11,
+                remainder10,
+                remainder8,
+                remainder5,
+                remainder3,
+                remainder7,
+                remainder11,
+                out processedAll);
+        }
+
+        ulong divisorHigh = divisor.High;
+        step10 = (byte)((((stepHigh % 10UL) * 6UL) + (stepLow % 10UL)) % 10UL);
+        step8 = (byte)(stepLow % 8UL);
+        step5 = (byte)(((stepHigh % 5UL) + (stepLow % 5UL)) % 5UL);
+        step3 = (byte)(((stepHigh % 3UL) + (stepLow % 3UL)) % 3UL);
+        step7 = (byte)((((stepHigh % 7UL) * 2UL) + (stepLow % 7UL)) % 7UL);
+        step11 = (byte)((((stepHigh % 11UL) * 5UL) + (stepLow % 11UL)) % 11UL);
+
+        remainder10 = (byte)((((divisorHigh % 10UL) * 6UL) + (divisorLow % 10UL)) % 10UL);
+        remainder8 = (byte)(divisorLow % 8UL);
+        remainder5 = (byte)(((divisorHigh % 5UL) + (divisorLow % 5UL)) % 5UL);
+        remainder3 = (byte)(((divisorHigh % 3UL) + (divisorLow % 3UL)) % 3UL);
+        remainder7 = (byte)((((divisorHigh % 7UL) * 2UL) + (divisorLow % 7UL)) % 7UL);
+        remainder11 = (byte)((((divisorHigh % 11UL) * 5UL) + (divisorLow % 11UL)) % 11UL);
 
         while (divisor.CompareTo(limit) <= 0)
         {
-            ulong candidate = divisor.Low;
-            processedCount++;
-
-            ushort decimalMask = lastIsSeven ? DecimalMaskWhenLastIsSeven : DecimalMaskOtherwise;
-            bool admissible = ((decimalMask >> remainder10) & 1) != 0;
-
-            if (admissible
-                && (remainder8 == 1 || remainder8 == 7)
-                && remainder3 != 0
-                && remainder5 != 0
-                && remainder7 != 0
-                && remainder11 != 0)
+            bool passesSmallModuli = remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0;
+            if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
             {
+                ulong candidate = divisor.Low;
                 MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(candidate);
                 ulong divisorCycle;
                 // Divisors generated from 2 * k * p + 1 exceed the small-cycle snapshot when p >= 138,000,000, so the short path below never runs.
@@ -233,16 +259,141 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             }
 
             divisor.Add(step);
-            remainder10 = AddMod(remainder10, step10, (byte)10);
-            remainder8 = AddMod(remainder8, step8, (byte)8);
-            remainder5 = AddMod(remainder5, step5, (byte)5);
-            remainder3 = AddMod(remainder3, step3, (byte)3);
-            remainder7 = AddMod(remainder7, step7, (byte)7);
-            remainder11 = AddMod(remainder11, step11, (byte)11);
+            remainder10 = AddMod10(remainder10, step10);
+            remainder8 = AddMod8(remainder8, step8);
+            remainder5 = AddMod5(remainder5, step5);
+            remainder3 = AddMod3(remainder3, step3);
+            remainder7 = AddMod7(remainder7, step7);
+            remainder11 = AddMod11(remainder11, step11);
+        }
+        processedAll = true;
+        return false;
+    }
+
+    private static bool CheckDivisors64(
+        ulong prime,
+        ulong step,
+        ulong limit,
+        ulong divisor,
+        ushort decimalMask,
+        byte step10,
+        byte step8,
+        byte step5,
+        byte step3,
+        byte step7,
+        byte step11,
+        byte remainder10,
+        byte remainder8,
+        byte remainder5,
+        byte remainder3,
+        byte remainder7,
+        byte remainder11,
+        out bool processedAll)
+    {
+        processedAll = false;
+
+        bool canAdvance = step <= limit;
+        if (!canAdvance)
+        {
+            if (divisor <= limit)
+            {
+                if (remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0 && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
+                {
+                    MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
+                    ulong divisorCycle;
+                    if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
+                            divisor,
+                            prime,
+                            divisorData,
+                            out ulong computedCycle,
+                            out bool primeOrderFailed) || computedCycle == 0UL)
+                    {
+                        divisorCycle = MersenneDivisorCycles.CalculateCycleLength(
+                            divisor,
+                            divisorData,
+                            skipPrimeOrderHeuristic: primeOrderFailed);
+                    }
+                    else
+                    {
+                        divisorCycle = computedCycle;
+                    }
+
+                    if (divisorCycle == prime)
+                    {
+                        processedAll = true;
+                        return true;
+                    }
+
+                    if (divisorCycle == 0UL)
+                    {
+                        Console.WriteLine($"Divisor cycle was not calculated for {prime}");
+                    }
+                }
+            }
+
+            processedAll = true;
+            return false;
         }
 
-        processedAll = divisor.CompareTo(limit) > 0;
-        return false;
+        if (divisor > limit)
+        {
+            processedAll = true;
+            return false;
+        }
+
+        ulong remainingIterations = ((limit - divisor) / step) + 1UL;
+
+        while (true)
+        {
+            bool passesSmallModuli = remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0;
+            if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
+            {
+                MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
+                ulong divisorCycle;
+                if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
+                        divisor,
+                        prime,
+                        divisorData,
+                        out ulong computedCycle,
+                        out bool primeOrderFailed) || computedCycle == 0UL)
+                {
+                    divisorCycle = MersenneDivisorCycles.CalculateCycleLength(
+                        divisor,
+                        divisorData,
+                        skipPrimeOrderHeuristic: primeOrderFailed);
+                }
+                else
+                {
+                    divisorCycle = computedCycle;
+                }
+
+                if (divisorCycle == prime)
+                {
+                    processedAll = true;
+                    return true;
+                }
+
+                if (divisorCycle == 0UL)
+                {
+                    Console.WriteLine($"Divisor cycle was not calculated for {prime}");
+                }
+            }
+
+            remainingIterations--;
+            if (remainingIterations == 0UL)
+            {
+                processedAll = true;
+                return false;
+            }
+
+            divisor += step;
+            remainder10 = AddMod10(remainder10, step10);
+            remainder8 = AddMod8(remainder8, step8);
+            remainder5 = AddMod5(remainder5, step5);
+            remainder3 = AddMod3(remainder3, step3);
+            remainder7 = AddMod7(remainder7, step7);
+            remainder11 = AddMod11(remainder11, step11);
+        }
     }
 
     private static byte CheckDivisor(ulong prime, ulong divisorCycle, in MontgomeryDivisorData divisorData)
@@ -251,35 +402,80 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         return residue == 1UL ? (byte)1 : (byte)0;
     }
 
-    private static byte AddMod(byte value, byte delta, byte modulus)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod3(byte value, byte delta)
     {
+        const int Modulus = 3;
         int sum = value + delta;
-        if (sum >= modulus)
+
+        if (sum >= Modulus)
         {
-            sum -= modulus;
+            sum -= Modulus;
         }
 
         return (byte)sum;
     }
 
-    private void UpdateStatusUnsafe(ulong processedCount)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod5(byte value, byte delta)
     {
-        if (processedCount == 0UL)
+        const int Modulus = 5;
+        int sum = value + delta;
+
+        if (sum >= Modulus)
         {
-            return;
+            sum -= Modulus;
         }
 
-        ulong interval = PerfectNumberConstants.ConsoleInterval;
-        if (interval == 0UL)
+        return (byte)sum;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod7(byte value, byte delta)
+    {
+        const int Modulus = 7;
+        int sum = value + delta;
+
+        if (sum >= Modulus)
         {
-            _lastStatusDivisor = 0UL;
-            return;
+            sum -= Modulus;
         }
 
-        ulong total = _lastStatusDivisor + processedCount;
-        // TODO: Replace this modulo with the ring-buffer style counter (subtract loop) used in the fast CLI
-        // status benchmarks so we avoid `%` in this hot loop while still wrapping progress correctly.
-        _lastStatusDivisor = total % interval;
+        return (byte)sum;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod10(byte value, byte delta)
+    {
+        const int Modulus = 10;
+        int sum = value + delta;
+
+        if (sum >= Modulus)
+        {
+            sum -= Modulus;
+        }
+
+        return (byte)sum;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod11(byte value, byte delta)
+    {
+        const int Modulus = 11;
+        int sum = value + delta;
+
+        if (sum >= Modulus)
+        {
+            sum -= Modulus;
+        }
+
+        return (byte)sum;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod8(byte value, byte delta)
+    {
+        return (byte)((value + delta) & 7);
     }
 
     private static ulong ComputeDivisorLimitFromMaxPrime(ulong maxPrime)
