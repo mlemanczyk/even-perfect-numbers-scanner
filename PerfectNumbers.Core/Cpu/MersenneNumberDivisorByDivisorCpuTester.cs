@@ -211,16 +211,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         while (divisor.CompareTo(limit) <= 0)
         {
-            bool admissible = DivisorGenerator.IsValidDivisor(
-                remainder10,
-                remainder8,
-                remainder3,
-                remainder5,
-                remainder7,
-                remainder11,
-                decimalMask);
-
-            if (admissible)
+            bool passesSmallModuli = remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0;
+            if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
             {
                 ulong candidate = divisor.Low;
                 MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(candidate);
@@ -309,16 +301,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         while (divisor <= limit)
         {
-            bool admissible = DivisorGenerator.IsValidDivisor(
-                remainder10,
-                remainder8,
-                remainder3,
-                remainder5,
-                remainder7,
-                remainder11,
-                decimalMask);
-
-            if (admissible)
+            bool passesSmallModuli = remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0;
+            if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
             {
                 MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
                 ulong divisorCycle;
