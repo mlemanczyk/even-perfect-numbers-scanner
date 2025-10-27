@@ -285,8 +285,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
             for (int i = 0; i < chunkCount; i++)
             {
-                ulong candidate = (ulong)nextDivisor128;
-
                 bool passesFilters = DivisorGenerator.IsValidDivisor(
                     localRemainder10,
                     localRemainder8,
@@ -298,7 +296,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
                 if (passesFilters)
                 {
-                    filteredStorage[filteredCount++] = candidate;
+                    filteredStorage[filteredCount++] = (ulong)nextDivisor128;
                 }
 
                 nextDivisor128 += twoP128;

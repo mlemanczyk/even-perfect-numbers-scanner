@@ -211,8 +211,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         while (divisor.CompareTo(limit) <= 0)
         {
-            ulong candidate = divisor.Low;
-
             bool admissible = DivisorGenerator.IsValidDivisor(
                 remainder10,
                 remainder8,
@@ -224,6 +222,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
             if (admissible)
             {
+                ulong candidate = divisor.Low;
                 MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(candidate);
                 ulong divisorCycle;
                 // Divisors generated from 2 * k * p + 1 exceed the small-cycle snapshot when p >= 138,000,000, so the short path below never runs.

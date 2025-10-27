@@ -53,15 +53,24 @@ internal static class DivisorByDivisorKernels
         int endIndex = offset + count;
         if (hasCycle)
         {
-            GpuUInt128 remainderValue = new(cycleRemainder);
             for (int exponentIndex = offset + 1; exponentIndex < endIndex; exponentIndex++)
             {
                 ulong exponent = exponents[exponentIndex];
                 ulong delta = exponent - previousExponent;
                 previousExponent = exponent;
 
-                remainderValue.AddMod(delta, cycleLength);
-                cycleRemainder = remainderValue.Low;
+                if (delta >= cycleLength)
+                {
+                    delta %= cycleLength;
+                }
+
+                ulong nextRemainder = cycleRemainder + delta;
+                if (nextRemainder >= cycleLength)
+                {
+                    nextRemainder -= cycleLength;
+                }
+
+                cycleRemainder = nextRemainder;
 
                 byte hit = 0;
                 if (cycleRemainder == 0UL)
