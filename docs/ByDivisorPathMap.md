@@ -18,7 +18,10 @@ This temporary map tracks the code paths exercised by the `--mersenne=bydivisor`
     - `CheckDivisors` → _Reviewed_
     - `DivisorByDivisorKernels.CheckKernel` → _Reviewed_
 
-## Next Steps
-- Trace the result aggregation and reporting helpers invoked after divisor scans to confirm their loops only compute invariants once per batch.
-- Revisit ancillary utilities invoked by the by-divisor flow (result handlers, task schedulers) to confirm their loops remain free of redundant invariant evaluations.
+- `MersenneDivisorCycles`
+  - `TryCalculateCycleLengthForExponentCpu` → _Queued_
+  - `ReduceOrder` (includes `ProcessReduceOrderPrime`) → _Reviewed_
 
+## Next Steps
+- Audit `MersenneDivisorCycles.TryFactorIntoCountsInternal` and Pollard-Rho helpers to ensure their loops reuse remainders instead of recomputing invariant divisions.
+- Defer result aggregation and reporting reviews until instructed otherwise, keeping the focus on computation-only branches.

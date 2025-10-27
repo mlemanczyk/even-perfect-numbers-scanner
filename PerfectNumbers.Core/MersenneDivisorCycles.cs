@@ -535,8 +535,8 @@ public class MersenneDivisorCycles
     private static void ProcessReduceOrderPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong prime, int multiplicity, ref ExponentRemainderStepperCpu stepper)
     {
         ulong working = order;
-        int actual = 0;
-        while (actual < multiplicity)
+        int writeIndex = multiplicity;
+        while (writeIndex > 0)
         {
             if (working < prime)
             {
@@ -549,25 +549,19 @@ public class MersenneDivisorCycles
                 break;
             }
 
-            candidateBuffer[actual] = reduced;
+            writeIndex--;
+            candidateBuffer[writeIndex] = reduced;
             working = reduced;
-            actual++;
         }
 
+        int actual = multiplicity - writeIndex;
         if (actual == 0)
         {
             return;
         }
 
-        Span<ulong> candidates = candidateBuffer.Slice(0, actual);
+        Span<ulong> candidates = candidateBuffer.Slice(writeIndex, actual);
         Span<bool> evaluations = evaluationBuffer.Slice(0, actual);
-
-        for (int left = 0, right = actual - 1; left < right; left++, right--)
-        {
-            ulong tmp = candidates[left];
-            candidates[left] = candidates[right];
-            candidates[right] = tmp;
-        }
 
         stepper.Reset();
 
