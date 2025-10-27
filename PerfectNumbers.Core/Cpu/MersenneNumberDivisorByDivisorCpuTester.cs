@@ -143,21 +143,35 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         LastDigit lastDigit = (prime & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
         ushort decimalMask = DivisorGenerator.GetDecimalMask(lastDigit);
 
+        byte step10;
+        byte step8;
+        byte step5;
+        byte step3;
+        byte step7;
+        byte step11;
+
+        byte remainder10;
+        byte remainder8;
+        byte remainder5;
+        byte remainder3;
+        byte remainder7;
+        byte remainder11;
+
         if (stepHigh == 0UL && limitHigh == 0UL)
         {
-            byte fastStep10 = (byte)(stepLow % 10UL);
-            byte fastStep8 = (byte)(stepLow & 7UL);
-            byte fastStep5 = (byte)(stepLow % 5UL);
-            byte fastStep3 = (byte)(stepLow % 3UL);
-            byte fastStep7 = (byte)(stepLow % 7UL);
-            byte fastStep11 = (byte)(stepLow % 11UL);
+            step10 = (byte)(stepLow % 10UL);
+            step8 = (byte)(stepLow & 7UL);
+            step5 = (byte)(stepLow % 5UL);
+            step3 = (byte)(stepLow % 3UL);
+            step7 = (byte)(stepLow % 7UL);
+            step11 = (byte)(stepLow % 11UL);
 
-            byte fastRemainder10 = (byte)(divisorLow % 10UL);
-            byte fastRemainder8 = (byte)(divisorLow & 7UL);
-            byte fastRemainder5 = (byte)(divisorLow % 5UL);
-            byte fastRemainder3 = (byte)(divisorLow % 3UL);
-            byte fastRemainder7 = (byte)(divisorLow % 7UL);
-            byte fastRemainder11 = (byte)(divisorLow % 11UL);
+            remainder10 = (byte)(divisorLow % 10UL);
+            remainder8 = (byte)(divisorLow & 7UL);
+            remainder5 = (byte)(divisorLow % 5UL);
+            remainder3 = (byte)(divisorLow % 3UL);
+            remainder7 = (byte)(divisorLow % 7UL);
+            remainder11 = (byte)(divisorLow % 11UL);
 
             return CheckDivisors64(
                 prime,
@@ -165,35 +179,35 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 limit.Low,
                 divisorLow,
                 decimalMask,
-                fastStep10,
-                fastStep8,
-                fastStep5,
-                fastStep3,
-                fastStep7,
-                fastStep11,
-                fastRemainder10,
-                fastRemainder8,
-                fastRemainder5,
-                fastRemainder3,
-                fastRemainder7,
-                fastRemainder11,
+                step10,
+                step8,
+                step5,
+                step3,
+                step7,
+                step11,
+                remainder10,
+                remainder8,
+                remainder5,
+                remainder3,
+                remainder7,
+                remainder11,
                 out processedAll);
         }
 
         ulong divisorHigh = divisor.High;
-        byte step10 = (byte)((((stepHigh % 10UL) * 6UL) + (stepLow % 10UL)) % 10UL);
-        byte step8 = (byte)(stepLow % 8UL);
-        byte step5 = (byte)(((stepHigh % 5UL) + (stepLow % 5UL)) % 5UL);
-        byte step3 = (byte)(((stepHigh % 3UL) + (stepLow % 3UL)) % 3UL);
-        byte step7 = (byte)((((stepHigh % 7UL) * 2UL) + (stepLow % 7UL)) % 7UL);
-        byte step11 = (byte)((((stepHigh % 11UL) * 5UL) + (stepLow % 11UL)) % 11UL);
+        step10 = (byte)((((stepHigh % 10UL) * 6UL) + (stepLow % 10UL)) % 10UL);
+        step8 = (byte)(stepLow % 8UL);
+        step5 = (byte)(((stepHigh % 5UL) + (stepLow % 5UL)) % 5UL);
+        step3 = (byte)(((stepHigh % 3UL) + (stepLow % 3UL)) % 3UL);
+        step7 = (byte)((((stepHigh % 7UL) * 2UL) + (stepLow % 7UL)) % 7UL);
+        step11 = (byte)((((stepHigh % 11UL) * 5UL) + (stepLow % 11UL)) % 11UL);
 
-        byte remainder10 = (byte)((((divisorHigh % 10UL) * 6UL) + (divisorLow % 10UL)) % 10UL);
-        byte remainder8 = (byte)(divisorLow % 8UL);
-        byte remainder5 = (byte)(((divisorHigh % 5UL) + (divisorLow % 5UL)) % 5UL);
-        byte remainder3 = (byte)(((divisorHigh % 3UL) + (divisorLow % 3UL)) % 3UL);
-        byte remainder7 = (byte)((((divisorHigh % 7UL) * 2UL) + (divisorLow % 7UL)) % 7UL);
-        byte remainder11 = (byte)((((divisorHigh % 11UL) * 5UL) + (divisorLow % 11UL)) % 11UL);
+        remainder10 = (byte)((((divisorHigh % 10UL) * 6UL) + (divisorLow % 10UL)) % 10UL);
+        remainder8 = (byte)(divisorLow % 8UL);
+        remainder5 = (byte)(((divisorHigh % 5UL) + (divisorLow % 5UL)) % 5UL);
+        remainder3 = (byte)(((divisorHigh % 3UL) + (divisorLow % 3UL)) % 3UL);
+        remainder7 = (byte)((((divisorHigh % 7UL) * 2UL) + (divisorLow % 7UL)) % 7UL);
+        remainder11 = (byte)((((divisorHigh % 11UL) * 5UL) + (divisorLow % 11UL)) % 11UL);
 
         while (divisor.CompareTo(limit) <= 0)
         {
