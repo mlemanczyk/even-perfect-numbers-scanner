@@ -1069,7 +1069,7 @@ internal static partial class PrimeOrderCalculator
 			// exponentSlots.Clear();
 
 			counts = ThreadStaticPools.RentUlongIntDictionary(Math.Max(FactorSlotCount, 8));
-			// counts.Clear();
+			counts.Clear();
 
 			// bool gpuPopulated = TryPopulateSmallPrimeFactorsGpu(value, limit, primeSlots, exponentSlots, out factorCount, out remaining);
 			// if (!gpuPopulated)
@@ -1091,7 +1091,6 @@ internal static partial class PrimeOrderCalculator
 				}
 
 				factorCount = copyIndex;
-				counts.Clear();
 				ThreadStaticPools.ReturnUlongIntDictionary(counts);
 				counts = null;
 			}
