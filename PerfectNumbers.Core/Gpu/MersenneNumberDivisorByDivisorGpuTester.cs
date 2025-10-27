@@ -300,12 +300,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                 }
 
                 nextDivisor128 += twoP128;
-                localRemainder10 = AddMod(localRemainder10, step10, 10);
+                localRemainder10 = AddMod10(localRemainder10, step10);
                 localRemainder8 = AddMod8(localRemainder8, step8);
-                localRemainder5 = AddMod(localRemainder5, step5, 5);
-                localRemainder3 = AddMod(localRemainder3, step3, 3);
-                localRemainder7 = AddMod(localRemainder7, step7, 7);
-                localRemainder11 = AddMod(localRemainder11, step11, 11);
+                localRemainder5 = AddMod5(localRemainder5, step5);
+                localRemainder3 = AddMod3(localRemainder3, step3);
+                localRemainder7 = AddMod7(localRemainder7, step7);
+                localRemainder11 = AddMod11(localRemainder11, step11);
             }
 
             remainder10 = localRemainder10;
@@ -391,27 +391,80 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static byte AddMod(byte value, byte delta, byte modulus)
+    private static byte AddMod3(byte value, byte delta)
     {
-        int result = value + delta;
+        const int Modulus = 3;
+        int sum = value + delta;
 
-        if (result >= modulus)
+        if (sum >= Modulus)
         {
-            result -= modulus;
+            sum -= Modulus;
         }
 
-        return (byte)result;
+        return (byte)sum;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod5(byte value, byte delta)
+    {
+        const int Modulus = 5;
+        int sum = value + delta;
+
+        if (sum >= Modulus)
+        {
+            sum -= Modulus;
+        }
+
+        return (byte)sum;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod7(byte value, byte delta)
+    {
+        const int Modulus = 7;
+        int sum = value + delta;
+
+        if (sum >= Modulus)
+        {
+            sum -= Modulus;
+        }
+
+        return (byte)sum;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod10(byte value, byte delta)
+    {
+        const int Modulus = 10;
+        int sum = value + delta;
+
+        if (sum >= Modulus)
+        {
+            sum -= Modulus;
+        }
+
+        return (byte)sum;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod11(byte value, byte delta)
+    {
+        const int Modulus = 11;
+        int sum = value + delta;
+
+        if (sum >= Modulus)
+        {
+            sum -= Modulus;
+        }
+
+        return (byte)sum;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte AddMod8(byte value, byte delta)
     {
         return (byte)((value + delta) & 7);
     }
-
-
-
 
 
     private static ulong ComputeDivisorLimitFromMaxPrimeGpu(ulong maxPrime)

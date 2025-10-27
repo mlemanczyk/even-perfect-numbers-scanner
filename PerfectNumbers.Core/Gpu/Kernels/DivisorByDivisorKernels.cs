@@ -61,7 +61,11 @@ internal static class DivisorByDivisorKernels
 
                 if (delta >= cycleLength)
                 {
-                    delta %= cycleLength;
+                    delta -= cycleLength;
+                    if (delta >= cycleLength)
+                    {
+                        delta %= cycleLength;
+                    }
                 }
 
                 ulong nextRemainder = cycleRemainder + delta;

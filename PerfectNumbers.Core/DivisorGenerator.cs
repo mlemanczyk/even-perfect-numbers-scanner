@@ -24,7 +24,7 @@ internal static class DivisorGenerator
         byte remainder11,
         ushort decimalMask)
     {
-        if (((decimalMask >> remainder10) & 1) == 0)
+        if (remainder3 == 0 || remainder5 == 0 || remainder7 == 0 || remainder11 == 0)
         {
             return false;
         }
@@ -34,11 +34,6 @@ internal static class DivisorGenerator
             return false;
         }
 
-        if (remainder3 == 0 || remainder5 == 0 || remainder7 == 0 || remainder11 == 0)
-        {
-            return false;
-        }
-
-        return true;
+        return ((decimalMask >> remainder10) & 1) != 0;
     }
 }

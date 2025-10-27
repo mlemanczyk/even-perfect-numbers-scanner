@@ -267,12 +267,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             }
 
             divisor.Add(step);
-            remainder10 = AddMod(remainder10, step10, (byte)10);
+            remainder10 = AddMod10(remainder10, step10);
             remainder8 = AddMod8(remainder8, step8);
-            remainder5 = AddMod(remainder5, step5, (byte)5);
-            remainder3 = AddMod(remainder3, step3, (byte)3);
-            remainder7 = AddMod(remainder7, step7, (byte)7);
-            remainder11 = AddMod(remainder11, step11, (byte)11);
+            remainder5 = AddMod5(remainder5, step5);
+            remainder3 = AddMod3(remainder3, step3);
+            remainder7 = AddMod7(remainder7, step7);
+            remainder11 = AddMod11(remainder11, step11);
         }
         processedAll = true;
         return false;
@@ -358,12 +358,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             }
 
             divisor += step;
-            remainder10 = AddMod(remainder10, step10, (byte)10);
+            remainder10 = AddMod10(remainder10, step10);
             remainder8 = AddMod8(remainder8, step8);
-            remainder5 = AddMod(remainder5, step5, (byte)5);
-            remainder3 = AddMod(remainder3, step3, (byte)3);
-            remainder7 = AddMod(remainder7, step7, (byte)7);
-            remainder11 = AddMod(remainder11, step11, (byte)11);
+            remainder5 = AddMod5(remainder5, step5);
+            remainder3 = AddMod3(remainder3, step3);
+            remainder7 = AddMod7(remainder7, step7);
+            remainder11 = AddMod11(remainder11, step11);
         }
 
         processedAll = true;
@@ -377,13 +377,70 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static byte AddMod(byte value, byte delta, byte modulus)
+    private static byte AddMod3(byte value, byte delta)
     {
+        const int Modulus = 3;
         int sum = value + delta;
 
-        if (sum >= modulus)
+        if (sum >= Modulus)
         {
-            sum -= modulus;
+            sum -= Modulus;
+        }
+
+        return (byte)sum;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod5(byte value, byte delta)
+    {
+        const int Modulus = 5;
+        int sum = value + delta;
+
+        if (sum >= Modulus)
+        {
+            sum -= Modulus;
+        }
+
+        return (byte)sum;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod7(byte value, byte delta)
+    {
+        const int Modulus = 7;
+        int sum = value + delta;
+
+        if (sum >= Modulus)
+        {
+            sum -= Modulus;
+        }
+
+        return (byte)sum;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod10(byte value, byte delta)
+    {
+        const int Modulus = 10;
+        int sum = value + delta;
+
+        if (sum >= Modulus)
+        {
+            sum -= Modulus;
+        }
+
+        return (byte)sum;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte AddMod11(byte value, byte delta)
+    {
+        const int Modulus = 11;
+        int sum = value + delta;
+
+        if (sum >= Modulus)
+        {
+            sum -= Modulus;
         }
 
         return (byte)sum;
