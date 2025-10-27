@@ -5,6 +5,9 @@ This temporary map tracks the code paths exercised by the `--mersenne=bydivisor`
 ## High-level Flow
 - `EvenPerfectBitScanner` CLI parsing → _Reviewed_
 - `MersenneNumberDivisorByDivisorTester.Run` → _Reviewed_
+- `EvenPerfectBitScanner.IO.CalculationResultsFile`
+  - `LoadCandidatesWithinRange` → _Reviewed_
+  - `EnumerateCandidates` → _Reviewed_
 - `IMersenneNumberDivisorByDivisorTester` implementations
   - `MersenneNumberDivisorByDivisorCpuTester`
     - `IsPrime` → _Reviewed_
@@ -16,6 +19,6 @@ This temporary map tracks the code paths exercised by the `--mersenne=bydivisor`
     - `DivisorByDivisorKernels.CheckKernel` → _Reviewed_
 
 ## Next Steps
-- Audit `CalculationResultsFile.LoadCandidatesWithinRange` and related filter parsing helpers to ensure file scanning loops only perform the minimum necessary work per candidate.
+- Trace the result aggregation and reporting helpers invoked after divisor scans to confirm their loops only compute invariants once per batch.
 - Revisit ancillary utilities invoked by the by-divisor flow (result handlers, task schedulers) to confirm their loops remain free of redundant invariant evaluations.
 
