@@ -278,6 +278,7 @@ public static class MersenneNumberDivisorByDivisorTester
 
 			int taskCount = (totalCount + partitionSize - 1) / partitionSize;
 			Task[] tasks = new Task[taskCount];
+			var startGate = new ManualResetEventSlim(initialState: false);
 			int taskIndex = 0;
 
 			for (int start = 0; start < totalCount; start += partitionSize)
@@ -292,6 +293,8 @@ public static class MersenneNumberDivisorByDivisorTester
 				tasks[taskIndex++] = Task.Factory.StartNew(
 					() =>
 					{
+						startGate.Wait();
+
 						for (int index = rangeStart; index < rangeEnd; index++)
 						{
 							ProcessPrime(filteredPrimes[index]);
@@ -302,7 +305,9 @@ public static class MersenneNumberDivisorByDivisorTester
 					scheduler);
 			}
 
+			startGate.Set();
 			Task.WaitAll(tasks);
+			startGate.Dispose();
 		}
 	}
 }
