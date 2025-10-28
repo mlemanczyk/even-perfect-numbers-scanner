@@ -185,55 +185,49 @@ internal static partial class PrimeOrderCalculator
 
     private static UInt128 ExponentLoweringWide(UInt128 order, in UInt128 prime, in MontgomeryDivisorData divisorData, in PartialFactorResult128 factors)
     {
-		ArrayPool<FactorEntry128> pool = ThreadStaticPools.FactorEntry128Pool;
-		ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
-		int length = factors.Count;
-		// TODO: This should never trigger from production code - check
-		// if (length == 0)
-		// {
-		//     return order;
-		// }
-		FactorEntry128[]? tempArray = pool.Rent(length + 1);
-        try
+        ArrayPool<FactorEntry128> pool = ThreadStaticPools.FactorEntry128Pool;
+        ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
+        int length = factors.Count;
+        // TODO: This should never trigger from production code - check
+        // if (length == 0)
+        // {
+        //     return order;
+        // }
+        FactorEntry128[] tempArray = pool.Rent(length + 1);
+
+        Span<FactorEntry128> buffer = tempArray.AsSpan(0, length);
+        factorSpan.CopyTo(buffer);
+
+        if (!factors.FullyFactored && factors.Cofactor > UInt128.One && IsPrimeWide(factors.Cofactor))
         {
+            buffer[length] = new FactorEntry128(factors.Cofactor, 1);
+            length++;
+        }
 
-            Span<FactorEntry128> buffer = tempArray.AsSpan(0, length);
-            factorSpan.CopyTo(buffer);
+        buffer.Slice(0, length).Sort(static (a, b) => a.Value.CompareTo(b.Value));
 
-            if (!factors.FullyFactored && factors.Cofactor > UInt128.One && IsPrimeWide(factors.Cofactor))
+        for (int i = 0; i < length; i++)
+        {
+            UInt128 primeFactor = buffer[i].Value;
+            int exponent = buffer[i].Exponent;
+            for (int iteration = 0; iteration < exponent; iteration++)
             {
-                buffer[length] = new FactorEntry128(factors.Cofactor, 1);
-                length++;
-            }
-
-            buffer.Slice(0, length).Sort(static (a, b) => a.Value.CompareTo(b.Value));
-
-            for (int i = 0; i < length; i++)
-            {
-                UInt128 primeFactor = buffer[i].Value;
-                int exponent = buffer[i].Exponent;
-                for (int iteration = 0; iteration < exponent; iteration++)
+                if ((order % primeFactor) == UInt128.Zero)
                 {
-                    if ((order % primeFactor) == UInt128.Zero)
+                    UInt128 reduced = order / primeFactor;
+                    if (Pow2ModWide(reduced, prime, divisorData) == UInt128.One)
                     {
-                        UInt128 reduced = order / primeFactor;
-                        if (Pow2ModWide(reduced, prime, divisorData) == UInt128.One)
-                        {
-                            order = reduced;
-                            continue;
-                        }
+                        order = reduced;
+                        continue;
                     }
-
-                    break;
                 }
-            }
 
-            return order;
+                break;
+            }
         }
-        finally
-        {
-			pool.Return(tempArray, clearArray: false);
-        }
+
+        pool.Return(tempArray, clearArray: false);
+        return order;
     }
 
     private static bool TryConfirmOrderWide(in UInt128 prime, in UInt128 order, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)

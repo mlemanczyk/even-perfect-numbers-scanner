@@ -17,19 +17,31 @@ public class GpuWorkLimiterTests
         var startedSecond = new TaskCompletionSource<bool>();
         var sw = new Stopwatch();
 
-        using var first = GpuWorkLimiter.Acquire();
+        var first = GpuWorkLimiter.Acquire();
         sw.Start();
 
         var secondTask = Task.Run(() =>
         {
-            using var second = GpuWorkLimiter.Acquire();
-            startedSecond.TrySetResult(true);
+            var second = GpuWorkLimiter.Acquire();
+            try
+            {
+                startedSecond.TrySetResult(true);
+            }
+            finally
+            {
+                second.Dispose();
+            }
         });
 
-        await Task.Delay(50);
-        startedSecond.Task.IsCompleted.Should().BeFalse();
-
-        first.Dispose();
+        try
+        {
+            await Task.Delay(50);
+            startedSecond.Task.IsCompleted.Should().BeFalse();
+        }
+        finally
+        {
+            first.Dispose();
+        }
 
         await secondTask.WaitAsync(TimeSpan.FromSeconds(1));
         sw.Stop();

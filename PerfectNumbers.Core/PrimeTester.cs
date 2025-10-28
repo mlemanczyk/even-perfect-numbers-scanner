@@ -149,9 +149,8 @@ public sealed class PrimeTester
 
     internal static class PrimeTesterGpuContextPool
     {
-        internal sealed class PooledContext : IDisposable
+        internal sealed class PooledContext
         {
-            private bool _disposed;
 
             public Context Context { get; }
 
@@ -167,15 +166,9 @@ public sealed class PrimeTester
 
             public void Dispose()
             {
-                if (_disposed)
-                {
-                    return;
-                }
-
                 PrimeTester.ClearGpuCaches(Accelerator);
                 Accelerator.Dispose();
                 Context.Dispose();
-                _disposed = true;
             }
         }
 
@@ -209,7 +202,7 @@ public sealed class PrimeTester
             Pool.Enqueue(ctx);
         }
 
-        internal struct PrimeTesterGpuContextLease : IDisposable
+        internal struct PrimeTesterGpuContextLease
         {
             private PooledContext? _ctx;
 
@@ -224,11 +217,7 @@ public sealed class PrimeTester
 
             public void Dispose()
             {
-                if (_ctx is { } ctx)
-                {
-                    Return(ctx);
-                    _ctx = null;
-                }
+                Return(_ctx ?? throw new InvalidOperationException("GPU context lease is not initialized."));
             }
         }
     }
@@ -257,7 +246,7 @@ public sealed class PrimeTester
             DevicePrimes.View.CopyFromCPU(primes);
         }
 
-        internal sealed class ScratchBuffers : IDisposable
+        internal sealed class ScratchBuffers
         {
             public MemoryBuffer1D<ulong, Stride1D.Dense> Input { get; private set; }
             public MemoryBuffer1D<byte, Stride1D.Dense> Output { get; private set; }

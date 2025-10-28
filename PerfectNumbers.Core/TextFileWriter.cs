@@ -6,7 +6,7 @@ namespace PerfectNumbers.Core;
 /// <summary>
 /// Provides thread-safe file writing for both text and binary data.
 /// </summary>
-public sealed class TextFileWriter : IDisposable
+public sealed class TextFileWriter
 {
     private readonly FileStream _stream;
     private StreamWriter? _textWriter;

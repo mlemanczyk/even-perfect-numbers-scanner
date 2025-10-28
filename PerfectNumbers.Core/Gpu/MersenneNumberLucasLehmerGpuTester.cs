@@ -152,18 +152,12 @@ public class MersenneNumberLucasLehmerGpuTester
         }
 
         GpuUInt128[] buffer = ArrayPool<GpuUInt128>.Shared.Rent(count);
-        try
+        ComputeResidues(exponents, buffer.AsSpan(0, count));
+        for (int i = 0; i < count; i++)
         {
-            ComputeResidues(exponents, buffer.AsSpan(0, count));
-            for (int i = 0; i < count; i++)
-            {
-                results[i] = buffer[i].IsZero;
-            }
+            results[i] = buffer[i].IsZero;
         }
-        finally
-        {
-            ArrayPool<GpuUInt128>.Shared.Return(buffer);
-        }
+        ArrayPool<GpuUInt128>.Shared.Return(buffer);
     }
 
     private bool IsMersennePrimeNtt(ulong exponent, GpuUInt128 nttMod, GpuUInt128 primitiveRoot, bool runOnGpu)

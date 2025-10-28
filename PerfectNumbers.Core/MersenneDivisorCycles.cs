@@ -137,20 +137,31 @@ public class MersenneDivisorCycles
     {
         // Binary pairs: (ulong divisor, ulong cycle)
         using var reader = new BinaryReader(compressor, Encoding.UTF8, leaveOpen: true);
+        Stream stream = reader.BaseStream;
+        byte[] buffer = new byte[16];
         while (true)
         {
-            ulong d, c;
-            try
+            int read = 0;
+            Span<byte> span = buffer;
+            while (read < span.Length)
             {
-                d = reader.ReadUInt64();
-                c = reader.ReadUInt64();
-            }
-            catch (EndOfStreamException)
-            {
-                yield break;
+                int chunk = stream.Read(span[read..]);
+                if (chunk == 0)
+                {
+                    if (read == 0)
+                    {
+                        yield break;
+                    }
+
+                    throw new EndOfStreamException("Incomplete divisor-cycle entry.");
+                }
+
+                read += chunk;
             }
 
-            yield return (d, c);
+            ulong divisor = BinaryPrimitives.ReadUInt64LittleEndian(span[..8]);
+            ulong cycle = BinaryPrimitives.ReadUInt64LittleEndian(span[8..]);
+            yield return (divisor, cycle);
         }
     }
 

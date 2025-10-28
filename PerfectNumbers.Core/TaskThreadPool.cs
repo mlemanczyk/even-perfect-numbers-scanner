@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace PerfectNumbers.Core;
 
-internal sealed class TaskThreadPool : IDisposable
+internal sealed class TaskThreadPool
 {
     private readonly struct WorkItem
     {
@@ -22,8 +22,6 @@ internal sealed class TaskThreadPool : IDisposable
     private readonly BlockingCollection<WorkItem> _pendingTasks;
     private readonly Thread[] _threads;
     private readonly Action<Task> _taskExecutor;
-    private int _disposed;
-
     public TaskThreadPool(int minimumThreads, Action<Task> taskExecutor)
     {
         if (minimumThreads <= 0)
@@ -57,22 +55,18 @@ internal sealed class TaskThreadPool : IDisposable
             throw new ArgumentNullException(nameof(task));
         }
 
-        if (Volatile.Read(ref _disposed) != 0)
-        {
-            throw new ObjectDisposedException(nameof(TaskThreadPool));
-        }
-
         try
         {
             _pendingTasks.Add(new WorkItem(task));
         }
-        catch (InvalidOperationException ex) when (Volatile.Read(ref _disposed) != 0)
+        catch (Exception ex)
         {
-            throw new ObjectDisposedException(nameof(TaskThreadPool), ex);
-        }
-        catch (ObjectDisposedException ex)
-        {
-            throw new ObjectDisposedException(nameof(TaskThreadPool), ex);
+            if (ex is InvalidOperationException || ex is ObjectDisposedException)
+            {
+                throw new ObjectDisposedException(nameof(TaskThreadPool), ex);
+            }
+
+            throw;
         }
     }
 
@@ -97,11 +91,6 @@ internal sealed class TaskThreadPool : IDisposable
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-        {
-            return;
-        }
-
         _pendingTasks.CompleteAdding();
 
         foreach (Thread thread in _threads)

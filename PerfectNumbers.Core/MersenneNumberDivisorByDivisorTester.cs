@@ -167,14 +167,10 @@ public static class MersenneNumberDivisorByDivisorTester
 
 		if (primesToTest.Count == 0)
 		{
-			if (applyStartPrime)
-			{
-				Console.WriteLine($"No primes greater than or equal to {startPrime.ToString(CultureInfo.InvariantCulture)} were found for --mersenne=bydivisor.");
-			}
-			else
-			{
-				Console.WriteLine("No prime candidates remain for --mersenne=bydivisor after filtering.");
-			}
+			string message = applyStartPrime
+				? $"No primes greater than or equal to {startPrime.ToString(CultureInfo.InvariantCulture)} were found for --mersenne=bydivisor."
+				: "No prime candidates remain for --mersenne=bydivisor after filtering.";
+			Console.WriteLine(message);
 
 			return;
 		}

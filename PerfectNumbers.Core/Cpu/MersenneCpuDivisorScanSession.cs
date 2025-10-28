@@ -2,11 +2,8 @@ namespace PerfectNumbers.Core.Cpu;
 
 internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
 {
-    private bool _disposed;
-
     public void Reset()
     {
-        _disposed = false;
     }
 
     public void CheckDivisor(
@@ -67,12 +64,6 @@ internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDi
 
     public void Dispose()
     {
-        if (_disposed)
-        {
-            throw new ObjectDisposedException(nameof(MersenneCpuDivisorScanSession), "Divisor scan session disposed twice.");
-        }
-
-        _disposed = true;
         ThreadStaticPools.ReturnMersenneCpuDivisorSession(this);
     }
 }

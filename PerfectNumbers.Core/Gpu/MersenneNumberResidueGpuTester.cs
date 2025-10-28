@@ -161,7 +161,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
     private void ReturnResources(Accelerator accelerator, ResidueResources resources) =>
         _resourcePools.GetOrAdd(accelerator, static _ => new ConcurrentBag<ResidueResources>()).Add(resources);
 
-    private sealed class ResidueResources : IDisposable
+    private sealed class ResidueResources
     {
         internal ResidueResources(Accelerator accelerator, int capacity)
         {

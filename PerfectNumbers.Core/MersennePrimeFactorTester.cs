@@ -14,7 +14,7 @@ public static class MersennePrimeFactorTester
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsPrimeFactor(ulong p, ulong q, CancellationToken ct)
     {
-        if (q < 2UL || (q & 1UL) == 0)
+        if (q < 2UL)
         {
             return false;
         }

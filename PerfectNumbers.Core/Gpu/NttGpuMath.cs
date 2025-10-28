@@ -47,7 +47,7 @@ public static class NttGpuMath
 
     private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int>> BitReverseKernelCache = new(); // TODO: Precompute bit-reversal kernels during boot so we can remove the concurrent lookup overhead flagged in the benchmarks.
 
-    private sealed class SquareCacheEntry : IDisposable
+    private sealed class SquareCacheEntry
     {
         public MemoryBuffer1D<GpuUInt128, Stride1D.Dense> Buffer { get; }
         public GpuUInt128 Root { get; }
