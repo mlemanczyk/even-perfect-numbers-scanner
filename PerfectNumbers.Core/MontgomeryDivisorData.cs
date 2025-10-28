@@ -34,7 +34,7 @@ public readonly struct MontgomeryDivisorData(ulong modulus, ulong nPrime, ulong 
         ulong nPrime = ComputeMontgomeryNPrime(modulus);
         ulong montgomeryOne = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64, modulus);
         ulong montgomeryTwo = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64x2, modulus);
-        ulong montgomeryTwoSquared = ULongExtensions.MontgomeryMultiply(montgomeryTwo, montgomeryTwo, modulus, nPrime);
+        ulong montgomeryTwoSquared = ULongExtensions.MontgomeryMultiplyCpu(montgomeryTwo, montgomeryTwo, modulus, nPrime);
 
         return new MontgomeryDivisorData(
             modulus,

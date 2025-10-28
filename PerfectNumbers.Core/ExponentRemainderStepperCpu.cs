@@ -74,7 +74,7 @@ internal struct ExponentRemainderStepperCpu
         // single-block divisor-cycle snapshot so we can skip the powmod entirely and reuse the
         // cached Montgomery residue ladder highlighted in MersenneDivisorCycleLengthGpuBenchmarks.
         ulong multiplier = delta.Pow2MontgomeryModWindowedCpu(_divisor, keepMontgomery: true);
-        _currentMontgomery = _currentMontgomery.MontgomeryMultiply(multiplier, _modulus, _nPrime);
+        _currentMontgomery = _currentMontgomery.MontgomeryMultiplyCpu(multiplier, _modulus, _nPrime);
         PreviousExponent = exponent;
         return ReduceCurrent();
     }
@@ -92,7 +92,7 @@ internal struct ExponentRemainderStepperCpu
         // TODO: Reuse the divisor-cycle derived Montgomery delta once the cache exposes single-cycle
         // lookups so this branch also avoids recomputing powmods when the snapshot lacks the divisor.
         ulong multiplier = delta.Pow2MontgomeryModWindowedCpu(_divisor, keepMontgomery: true);
-        _currentMontgomery = _currentMontgomery.MontgomeryMultiply(multiplier, _modulus, _nPrime);
+        _currentMontgomery = _currentMontgomery.MontgomeryMultiplyCpu(multiplier, _modulus, _nPrime);
         PreviousExponent = exponent;
         return _currentMontgomery == _montgomeryOne;
     }
@@ -126,7 +126,7 @@ internal struct ExponentRemainderStepperCpu
         // TODO: Once the divisor-cycle cache exposes a direct Montgomery delta, multiply it here instead
         // of relying on the caller-provided delta so incremental scans remain in sync with the snapshot
         // without computing additional cycles or mutating cache state.
-        _currentMontgomery = _currentMontgomery.MontgomeryMultiply(montgomeryDelta, _modulus, _nPrime);
+        _currentMontgomery = _currentMontgomery.MontgomeryMultiplyCpu(montgomeryDelta, _modulus, _nPrime);
         PreviousExponent = exponent;
         isUnity = _currentMontgomery == _montgomeryOne;
         return true;
@@ -138,5 +138,5 @@ internal struct ExponentRemainderStepperCpu
         PreviousExponent = exponent;
     }
 
-    private ulong ReduceCurrent() => _currentMontgomery.MontgomeryMultiply(1UL, _modulus, _nPrime);
+    private ulong ReduceCurrent() => _currentMontgomery.MontgomeryMultiplyCpu(1UL, _modulus, _nPrime);
 }

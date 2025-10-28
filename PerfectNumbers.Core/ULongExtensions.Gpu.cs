@@ -47,6 +47,45 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	internal static ulong MontgomeryMultiplyGpu(this ulong a, ulong b, ulong modulus, ulong nPrime)
+	{
+		// Mirror the struct-based MontMul64 helper measured as the second-fastest GPU-compatible
+		// option in GpuUInt128Montgomery64Benchmarks so accelerator kernels reuse the validated path.
+		MultiplyPartsGpu(a, b, out ulong productHigh, out ulong productLow);
+		MultiplyPartsGpu(productLow, nPrime, out _, out ulong mLow);
+		MultiplyPartsGpu(mLow, modulus, out ulong mTimesModulusHigh, out ulong mTimesModulusLow);
+
+		ulong sumLow = unchecked(productLow + mTimesModulusLow);
+		ulong carry = sumLow < productLow ? 1UL : 0UL;
+		ulong sumHigh = unchecked(productHigh + mTimesModulusHigh + carry);
+
+		if (sumHigh >= modulus)
+		{
+			sumHigh -= modulus;
+		}
+
+		return sumHigh;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static void MultiplyPartsGpu(ulong left, ulong right, out ulong high, out ulong low)
+	{
+		ulong leftLow = (uint)left;
+		ulong leftHigh = left >> 32;
+		ulong rightLow = (uint)right;
+		ulong rightHigh = right >> 32;
+
+		ulong lowProduct = unchecked(leftLow * rightLow);
+		ulong cross1 = unchecked(leftHigh * rightLow);
+		ulong cross2 = unchecked(leftLow * rightHigh);
+		ulong highProduct = unchecked(leftHigh * rightHigh);
+
+		ulong carry = unchecked((lowProduct >> 32) + (uint)cross1 + (uint)cross2);
+		low = unchecked((lowProduct & 0xFFFFFFFFUL) | (carry << 32));
+		high = unchecked(highProduct + (cross1 >> 32) + (cross2 >> 32) + (carry >> 32));
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong Pow2ModWindowedGpu(this ulong exponent, ulong modulus)
 	{
 		// EvenPerfectBitScanner never routes moduli ≤ 1 through this path; keep the guard commented out so the hot loop stays branch-free.
@@ -204,14 +243,15 @@ public static partial class ULongExtensions
 		ulong modulus = divisor.Modulus;
 		ulong nPrime = divisor.NPrime;
 		ulong montgomeryResult = Pow2MontgomeryModWindowedGpuMontgomeryResult(divisor, exponent);
-		return MontgomeryMultiply(montgomeryResult, 1UL, modulus, nPrime);
+		return MontgomeryMultiplyGpu(montgomeryResult, 1UL, modulus, nPrime);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static ulong Pow2MontgomeryModWindowedGpuMontgomeryResult(in MontgomeryDivisorData divisor, ulong exponent)
 	{
 		ulong modulus = divisor.Modulus;
-		// Reuse the optimized MontgomeryMultiply extension highlighted in MontgomeryMultiplyBenchmarks so the GPU path matches the fastest CPU reduction.
+		// Reuse the GPU-compatible MontgomeryMultiply helper highlighted in MontgomeryMultiplyBenchmarks so the accelerator path
+		// mirrors the fastest CPU reduction without relying on UInt128 intrinsics.
 		// We shouldn't hit it in production code. If we do, we're doing something wrong.
 		// if (exponent == 0UL)
 		// {
@@ -233,7 +273,7 @@ public static partial class ULongExtensions
 		while (index >= 0)
 		{
 			ulong currentBit = (exponent >> index) & 1UL;
-			ulong squared = MontgomeryMultiply(result, result, modulus, nPrime);
+			ulong squared = MontgomeryMultiplyGpu(result, result, modulus, nPrime);
 			bool processWindow = currentBit != 0UL;
 
 			result = processWindow ? result : squared;
@@ -253,11 +293,11 @@ public static partial class ULongExtensions
 			int windowLength = processWindow ? index - windowStart + 1 : 0;
 			for (int square = 0; square < windowLength; square++)
 			{
-				result = MontgomeryMultiply(result, result, modulus, nPrime);
+				result = MontgomeryMultiplyGpu(result, result, modulus, nPrime);
 			}
 
 			result = processWindow
-					? MontgomeryMultiply(
+					? MontgomeryMultiplyGpu(
 							result,
 							ComputeMontgomeryOddPowerGpu(
 									(exponent >> windowStart) & ((1UL << windowLength) - 1UL),
@@ -330,7 +370,7 @@ public static partial class ULongExtensions
 		while (remaining != 0UL)
 		{
 			ulong bit = remaining & 1UL;
-			ulong multiplied = MontgomeryMultiply(power, baseValue, modulus, nPrime);
+			ulong multiplied = MontgomeryMultiplyGpu(power, baseValue, modulus, nPrime);
 			ulong mask = (ulong)-(long)bit;
 			power = (power & ~mask) | (multiplied & mask);
 
@@ -340,7 +380,7 @@ public static partial class ULongExtensions
 				break;
 			}
 
-			baseValue = MontgomeryMultiply(baseValue, baseValue, modulus, nPrime);
+			baseValue = MontgomeryMultiplyGpu(baseValue, baseValue, modulus, nPrime);
 		}
 
 		return power;
