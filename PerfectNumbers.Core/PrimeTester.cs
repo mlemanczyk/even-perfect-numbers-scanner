@@ -132,8 +132,8 @@ public sealed class PrimeTester
     {
         var limiter = GpuPrimeWorkLimiter.Acquire();
         var gpu = PrimeTesterGpuContextPool.Rent();
+        var state = gpu.State;
         var accelerator = gpu.Accelerator;
-        var state = GpuKernelState.GetOrCreate(accelerator);
         int totalLength = values.Length;
         int batchSize = Math.Max(1, GpuBatchSize);
 
@@ -181,22 +181,40 @@ public sealed class PrimeTester
     {
         internal sealed class PooledContext
         {
-
             public Context Context { get; }
 
             public Accelerator Accelerator { get; }
 
             public object ExecutionLock { get; } = new();
 
+            private KernelState? _kernelState;
+
             public PooledContext()
             {
                 Context = Context.CreateDefault();
                 Accelerator = Context.GetPreferredDevice(false).CreateAccelerator(Context);
+                _kernelState = GpuKernelState.GetOrCreate(Accelerator);
+            }
+
+            public KernelState KernelState
+            {
+                get
+                {
+                    var state = _kernelState;
+                    if (state is null || state.IsDisposed)
+                    {
+                        state = GpuKernelState.GetOrCreate(Accelerator);
+                        _kernelState = state;
+                    }
+
+                    return state;
+                }
             }
 
             public void Dispose()
             {
-                PrimeTester.ClearGpuCaches(Accelerator);
+                ClearGpuCaches(Accelerator);
+                _kernelState = null;
                 Accelerator.Dispose();
                 Context.Dispose();
             }
@@ -245,6 +263,8 @@ public sealed class PrimeTester
 
             public object ExecutionLock => _ctx!.ExecutionLock;
 
+            public KernelState State => _ctx!.KernelState;
+
             public void Dispose()
             {
                 Return(_ctx ?? throw new InvalidOperationException("GPU context lease is not initialized."));
@@ -262,7 +282,7 @@ public sealed class PrimeTester
         public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven { get; }
         public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastThree { get; }
         public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastNine { get; }
-        private readonly Accelerator _accel;
+        public bool IsDisposed { get; private set; }
         private readonly System.Collections.Concurrent.ConcurrentBag<ScratchBuffers> _scratchPool = [];
         // TODO: Replace this ConcurrentBag with the lock-free ring buffer variant validated in
         // GpuModularArithmeticBenchmarks so renting scratch buffers stops contending on the bag's internal locks when
@@ -270,7 +290,7 @@ public sealed class PrimeTester
 
         public KernelState(Accelerator accelerator)
         {
-            _accel = accelerator;
+            IsDisposed = false;
             // Compile once per accelerator and upload primes once.
             Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
             HeuristicTrialDivisionKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
@@ -341,6 +361,11 @@ public sealed class PrimeTester
 
         public void Clear()
         {
+            if (IsDisposed)
+            {
+                return;
+            }
+
             while (_scratchPool.TryTake(out var sb))
             {
                 sb.Dispose();
@@ -351,6 +376,7 @@ public sealed class PrimeTester
             DevicePrimesLastSeven.Dispose();
             DevicePrimesLastThree.Dispose();
             DevicePrimesLastNine.Dispose();
+            IsDisposed = true;
         }
     }
 
