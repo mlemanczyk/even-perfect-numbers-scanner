@@ -248,6 +248,7 @@ public static class MersenneNumberDivisorByDivisorTester
 			{
 				markComposite();
 				printResult(prime, true, true, false);
+				Console.WriteLine($"Task finished {prime}");
 				return;
 			}
 
