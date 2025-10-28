@@ -36,15 +36,30 @@ public class PrimesGeneratorTests
         var lastThreePow2 = DivisorGenerator.SmallPrimesPow2LastThree;
         var lastNine = DivisorGenerator.SmallPrimesLastNine;
         var lastNinePow2 = DivisorGenerator.SmallPrimesPow2LastNine;
+        var lastOneWithoutThree = DivisorGenerator.SmallPrimesLastOneWithoutLastThree;
+        var lastOneWithoutThreePow2 = DivisorGenerator.SmallPrimesPow2LastOneWithoutLastThree;
+        var lastSevenWithoutThree = DivisorGenerator.SmallPrimesLastSevenWithoutLastThree;
+        var lastSevenWithoutThreePow2 = DivisorGenerator.SmallPrimesPow2LastSevenWithoutLastThree;
+        var lastNineWithoutThree = DivisorGenerator.SmallPrimesLastNineWithoutLastThree;
+        var lastNineWithoutThreePow2 = DivisorGenerator.SmallPrimesPow2LastNineWithoutLastThree;
 
         lastOne.Length.Should().Be((int)PerfectNumberConstants.PrimesLimit);
         lastSeven.Length.Should().Be((int)PerfectNumberConstants.PrimesLimit);
         lastThree.Length.Should().Be((int)PerfectNumberConstants.PrimesLimit);
         lastNine.Length.Should().Be((int)PerfectNumberConstants.PrimesLimit);
+        lastOneWithoutThree.Length.Should().BeGreaterThan(0);
+        lastSevenWithoutThree.Length.Should().BeGreaterThan(0);
+        lastNineWithoutThree.Length.Should().BeGreaterThan(0);
+        lastOneWithoutThree.Length.Should().BeLessThan(lastOne.Length);
+        lastSevenWithoutThree.Length.Should().BeLessThan(lastSeven.Length);
+        lastNineWithoutThree.Length.Should().BeLessThan(lastNine.Length);
         lastOnePow2.Length.Should().Be(lastOne.Length);
         lastSevenPow2.Length.Should().Be(lastSeven.Length);
         lastThreePow2.Length.Should().Be(lastThree.Length);
         lastNinePow2.Length.Should().Be(lastNine.Length);
+        lastOneWithoutThreePow2.Length.Should().Be(lastOneWithoutThree.Length);
+        lastSevenWithoutThreePow2.Length.Should().Be(lastSevenWithoutThree.Length);
+        lastNineWithoutThreePow2.Length.Should().Be(lastNineWithoutThree.Length);
 
         lastOne[..5].Should().Equal([3U, 7U, 11U, 13U, 19U]);
         lastSeven[..5].Should().Equal([3U, 7U, 11U, 13U, 17U]);
@@ -76,6 +91,47 @@ public class PrimesGeneratorTests
             (mod10 == 3U || mod10 == 7U || prime == 11U || prime == 19U)
                 .Should().BeTrue();
             lastThreePow2[i].Should().Be(prime * (ulong)prime);
+        }
+
+
+        lastOneWithoutThree.Should().NotBeEmpty();
+        lastSevenWithoutThree.Should().NotBeEmpty();
+        lastNineWithoutThree.Should().NotBeEmpty();
+
+        for (int i = 0; i < lastOneWithoutThree.Length; i++)
+        {
+            uint prime = lastOneWithoutThree[i];
+            (prime % 10U != 3U).Should().BeTrue();
+            if (i > 0)
+            {
+                prime.Should().BeGreaterThan(lastOneWithoutThree[i - 1]);
+            }
+
+            lastOneWithoutThreePow2[i].Should().Be(prime * (ulong)prime);
+        }
+
+        for (int i = 0; i < lastSevenWithoutThree.Length; i++)
+        {
+            uint prime = lastSevenWithoutThree[i];
+            (prime % 10U != 3U).Should().BeTrue();
+            if (i > 0)
+            {
+                prime.Should().BeGreaterThan(lastSevenWithoutThree[i - 1]);
+            }
+
+            lastSevenWithoutThreePow2[i].Should().Be(prime * (ulong)prime);
+        }
+
+        for (int i = 0; i < lastNineWithoutThree.Length; i++)
+        {
+            uint prime = lastNineWithoutThree[i];
+            (prime % 10U != 3U).Should().BeTrue();
+            if (i > 0)
+            {
+                prime.Should().BeGreaterThan(lastNineWithoutThree[i - 1]);
+            }
+
+            lastNineWithoutThreePow2[i].Should().Be(prime * (ulong)prime);
         }
 
         for (int i = 0; i < lastNine.Length; i++)
