@@ -36,6 +36,10 @@ public sealed class HeuristicCombinedPrimeTester
         CombinedDivisorsEnding3ThreeATwoB = BuildCombinedDivisors(3, CombinedDivisorPattern.ThreeATwoB);
         CombinedDivisorsEnding7ThreeATwoB = BuildCombinedDivisors(7, CombinedDivisorPattern.ThreeATwoB);
         CombinedDivisorsEnding9ThreeATwoB = BuildCombinedDivisors(9, CombinedDivisorPattern.ThreeATwoB);
+        CombinedDivisorsEnding1 = CombinedDivisorsEnding1OneAOneB;
+        CombinedDivisorsEnding3 = CombinedDivisorsEnding3OneAOneB;
+        CombinedDivisorsEnding7 = CombinedDivisorsEnding7OneAOneB;
+        CombinedDivisorsEnding9 = CombinedDivisorsEnding9OneAOneB;
     }
 
     private const ulong Wheel210 = 210UL;
@@ -61,6 +65,11 @@ public sealed class HeuristicCombinedPrimeTester
     private static readonly uint[] CombinedDivisorsEnding3ThreeATwoB;
     private static readonly uint[] CombinedDivisorsEnding7ThreeATwoB;
     private static readonly uint[] CombinedDivisorsEnding9ThreeATwoB;
+
+    private static readonly uint[] CombinedDivisorsEnding1;
+    private static readonly uint[] CombinedDivisorsEnding3;
+    private static readonly uint[] CombinedDivisorsEnding7;
+    private static readonly uint[] CombinedDivisorsEnding9;
 
     private static readonly ulong[] HeuristicSmallCycleSnapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
 
@@ -124,8 +133,7 @@ public sealed class HeuristicCombinedPrimeTester
             return EvaluateWithOpenNumericFallback(n);
         }
 
-        bool includeGroupB = UseHeuristicGroupBTrialDivision;
-        return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10, includeGroupB);
+        return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10);
     }
 
     public bool IsPrimeCpu(ulong n)
@@ -155,14 +163,14 @@ public sealed class HeuristicCombinedPrimeTester
 
         if (!UseHeuristicGroupBTrialDivision)
         {
-            return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10, includeGroupB: false);
+            return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10);
         }
 
         bool compositeDetected = HeuristicTrialDivisionGpuDetectsDivisor(n, sqrtLimit, nMod10);
         return !compositeDetected;
     }
 
-    private static bool HeuristicTrialDivisionCpu(ulong n, ulong sqrtLimit, byte nMod10, bool includeGroupB)
+    private static bool HeuristicTrialDivisionCpu(ulong n, ulong sqrtLimit, byte nMod10)
     {
         ReadOnlySpan<uint> combinedDivisors = GetCombinedDivisors(nMod10);
         if (combinedDivisors.IsEmpty)
@@ -170,70 +178,18 @@ public sealed class HeuristicCombinedPrimeTester
             return EvaluateWithOpenNumericFallback(n);
         }
 
-        int targetGroupACount = CountGroupAEntriesUpTo(sqrtLimit);
-        int targetGroupBCount = includeGroupB ? CountGroupBEntriesUpTo(sqrtLimit, nMod10) : 0;
-
-        if (targetGroupACount == 0 && (!includeGroupB || targetGroupBCount == 0))
-        {
-            return EvaluateWithOpenNumericFallback(n);
-        }
-
-        int processedA = 0;
-        int processedB = 0;
-
-        for (int i = 0; i < combinedDivisors.Length; i++)
+        int length = combinedDivisors.Length;
+        for (int i = 0; i < length; i++)
         {
             uint entry = combinedDivisors[i];
-            HeuristicDivisorGroup group = ResolveGroup(entry);
-
-            if (group == HeuristicDivisorGroup.GroupB)
-            {
-                if (!includeGroupB)
-                {
-                    continue;
-                }
-
-                if (processedB >= targetGroupBCount)
-                {
-                    if (processedA >= targetGroupACount)
-                    {
-                        break;
-                    }
-
-                    continue;
-                }
-
-                processedB++;
-            }
-            else
-            {
-                if (processedA >= targetGroupACount)
-                {
-                    if (!includeGroupB || processedB >= targetGroupBCount)
-                    {
-                        break;
-                    }
-
-                    continue;
-                }
-
-                processedA++;
-            }
-
-            ulong divisor = entry;
-            if (divisor > sqrtLimit)
-            {
-                continue;
-            }
-
-            if (n % divisor == 0UL)
-            {
-                return false;
-            }
-
-            if (processedA >= targetGroupACount && (!includeGroupB || processedB >= targetGroupBCount))
+            if (entry > sqrtLimit)
             {
                 break;
+            }
+
+            if (n % entry == 0UL)
+            {
+                return false;
             }
         }
 
@@ -295,69 +251,19 @@ public sealed class HeuristicCombinedPrimeTester
             ReadOnlySpan<uint> combinedDivisors = GetCombinedDivisors(nMod10);
             if (combinedDivisors.IsEmpty)
             {
-                compositeDetected = !EvaluateWithOpenNumericFallback(n);
                 goto Cleanup;
             }
 
-            int targetGroupACount = CountGroupAEntriesUpTo(sqrtLimit);
-            int targetGroupBCount = CountGroupBEntriesUpTo(sqrtLimit, nMod10);
-            bool includeGroupB = targetGroupBCount > 0;
-
-            if (targetGroupACount == 0 && !includeGroupB)
-            {
-                compositeDetected = !EvaluateWithOpenNumericFallback(n);
-                goto Cleanup;
-            }
-
-            int processedA = 0;
-            int processedB = 0;
-
-            for (int i = 0; i < combinedDivisors.Length; i++)
+            int length = combinedDivisors.Length;
+            for (int i = 0; i < length; i++)
             {
                 uint entry = combinedDivisors[i];
-                HeuristicDivisorGroup group = ResolveGroup(entry);
-
-                if (group == HeuristicDivisorGroup.GroupB)
+                if (entry > sqrtLimit)
                 {
-                    if (!includeGroupB)
-                    {
-                        continue;
-                    }
-
-                    if (processedB >= targetGroupBCount)
-                    {
-                        if (processedA >= targetGroupACount)
-                        {
-                            break;
-                        }
-
-                        continue;
-                    }
-
-                    processedB++;
-                }
-                else
-                {
-                    if (processedA >= targetGroupACount)
-                    {
-                        if (!includeGroupB || processedB >= targetGroupBCount)
-                        {
-                            break;
-                        }
-
-                        continue;
-                    }
-
-                    processedA++;
+                    break;
                 }
 
-                ulong divisor = entry;
-                if (divisor > sqrtLimit)
-                {
-                    continue;
-                }
-
-                divisorArray[count] = divisor;
+                divisorArray[count] = entry;
                 count++;
 
                 if (count == batchCapacity)
@@ -369,11 +275,6 @@ public sealed class HeuristicCombinedPrimeTester
                     }
 
                     count = 0;
-                }
-
-                if (processedA >= targetGroupACount && (!includeGroupB || processedB >= targetGroupBCount))
-                {
-                    break;
                 }
             }
 
@@ -428,7 +329,14 @@ Cleanup:
 
     private static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10)
     {
-        return GetCombinedDivisors(nMod10, CombinedDivisorPattern.OneAOneB);
+        return nMod10 switch
+        {
+            1 => CombinedDivisorsEnding1,
+            3 => CombinedDivisorsEnding3,
+            7 => CombinedDivisorsEnding7,
+            9 => CombinedDivisorsEnding9,
+            _ => ReadOnlySpan<uint>.Empty,
+        };
     }
 
     internal static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10, CombinedDivisorPattern pattern)
@@ -534,42 +442,7 @@ Cleanup:
         return combined.ToArray();
     }
 
-    private static int CountGroupAEntriesUpTo(ulong sqrtLimit)
-    {
-        ReadOnlySpan<int> groupA = HeuristicPrimeSieves.GroupADivisors;
-        int count = 0;
 
-        while (count < groupA.Length && (ulong)groupA[count] <= sqrtLimit)
-        {
-            count++;
-        }
-
-        return count;
-    }
-
-    private static int CountGroupBEntriesUpTo(ulong sqrtLimit, byte nMod10)
-    {
-        ReadOnlySpan<uint> divisors = GetGroupBDivisors(nMod10);
-        if (divisors.IsEmpty)
-        {
-            return 0;
-        }
-
-        int index = GetGroupBStartIndex(divisors);
-        int count = 0;
-
-        for (int i = index; i < divisors.Length; i++)
-        {
-            if ((ulong)divisors[i] > sqrtLimit)
-            {
-                break;
-            }
-
-            count++;
-        }
-
-        return count;
-    }
 
     private static int GetGroupBStartIndex(ReadOnlySpan<uint> divisors)
     {
@@ -687,24 +560,14 @@ Cleanup:
     {
         private readonly ulong sqrtLimit;
         private readonly ReadOnlySpan<uint> combinedDivisors;
-        private readonly bool includeGroupB;
-        private readonly int targetGroupACount;
-        private readonly int targetGroupBCount;
         private int index;
-        private int processedA;
-        private int processedB;
 
         public HeuristicDivisorEnumerator(ulong sqrtLimit, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
         {
             this.sqrtLimit = sqrtLimit;
             _ = groupBBuffer;
             combinedDivisors = GetCombinedDivisors(nMod10);
-            targetGroupACount = CountGroupAEntriesUpTo(sqrtLimit);
-            targetGroupBCount = CountGroupBEntriesUpTo(sqrtLimit, nMod10);
-            includeGroupB = targetGroupBCount > 0;
             index = 0;
-            processedA = 0;
-            processedB = 0;
         }
 
         public bool TryGetNext(out HeuristicDivisorCandidate candidate)
@@ -712,48 +575,14 @@ Cleanup:
             while (index < combinedDivisors.Length)
             {
                 uint entry = combinedDivisors[index++];
+                if (entry > sqrtLimit)
+                {
+                    index = combinedDivisors.Length;
+                    break;
+                }
+
                 HeuristicDivisorGroup group = ResolveGroup(entry);
-
-                if (group == HeuristicDivisorGroup.GroupB)
-                {
-                    if (!includeGroupB)
-                    {
-                        continue;
-                    }
-
-                    if (processedB >= targetGroupBCount)
-                    {
-                        if (processedA >= targetGroupACount)
-                        {
-                            break;
-                        }
-
-                        continue;
-                    }
-
-                    processedB++;
-                }
-                else
-                {
-                    if (processedA >= targetGroupACount)
-                    {
-                        if (!includeGroupB || processedB >= targetGroupBCount)
-                        {
-                            break;
-                        }
-
-                        continue;
-                    }
-
-                    processedA++;
-                }
-
                 ulong value = entry;
-                if (value > sqrtLimit)
-                {
-                    continue;
-                }
-
                 byte ending = (byte)(value % 10UL);
                 ushort residue = (ushort)(value % Wheel210);
                 candidate = new HeuristicDivisorCandidate(value, group, ending, 0, residue);
