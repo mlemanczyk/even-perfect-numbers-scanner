@@ -17,6 +17,10 @@ public class PrimeTesterIsPrimeTests
     [InlineData(97UL, true)]
     [InlineData(133UL, false)]
     [InlineData(137UL, true)]
+    [InlineData(143UL, false)]
+    [InlineData(199UL, true)]
+    [InlineData(209UL, false)]
+    [InlineData(403UL, false)]
     [InlineData(341UL, false)]
     public void IsPrime_returns_expected_results(ulong n, bool expected)
     {
