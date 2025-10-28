@@ -101,21 +101,21 @@ public sealed class PrimeTester
     public bool IsPrimeGpu(ulong n, CancellationToken ct)
     {
         bool forceCpu = GpuContextPool.ForceCpu;
+        bool belowGpuRange = n < 31UL;
+
+        if (forceCpu || belowGpuRange)
+        {
+            return IsPrimeCpu(n, ct);
+        }
+
         Span<ulong> one = stackalloc ulong[1];
         Span<byte> outFlags = stackalloc byte[1];
         one[0] = n;
         outFlags[0] = 0;
 
-        if (!forceCpu)
-        {
-            IsPrimeBatchGpu(one, outFlags);
-        }
+        IsPrimeBatchGpu(one, outFlags);
 
-        bool belowGpuRange = n < 31UL;
-        bool gpuReportedPrime = !forceCpu && !belowGpuRange && outFlags[0] != 0;
-        bool requiresCpuFallback = forceCpu || belowGpuRange || !gpuReportedPrime;
-
-        return requiresCpuFallback ? IsPrimeCpu(n, ct) : true;
+        return outFlags[0] != 0;
     }
 
     public static bool IsPrimeCpu(ulong n, CancellationToken ct)
@@ -162,6 +162,11 @@ public sealed class PrimeTester
                     state.DevicePrimesLastSeven.View,
                     state.DevicePrimesLastThree.View,
                     state.DevicePrimesLastNine.View,
+                    state.DevicePrimesPow2Default.View,
+                    state.DevicePrimesPow2LastOne.View,
+                    state.DevicePrimesPow2LastSeven.View,
+                    state.DevicePrimesPow2LastThree.View,
+                    state.DevicePrimesPow2LastNine.View,
                     output.View);
                 accelerator.Synchronize();
                 output.View.CopyToCPU(ref results[pos], count);
@@ -275,13 +280,18 @@ public sealed class PrimeTester
     // Per-accelerator GPU state for prime sieve (kernel + uploaded primes).
     internal sealed class KernelState
     {
-        public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<byte>> Kernel { get; }
+        public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> Kernel { get; }
         public Action<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>> HeuristicTrialDivisionKernel { get; }
         public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesDefault { get; }
         public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne { get; }
         public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven { get; }
         public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastThree { get; }
         public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastNine { get; }
+        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2Default { get; }
+        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastOne { get; }
+        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastSeven { get; }
+        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastThree { get; }
+        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastNine { get; }
         public bool IsDisposed { get; private set; }
         private readonly System.Collections.Concurrent.ConcurrentBag<ScratchBuffers> _scratchPool = [];
         // TODO: Replace this ConcurrentBag with the lock-free ring buffer variant validated in
@@ -292,7 +302,7 @@ public sealed class PrimeTester
         {
             IsDisposed = false;
             // Compile once per accelerator and upload primes once.
-            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
+            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
             HeuristicTrialDivisionKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
             var primesDefault = DivisorGenerator.SmallPrimes;
@@ -314,6 +324,26 @@ public sealed class PrimeTester
             var primesLastNine = DivisorGenerator.SmallPrimesLastNine;
             DevicePrimesLastNine = accelerator.Allocate1D<uint>(primesLastNine.Length);
             DevicePrimesLastNine.View.CopyFromCPU(primesLastNine);
+
+            var primesPow2Default = DivisorGenerator.SmallPrimesPow2;
+            DevicePrimesPow2Default = accelerator.Allocate1D<ulong>(primesPow2Default.Length);
+            DevicePrimesPow2Default.View.CopyFromCPU(primesPow2Default);
+
+            var primesPow2LastOne = DivisorGenerator.SmallPrimesPow2LastOne;
+            DevicePrimesPow2LastOne = accelerator.Allocate1D<ulong>(primesPow2LastOne.Length);
+            DevicePrimesPow2LastOne.View.CopyFromCPU(primesPow2LastOne);
+
+            var primesPow2LastSeven = DivisorGenerator.SmallPrimesPow2LastSeven;
+            DevicePrimesPow2LastSeven = accelerator.Allocate1D<ulong>(primesPow2LastSeven.Length);
+            DevicePrimesPow2LastSeven.View.CopyFromCPU(primesPow2LastSeven);
+
+            var primesPow2LastThree = DivisorGenerator.SmallPrimesPow2LastThree;
+            DevicePrimesPow2LastThree = accelerator.Allocate1D<ulong>(primesPow2LastThree.Length);
+            DevicePrimesPow2LastThree.View.CopyFromCPU(primesPow2LastThree);
+
+            var primesPow2LastNine = DivisorGenerator.SmallPrimesPow2LastNine;
+            DevicePrimesPow2LastNine = accelerator.Allocate1D<ulong>(primesPow2LastNine.Length);
+            DevicePrimesPow2LastNine.View.CopyFromCPU(primesPow2LastNine);
         }
 
         internal sealed class ScratchBuffers
@@ -376,6 +406,11 @@ public sealed class PrimeTester
             DevicePrimesLastSeven.Dispose();
             DevicePrimesLastThree.Dispose();
             DevicePrimesLastNine.Dispose();
+            DevicePrimesPow2Default.Dispose();
+            DevicePrimesPow2LastOne.Dispose();
+            DevicePrimesPow2LastSeven.Dispose();
+            DevicePrimesPow2LastThree.Dispose();
+            DevicePrimesPow2LastNine.Dispose();
             IsDisposed = true;
         }
     }
