@@ -24,12 +24,23 @@ public sealed class HeuristicCombinedPrimeTester
 
     private static readonly bool UseHeuristicGroupBTrialDivision = false; // Temporary fallback gate for Group B.
 
-    private static readonly Lazy<uint[]> CombinedDivisorsEnding1 = new(() => BuildCombinedDivisors(1), LazyThreadSafetyMode.ExecutionAndPublication);
-    private static readonly Lazy<uint[]> CombinedDivisorsEnding3 = new(() => BuildCombinedDivisors(3), LazyThreadSafetyMode.ExecutionAndPublication);
-    private static readonly Lazy<uint[]> CombinedDivisorsEnding7 = new(() => BuildCombinedDivisors(7), LazyThreadSafetyMode.ExecutionAndPublication);
-    private static readonly Lazy<uint[]> CombinedDivisorsEnding9 = new(() => BuildCombinedDivisors(9), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding1TwoAOneB = new(() => BuildCombinedDivisors(1, CombinedDivisorPattern.TwoAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding3TwoAOneB = new(() => BuildCombinedDivisors(3, CombinedDivisorPattern.TwoAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding7TwoAOneB = new(() => BuildCombinedDivisors(7, CombinedDivisorPattern.TwoAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding9TwoAOneB = new(() => BuildCombinedDivisors(9, CombinedDivisorPattern.TwoAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
+
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding1OneAOneB = new(() => BuildCombinedDivisors(1, CombinedDivisorPattern.OneAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding3OneAOneB = new(() => BuildCombinedDivisors(3, CombinedDivisorPattern.OneAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding7OneAOneB = new(() => BuildCombinedDivisors(7, CombinedDivisorPattern.OneAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding9OneAOneB = new(() => BuildCombinedDivisors(9, CombinedDivisorPattern.OneAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
 
     private static readonly ulong[] HeuristicSmallCycleSnapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
+
+    internal enum CombinedDivisorPattern : byte
+    {
+        TwoAOneB = 0,
+        OneAOneB = 1,
+    }
 
     internal enum HeuristicDivisorGroup : byte
     {
@@ -385,16 +396,36 @@ Cleanup:
         return sqrt;
     }
 
-    private static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10) => nMod10 switch
+    private static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10)
     {
-        1 => CombinedDivisorsEnding1.Value,
-        3 => CombinedDivisorsEnding3.Value,
-        7 => CombinedDivisorsEnding7.Value,
-        9 => CombinedDivisorsEnding9.Value,
-        _ => ReadOnlySpan<uint>.Empty,
-    };
+        return GetCombinedDivisors(nMod10, CombinedDivisorPattern.OneAOneB);
+    }
 
-    private static uint[] BuildCombinedDivisors(byte nMod10)
+    internal static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10, CombinedDivisorPattern pattern)
+    {
+        return pattern switch
+        {
+            CombinedDivisorPattern.TwoAOneB => nMod10 switch
+            {
+                1 => CombinedDivisorsEnding1TwoAOneB.Value,
+                3 => CombinedDivisorsEnding3TwoAOneB.Value,
+                7 => CombinedDivisorsEnding7TwoAOneB.Value,
+                9 => CombinedDivisorsEnding9TwoAOneB.Value,
+                _ => ReadOnlySpan<uint>.Empty,
+            },
+            CombinedDivisorPattern.OneAOneB => nMod10 switch
+            {
+                1 => CombinedDivisorsEnding1OneAOneB.Value,
+                3 => CombinedDivisorsEnding3OneAOneB.Value,
+                7 => CombinedDivisorsEnding7OneAOneB.Value,
+                9 => CombinedDivisorsEnding9OneAOneB.Value,
+                _ => ReadOnlySpan<uint>.Empty,
+            },
+            _ => ReadOnlySpan<uint>.Empty,
+        };
+    }
+
+    private static uint[] BuildCombinedDivisors(byte nMod10, CombinedDivisorPattern pattern)
     {
         ReadOnlySpan<int> groupA = HeuristicPrimeSieves.GroupADivisors;
         ReadOnlySpan<uint> groupB = GetGroupBDivisors(nMod10);
@@ -409,11 +440,12 @@ Cleanup:
         }
 
         int groupBIndex = GetGroupBStartIndex(groupB);
+        int groupAInterleaveCount = pattern == CombinedDivisorPattern.OneAOneB ? 1 : 2;
 
         while (groupAIndex < groupA.Length || groupBIndex < groupB.Length)
         {
             int addedA = 0;
-            while (addedA < 2 && groupAIndex < groupA.Length)
+            while (addedA < groupAInterleaveCount && groupAIndex < groupA.Length)
             {
                 combined.Add((uint)groupA[groupAIndex]);
                 groupAIndex++;
