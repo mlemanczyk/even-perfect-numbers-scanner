@@ -553,7 +553,7 @@ public static partial class ULongExtensions
         }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong MontgomeryMultiply(this ulong a, ulong b, ulong modulus, ulong nPrime)
+	public static ulong MontgomeryMultiplyCpu(this ulong a, ulong b, ulong modulus, ulong nPrime)
 	{
 		ulong tLow = unchecked(a * b);
 		ulong m = unchecked(tLow * nPrime);
@@ -581,7 +581,7 @@ public static partial class ULongExtensions
 		{
 			if ((remainingExponent & 1UL) != 0UL)
 			{
-				result = result.MontgomeryMultiply(baseVal, modulus, nPrime);
+				result = result.MontgomeryMultiplyCpu(baseVal, modulus, nPrime);
 			}
 
 			remainingExponent >>= 1;
@@ -590,10 +590,10 @@ public static partial class ULongExtensions
 				break;
 			}
 
-			baseVal = baseVal.MontgomeryMultiply(baseVal, modulus, nPrime);
+			baseVal = baseVal.MontgomeryMultiplyCpu(baseVal, modulus, nPrime);
 		}
 
-		return keepMontgomery ? result : result.MontgomeryMultiply(1UL, modulus, nPrime);
+		return keepMontgomery ? result : result.MontgomeryMultiplyCpu(1UL, modulus, nPrime);
 	}
 
 

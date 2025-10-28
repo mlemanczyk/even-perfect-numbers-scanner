@@ -49,17 +49,40 @@ public static partial class ULongExtensions
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static ulong MontgomeryMultiplyGpu(this ulong a, ulong b, ulong modulus, ulong nPrime)
 	{
-		ulong tLow = unchecked(a * b);
-		ulong m = unchecked(tLow * nPrime);
-		ulong mTimesModulusLow = unchecked(m * modulus);
+		// Mirror the struct-based MontMul64 helper measured as the second-fastest GPU-compatible
+		// option in GpuUInt128Montgomery64Benchmarks so accelerator kernels reuse the validated path.
+		MultiplyPartsGpu(a, b, out ulong productHigh, out ulong productLow);
+		MultiplyPartsGpu(productLow, nPrime, out _, out ulong mLow);
+		MultiplyPartsGpu(mLow, modulus, out ulong mTimesModulusHigh, out ulong mTimesModulusLow);
 
-		ulong result = unchecked(a.MulHighGpu(b) + m.MulHighGpu(modulus) + (unchecked(tLow + mTimesModulusLow) < tLow ? 1UL : 0UL));
-		if (result >= modulus)
+		ulong sumLow = unchecked(productLow + mTimesModulusLow);
+		ulong carry = sumLow < productLow ? 1UL : 0UL;
+		ulong sumHigh = unchecked(productHigh + mTimesModulusHigh + carry);
+
+		if (sumHigh >= modulus)
 		{
-			result -= modulus;
+			sumHigh -= modulus;
 		}
 
-		return result;
+		return sumHigh;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static void MultiplyPartsGpu(ulong left, ulong right, out ulong high, out ulong low)
+	{
+		ulong leftLow = (uint)left;
+		ulong leftHigh = left >> 32;
+		ulong rightLow = (uint)right;
+		ulong rightHigh = right >> 32;
+
+		ulong lowProduct = unchecked(leftLow * rightLow);
+		ulong cross1 = unchecked(leftHigh * rightLow);
+		ulong cross2 = unchecked(leftLow * rightHigh);
+		ulong highProduct = unchecked(leftHigh * rightHigh);
+
+		ulong carry = unchecked((lowProduct >> 32) + (uint)cross1 + (uint)cross2);
+		low = unchecked((lowProduct & 0xFFFFFFFFUL) | (carry << 32));
+		high = unchecked(highProduct + (cross1 >> 32) + (cross2 >> 32) + (carry >> 32));
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

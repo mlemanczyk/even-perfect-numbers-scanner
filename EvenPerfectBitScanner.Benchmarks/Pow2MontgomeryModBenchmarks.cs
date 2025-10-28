@@ -262,7 +262,7 @@ public class Pow2MontgomeryModBenchmarks
         ulong nPrime = ComputeMontgomeryNPrime(modulus);
         ulong montgomeryOne = ComputeMontgomeryResidue(1UL, modulus);
         ulong montgomeryTwo = ComputeMontgomeryResidue(2UL, modulus);
-        ulong montgomeryTwoSquared = ULongExtensions.MontgomeryMultiply(montgomeryTwo, montgomeryTwo, modulus, nPrime);
+        ulong montgomeryTwoSquared = ULongExtensions.MontgomeryMultiplyCpu(montgomeryTwo, montgomeryTwo, modulus, nPrime);
 
         return new MontgomeryDivisorData(
             modulus,
@@ -300,22 +300,22 @@ public class Pow2MontgomeryModBenchmarks
 
         if (exponent == 0UL)
         {
-            return result.MontgomeryMultiply(1UL, modulus, nPrime);
+            return result.MontgomeryMultiplyCpu(1UL, modulus, nPrime);
         }
 
         int msbIndex = 63 - BitOperations.LeadingZeroCount(exponent);
 
         for (int bitIndex = msbIndex; bitIndex >= 0; bitIndex--)
         {
-            result = result.MontgomeryMultiply(result, modulus, nPrime);
+            result = result.MontgomeryMultiplyCpu(result, modulus, nPrime);
 
             if (((exponent >> bitIndex) & 1UL) != 0UL)
             {
-                result = result.MontgomeryMultiply(baseVal, modulus, nPrime);
+                result = result.MontgomeryMultiplyCpu(baseVal, modulus, nPrime);
             }
         }
 
-        return result.MontgomeryMultiply(1UL, modulus, nPrime);
+        return result.MontgomeryMultiplyCpu(1UL, modulus, nPrime);
     }
 
     private static ulong Pow2MontgomeryModBatched4(ulong exponent, in MontgomeryDivisorData divisor)
@@ -336,35 +336,35 @@ public class Pow2MontgomeryModBenchmarks
             ulong nibble = remainingExponent & 0xFUL;
 
             ulong base0 = baseVal;
-            ulong base1 = base0.MontgomeryMultiply(base0, modulus, nPrime);
-            ulong base2 = base1.MontgomeryMultiply(base1, modulus, nPrime);
-            ulong base3 = base2.MontgomeryMultiply(base2, modulus, nPrime);
+            ulong base1 = base0.MontgomeryMultiplyCpu(base0, modulus, nPrime);
+            ulong base2 = base1.MontgomeryMultiplyCpu(base1, modulus, nPrime);
+            ulong base3 = base2.MontgomeryMultiplyCpu(base2, modulus, nPrime);
 
             if ((nibble & 1UL) != 0UL)
             {
-                result = result.MontgomeryMultiply(base0, modulus, nPrime);
+                result = result.MontgomeryMultiplyCpu(base0, modulus, nPrime);
             }
 
             if ((nibble & 2UL) != 0UL)
             {
-                result = result.MontgomeryMultiply(base1, modulus, nPrime);
+                result = result.MontgomeryMultiplyCpu(base1, modulus, nPrime);
             }
 
             if ((nibble & 4UL) != 0UL)
             {
-                result = result.MontgomeryMultiply(base2, modulus, nPrime);
+                result = result.MontgomeryMultiplyCpu(base2, modulus, nPrime);
             }
 
             if ((nibble & 8UL) != 0UL)
             {
-                result = result.MontgomeryMultiply(base3, modulus, nPrime);
+                result = result.MontgomeryMultiplyCpu(base3, modulus, nPrime);
             }
 
-            baseVal = base3.MontgomeryMultiply(base3, modulus, nPrime);
+            baseVal = base3.MontgomeryMultiplyCpu(base3, modulus, nPrime);
             remainingExponent >>= 4;
         }
 
-        return result.MontgomeryMultiply(1UL, modulus, nPrime);
+        return result.MontgomeryMultiplyCpu(1UL, modulus, nPrime);
     }
 
 	// TODO: Update it with the latest implementations
@@ -382,16 +382,16 @@ public class Pow2MontgomeryModBenchmarks
 
         if (exponent == 0UL)
         {
-            return result.MontgomeryMultiply(1UL, modulus, nPrime);
+            return result.MontgomeryMultiplyCpu(1UL, modulus, nPrime);
         }
 
         const int WindowSize = 5;
         Span<ulong> oddPowers = stackalloc ulong[1 << (WindowSize - 1)];
         oddPowers[0] = baseVal;
-        ulong baseSquared = baseVal.MontgomeryMultiply(baseVal, modulus, nPrime);
+        ulong baseSquared = baseVal.MontgomeryMultiplyCpu(baseVal, modulus, nPrime);
         for (int i = 1; i < oddPowers.Length; i++)
         {
-            oddPowers[i] = oddPowers[i - 1].MontgomeryMultiply(baseSquared, modulus, nPrime);
+            oddPowers[i] = oddPowers[i - 1].MontgomeryMultiplyCpu(baseSquared, modulus, nPrime);
         }
 
         int bitIndex = 63 - BitOperations.LeadingZeroCount(exponent);
@@ -400,7 +400,7 @@ public class Pow2MontgomeryModBenchmarks
         {
             if (((exponent >> bitIndex) & 1UL) == 0UL)
             {
-                result = result.MontgomeryMultiply(result, modulus, nPrime);
+                result = result.MontgomeryMultiplyCpu(result, modulus, nPrime);
                 bitIndex--;
                 continue;
             }
@@ -417,14 +417,14 @@ public class Pow2MontgomeryModBenchmarks
             int squares = bitIndex - windowStart + 1;
             for (int i = 0; i < squares; i++)
             {
-                result = result.MontgomeryMultiply(result, modulus, nPrime);
+                result = result.MontgomeryMultiplyCpu(result, modulus, nPrime);
             }
 
-            result = result.MontgomeryMultiply(oddPowers[(int)(windowValue >> 1)], modulus, nPrime);
+            result = result.MontgomeryMultiplyCpu(oddPowers[(int)(windowValue >> 1)], modulus, nPrime);
             bitIndex = windowStart - 1;
         }
 
-        return result.MontgomeryMultiply(1UL, modulus, nPrime);
+        return result.MontgomeryMultiplyCpu(1UL, modulus, nPrime);
     }
 
 	// TODO: Update it with the latest implementations, if it exists in production code. Otherwise just remove TODO
