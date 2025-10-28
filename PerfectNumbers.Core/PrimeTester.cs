@@ -48,9 +48,31 @@ public sealed class PrimeTester
 
             if (result)
             {
-                var smallPrimeDivisorsLength = PrimesGenerator.SmallPrimes.Length;
                 uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
                 ulong[] smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2;
+
+                ulong nMod10 = n.Mod10();
+                switch (nMod10)
+                {
+                    case 1UL:
+                        smallPrimeDivisors = PrimesGenerator.SmallPrimesLastOne;
+                        smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2LastOne;
+                        break;
+                    case 3UL:
+                        smallPrimeDivisors = DivisorGenerator.SmallPrimesLastThree;
+                        smallPrimeDivisorsMul = DivisorGenerator.SmallPrimesPow2LastThree;
+                        break;
+                    case 7UL:
+                        smallPrimeDivisors = PrimesGenerator.SmallPrimesLastSeven;
+                        smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2LastSeven;
+                        break;
+                    case 9UL:
+                        smallPrimeDivisors = DivisorGenerator.SmallPrimesLastNine;
+                        smallPrimeDivisorsMul = DivisorGenerator.SmallPrimesPow2LastNine;
+                        break;
+                }
+
+                int smallPrimeDivisorsLength = smallPrimeDivisors.Length;
                 for (int i = 0; i < smallPrimeDivisorsLength; i++)
                 {
                     if (smallPrimeDivisorsMul[i] > n)
