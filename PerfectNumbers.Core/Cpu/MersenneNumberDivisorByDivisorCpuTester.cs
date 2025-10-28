@@ -145,14 +145,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         byte step10;
         byte step8;
-        byte step5;
         byte step3;
         byte step7;
         byte step11;
 
         byte remainder10;
         byte remainder8;
-        byte remainder5;
         byte remainder3;
         byte remainder7;
         byte remainder11;
@@ -161,14 +159,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         {
             step10 = (byte)(stepLow % 10UL);
             step8 = (byte)(stepLow & 7UL);
-            step5 = (byte)(stepLow % 5UL);
             step3 = (byte)(stepLow % 3UL);
             step7 = (byte)(stepLow % 7UL);
             step11 = (byte)(stepLow % 11UL);
 
             remainder10 = (byte)(divisorLow % 10UL);
             remainder8 = (byte)(divisorLow & 7UL);
-            remainder5 = (byte)(divisorLow % 5UL);
             remainder3 = (byte)(divisorLow % 3UL);
             remainder7 = (byte)(divisorLow % 7UL);
             remainder11 = (byte)(divisorLow % 11UL);
@@ -181,13 +177,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
                 decimalMask,
                 step10,
                 step8,
-                step5,
                 step3,
                 step7,
                 step11,
                 remainder10,
                 remainder8,
-                remainder5,
                 remainder3,
                 remainder7,
                 remainder11,
@@ -197,21 +191,19 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         ulong divisorHigh = divisor.High;
         step10 = (byte)((((stepHigh % 10UL) * 6UL) + (stepLow % 10UL)) % 10UL);
         step8 = (byte)(stepLow % 8UL);
-        step5 = (byte)(((stepHigh % 5UL) + (stepLow % 5UL)) % 5UL);
         step3 = (byte)(((stepHigh % 3UL) + (stepLow % 3UL)) % 3UL);
         step7 = (byte)((((stepHigh % 7UL) * 2UL) + (stepLow % 7UL)) % 7UL);
         step11 = (byte)((((stepHigh % 11UL) * 5UL) + (stepLow % 11UL)) % 11UL);
 
         remainder10 = (byte)((((divisorHigh % 10UL) * 6UL) + (divisorLow % 10UL)) % 10UL);
         remainder8 = (byte)(divisorLow % 8UL);
-        remainder5 = (byte)(((divisorHigh % 5UL) + (divisorLow % 5UL)) % 5UL);
         remainder3 = (byte)(((divisorHigh % 3UL) + (divisorLow % 3UL)) % 3UL);
         remainder7 = (byte)((((divisorHigh % 7UL) * 2UL) + (divisorLow % 7UL)) % 7UL);
         remainder11 = (byte)((((divisorHigh % 11UL) * 5UL) + (divisorLow % 11UL)) % 11UL);
 
         while (divisor.CompareTo(limit) <= 0)
         {
-            bool passesSmallModuli = remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0;
+            bool passesSmallModuli = remainder3 != 0 && remainder7 != 0 && remainder11 != 0;
             if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
             {
                 ulong candidate = divisor.Low;
@@ -261,7 +253,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             divisor.Add(step);
             remainder10 = AddMod10(remainder10, step10);
             remainder8 = AddMod8(remainder8, step8);
-            remainder5 = AddMod5(remainder5, step5);
             remainder3 = AddMod3(remainder3, step3);
             remainder7 = AddMod7(remainder7, step7);
             remainder11 = AddMod11(remainder11, step11);
@@ -278,13 +269,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         ushort decimalMask,
         byte step10,
         byte step8,
-        byte step5,
         byte step3,
         byte step7,
         byte step11,
         byte remainder10,
         byte remainder8,
-        byte remainder5,
         byte remainder3,
         byte remainder7,
         byte remainder11,
@@ -297,7 +286,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         {
             if (divisor <= limit)
             {
-                if (remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0 && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
+                if (remainder3 != 0 && remainder7 != 0 && remainder11 != 0 && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
                 {
                     MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
                     ulong divisorCycle;
@@ -345,7 +334,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
         while (true)
         {
-            bool passesSmallModuli = remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0;
+            bool passesSmallModuli = remainder3 != 0 && remainder7 != 0 && remainder11 != 0;
             if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
             {
                 MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
@@ -389,7 +378,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
             divisor += step;
             remainder10 = AddMod10(remainder10, step10);
             remainder8 = AddMod8(remainder8, step8);
-            remainder5 = AddMod5(remainder5, step5);
             remainder3 = AddMod3(remainder3, step3);
             remainder7 = AddMod7(remainder7, step7);
             remainder11 = AddMod11(remainder11, step11);
@@ -416,19 +404,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         return (byte)sum;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static byte AddMod5(byte value, byte delta)
-    {
-        const int Modulus = 5;
-        int sum = value + delta;
-
-        if (sum >= Modulus)
-        {
-            sum -= Modulus;
-        }
-
-        return (byte)sum;
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte AddMod7(byte value, byte delta)

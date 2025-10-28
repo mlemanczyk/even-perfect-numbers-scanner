@@ -220,7 +220,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         ulong stepValue = (ulong)twoP128;
         byte step10 = (byte)(stepValue % 10UL);
         byte step8 = (byte)(stepValue & 7UL);
-        byte step5 = (byte)(stepValue % 5UL);
         byte step3 = (byte)(stepValue % 3UL);
         byte step7 = (byte)(stepValue % 7UL);
         byte step11 = (byte)(stepValue % 11UL);
@@ -229,7 +228,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         ulong currentDivisorValue = (ulong)currentDivisor128;
         byte remainder10 = (byte)(currentDivisorValue % 10UL);
         byte remainder8 = (byte)(currentDivisorValue & 7UL);
-        byte remainder5 = (byte)(currentDivisorValue % 5UL);
         byte remainder3 = (byte)(currentDivisorValue % 3UL);
         byte remainder7 = (byte)(currentDivisorValue % 7UL);
         byte remainder11 = (byte)(currentDivisorValue % 11UL);
@@ -275,14 +273,13 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
             byte localRemainder10 = remainder10;
             byte localRemainder8 = remainder8;
-            byte localRemainder5 = remainder5;
             byte localRemainder3 = remainder3;
             byte localRemainder7 = remainder7;
             byte localRemainder11 = remainder11;
 
             for (int i = 0; i < chunkCount; i++)
             {
-                bool passesSmallModuli = localRemainder3 != 0 && localRemainder5 != 0 && localRemainder7 != 0 && localRemainder11 != 0;
+                bool passesSmallModuli = localRemainder3 != 0 && localRemainder7 != 0 && localRemainder11 != 0;
                 if (passesSmallModuli && (localRemainder8 == 1 || localRemainder8 == 7) && ((decimalMask >> localRemainder10) & 1) != 0)
                 {
                     ulong divisorValue = (ulong)nextDivisor128;
@@ -300,7 +297,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                 nextDivisor128 += twoP128;
                 localRemainder10 = AddMod10(localRemainder10, step10);
                 localRemainder8 = AddMod8(localRemainder8, step8);
-                localRemainder5 = AddMod5(localRemainder5, step5);
                 localRemainder3 = AddMod3(localRemainder3, step3);
                 localRemainder7 = AddMod7(localRemainder7, step7);
                 localRemainder11 = AddMod11(localRemainder11, step11);
@@ -308,7 +304,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
             remainder10 = localRemainder10;
             remainder8 = localRemainder8;
-            remainder5 = localRemainder5;
             remainder3 = localRemainder3;
             remainder7 = localRemainder7;
             remainder11 = localRemainder11;
@@ -376,19 +371,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         return (byte)sum;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static byte AddMod5(byte value, byte delta)
-    {
-        const int Modulus = 5;
-        int sum = value + delta;
-
-        if (sum >= Modulus)
-        {
-            sum -= Modulus;
-        }
-
-        return (byte)sum;
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte AddMod7(byte value, byte delta)
@@ -618,7 +600,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             int sentinel = int.MaxValue;
             firstHitView.CopyFromCPU(ref sentinel, 1);
 
-            var kernel = _kernel ?? throw new InvalidOperationException("GPU divisor kernel was not initialized.");
+            var kernel = _kernel!;
 
             kernel(1, divisorView, offsetView, countView, exponentView, cycleView, hitView, firstHitView);
 
