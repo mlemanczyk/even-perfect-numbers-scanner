@@ -48,9 +48,31 @@ public sealed class PrimeTester
 
             if (result)
             {
-                var smallPrimeDivisorsLength = PrimesGenerator.SmallPrimes.Length;
                 uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
                 ulong[] smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2;
+
+                ulong nMod10 = n.Mod10();
+                switch (nMod10)
+                {
+                    case 1UL:
+                        smallPrimeDivisors = PrimesGenerator.SmallPrimesLastOne;
+                        smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2LastOne;
+                        break;
+                    case 3UL:
+                        smallPrimeDivisors = DivisorGenerator.SmallPrimesLastThree;
+                        smallPrimeDivisorsMul = DivisorGenerator.SmallPrimesPow2LastThree;
+                        break;
+                    case 7UL:
+                        smallPrimeDivisors = PrimesGenerator.SmallPrimesLastSeven;
+                        smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2LastSeven;
+                        break;
+                    case 9UL:
+                        smallPrimeDivisors = DivisorGenerator.SmallPrimesLastNine;
+                        smallPrimeDivisorsMul = DivisorGenerator.SmallPrimesPow2LastNine;
+                        break;
+                }
+
+                int smallPrimeDivisorsLength = smallPrimeDivisors.Length;
                 for (int i = 0; i < smallPrimeDivisorsLength; i++)
                 {
                     if (smallPrimeDivisorsMul[i] > n)
@@ -110,8 +132,8 @@ public sealed class PrimeTester
     {
         var limiter = GpuPrimeWorkLimiter.Acquire();
         var gpu = PrimeTesterGpuContextPool.Rent();
+        var state = gpu.State;
         var accelerator = gpu.Accelerator;
-        var state = GpuKernelState.GetOrCreate(accelerator);
         int totalLength = values.Length;
         int batchSize = Math.Max(1, GpuBatchSize);
 
@@ -132,7 +154,15 @@ public sealed class PrimeTester
                 values.Slice(pos, count).CopyTo(temp);
                 input.View.CopyFromCPU(ref temp[0], count);
 
-                state.Kernel(count, input.View, state.DevicePrimes.View, output.View);
+                state.Kernel(
+                    count,
+                    input.View,
+                    state.DevicePrimesDefault.View,
+                    state.DevicePrimesLastOne.View,
+                    state.DevicePrimesLastSeven.View,
+                    state.DevicePrimesLastThree.View,
+                    state.DevicePrimesLastNine.View,
+                    output.View);
                 accelerator.Synchronize();
                 output.View.CopyToCPU(ref results[pos], count);
 
@@ -151,22 +181,40 @@ public sealed class PrimeTester
     {
         internal sealed class PooledContext
         {
-
             public Context Context { get; }
 
             public Accelerator Accelerator { get; }
 
             public object ExecutionLock { get; } = new();
 
+            private KernelState? _kernelState;
+
             public PooledContext()
             {
                 Context = Context.CreateDefault();
                 Accelerator = Context.GetPreferredDevice(false).CreateAccelerator(Context);
+                _kernelState = GpuKernelState.GetOrCreate(Accelerator);
+            }
+
+            public KernelState KernelState
+            {
+                get
+                {
+                    var state = _kernelState;
+                    if (state is null || state.IsDisposed)
+                    {
+                        state = GpuKernelState.GetOrCreate(Accelerator);
+                        _kernelState = state;
+                    }
+
+                    return state;
+                }
             }
 
             public void Dispose()
             {
-                PrimeTester.ClearGpuCaches(Accelerator);
+                ClearGpuCaches(Accelerator);
+                _kernelState = null;
                 Accelerator.Dispose();
                 Context.Dispose();
             }
@@ -215,6 +263,8 @@ public sealed class PrimeTester
 
             public object ExecutionLock => _ctx!.ExecutionLock;
 
+            public KernelState State => _ctx!.KernelState;
+
             public void Dispose()
             {
                 Return(_ctx ?? throw new InvalidOperationException("GPU context lease is not initialized."));
@@ -225,10 +275,14 @@ public sealed class PrimeTester
     // Per-accelerator GPU state for prime sieve (kernel + uploaded primes).
     internal sealed class KernelState
     {
-        public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>> Kernel { get; }
+        public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<byte>> Kernel { get; }
         public Action<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>> HeuristicTrialDivisionKernel { get; }
-        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimes { get; }
-        private readonly Accelerator _accel;
+        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesDefault { get; }
+        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne { get; }
+        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven { get; }
+        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastThree { get; }
+        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastNine { get; }
+        public bool IsDisposed { get; private set; }
         private readonly System.Collections.Concurrent.ConcurrentBag<ScratchBuffers> _scratchPool = [];
         // TODO: Replace this ConcurrentBag with the lock-free ring buffer variant validated in
         // GpuModularArithmeticBenchmarks so renting scratch buffers stops contending on the bag's internal locks when
@@ -236,14 +290,30 @@ public sealed class PrimeTester
 
         public KernelState(Accelerator accelerator)
         {
-            _accel = accelerator;
+            IsDisposed = false;
             // Compile once per accelerator and upload primes once.
-            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
+            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
             HeuristicTrialDivisionKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
-            var primes = PrimesGenerator.SmallPrimes;
-            DevicePrimes = accelerator.Allocate1D<uint>(primes.Length);
-            DevicePrimes.View.CopyFromCPU(primes);
+            var primesDefault = DivisorGenerator.SmallPrimes;
+            DevicePrimesDefault = accelerator.Allocate1D<uint>(primesDefault.Length);
+            DevicePrimesDefault.View.CopyFromCPU(primesDefault);
+
+            var primesLastOne = DivisorGenerator.SmallPrimesLastOne;
+            DevicePrimesLastOne = accelerator.Allocate1D<uint>(primesLastOne.Length);
+            DevicePrimesLastOne.View.CopyFromCPU(primesLastOne);
+
+            var primesLastSeven = DivisorGenerator.SmallPrimesLastSeven;
+            DevicePrimesLastSeven = accelerator.Allocate1D<uint>(primesLastSeven.Length);
+            DevicePrimesLastSeven.View.CopyFromCPU(primesLastSeven);
+
+            var primesLastThree = DivisorGenerator.SmallPrimesLastThree;
+            DevicePrimesLastThree = accelerator.Allocate1D<uint>(primesLastThree.Length);
+            DevicePrimesLastThree.View.CopyFromCPU(primesLastThree);
+
+            var primesLastNine = DivisorGenerator.SmallPrimesLastNine;
+            DevicePrimesLastNine = accelerator.Allocate1D<uint>(primesLastNine.Length);
+            DevicePrimesLastNine.View.CopyFromCPU(primesLastNine);
         }
 
         internal sealed class ScratchBuffers
@@ -291,12 +361,22 @@ public sealed class PrimeTester
 
         public void Clear()
         {
+            if (IsDisposed)
+            {
+                return;
+            }
+
             while (_scratchPool.TryTake(out var sb))
             {
                 sb.Dispose();
             }
 
-            DevicePrimes.Dispose();
+            DevicePrimesDefault.Dispose();
+            DevicePrimesLastOne.Dispose();
+            DevicePrimesLastSeven.Dispose();
+            DevicePrimesLastThree.Dispose();
+            DevicePrimesLastNine.Dispose();
+            IsDisposed = true;
         }
     }
 
