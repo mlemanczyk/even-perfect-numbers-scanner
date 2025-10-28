@@ -26,6 +26,20 @@ This note captures the invariants established while auditing divisibility checks
 
 - ✅ The GPU tester now relies on the existing initialization contract (`EnsureExecutionResourcesLocked`) and no longer emits a redundant null check before launching the kernel.
 
+## Parity (mod 2) audit plan
+
+- [x] Trace divisor candidate generation from `MersenneNumberDivisorByDivisorTester.Run` through the CPU and GPU staging loops to confirm they only advance odd sequences derived from `2 * k * p + 1`.
+- [x] Inspect `PerfectNumbers.Core/Cpu/MersenneNumberDivisorByDivisorCpuTester.cs` for explicit parity guards inside the staging loops.
+- [x] Inspect `PerfectNumbers.Core/Gpu/MersenneNumberDivisorByDivisorGpuTester.cs` and the associated kernels for redundant even checks.
+- [x] Review factoring helpers (`MersenneDivisorCycles`, `MersennePrimeFactorTester`) to determine whether their parity filters remain necessary when factoring introduces small primes.
+
+## Parity audit findings
+
+- ✅ CPU and GPU staging loops rely on the modulus-8 remainder gate (`remainder8 == 1 || remainder8 == 7`) to enforce odd divisors, so no explicit `(divisor & 1)` checks remain in the hot paths.
+- ✅ `MersenneDivisorResidueStepper` and the decimal mask restrict admissible residues so every generated divisor respects the `2 * k * p + 1` structure without additional parity branches.
+- ✅ `MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu` legitimately strips powers of two from `phi = divisor - 1` while factoring; those divisions operate on the totient rather than the divisor candidates and must stay in place.
+- ✅ Removed the redundant `(q & 1) == 0` guard from `MersennePrimeFactorTester.IsPrimeFactor` because the subsequent `(q & 7)` filter already excludes even candidates while the `q < 2` guard handles the remaining edge cases.
+
 ## Next steps
 
 - Keep the decimal mask aligned with the divisor generator if additional last-digit heuristics are introduced so the `% 5` filter remains unnecessary.
