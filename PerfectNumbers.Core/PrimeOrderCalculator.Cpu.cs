@@ -53,7 +53,8 @@ internal static partial class PrimeOrderCalculator
 
 		ulong phi = prime - 1UL;
 
-		if (IsGpuHeuristicDevice && PrimeOrderGpuHeuristics.TryCalculateOrder(prime, previousOrder, config, divisorData, out ulong gpuOrder))
+		// if (IsGpuHeuristicDevice && PrimeOrderGpuHeuristics.TryCalculateOrder(prime, previousOrder, config, divisorData, out ulong gpuOrder))
+		if (PrimeOrderGpuHeuristics.TryCalculateOrder(prime, previousOrder, config, divisorData, out ulong gpuOrder))
 		{
 			return gpuOrder;
 		}
@@ -1069,7 +1070,7 @@ internal static partial class PrimeOrderCalculator
 		ulong remaining = value;
 
 		bool gpuFactored = false;
-		if (IsGpuHeuristicDevice)
+		// if (IsGpuHeuristicDevice)
 		{
 			gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(value, limit, primeSlots, exponentSlots, out factorCount, out remaining, out _);
 		}
@@ -1078,6 +1079,7 @@ internal static partial class PrimeOrderCalculator
 		Stack<ulong>? compositeStack = null;
 		PartialFactorResult result;
 		PrimeTester primeTester = PrimeTester.Exclusive;
+		CancellationToken ct = CancellationToken.None;
 
 		if (!gpuFactored)
 		{
@@ -1150,7 +1152,7 @@ internal static partial class PrimeOrderCalculator
 					// Console.WriteLine($"Partial factor hits {Volatile.Read(ref _partialFactorHits)}");
 
 					// bool isPrime = PrimeTester.IsPrimeCpu(composite, CancellationToken.None);
-					bool isPrime = PrimeTester.IsPrimeGpu(composite);
+					bool isPrime = PrimeTester.IsPrimeCpu(composite, ct);
 					// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
 					if (isPrime)
@@ -1218,7 +1220,7 @@ internal static partial class PrimeOrderCalculator
 				// Console.WriteLine($"Partial factor pending hits {Volatile.Read(ref _partialFactorPendingHits)}");
 
 				// bool isPrime = PrimeTester.IsPrimeCpu(composite, CancellationToken.None);
-				bool isPrime = PrimeTester.IsPrimeGpu(composite);
+				bool isPrime = PrimeTester.IsPrimeCpu(composite, ct);
 				// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
 				entry = entry.WithPrimality(isPrime);
