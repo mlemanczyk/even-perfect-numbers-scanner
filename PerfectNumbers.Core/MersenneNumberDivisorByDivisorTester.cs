@@ -1,5 +1,6 @@
 using System.Buffers;
-using System.Collections.Concurrent;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Globalization;
 using System.Runtime.InteropServices;
 
@@ -266,12 +267,7 @@ public static class MersenneNumberDivisorByDivisorTester
 		}
 		else
 		{
-			var scheduler = UnboundedTaskScheduler.Instance;
-			ParallelOptions options = new()
-			{
-				MaxDegreeOfParallelism = workerCount,
-				TaskScheduler = scheduler
-			};
+			TaskScheduler scheduler = UnboundedTaskScheduler.Instance;
 
 			int totalCount = filteredPrimes.Count;
 			int partitionSize = chunkSize < 1 ? 1 : chunkSize;
@@ -280,13 +276,38 @@ public static class MersenneNumberDivisorByDivisorTester
 				partitionSize = totalCount;
 			}
 
-			Parallel.ForEach(Partitioner.Create(0, totalCount, partitionSize), options, range =>
+			int taskCount = (totalCount + partitionSize - 1) / partitionSize;
+			Task[] tasks = new Task[taskCount];
+			var startGate = new ManualResetEventSlim(initialState: false);
+			int taskIndex = 0;
+
+			for (int start = 0; start < totalCount; start += partitionSize)
 			{
-				for (int index = range.Item1; index < range.Item2; index++)
+				int rangeStart = start;
+				int rangeEnd = rangeStart + partitionSize;
+				if (rangeEnd > totalCount)
 				{
-					ProcessPrime(filteredPrimes[index]);
+					rangeEnd = totalCount;
 				}
-			});
+
+				tasks[taskIndex++] = Task.Factory.StartNew(
+					() =>
+					{
+						startGate.Wait();
+
+						for (int index = rangeStart; index < rangeEnd; index++)
+						{
+							ProcessPrime(filteredPrimes[index]);
+						}
+					},
+					CancellationToken.None,
+					TaskCreationOptions.DenyChildAttach,
+					scheduler);
+			}
+
+			startGate.Set();
+			Task.WaitAll(tasks);
+			startGate.Dispose();
 		}
 	}
 }
