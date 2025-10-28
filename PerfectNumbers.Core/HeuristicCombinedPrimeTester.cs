@@ -428,7 +428,7 @@ Cleanup:
 
     private static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10)
     {
-        return GetCombinedDivisors(nMod10, CombinedDivisorPattern.TwoAOneB);
+        return GetCombinedDivisors(nMod10, CombinedDivisorPattern.OneAOneB);
     }
 
     internal static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10, CombinedDivisorPattern pattern)
