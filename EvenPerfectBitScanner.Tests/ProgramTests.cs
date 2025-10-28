@@ -542,7 +542,7 @@ public class ProgramTests
     public void Main_displays_help_when_requested()
     {
         var main = typeof(Program).GetMethod("Main", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var writer = new StringWriter();
+        using var writer = new StringWriter();
         TextWriter original = Console.Out;
         Console.SetOut(writer);
 
@@ -559,7 +559,6 @@ public class ProgramTests
         output.Should().Contain("Usage:");
         output.Should().Contain("--mersenne-device=cpu|gpu");
         output.Should().Contain("--primes-device=cpu|gpu");
-        writer.Dispose();
     }
 }
 

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
@@ -9,30 +10,28 @@ public sealed class GpuKernelLease
 {
     private static readonly ConcurrentQueue<GpuKernelLease> Pool = new();
 
-    private IDisposable? _limiter;
+    private Action? _releaseLimiter;
     private GpuContextLease? _gpu;
     private KernelContainer? _kernels;
     private AcceleratorStream? _stream;
     private object? _executionLock;
-    private bool _disposed;
 
     private GpuKernelLease()
     {
     }
 
-    internal static GpuKernelLease Rent(IDisposable limiter, GpuContextLease gpu, KernelContainer kernels)
+    internal static GpuKernelLease Rent(GpuPrimeWorkLimiter.Lease limiter, GpuContextLease gpu, KernelContainer kernels)
     {
         if (!Pool.TryDequeue(out var lease))
         {
             lease = new GpuKernelLease();
         }
 
-        lease._limiter = limiter;
+        lease._releaseLimiter = limiter.Dispose;
         lease._gpu = gpu;
         lease._kernels = kernels;
         lease._stream = null;
         lease._executionLock = gpu.ExecutionLock;
-        lease._disposed = false;
         return lease;
     }
 
@@ -158,35 +157,21 @@ public sealed class GpuKernelLease
         }
     }
 
-    private void Dispose(bool disposing)
-    {
-        if (_disposed)
-        {
-            return;
-        }
-
-        if (disposing)
-        {
-            _stream?.Dispose();
-            _stream = null;
-
-            _gpu?.Dispose();
-            _gpu = null;
-
-            _executionLock = null;
-
-            _limiter?.Dispose();
-            _limiter = null;
-        }
-
-        _kernels = null;
-        _disposed = true;
-        Pool.Enqueue(this);
-    }
-
     public void Dispose()
     {
-        Dispose(disposing: false);
+        _stream?.Dispose();
+        _stream = null;
+
+        _gpu?.Dispose();
+        _gpu = null;
+
+        _executionLock = null;
+
+        _releaseLimiter?.Invoke();
+        _releaseLimiter = null;
+
+        _kernels = null;
+        Pool.Enqueue(this);
     }
 
     public readonly struct ExecutionScope

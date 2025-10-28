@@ -468,7 +468,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         private MemoryBuffer1D<byte, Stride1D.Dense> _hitBuffer = null!;
         private ulong[] _hostBuffer = null!;
         private int _capacity;
-        private bool _disposed;
 
         internal DivisorScanSession(MersenneNumberDivisorByDivisorGpuTester owner)
         {
@@ -480,7 +479,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         internal void Reset()
         {
-            _disposed = false;
         }
 
         private void EnsureExecutionResourcesLocked(int requiredCapacity)
@@ -527,11 +525,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes, Span<byte> hits)
         {
-            if (_disposed)
-            {
-                throw new ObjectDisposedException(nameof(DivisorScanSession));
-            }
-
             int length = primes.Length;
             // EvenPerfectBitScanner always supplies at least one exponent per divisor check, so the guard stays commented out.
             // if (length == 0)
@@ -613,12 +606,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
         public void Dispose()
         {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _disposed = true;
             _owner._sessionPool.Add(this);
         }
     }
@@ -668,7 +655,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
     private void ReturnBatchResources(BatchResources resources) => _resourcePool.Add(resources);
 
-    private sealed class BatchResources : IDisposable
+    private sealed class BatchResources
     {
         private Accelerator? _accelerator;
         private MemoryBuffer1D<GpuDivisorPartialData, Stride1D.Dense>? _divisorDataBuffer;
