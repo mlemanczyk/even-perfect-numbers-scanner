@@ -411,7 +411,8 @@ public class MersenneDivisorCycles
 		// Atomic.Add(ref _tryFactorIntoCountsInternalHits, 1UL);
 		// Console.WriteLine($"MersenneDivisorCycles.TryFactorIntoCountsInternal hits {Volatile.Read(ref _tryFactorIntoCountsInternalHits)}");
 
-		if (PrimeTester.IsPrimeCpu(remaining, CancellationToken.None))
+		HeuristicPrimeTester primeTester = _primeTester ??= new();
+		if (primeTester.IsPrimeGpu(remaining))
 		// if (PrimeTester.IsPrimeCpu(remaining, CancellationToken.None))
 		{
 			AddFactor(counts, remaining);
@@ -916,19 +917,22 @@ public class MersenneDivisorCycles
         return CalculateCycleLengthFallback(divisor);
     }
 
-    internal static bool TryCalculateCycleLengthHeuristic(ulong divisor, in MontgomeryDivisorData divisorData, out ulong cycleLength, bool skipPrimeOrderHeuristic = false)
-    {
-        if ((divisor & (divisor - 1UL)) == 0UL)
-        {
-            cycleLength = 1UL;
-            return true;
-        }
+	[ThreadStatic]
+	private static HeuristicPrimeTester? _primeTester;
 
-        if (divisor <= 3UL)
-        {
-            cycleLength = CalculateCycleLengthFallback(divisor);
-            return true;
-        }
+	internal static bool TryCalculateCycleLengthHeuristic(ulong divisor, in MontgomeryDivisorData divisorData, out ulong cycleLength, bool skipPrimeOrderHeuristic = false)
+	{
+		if ((divisor & (divisor - 1UL)) == 0UL)
+		{
+			cycleLength = 1UL;
+			return true;
+		}
+
+		if (divisor <= 3UL)
+		{
+			cycleLength = CalculateCycleLengthFallback(divisor);
+			return true;
+		}
 
 		// if (!skipPrimeOrderHeuristic)
 		// {
@@ -936,26 +940,27 @@ public class MersenneDivisorCycles
 		// 	Console.WriteLine($"MersenneDivisorCycles.CalculateCycleLengthFallback hits {Volatile.Read(ref _tryCalculateCycleLengthHeuristicHits)}");			
 		// }
 
-        // if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.Exclusive.IsPrimeCpu(divisor, CancellationToken.None))
-        if (!skipPrimeOrderHeuristic && PrimeTester.IsPrimeCpu(divisor, CancellationToken.None))
-        // if (!skipPrimeOrderHeuristic && PrimeTester.IsPrimeCpu(divisor, CancellationToken.None))
-        {
-            ulong computedOrder = PrimeOrderCalculator.Calculate(
-                    divisor,
-                    previousOrder: null,
-                    divisorData,
-                    PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-                    PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
-            if (computedOrder != 0UL)
-            {
-                cycleLength = computedOrder;
-                return true;
-            }
-        }
+		HeuristicPrimeTester primeTester = _primeTester ??= new();
+		// if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.Exclusive.IsPrimeCpu(divisor, CancellationToken.None))
+		if (!skipPrimeOrderHeuristic && primeTester.IsPrimeGpu(divisor))
+		// if (!skipPrimeOrderHeuristic && PrimeTester.IsPrimeCpu(divisor, CancellationToken.None))
+		{
+			ulong computedOrder = PrimeOrderCalculator.Calculate(
+					divisor,
+					previousOrder: null,
+					divisorData,
+					PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
+					PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
+			if (computedOrder != 0UL)
+			{
+				cycleLength = computedOrder;
+				return true;
+			}
+		}
 
-        cycleLength = 0UL;
-        return false;
-    }
+		cycleLength = 0UL;
+		return false;
+	}
 
     private static ulong CalculateCycleLengthFallback(ulong divisor)
     {
