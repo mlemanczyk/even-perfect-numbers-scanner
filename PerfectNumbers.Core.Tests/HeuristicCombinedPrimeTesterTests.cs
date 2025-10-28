@@ -13,7 +13,7 @@ public class HeuristicCombinedPrimeTesterTests
     [InlineData((byte)1)]
     [InlineData((byte)7)]
     [InlineData((byte)9)]
-    public void Enumerator_uses_three_a_two_b_schedule_by_default(byte lastDigit)
+    public void Enumerator_uses_two_a_one_b_schedule_by_default(byte lastDigit)
     {
         Span<HeuristicCombinedPrimeTester.HeuristicGroupBSequenceState> groupBState =
             stackalloc HeuristicCombinedPrimeTester.HeuristicGroupBSequenceState[4];
@@ -41,7 +41,7 @@ public class HeuristicCombinedPrimeTesterTests
 
         for (int segment = 0; segment < segmentsToCheck; segment++)
         {
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < 2; i++)
             {
                 HeuristicCombinedPrimeTester.HeuristicDivisorCandidate groupACandidate = results[index++];
                 groupACandidate.Value.Should().BeGreaterThan(13UL);
@@ -49,13 +49,48 @@ public class HeuristicCombinedPrimeTesterTests
                 groupACandidate.Group.Should().NotBe(HeuristicCombinedPrimeTester.HeuristicDivisorGroup.GroupB);
             }
 
-            for (int i = 0; i < 2; i++)
+            for (int i = 0; i < 1; i++)
             {
                 HeuristicCombinedPrimeTester.HeuristicDivisorCandidate groupBCandidate = results[index++];
                 groupBCandidate.Value.Should().BeGreaterThan(13UL);
                 (groupBCandidate.Value % 10UL).Should().NotBe(3UL);
                 groupBCandidate.Group.Should().Be(HeuristicCombinedPrimeTester.HeuristicDivisorGroup.GroupB);
             }
+        }
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData((byte)1)]
+    [InlineData((byte)7)]
+    [InlineData((byte)9)]
+    public void Two_a_one_b_pattern_interleaves_two_group_a_values_before_group_b(byte lastDigit)
+    {
+        ReadOnlySpan<uint> combined = HeuristicCombinedPrimeTester.GetCombinedDivisors(
+            lastDigit,
+            HeuristicCombinedPrimeTester.CombinedDivisorPattern.TwoAOneB);
+
+        combined.Length.Should().BeGreaterThan(20);
+        combined[0].Should().Be(3U);
+        combined[1].Should().Be(7U);
+        combined[2].Should().Be(11U);
+        combined[3].Should().Be(13U);
+
+        int index = 4;
+        const int segmentsToCheck = 5;
+
+        for (int segment = 0; segment < segmentsToCheck; segment++)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                uint groupAValue = combined[index++];
+                groupAValue.Should().BeGreaterThan(13U);
+                (groupAValue % 10U).Should().Be(3U);
+            }
+
+            uint groupBValue = combined[index++];
+            groupBValue.Should().BeGreaterThan(13U);
+            (groupBValue % 10U).Should().NotBe(3U);
         }
     }
 
