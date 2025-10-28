@@ -39,6 +39,11 @@ public sealed class HeuristicCombinedPrimeTester
     private static readonly Lazy<uint[]> CombinedDivisorsEnding7ThreeAOneB = new(() => BuildCombinedDivisors(7, CombinedDivisorPattern.ThreeAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
     private static readonly Lazy<uint[]> CombinedDivisorsEnding9ThreeAOneB = new(() => BuildCombinedDivisors(9, CombinedDivisorPattern.ThreeAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
 
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding1ThreeATwoB = new(() => BuildCombinedDivisors(1, CombinedDivisorPattern.ThreeATwoB), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding3ThreeATwoB = new(() => BuildCombinedDivisors(3, CombinedDivisorPattern.ThreeATwoB), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding7ThreeATwoB = new(() => BuildCombinedDivisors(7, CombinedDivisorPattern.ThreeATwoB), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding9ThreeATwoB = new(() => BuildCombinedDivisors(9, CombinedDivisorPattern.ThreeATwoB), LazyThreadSafetyMode.ExecutionAndPublication);
+
     private static readonly ulong[] HeuristicSmallCycleSnapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
 
     internal enum CombinedDivisorPattern : byte
@@ -46,6 +51,7 @@ public sealed class HeuristicCombinedPrimeTester
         TwoAOneB = 0,
         OneAOneB = 1,
         ThreeAOneB = 2,
+        ThreeATwoB = 3,
     }
 
     internal enum HeuristicDivisorGroup : byte
@@ -404,7 +410,7 @@ Cleanup:
 
     private static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10)
     {
-        return GetCombinedDivisors(nMod10, CombinedDivisorPattern.ThreeAOneB);
+        return GetCombinedDivisors(nMod10, CombinedDivisorPattern.ThreeATwoB);
     }
 
     internal static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10, CombinedDivisorPattern pattern)
@@ -435,6 +441,14 @@ Cleanup:
                 9 => CombinedDivisorsEnding9ThreeAOneB.Value,
                 _ => ReadOnlySpan<uint>.Empty,
             },
+            CombinedDivisorPattern.ThreeATwoB => nMod10 switch
+            {
+                1 => CombinedDivisorsEnding1ThreeATwoB.Value,
+                3 => CombinedDivisorsEnding3ThreeATwoB.Value,
+                7 => CombinedDivisorsEnding7ThreeATwoB.Value,
+                9 => CombinedDivisorsEnding9ThreeATwoB.Value,
+                _ => ReadOnlySpan<uint>.Empty,
+            },
             _ => ReadOnlySpan<uint>.Empty,
         };
     }
@@ -454,13 +468,31 @@ Cleanup:
         }
 
         int groupBIndex = GetGroupBStartIndex(groupB);
-        int groupAInterleaveCount = pattern switch
+        int groupAInterleaveCount;
+        int groupBInterleaveCount;
+        switch (pattern)
         {
-            CombinedDivisorPattern.OneAOneB => 1,
-            CombinedDivisorPattern.TwoAOneB => 2,
-            CombinedDivisorPattern.ThreeAOneB => 3,
-            _ => 2,
-        };
+            case CombinedDivisorPattern.OneAOneB:
+                groupAInterleaveCount = 1;
+                groupBInterleaveCount = 1;
+                break;
+            case CombinedDivisorPattern.TwoAOneB:
+                groupAInterleaveCount = 2;
+                groupBInterleaveCount = 1;
+                break;
+            case CombinedDivisorPattern.ThreeAOneB:
+                groupAInterleaveCount = 3;
+                groupBInterleaveCount = 1;
+                break;
+            case CombinedDivisorPattern.ThreeATwoB:
+                groupAInterleaveCount = 3;
+                groupBInterleaveCount = 2;
+                break;
+            default:
+                groupAInterleaveCount = 2;
+                groupBInterleaveCount = 1;
+                break;
+        }
 
         while (groupAIndex < groupA.Length || groupBIndex < groupB.Length)
         {
@@ -472,10 +504,12 @@ Cleanup:
                 addedA++;
             }
 
-            if (groupBIndex < groupB.Length)
+            int addedB = 0;
+            while (addedB < groupBInterleaveCount && groupBIndex < groupB.Length)
             {
                 combined.Add(groupB[groupBIndex]);
                 groupBIndex++;
+                addedB++;
             }
         }
 
