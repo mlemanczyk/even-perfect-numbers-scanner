@@ -7,22 +7,42 @@ namespace PerfectNumbers.Core.Gpu;
 internal static class PrimeTesterKernels
 {
     // GPU kernel: small-prime sieve only. Returns 1 if passes sieve (probable prime), 0 otherwise.
-    public static void SmallPrimeSieveKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<uint> smallPrimes, ArrayView<byte> results)
+    public static void SmallPrimeSieveKernel(
+        Index1D index,
+        ArrayView<ulong> numbers,
+        ArrayView<uint> smallPrimes,
+        ArrayView<uint> smallPrimesLastOne,
+        ArrayView<uint> smallPrimesLastSeven,
+        ArrayView<uint> smallPrimesLastThree,
+        ArrayView<uint> smallPrimesLastNine,
+        ArrayView<byte> results)
     {
         ulong n = numbers[index];
         byte result = 1;
 
-        // EvenPerfectBitScanner filters candidates so production GPU launches only see:
-        //  - n >= 31 (the scanner starts at 136,279,841 and test mode seeds 31)
-        //  - n odd (candidate generators and ModResidueTracker eliminate even exponents)
-        //  - n not divisible by 5 (residue prefiltering and AddPrimes transform cover these composites)
-        // Tests should honor the same constraints so the host wrapper can remain branchless.
+        ArrayView<uint> primes = smallPrimes;
+        ulong lastDigit = n % 10UL;
+        switch (lastDigit)
+        {
+            case 1UL:
+                primes = smallPrimesLastOne;
+                break;
+            case 3UL:
+                primes = smallPrimesLastThree;
+                break;
+            case 7UL:
+                primes = smallPrimesLastSeven;
+                break;
+            case 9UL:
+                primes = smallPrimesLastNine;
+                break;
+        }
 
-        long length = smallPrimes.Length;
+        int length = (int)primes.Length;
         for (int i = 0; i < length; i++)
         {
-            ulong prime = smallPrimes[i];
-            ulong primeSquare = (ulong)prime * prime;
+            ulong prime = primes[i];
+            ulong primeSquare = prime * prime;
             if (primeSquare > n)
             {
                 break;

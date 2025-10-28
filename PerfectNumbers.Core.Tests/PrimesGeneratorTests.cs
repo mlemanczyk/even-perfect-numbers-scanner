@@ -32,14 +32,24 @@ public class PrimesGeneratorTests
         var lastOnePow2 = PrimesGenerator.SmallPrimesPow2LastOne;
         var lastSeven = PrimesGenerator.SmallPrimesLastSeven;
         var lastSevenPow2 = PrimesGenerator.SmallPrimesPow2LastSeven;
+        var lastThree = DivisorGenerator.SmallPrimesLastThree;
+        var lastThreePow2 = DivisorGenerator.SmallPrimesPow2LastThree;
+        var lastNine = DivisorGenerator.SmallPrimesLastNine;
+        var lastNinePow2 = DivisorGenerator.SmallPrimesPow2LastNine;
 
         lastOne.Length.Should().Be((int)PerfectNumberConstants.PrimesLimit);
         lastSeven.Length.Should().Be((int)PerfectNumberConstants.PrimesLimit);
+        lastThree.Length.Should().Be((int)PerfectNumberConstants.PrimesLimit);
+        lastNine.Length.Should().Be((int)PerfectNumberConstants.PrimesLimit);
         lastOnePow2.Length.Should().Be(lastOne.Length);
         lastSevenPow2.Length.Should().Be(lastSeven.Length);
+        lastThreePow2.Length.Should().Be(lastThree.Length);
+        lastNinePow2.Length.Should().Be(lastNine.Length);
 
         lastOne[..5].Should().Equal([3U, 7U, 11U, 13U, 19U]);
         lastSeven[..5].Should().Equal([3U, 7U, 11U, 13U, 17U]);
+        lastThree[..6].Should().Equal([3U, 7U, 11U, 13U, 17U, 19U]);
+        lastNine[..6].Should().Equal([3U, 7U, 11U, 13U, 17U, 19U]);
 
         for (int i = 0; i < lastOne.Length; i++)
         {
@@ -58,6 +68,23 @@ public class PrimesGeneratorTests
                 .Should().BeTrue();
             lastSevenPow2[i].Should().Be(prime * (ulong)prime);
         }
+
+        for (int i = 0; i < lastThree.Length; i++)
+        {
+            uint prime = lastThree[i];
+            uint mod10 = prime % 10U;
+            (mod10 == 3U || mod10 == 7U || prime == 11U || prime == 19U)
+                .Should().BeTrue();
+            lastThreePow2[i].Should().Be(prime * (ulong)prime);
+        }
+
+        for (int i = 0; i < lastNine.Length; i++)
+        {
+            uint prime = lastNine[i];
+            uint mod10 = prime % 10U;
+            (mod10 == 3U || mod10 == 7U || mod10 == 9U || prime == 11U)
+                .Should().BeTrue();
+            lastNinePow2[i].Should().Be(prime * (ulong)prime);
+        }
     }
 }
-
