@@ -293,12 +293,10 @@ public class GpuKernelPool
     public static void Run(Action<Accelerator, AcceleratorStream> action)
     {
         var lease = GetKernel(useGpuOrder: true);
-        var execution = lease.EnterExecutionScope();
         var accelerator = lease.Accelerator;
         var stream = accelerator.CreateStream();
         action(accelerator, stream);
         stream.Dispose();
-        execution.Dispose();
         lease.Dispose();
 
     }

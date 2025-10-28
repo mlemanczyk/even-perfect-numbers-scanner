@@ -227,7 +227,6 @@ public sealed class DivisorCycleCache
     {
         int length = divisors.Length;
         var gpuLease = GpuKernelPool.GetKernel(useGpuOrder: true);
-        var execution = gpuLease.EnterExecutionScope();
 
         Accelerator accelerator = gpuLease.Accelerator;
         var kernel = _gpuKernelCache.GetOrAdd(accelerator, LoadKernel);
@@ -309,7 +308,6 @@ public sealed class DivisorCycleCache
             ArrayPool<byte>.Shared.Return(rentedStatus!, clearArray: false);
         }
 
-        execution.Dispose();
         gpuLease.Dispose();
     }
 

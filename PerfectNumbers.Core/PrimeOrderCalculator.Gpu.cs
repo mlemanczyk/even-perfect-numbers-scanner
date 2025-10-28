@@ -22,7 +22,6 @@ internal static partial class PrimeOrderCalculator
                 remaining = value;
 
                 var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
-                var execution = lease.EnterExecutionScope();
                 Accelerator accelerator = lease.Accelerator;
                 AcceleratorStream stream = lease.Stream;
 
@@ -64,7 +63,6 @@ internal static partial class PrimeOrderCalculator
                         counts.Add(primeValue, exponent);
                 }
 
-                execution.Dispose();
                 lease.Dispose();
                 ThreadStaticPools.UlongPool.Return(primeBufferArray);
                 ThreadStaticPools.IntPool.Return(exponentBufferArray);

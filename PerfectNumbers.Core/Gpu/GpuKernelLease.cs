@@ -14,7 +14,6 @@ public sealed class GpuKernelLease
     private GpuContextLease? _gpu;
     private KernelContainer? _kernels;
     private AcceleratorStream? _stream;
-    private object? _executionLock;
 
     private GpuKernelLease()
     {
@@ -31,7 +30,6 @@ public sealed class GpuKernelLease
         lease._gpu = gpu;
         lease._kernels = kernels;
         lease._stream = null;
-        lease._executionLock = gpu.ExecutionLock;
         return lease;
     }
 
@@ -53,14 +51,12 @@ public sealed class GpuKernelLease
         }
     }
 
-    public ExecutionScope EnterExecutionScope() => new ExecutionScope(_executionLock);
-
     public Action<AcceleratorStream, Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>> OrderKernel
     {
         get
         {
             var accel = Accelerator; // avoid capturing 'this' in lambda
-            lock (_gpu!.Value.KernelInitLock)
+            lock (_gpu!.Value.ExecutionLock)
             {
                 return KernelContainer.InitOnce(ref _kernels!.Order, () =>
                 {
@@ -77,7 +73,7 @@ public sealed class GpuKernelLease
         get
         {
             var accel = Accelerator;
-            lock (_gpu!.Value.KernelInitLock)
+            lock (_gpu!.Value.ExecutionLock)
             {
                 return KernelContainer.InitOnce(ref _kernels!.Pow2Mod, () =>
                 {
@@ -94,7 +90,7 @@ public sealed class GpuKernelLease
         get
         {
             var accel = Accelerator;
-            lock (_gpu!.Value.KernelInitLock)
+            lock (_gpu!.Value.ExecutionLock)
             {
                 return KernelContainer.InitOnce(ref _kernels!.Incremental, () =>
                 {
@@ -111,7 +107,7 @@ public sealed class GpuKernelLease
         get
         {
             var accel = Accelerator;
-            lock (_gpu!.Value.KernelInitLock)
+            lock (_gpu!.Value.ExecutionLock)
             {
                 return KernelContainer.InitOnce(ref _kernels!.IncrementalOrder, () =>
                 {
@@ -128,7 +124,7 @@ public sealed class GpuKernelLease
         get
         {
             var accel = Accelerator;
-            lock (_gpu!.Value.KernelInitLock)
+            lock (_gpu!.Value.ExecutionLock)
             {
                 return KernelContainer.InitOnce(ref _kernels!.Pow2ModOrder, () =>
                 {
@@ -145,7 +141,7 @@ public sealed class GpuKernelLease
         get
         {
             var accel = Accelerator;
-            lock (_gpu!.Value.KernelInitLock)
+            lock (_gpu!.Value.ExecutionLock)
             {
                 return KernelContainer.InitOnce(ref _kernels!.SmallPrimeFactor, () =>
                 {
@@ -165,8 +161,6 @@ public sealed class GpuKernelLease
         _gpu?.Dispose();
         _gpu = null;
 
-        _executionLock = null;
-
         _releaseLimiter?.Invoke();
         _releaseLimiter = null;
 
@@ -174,25 +168,4 @@ public sealed class GpuKernelLease
         Pool.Enqueue(this);
     }
 
-    public readonly struct ExecutionScope
-    {
-        private readonly object? _lock;
-
-        public ExecutionScope(object? sync)
-        {
-            _lock = sync;
-            if (_lock is not null)
-            {
-                Monitor.Enter(_lock);
-            }
-        }
-
-        public void Dispose()
-        {
-            if (_lock is not null)
-            {
-                Monitor.Exit(_lock);
-            }
-        }
-    }
 }
