@@ -48,9 +48,31 @@ public sealed class PrimeTester
 
             if (result)
             {
-                var smallPrimeDivisorsLength = PrimesGenerator.SmallPrimes.Length;
                 uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
                 ulong[] smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2;
+
+                ulong nMod10 = n.Mod10();
+                switch (nMod10)
+                {
+                    case 1UL:
+                        smallPrimeDivisors = PrimesGenerator.SmallPrimesLastOne;
+                        smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2LastOne;
+                        break;
+                    case 3UL:
+                        smallPrimeDivisors = DivisorGenerator.SmallPrimesLastThree;
+                        smallPrimeDivisorsMul = DivisorGenerator.SmallPrimesPow2LastThree;
+                        break;
+                    case 7UL:
+                        smallPrimeDivisors = PrimesGenerator.SmallPrimesLastSeven;
+                        smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2LastSeven;
+                        break;
+                    case 9UL:
+                        smallPrimeDivisors = DivisorGenerator.SmallPrimesLastNine;
+                        smallPrimeDivisorsMul = DivisorGenerator.SmallPrimesPow2LastNine;
+                        break;
+                }
+
+                int smallPrimeDivisorsLength = smallPrimeDivisors.Length;
                 for (int i = 0; i < smallPrimeDivisorsLength; i++)
                 {
                     if (smallPrimeDivisorsMul[i] > n)
@@ -132,7 +154,15 @@ public sealed class PrimeTester
                 values.Slice(pos, count).CopyTo(temp);
                 input.View.CopyFromCPU(ref temp[0], count);
 
-                state.Kernel(count, input.View, state.DevicePrimes.View, output.View);
+                state.Kernel(
+                    count,
+                    input.View,
+                    state.DevicePrimesDefault.View,
+                    state.DevicePrimesLastOne.View,
+                    state.DevicePrimesLastSeven.View,
+                    state.DevicePrimesLastThree.View,
+                    state.DevicePrimesLastNine.View,
+                    output.View);
                 accelerator.Synchronize();
                 output.View.CopyToCPU(ref results[pos], count);
 
@@ -225,9 +255,13 @@ public sealed class PrimeTester
     // Per-accelerator GPU state for prime sieve (kernel + uploaded primes).
     internal sealed class KernelState
     {
-        public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>> Kernel { get; }
+        public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<byte>> Kernel { get; }
         public Action<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>> HeuristicTrialDivisionKernel { get; }
-        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimes { get; }
+        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesDefault { get; }
+        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne { get; }
+        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven { get; }
+        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastThree { get; }
+        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastNine { get; }
         private readonly Accelerator _accel;
         private readonly System.Collections.Concurrent.ConcurrentBag<ScratchBuffers> _scratchPool = [];
         // TODO: Replace this ConcurrentBag with the lock-free ring buffer variant validated in
@@ -238,12 +272,28 @@ public sealed class PrimeTester
         {
             _accel = accelerator;
             // Compile once per accelerator and upload primes once.
-            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
+            Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
             HeuristicTrialDivisionKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
-            var primes = PrimesGenerator.SmallPrimes;
-            DevicePrimes = accelerator.Allocate1D<uint>(primes.Length);
-            DevicePrimes.View.CopyFromCPU(primes);
+            var primesDefault = DivisorGenerator.SmallPrimes;
+            DevicePrimesDefault = accelerator.Allocate1D<uint>(primesDefault.Length);
+            DevicePrimesDefault.View.CopyFromCPU(primesDefault);
+
+            var primesLastOne = DivisorGenerator.SmallPrimesLastOne;
+            DevicePrimesLastOne = accelerator.Allocate1D<uint>(primesLastOne.Length);
+            DevicePrimesLastOne.View.CopyFromCPU(primesLastOne);
+
+            var primesLastSeven = DivisorGenerator.SmallPrimesLastSeven;
+            DevicePrimesLastSeven = accelerator.Allocate1D<uint>(primesLastSeven.Length);
+            DevicePrimesLastSeven.View.CopyFromCPU(primesLastSeven);
+
+            var primesLastThree = DivisorGenerator.SmallPrimesLastThree;
+            DevicePrimesLastThree = accelerator.Allocate1D<uint>(primesLastThree.Length);
+            DevicePrimesLastThree.View.CopyFromCPU(primesLastThree);
+
+            var primesLastNine = DivisorGenerator.SmallPrimesLastNine;
+            DevicePrimesLastNine = accelerator.Allocate1D<uint>(primesLastNine.Length);
+            DevicePrimesLastNine.View.CopyFromCPU(primesLastNine);
         }
 
         internal sealed class ScratchBuffers
@@ -296,7 +346,11 @@ public sealed class PrimeTester
                 sb.Dispose();
             }
 
-            DevicePrimes.Dispose();
+            DevicePrimesDefault.Dispose();
+            DevicePrimesLastOne.Dispose();
+            DevicePrimesLastSeven.Dispose();
+            DevicePrimesLastThree.Dispose();
+            DevicePrimesLastNine.Dispose();
         }
     }
 

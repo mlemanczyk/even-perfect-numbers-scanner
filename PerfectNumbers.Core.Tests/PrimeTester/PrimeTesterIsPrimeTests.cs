@@ -17,12 +17,30 @@ public class PrimeTesterIsPrimeTests
     [InlineData(97UL, true)]
     [InlineData(133UL, false)]
     [InlineData(137UL, true)]
+    [InlineData(143UL, false)]
+    [InlineData(199UL, true)]
+    [InlineData(209UL, false)]
+    [InlineData(403UL, false)]
     [InlineData(341UL, false)]
     public void IsPrime_returns_expected_results(ulong n, bool expected)
     {
         var tester = new PrimeTester();
 
         tester.IsPrime(n, CancellationToken.None).Should().Be(expected);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(139UL, true)]
+    [InlineData(189UL, false)]
+    [InlineData(193UL, true)]
+    [InlineData(279UL, false)]
+    public void IsPrimeGpu_uses_residue_specific_tables(ulong n, bool expected)
+    {
+        GpuContextPool.ForceCpu = false;
+        var tester = new PrimeTester();
+
+        tester.IsPrimeGpu(n, CancellationToken.None).Should().Be(expected);
     }
 
     [Fact]
