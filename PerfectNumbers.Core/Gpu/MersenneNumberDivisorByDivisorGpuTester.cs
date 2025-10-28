@@ -618,12 +618,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             int sentinel = int.MaxValue;
             firstHitView.CopyFromCPU(ref sentinel, 1);
 
-            var kernel = _kernel;
-            if (kernel is null)
-            {
-                Monitor.Exit(_lease.ExecutionLock);
-                throw new InvalidOperationException("GPU divisor kernel was not initialized.");
-            }
+            var kernel = _kernel ?? throw new InvalidOperationException("GPU divisor kernel was not initialized.");
 
             kernel(1, divisorView, offsetView, countView, exponentView, cycleView, hitView, firstHitView);
 

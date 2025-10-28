@@ -104,14 +104,7 @@ internal static class Program
 				testPrimeCandidateLimit = Math.Max(1, threadCount) * 3;
 			}
 
-			if (useByDivisor)
-			{
-				_byDivisorStartPrime = startPrimeProvided ? currentP : 0UL;
-			}
-			else
-			{
-				_byDivisorStartPrime = 0UL;
-			}
+			_byDivisorStartPrime = useByDivisor && startPrimeProvided ? currentP : 0UL;
 
 			if (useByDivisor && !testMode && string.IsNullOrEmpty(filterFile))
 			{
@@ -177,10 +170,7 @@ internal static class Program
 
 			Console.WriteLine("Divisor cycles are ready");
 
-			if (useByDivisor)
-			{
-				blockSize = 1;
-			}
+			blockSize = useByDivisor ? 1 : blockSize;
 
 			CandidatesCalculator.Initialize(currentP);
 			PrimeTesters = new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true);
