@@ -34,12 +34,18 @@ public sealed class HeuristicCombinedPrimeTester
     private static readonly Lazy<uint[]> CombinedDivisorsEnding7OneAOneB = new(() => BuildCombinedDivisors(7, CombinedDivisorPattern.OneAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
     private static readonly Lazy<uint[]> CombinedDivisorsEnding9OneAOneB = new(() => BuildCombinedDivisors(9, CombinedDivisorPattern.OneAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
 
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding1ThreeAOneB = new(() => BuildCombinedDivisors(1, CombinedDivisorPattern.ThreeAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding3ThreeAOneB = new(() => BuildCombinedDivisors(3, CombinedDivisorPattern.ThreeAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding7ThreeAOneB = new(() => BuildCombinedDivisors(7, CombinedDivisorPattern.ThreeAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<uint[]> CombinedDivisorsEnding9ThreeAOneB = new(() => BuildCombinedDivisors(9, CombinedDivisorPattern.ThreeAOneB), LazyThreadSafetyMode.ExecutionAndPublication);
+
     private static readonly ulong[] HeuristicSmallCycleSnapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
 
     internal enum CombinedDivisorPattern : byte
     {
         TwoAOneB = 0,
         OneAOneB = 1,
+        ThreeAOneB = 2,
     }
 
     internal enum HeuristicDivisorGroup : byte
@@ -398,7 +404,7 @@ Cleanup:
 
     private static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10)
     {
-        return GetCombinedDivisors(nMod10, CombinedDivisorPattern.OneAOneB);
+        return GetCombinedDivisors(nMod10, CombinedDivisorPattern.ThreeAOneB);
     }
 
     internal static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10, CombinedDivisorPattern pattern)
@@ -421,6 +427,14 @@ Cleanup:
                 9 => CombinedDivisorsEnding9OneAOneB.Value,
                 _ => ReadOnlySpan<uint>.Empty,
             },
+            CombinedDivisorPattern.ThreeAOneB => nMod10 switch
+            {
+                1 => CombinedDivisorsEnding1ThreeAOneB.Value,
+                3 => CombinedDivisorsEnding3ThreeAOneB.Value,
+                7 => CombinedDivisorsEnding7ThreeAOneB.Value,
+                9 => CombinedDivisorsEnding9ThreeAOneB.Value,
+                _ => ReadOnlySpan<uint>.Empty,
+            },
             _ => ReadOnlySpan<uint>.Empty,
         };
     }
@@ -440,7 +454,13 @@ Cleanup:
         }
 
         int groupBIndex = GetGroupBStartIndex(groupB);
-        int groupAInterleaveCount = pattern == CombinedDivisorPattern.OneAOneB ? 1 : 2;
+        int groupAInterleaveCount = pattern switch
+        {
+            CombinedDivisorPattern.OneAOneB => 1,
+            CombinedDivisorPattern.TwoAOneB => 2,
+            CombinedDivisorPattern.ThreeAOneB => 3,
+            _ => 2,
+        };
 
         while (groupAIndex < groupA.Length || groupBIndex < groupB.Length)
         {
