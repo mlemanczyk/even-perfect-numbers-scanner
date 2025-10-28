@@ -32,7 +32,7 @@ public class GpuUInt128Montgomery64Benchmarks
     [Benchmark(Baseline = true)]
     public ulong ExtensionMontgomeryMultiply()
     {
-        return Input.Left.MontgomeryMultiply(Input.Right, Input.Modulus, Input.NPrime);
+        return Input.Left.MontgomeryMultiplyCpu(Input.Right, Input.Modulus, Input.NPrime);
     }
 
     /// <summary>

@@ -40,7 +40,7 @@ public static partial class ULongExtensions
                 {
                         if (((exponent >> index) & 1UL) == 0UL)
                         {
-                                result = result.MontgomeryMultiply(result, modulus, nPrime);
+                                result = result.MontgomeryMultiplyCpu(result, modulus, nPrime);
                                 index--;
                                 continue;
                         }
@@ -59,14 +59,14 @@ public static partial class ULongExtensions
                         int windowLength = index - windowStart + 1;
                         for (int square = 0; square < windowLength; square++)
                         {
-                                result = result.MontgomeryMultiply(result, modulus, nPrime);
+                                result = result.MontgomeryMultiplyCpu(result, modulus, nPrime);
                         }
 
                         ulong mask = (1UL << windowLength) - 1UL;
                         ulong windowValue = (exponent >> windowStart) & mask;
                         int tableIndex = (int)((windowValue - 1UL) >> 1);
                         ulong multiplier = oddPowers[tableIndex];
-                        result = result.MontgomeryMultiply(multiplier, modulus, nPrime);
+                        result = result.MontgomeryMultiplyCpu(multiplier, modulus, nPrime);
 
                         index = windowStart - 1;
                 }
@@ -75,7 +75,7 @@ public static partial class ULongExtensions
 
                 if (!keepMontgomery)
                 {
-                        result = result.MontgomeryMultiply(1UL, modulus, nPrime);
+                        result = result.MontgomeryMultiplyCpu(1UL, modulus, nPrime);
                 }
 
                 return result;
@@ -96,7 +96,7 @@ public static partial class ULongExtensions
                 for (int i = 1; i < oddPowers.Length; i++)
                 {
                         previous = oddPowers[i - 1];
-                        oddPowers[i] = previous.MontgomeryMultiply(square, modulus, nPrime);
+                        oddPowers[i] = previous.MontgomeryMultiplyCpu(square, modulus, nPrime);
                 }
         }
 
