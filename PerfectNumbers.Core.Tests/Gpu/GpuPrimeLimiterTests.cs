@@ -18,22 +18,33 @@ public class GpuPrimeLimiterTests
         var startedSecond = new TaskCompletionSource<bool>();
         var sw = new Stopwatch();
 
-        using var first = GpuPrimeWorkLimiter.Acquire();
+        var first = GpuPrimeWorkLimiter.Acquire();
         sw.Start();
 
         var secondTask = Task.Run(() =>
         {
-            using var second = GpuPrimeWorkLimiter.Acquire();
-            startedSecond.TrySetResult(true);
+            var second = GpuPrimeWorkLimiter.Acquire();
+            try
+            {
+                startedSecond.TrySetResult(true);
+            }
+            finally
+            {
+                second.Dispose();
+            }
         });
 
-        // Give secondTask a moment to attempt acquire (it should block).
-        await Task.Delay(50);
-        startedSecond.Task.IsCompleted.Should().BeFalse();
-
-        // Release first after short delay, allowing second to continue.
-        // (Dispose at scope end, but we want to end now.)
-        first.Dispose();
+        try
+        {
+            // Give secondTask a moment to attempt acquire (it should block).
+            await Task.Delay(50);
+            startedSecond.Task.IsCompleted.Should().BeFalse();
+        }
+        finally
+        {
+            // Release first after the initial wait so the second task can proceed.
+            first.Dispose();
+        }
 
         await secondTask.WaitAsync(TimeSpan.FromSeconds(1));
         sw.Stop();

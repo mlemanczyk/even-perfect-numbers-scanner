@@ -6,13 +6,13 @@ public static class GpuPrimeWorkLimiter
     private static readonly object _lock = new();
     private static int _currentLimit = 1;
 
-    public static IDisposable Acquire()
+    public static Lease Acquire()
     {
         // TODO: Inline the pooled limiter guard from the GpuLimiterThroughputBenchmarks so prime-sieve
-        // GPU jobs stop allocating Releaser instances on every acquisition.
+        // GPU jobs stop allocating Lease instances on every acquisition.
         var sem = _semaphore;
         sem.Wait();
-        return new Releaser(sem);
+        return new Lease(sem);
     }
 
     public static void SetLimit(int value)
@@ -36,25 +36,18 @@ public static class GpuPrimeWorkLimiter
         }
     }
 
-    private sealed class Releaser : IDisposable
+    public sealed class Lease
     {
         private readonly SemaphoreSlim _sem;
-        private bool _disposed;
 
-        public Releaser(SemaphoreSlim sem)
+        internal Lease(SemaphoreSlim sem)
         {
             _sem = sem;
         }
 
         public void Dispose()
         {
-            if (_disposed)
-            {
-                return;
-            }
-
             _sem.Release();
-            _disposed = true;
         }
     }
 }

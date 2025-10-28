@@ -14,8 +14,6 @@ public static class GpuContextPool
 
         internal sealed class PooledContext
         {
-                private bool disposed;
-
                 public Context Context { get; }
                 public Accelerator Accelerator { get; }
                 public bool IsCpu { get; }
@@ -34,10 +32,6 @@ public static class GpuContextPool
 
 		public void Dispose()
 		{
-			if (disposed)
-			{
-				return;
-			}
 
 			// Ensure all cached GPU buffers for this accelerator are released.
 			NttGpuMath.ClearCaches(Accelerator);
@@ -48,7 +42,6 @@ public static class GpuContextPool
 
 			Accelerator.Dispose();
 			Context.Dispose();
-			disposed = true;
 		}
 	}
 
@@ -131,7 +124,6 @@ public static class GpuContextPool
     public struct GpuContextLease
     {
         private readonly PooledContext _ctx;
-                private bool disposed;
 
                 internal GpuContextLease(PooledContext ctx, object kernelInitLock)
         {
@@ -150,13 +142,8 @@ public static class GpuContextPool
 
                 public void Dispose()
                 {
-                        if (disposed)
-			{
-				return;
-			}
 
 			Return(_ctx);
-			disposed = true;
         }
     }
 }
