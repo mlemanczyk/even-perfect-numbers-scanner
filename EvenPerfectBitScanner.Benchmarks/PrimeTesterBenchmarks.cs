@@ -75,8 +75,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    // This benchmark is very slow. No point in comparing it.
-    // [Benchmark]
+    [Benchmark]
     public int NonHeuristicGpu()
     {
         // PrimeTester tester = _gpuTester;
