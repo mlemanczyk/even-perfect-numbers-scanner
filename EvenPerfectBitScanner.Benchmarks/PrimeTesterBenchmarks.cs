@@ -75,18 +75,17 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    // This benchmark is very slow. No point in comparing it.
-    // [Benchmark]
+    [Benchmark]
     public int NonHeuristicGpu()
     {
-        // PrimeTester tester = _gpuTester;
+        PrimeTester tester = PrimeTester.Exclusive;
         ulong[] values = _candidates;
         CancellationToken cancellationToken = CancellationToken.None;
         int primeCount = 0;
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (PrimeTester.Exclusive.IsPrimeGpu(values[i], cancellationToken))
+            if (tester.IsPrimeGpu(values[i], cancellationToken))
             {
                 primeCount++;
             }
