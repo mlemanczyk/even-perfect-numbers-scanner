@@ -242,20 +242,20 @@ public static class MersenneNumberDivisorByDivisorTester
 
 		void ProcessPrime(ulong prime)
 		{
-			Console.WriteLine($"Task started {prime}");
+			Console.WriteLine($"Processing {prime}");
 			bool isPrime = tester.IsPrime(prime, out bool divisorsExhausted);
 
 			if (!isPrime)
 			{
 				markComposite();
 				printResult(prime, true, true, false);
-				Console.WriteLine($"Task finished {prime}");
+				Console.WriteLine($"Finished processing {prime}");
 				return;
 			}
 
 			clearComposite();
 			printResult(prime, true, divisorsExhausted, true);
-			Console.WriteLine($"Task finished {prime}");
+			Console.WriteLine($"Finished processing {prime}");
 		}
 
 		if (workerCount == 1)
@@ -294,11 +294,14 @@ public static class MersenneNumberDivisorByDivisorTester
 					() =>
 					{
 						startGate.Wait();
+						Console.WriteLine($"Task started for range {rangeStart}");
 
 						for (int index = rangeStart; index < rangeEnd; index++)
 						{
 							ProcessPrime(filteredPrimes[index]);
 						}
+
+						Console.WriteLine($"Task finished for range {rangeStart}");
 					},
 					CancellationToken.None,
 					TaskCreationOptions.DenyChildAttach,
