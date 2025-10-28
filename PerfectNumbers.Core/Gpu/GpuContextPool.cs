@@ -47,7 +47,6 @@ public static class GpuContextPool
 
 	private static readonly ConcurrentQueue<PooledContext> CpuPool = new();
 	private static readonly ConcurrentQueue<PooledContext> GpuPool = new();
-	private static readonly object CreationLock = new();
 
 	public static GpuContextLease Rent()
 	{
@@ -61,20 +60,17 @@ public static class GpuContextPool
 		{
 			if (preferCpu && CpuPool.TryDequeue(out var cpu))
 			{
-				return new GpuContextLease(cpu, CreationLock);
+				return new GpuContextLease(cpu);
 			}
 
 			if (!preferCpu && GpuPool.TryDequeue(out var gpu))
 			{
-				return new GpuContextLease(gpu, CreationLock);
+				return new GpuContextLease(gpu);
 			}
 		}
 
-		// Serialize accelerator creation to avoid concurrent CL device/stream setup across threads.
-		lock (CreationLock)
-		{
-			return new GpuContextLease(new PooledContext(preferCpu), CreationLock);
-		}
+		// Create a new accelerator when the pool does not have one available.
+		return new GpuContextLease(new PooledContext(preferCpu));
 	}
 
 	public static void DisposeAll()
@@ -114,10 +110,7 @@ public static class GpuContextPool
 
                 else
                 {
-                        lock (CreationLock)
-                        {
-                                ctx.Dispose();
-                        }
+                        ctx.Dispose();
                 }
         }
 
@@ -125,17 +118,14 @@ public static class GpuContextPool
     {
         private readonly PooledContext _ctx;
 
-                internal GpuContextLease(PooledContext ctx, object kernelInitLock)
+                internal GpuContextLease(PooledContext ctx)
         {
             _ctx = ctx;
-                        KernelInitLock = kernelInitLock;
                 }
 
         public Context Context => _ctx.Context;
 
         public Accelerator Accelerator => _ctx.Accelerator;
-
-                public object KernelInitLock { get; }
 
                 public object ExecutionLock => _ctx.ExecutionLock;
 

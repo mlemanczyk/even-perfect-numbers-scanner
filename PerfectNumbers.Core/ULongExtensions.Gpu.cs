@@ -417,7 +417,6 @@ public static partial class ULongExtensions
 			ulong result = 0UL;
 
 			GpuKernelLease lease = GpuKernelPool.GetKernel(useGpuOrder: true);
-			var execution = lease.EnterExecutionScope();
 
 			Accelerator accelerator = lease.Accelerator;
 			// Keep this commented out. It should never happen in production code.
@@ -444,7 +443,6 @@ public static partial class ULongExtensions
 
 			resultBuffer.Dispose();
 			exponentBuffer.Dispose();
-			execution.Dispose();
 			lease.Dispose();
 			// Keep this commented. We don't want to catch any exceptions. All should crash the scanner.
 			// catch (AcceleratorException)

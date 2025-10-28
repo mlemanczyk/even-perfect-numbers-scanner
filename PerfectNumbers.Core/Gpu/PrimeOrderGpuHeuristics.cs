@@ -194,21 +194,20 @@ internal static partial class PrimeOrderGpuHeuristics
         try
         {
             var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
-            var execution = lease.EnterExecutionScope();
             Accelerator accelerator = lease.Accelerator;
             AcceleratorStream stream = lease.Stream;
 
             var kernel = GetPartialFactorKernel(accelerator);
-			SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
+            SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
 
-			// TODO: We should create / reallocate these buffer only once or if the new required length is bigger than capacity. 
+            // TODO: We should create / reallocate these buffer only once or if the new required length is bigger than capacity.
             var factorBuffer = accelerator.Allocate1D<ulong>(primeTargets.Length);
             var exponentBuffer = accelerator.Allocate1D<int>(exponentTargets.Length);
             var countBuffer = accelerator.Allocate1D<int>(1);
             var remainingBuffer = accelerator.Allocate1D<ulong>(1);
             var fullyFactoredBuffer = accelerator.Allocate1D<byte>(1);
 
-			// TODO: There is no need to clear these buffers because the kernel will always assign values within the required bounds.
+            // TODO: There is no need to clear these buffers because the kernel will always assign values within the required bounds.
 			// factorBuffer.MemSetToZero();
             // exponentBuffer.MemSetToZero();
             // countBuffer.MemSetToZero();
@@ -242,13 +241,12 @@ internal static partial class PrimeOrderGpuHeuristics
             fullyFactoredBuffer.View.CopyToCPU(ref fullyFactoredFlag, 1);
             fullyFactored = fullyFactoredFlag != 0;
 
-			// TODO: These buffers shouldn't be disposed but rather reused accross call with the assigned accelerator.
+            // TODO: These buffers shouldn't be disposed but rather reused accross call with the assigned accelerator.
             factorBuffer.Dispose();
             exponentBuffer.Dispose();
             countBuffer.Dispose();
             remainingBuffer.Dispose();
             fullyFactoredBuffer.Dispose();
-            execution.Dispose();
             lease.Dispose();
             return true;
         }
@@ -362,12 +360,11 @@ internal static partial class PrimeOrderGpuHeuristics
         order = 0UL;
 
         var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
-        var execution = lease.EnterExecutionScope();
         Accelerator accelerator = lease.Accelerator;
         AcceleratorStream stream = lease.Stream;
 
         var kernel = GetOrderKernel(accelerator);
-		SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
+            SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
 
 		// TODO: These buffers should be created reallocated once and assigned to an accelerator. Callers should use their own
 		// thread static cache to prevent other threads from using taking accelerators with pre-allocated buffers if they don't
@@ -467,7 +464,6 @@ internal static partial class PrimeOrderGpuHeuristics
             stackProductBuffer.Dispose();
             resultBuffer.Dispose();
             statusBuffer.Dispose();
-            execution.Dispose();
         }
     }
 
@@ -526,7 +522,6 @@ internal static partial class PrimeOrderGpuHeuristics
     private static bool TryComputeOnGpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorData divisorData, Span<ulong> results)
     {
         var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
-        var execution = lease.EnterExecutionScope();
         Accelerator accelerator = lease.Accelerator;
         AcceleratorStream stream = lease.Stream;
         var kernel = GetPow2ModKernel(accelerator);
@@ -551,7 +546,6 @@ internal static partial class PrimeOrderGpuHeuristics
 			Console.WriteLine($"Exception for {prime} and exponents: {string.Join(",", exponents.ToArray())}.");
 			exponentBuffer.Dispose();
 			remainderBuffer.Dispose();
-			execution.Dispose();
 			lease.Dispose();
 			throw;
 		}
@@ -559,7 +553,6 @@ internal static partial class PrimeOrderGpuHeuristics
         remainderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(results), exponents.Length);
         exponentBuffer.Dispose();
         remainderBuffer.Dispose();
-        execution.Dispose();
         lease.Dispose();
         return true;
     }
@@ -587,7 +580,6 @@ internal static partial class PrimeOrderGpuHeuristics
 
         try
         {
-            var execution = lease.EnterExecutionScope();
             Accelerator accelerator = lease.Accelerator;
             AcceleratorStream stream = lease.Stream;
             var kernel = GetPow2ModWideKernel(accelerator);
@@ -628,7 +620,6 @@ internal static partial class PrimeOrderGpuHeuristics
 
             exponentBuffer.Dispose();
             remainderBuffer.Dispose();
-            execution.Dispose();
             return true;
         }
         catch (Exception)
