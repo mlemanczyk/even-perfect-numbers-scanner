@@ -48,7 +48,7 @@ internal static class PrimeTesterKernels
                 break;
         }
 
-        int length = XMath.Min((int)primes.Length, (int)primeSquares.Length);
+        int length = (int)primes.Length;
         for (int i = 0; i < length; i++)
         {
             ulong prime = primes[i];

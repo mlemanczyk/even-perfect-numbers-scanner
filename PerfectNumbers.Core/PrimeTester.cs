@@ -110,7 +110,6 @@ public sealed class PrimeTester
 		var gpu = PrimeTesterGpuContextPool.Rent(1);
 		var state = gpu.State;
 		var accelerator = gpu.Accelerator;
-		gpu.EnsureCapacity(1);
 
 		ulong value = n;
 		byte flag = 0;
@@ -211,10 +210,7 @@ public sealed class PrimeTester
 
 			private KernelState? _kernelState;
 
-			internal MemoryBuffer1D<ulong, Stride1D.Dense>? InputBuffer;
-			internal MemoryBuffer1D<byte, Stride1D.Dense>? OutputBuffer;
-			internal int BufferCapacity;
-
+			
 			public PooledContext()
 			{
 				Context = Context.CreateDefault();
@@ -237,36 +233,8 @@ public sealed class PrimeTester
 				}
 			}
 
-			public void EnsureBufferCapacity(int minCapacity)
-			{
-				if (minCapacity < 1)
-				{
-					minCapacity = 1;
-				}
-
-				var input = InputBuffer;
-				var output = OutputBuffer;
-
-				if (BufferCapacity >= minCapacity && input is not null && output is not null && !input.IsDisposed && !output.IsDisposed)
-				{
-					return;
-				}
-
-				input?.Dispose();
-				output?.Dispose();
-
-				BufferCapacity = minCapacity;
-				InputBuffer = Accelerator.Allocate1D<ulong>(BufferCapacity);
-				OutputBuffer = Accelerator.Allocate1D<byte>(BufferCapacity);
-			}
-
 			public void Dispose()
 			{
-				InputBuffer?.Dispose();
-				OutputBuffer?.Dispose();
-				InputBuffer = null;
-				OutputBuffer = null;
-				BufferCapacity = 0;
 				ClearGpuCaches(Accelerator);
 				_kernelState = null;
 				Accelerator.Dispose();
@@ -276,7 +244,7 @@ public sealed class PrimeTester
 
 		private static readonly ConcurrentQueue<PooledContext> Pool = new();
 
-		internal static PrimeTesterGpuContextLease Rent(int minBufferCapacity = 0)
+		internal static PrimeTesterGpuContextLease Rent(int minBufferCapacity = 1)
 		{
 			if (Pool.TryDequeue(out var ctx))
 			{
@@ -316,18 +284,18 @@ public sealed class PrimeTester
 
 			internal PrimeTesterGpuContextLease(PooledContext ctx, int minBufferCapacity)
 			{
-				if (minBufferCapacity < 1)
-				{
-					minBufferCapacity = 1;
-				}
+				// The pool never requests a zero-length buffer, so the old guard stays commented out to document the invariant.
+				// if (minBufferCapacity < 1)
+				// {
+				// 	minBufferCapacity = 1;
+				// }
 
 				_ctx = ctx;
 				Accelerator = ctx.Accelerator;
 				State = ctx.KernelState;
-				ctx.EnsureBufferCapacity(minBufferCapacity);
-				Input = ctx.InputBuffer ?? throw new InvalidOperationException("GPU context input buffer is not initialized.");
-				Output = ctx.OutputBuffer ?? throw new InvalidOperationException("GPU context output buffer is not initialized.");
-				BufferCapacity = ctx.BufferCapacity;
+				Input = Accelerator.Allocate1D<ulong>(minBufferCapacity);
+				Output = Accelerator.Allocate1D<byte>(minBufferCapacity);
+				BufferCapacity = minBufferCapacity;
 			}
 
 			public void EnsureCapacity(int minCapacity)
@@ -337,17 +305,19 @@ public sealed class PrimeTester
 					return;
 				}
 
-				_ctx.EnsureBufferCapacity(minCapacity);
-				Input = _ctx.InputBuffer ?? throw new InvalidOperationException("GPU context input buffer is not initialized.");
-				Output = _ctx.OutputBuffer ?? throw new InvalidOperationException("GPU context output buffer is not initialized.");
-				BufferCapacity = _ctx.BufferCapacity;
+				Input.Dispose();
+				Output.Dispose();
+
+				Input = Accelerator.Allocate1D<ulong>(minCapacity);
+				Output = Accelerator.Allocate1D<byte>(minCapacity);
+				BufferCapacity = minCapacity;
 			}
 
 			public void Dispose()
 			{
-				BufferCapacity = _ctx.BufferCapacity;
-				Input = _ctx.InputBuffer ?? throw new InvalidOperationException("GPU context input buffer is not initialized.");
-				Output = _ctx.OutputBuffer ?? throw new InvalidOperationException("GPU context output buffer is not initialized.");
+				Input.Dispose();
+				Output.Dispose();
+				BufferCapacity = 0;
 				Return(_ctx);
 			}
 		}
