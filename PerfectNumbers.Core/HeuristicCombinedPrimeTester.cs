@@ -311,31 +311,28 @@ Cleanup:
             return n;
         }
 
-        ulong bit = 1UL << 62;
-        while (bit > n)
+        int log2 = BitOperations.Log2(n);
+        ulong estimate = 1UL << ((log2 + 1) >> 1);
+        ulong quotient = n / estimate;
+
+        while (estimate > quotient)
         {
-            bit >>= 2;
+            estimate = (estimate + quotient) >> 1;
+            quotient = n / estimate;
         }
 
-        ulong result = 0UL;
-        ulong remainder = n;
-        while (bit != 0)
+        while (true)
         {
-            ulong candidate = result + bit;
-            if (remainder >= candidate)
+            ulong nextEstimate = estimate + 1UL;
+            if (nextEstimate > n / nextEstimate)
             {
-                remainder -= candidate;
-                result = (result >> 1) + bit;
-            }
-            else
-            {
-                result >>= 1;
+                break;
             }
 
-            bit >>= 2;
+            estimate = nextEstimate;
         }
 
-        return result;
+        return estimate;
     }
 
     private static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10)
