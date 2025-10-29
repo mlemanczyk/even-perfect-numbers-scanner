@@ -1,3 +1,4 @@
+using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Numerics;
@@ -217,8 +218,6 @@ public sealed class PrimeTester
 
 		private static readonly ConcurrentQueue<PooledContext> Pool = new();
 
-		private static readonly ConcurrentQueue<(Accelerator Accelerator, MemoryBuffer1D<ulong, Stride1D.Dense> Input, MemoryBuffer1D<byte, Stride1D.Dense> Output, int Capacity)> BufferPool = new();
-
 		internal static PrimeTesterGpuContextLease Rent(int minBufferCapacity = 0)
 		{
 			if (Pool.TryDequeue(out var ctx))
@@ -235,47 +234,6 @@ public sealed class PrimeTester
 			{
 				ctx.Dispose();
 			}
-
-			while (BufferPool.TryDequeue(out var entry))
-			{
-				entry.Output.Dispose();
-				entry.Input.Dispose();
-			}
-		}
-
-		private static void AcquireBuffers(Accelerator accelerator, int minCapacity, out MemoryBuffer1D<ulong, Stride1D.Dense> input, out MemoryBuffer1D<byte, Stride1D.Dense> output, out int capacity)
-		{
-			int required = Math.Max(1, minCapacity);
-
-			while (BufferPool.TryDequeue(out var entry))
-			{
-				if (entry.Accelerator != accelerator)
-				{
-					entry.Output.Dispose();
-					entry.Input.Dispose();
-					continue;
-				}
-
-				if (entry.Capacity >= required)
-				{
-					input = entry.Input;
-					output = entry.Output;
-					capacity = entry.Capacity;
-					return;
-				}
-
-				entry.Output.Dispose();
-				entry.Input.Dispose();
-			}
-
-			capacity = required;
-			input = accelerator.Allocate1D<ulong>(capacity);
-			output = accelerator.Allocate1D<byte>(capacity);
-		}
-
-		private static void ReturnBuffers(Accelerator accelerator, MemoryBuffer1D<ulong, Stride1D.Dense> input, MemoryBuffer1D<byte, Stride1D.Dense> output, int capacity)
-		{
-			BufferPool.Enqueue((accelerator, input, output, capacity));
 		}
 
 		private static void Return(PooledContext ctx)
@@ -284,31 +242,49 @@ public sealed class PrimeTester
 			Pool.Enqueue(ctx);
 		}
 
-		internal readonly struct PrimeTesterGpuContextLease
+		internal sealed class PrimeTesterGpuContextLease : IDisposable
 		{
 			private readonly PooledContext _ctx;
 
-			public readonly Accelerator Accelerator;
+			public Accelerator Accelerator { get; }
 
-			public readonly KernelState State;
+			public KernelState State { get; }
 
-			public readonly MemoryBuffer1D<ulong, Stride1D.Dense> Input;
+			public MemoryBuffer1D<ulong, Stride1D.Dense> Input { get; private set; }
 
-			public readonly MemoryBuffer1D<byte, Stride1D.Dense> Output;
+			public MemoryBuffer1D<byte, Stride1D.Dense> Output { get; private set; }
 
-			public readonly int BufferCapacity;
+			public int BufferCapacity { get; private set; }
 
 			internal PrimeTesterGpuContextLease(PooledContext ctx, int minBufferCapacity)
 			{
 				_ctx = ctx;
 				Accelerator = ctx.Accelerator;
 				State = ctx.KernelState;
-				AcquireBuffers(Accelerator, minBufferCapacity, out Input, out Output, out BufferCapacity);
+				BufferCapacity = Math.Max(1, minBufferCapacity);
+				Input = Accelerator.Allocate1D<ulong>(BufferCapacity);
+				Output = Accelerator.Allocate1D<byte>(BufferCapacity);
+			}
+
+			public void EnsureCapacity(int minCapacity)
+			{
+				if (minCapacity <= BufferCapacity)
+				{
+					return;
+				}
+
+				Input.Dispose();
+				Output.Dispose();
+
+				BufferCapacity = Math.Max(1, minCapacity);
+				Input = Accelerator.Allocate1D<ulong>(BufferCapacity);
+				Output = Accelerator.Allocate1D<byte>(BufferCapacity);
 			}
 
 			public void Dispose()
 			{
-				ReturnBuffers(Accelerator, Input, Output, BufferCapacity);
+				Input.Dispose();
+				Output.Dispose();
 				Return(_ctx);
 			}
 		}
