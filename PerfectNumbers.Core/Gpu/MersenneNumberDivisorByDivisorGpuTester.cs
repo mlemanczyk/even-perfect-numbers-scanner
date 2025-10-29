@@ -292,6 +292,14 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                         coveredRange = true;
                         return true;
                     }
+
+                    divisorSpan[admissibleCount] = divisorValue;
+                    divisorDataSpan[admissibleCount] = new GpuDivisorPartialData(divisorValue);
+                    offsetSpan[admissibleCount] = admissibleCount;
+                    countSpan[admissibleCount] = 1;
+                    cycleSpan[admissibleCount] = divisorCycle;
+                    exponentSpan[admissibleCount] = prime;
+                    admissibleCount++;
                 }
 
                 nextDivisor128 += twoP128;
@@ -444,13 +452,25 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         // {
         //     return 0UL;
         // }
+        ulong cappedLimit = divisorLimit;
+        const ulong TestPrimeDivisorCap = 170_000_000UL;
+        if (prime < 10_000_000UL && cappedLimit > TestPrimeDivisorCap)
+        {
+            cappedLimit = TestPrimeDivisorCap;
+        }
+
         if (prime - 1UL >= 64UL)
         {
-            return divisorLimit;
+            return cappedLimit;
         }
 
         ulong computedLimit = (1UL << (int)(prime - 1UL)) - 1UL;
-        return computedLimit < divisorLimit ? computedLimit : divisorLimit;
+        if (prime < 10_000_000UL && computedLimit > cappedLimit)
+        {
+            computedLimit = cappedLimit;
+        }
+
+        return computedLimit < cappedLimit ? computedLimit : cappedLimit;
     }
 
     public sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
