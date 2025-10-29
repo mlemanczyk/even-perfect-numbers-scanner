@@ -122,10 +122,10 @@ public sealed class HeuristicPrimeTester
             return EvaluateWithOpenNumericFallback(n);
         }
 
-        if (!UseHeuristicGroupBTrialDivision)
-        {
-            return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10, includeGroupB: false);
-        }
+        // if (!UseHeuristicGroupBTrialDivision)
+        // {
+        //     return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10, includeGroupB: false);
+        // }
 
         bool compositeDetected = HeuristicTrialDivisionGpuDetectsDivisor(n, sqrtLimit, nMod10);
         return !compositeDetected;
@@ -260,8 +260,8 @@ public sealed class HeuristicPrimeTester
 
     private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong sqrtLimit, byte nMod10)
     {
-        int batchCapacity = Math.Max(1, HeuristicGpuDivisorBatchSize);
-        int interleaveBatchSize = Math.Max(1, HeuristicDivisorInterleaveBatchSize);
+        int batchCapacity = HeuristicGpuDivisorBatchSize;
+        int interleaveBatchSize = HeuristicDivisorInterleaveBatchSize;
         var divisorPool = ThreadStaticPools.UlongPool;
         var hitPool = ThreadStaticPools.BytePool;
 
@@ -277,7 +277,7 @@ public sealed class HeuristicPrimeTester
         bool compositeDetected = false;
         int count = 0;
 
-        lock (gpu.ExecutionLock)
+        // lock (gpu.ExecutionLock)
         {
             var input = scratch.Input;
             var output = scratch.Output;
@@ -470,7 +470,7 @@ Cleanup:
 
         for (int i = 0; i < endingOrder.Length; i++)
         {
-            ReadOnlySpan<int> divisors = GetGroupBDivisors(endingOrder[i]);
+            ReadOnlySpan<uint> divisors = GetGroupBDivisors(endingOrder[i]);
             int index = indices[i];
             if ((uint)index >= (uint)divisors.Length)
             {
@@ -507,7 +507,7 @@ Cleanup:
     {
         for (int i = 0; i < endingOrder.Length; i++)
         {
-            ReadOnlySpan<int> divisors = GetGroupBDivisors(endingOrder[i]);
+            ReadOnlySpan<uint> divisors = GetGroupBDivisors(endingOrder[i]);
             int index = indices[i];
             if ((uint)index >= (uint)divisors.Length)
             {
@@ -527,13 +527,13 @@ Cleanup:
         return false;
     }
 
-    private static ReadOnlySpan<int> GetGroupBDivisors(byte ending) => ending switch
+    private static ReadOnlySpan<uint> GetGroupBDivisors(byte ending) => ending switch
     {
-        1 => HeuristicPrimeSieves.GroupBDivisorsEnding1,
-        3 => HeuristicPrimeSieves.GroupBDivisorsEnding3,
-        7 => HeuristicPrimeSieves.GroupBDivisorsEnding7,
-        9 => HeuristicPrimeSieves.GroupBDivisorsEnding9,
-        _ => ReadOnlySpan<int>.Empty,
+        1 => DivisorGenerator.SmallPrimesLastOneWithoutLastThree,
+        3 => ReadOnlySpan<uint>.Empty,
+        7 => DivisorGenerator.SmallPrimesLastSevenWithoutLastThree,
+        9 => DivisorGenerator.SmallPrimesLastNineWithoutLastThree,
+        _ => ReadOnlySpan<uint>.Empty,
     };
 
     private static ReadOnlySpan<ushort> GetWheel210ResiduesForEnding(byte ending) => ending switch

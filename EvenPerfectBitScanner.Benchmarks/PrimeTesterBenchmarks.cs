@@ -12,6 +12,7 @@ namespace EvenPerfectBitScanner.Benchmarks;
 [MemoryDiagnoser]
 public class PrimeTesterBenchmarks
 {
+    private static readonly HeuristicCombinedPrimeTester _heuristicCombinedTester = new();
     private static readonly HeuristicPrimeTester _heuristicTester = new();
     private ulong[] _candidates = [];
 
@@ -63,6 +64,42 @@ public class PrimeTesterBenchmarks
         for (int i = 0; i < values.Length; i++)
         {
             if (tester.IsPrimeGpu(values[i]))
+            {
+                primeCount++;
+            }
+        }
+
+        return primeCount;
+    }
+
+    [Benchmark]
+    public int HeuristicCombinedGpu()
+    {
+        HeuristicCombinedPrimeTester tester = _heuristicCombinedTester;
+        ulong[] values = _candidates;
+        int primeCount = 0;
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (HeuristicCombinedPrimeTester.IsPrimeGpu(values[i]))
+            {
+                primeCount++;
+            }
+        }
+
+        return primeCount;
+    }
+
+    [Benchmark]
+    public int HeuristicCombinedCpu()
+    {
+        HeuristicCombinedPrimeTester tester = _heuristicCombinedTester;
+        ulong[] values = _candidates;
+        int primeCount = 0;
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (HeuristicCombinedPrimeTester.IsPrimeCpu(values[i]))
             {
                 primeCount++;
             }

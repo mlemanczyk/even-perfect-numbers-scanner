@@ -16,6 +16,12 @@ internal static class DivisorGenerator
     public static readonly ulong[] SmallPrimesPow2LastThree;
     public static readonly uint[] SmallPrimesLastNine;
     public static readonly ulong[] SmallPrimesPow2LastNine;
+    public static readonly uint[] SmallPrimesLastOneWithoutLastThree;
+    public static readonly ulong[] SmallPrimesPow2LastOneWithoutLastThree;
+    public static readonly uint[] SmallPrimesLastSevenWithoutLastThree;
+    public static readonly ulong[] SmallPrimesPow2LastSevenWithoutLastThree;
+    public static readonly uint[] SmallPrimesLastNineWithoutLastThree;
+    public static readonly ulong[] SmallPrimesPow2LastNineWithoutLastThree;
 
     private const ushort DecimalMaskWhenLastIsSeven = (1 << 3) | (1 << 7) | (1 << 9);
     private const ushort DecimalMaskWhenLastIsThree = (1 << 1) | (1 << 3) | (1 << 7) | (1 << 9);
@@ -34,7 +40,13 @@ internal static class DivisorGenerator
             out SmallPrimesLastThree,
             out SmallPrimesPow2LastThree,
             out SmallPrimesLastNine,
-            out SmallPrimesPow2LastNine);
+            out SmallPrimesPow2LastNine,
+            out SmallPrimesLastOneWithoutLastThree,
+            out SmallPrimesPow2LastOneWithoutLastThree,
+            out SmallPrimesLastSevenWithoutLastThree,
+            out SmallPrimesPow2LastSevenWithoutLastThree,
+            out SmallPrimesLastNineWithoutLastThree,
+            out SmallPrimesPow2LastNineWithoutLastThree);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -59,7 +71,13 @@ internal static class DivisorGenerator
         out uint[] lastThree,
         out ulong[] lastThreePow2,
         out uint[] lastNine,
-        out ulong[] lastNinePow2)
+        out ulong[] lastNinePow2,
+        out uint[] lastOneWithoutThree,
+        out ulong[] lastOneWithoutThreePow2,
+        out uint[] lastSevenWithoutThree,
+        out ulong[] lastSevenWithoutThreePow2,
+        out uint[] lastNineWithoutThree,
+        out ulong[] lastNineWithoutThreePow2)
     {
         uint target = PerfectNumberConstants.PrimesLimit;
         int targetInt = checked((int)target);
@@ -75,6 +93,13 @@ internal static class DivisorGenerator
         lastNinePow2 = new ulong[targetInt];
 
         List<uint> primes = new(targetInt * 4 / 3 + 16);
+        List<uint> lastOneWithoutThreeList = new(targetInt);
+        List<ulong> lastOneWithoutThreePow2List = new(targetInt);
+        List<uint> lastSevenWithoutThreeList = new(targetInt);
+        List<ulong> lastSevenWithoutThreePow2List = new(targetInt);
+        List<uint> lastNineWithoutThreeList = new(targetInt);
+        List<ulong> lastNineWithoutThreePow2List = new(targetInt);
+
         uint candidate = 2U;
         int allCount = 0;
         int lastOneCount = 0;
@@ -82,24 +107,22 @@ internal static class DivisorGenerator
         int lastThreeCount = 0;
         int lastNineCount = 0;
 
-        while (allCount < targetInt || lastOneCount < targetInt || lastSevenCount < targetInt || lastThreeCount < targetInt || lastNineCount < targetInt)
+        while (allCount < targetInt ||
+            lastOneCount < targetInt ||
+            lastSevenCount < targetInt ||
+            lastThreeCount < targetInt ||
+            lastNineCount < targetInt)
         {
             bool isPrime = true;
             int primesCount = primes.Count;
             for (int i = 0; i < primesCount; i++)
             {
                 uint p = primes[i];
-                // TODO: Reuse a single squared local for `p` within this loop so we avoid recalculating
-                // `p * p` repeatedly without storing every squared prime globally (the cache must remain
-                // limited to the small-divisor tables to honor the memory constraints).
                 if (p * p > candidate)
                 {
                     break;
                 }
 
-                // TODO: Replace this trial-division `%` with the sieve-based generator that avoids
-                // per-candidate modulo work so building the small-prime tables stops dominating
-                // startup time for large scans.
                 if (candidate % p == 0U)
                 {
                     isPrime = false;
@@ -110,54 +133,80 @@ internal static class DivisorGenerator
             if (isPrime)
             {
                 primes.Add(candidate);
+                ulong candidateSquared = checked((ulong)candidate * candidate);
                 if (allCount < targetInt)
                 {
-                    // TODO: Reuse a single cached `candidateSquared` per iteration so we avoid issuing
-                    // three separate 64-bit multiplications when populating the pow2 arrays here and
-                    // in the last-one/last-seven branches below.
                     all[allCount] = candidate;
-                    allPow2[allCount] = checked((ulong)candidate * candidate);
+                    allPow2[allCount] = candidateSquared;
                     allCount++;
                 }
 
                 if (candidate != 2U)
                 {
                     LastDigit lastDigit = GetLastDigit(candidate);
+                    bool allowedForLastOne = IsAllowedForLastOne(candidate, lastDigit);
+                    bool allowedForLastSeven = IsAllowedForLastSeven(candidate, lastDigit);
+                    bool allowedForLastThree = IsAllowedForLastThree(candidate, lastDigit);
+                    bool allowedForLastNine = IsAllowedForLastNine(candidate, lastDigit);
+                    bool lastDigitIsThree = lastDigit == LastDigit.Three;
 
-                    if (lastOneCount < targetInt && IsAllowedForLastOne(candidate, lastDigit))
+                    if (allowedForLastOne && lastOneCount < targetInt)
                     {
                         lastOne[lastOneCount] = candidate;
-                        lastOnePow2[lastOneCount] = checked((ulong)candidate * candidate);
+                        lastOnePow2[lastOneCount] = candidateSquared;
                         lastOneCount++;
                     }
 
-                    if (lastSevenCount < targetInt && IsAllowedForLastSeven(candidate, lastDigit))
+                    if (allowedForLastSeven && lastSevenCount < targetInt)
                     {
                         lastSeven[lastSevenCount] = candidate;
-                        lastSevenPow2[lastSevenCount] = checked((ulong)candidate * candidate);
+                        lastSevenPow2[lastSevenCount] = candidateSquared;
                         lastSevenCount++;
                     }
 
-                    if (lastThreeCount < targetInt && IsAllowedForLastThree(candidate, lastDigit))
+                    if (allowedForLastThree && lastThreeCount < targetInt)
                     {
                         lastThree[lastThreeCount] = candidate;
-                        lastThreePow2[lastThreeCount] = checked((ulong)candidate * candidate);
+                        lastThreePow2[lastThreeCount] = candidateSquared;
                         lastThreeCount++;
                     }
 
-                    if (lastNineCount < targetInt && IsAllowedForLastNine(candidate, lastDigit))
+                    if (allowedForLastNine && lastNineCount < targetInt)
                     {
                         lastNine[lastNineCount] = candidate;
-                        lastNinePow2[lastNineCount] = checked((ulong)candidate * candidate);
+                        lastNinePow2[lastNineCount] = candidateSquared;
                         lastNineCount++;
+                    }
+
+                    if (!lastDigitIsThree && allowedForLastOne)
+                    {
+                        lastOneWithoutThreeList.Add(candidate);
+                        lastOneWithoutThreePow2List.Add(candidateSquared);
+                    }
+
+                    if (!lastDigitIsThree && allowedForLastSeven)
+                    {
+                        lastSevenWithoutThreeList.Add(candidate);
+                        lastSevenWithoutThreePow2List.Add(candidateSquared);
+                    }
+
+                    if (!lastDigitIsThree && allowedForLastNine)
+                    {
+                        lastNineWithoutThreeList.Add(candidate);
+                        lastNineWithoutThreePow2List.Add(candidateSquared);
                     }
                 }
             }
 
-            // TODO: Switch this increment to the Mod6 stepping table identified in the Mod6ComparisonBenchmarks
-            // so we skip the composite residues without relying on per-iteration `%` checks.
             candidate = candidate == 2U ? 3U : candidate + 2U;
         }
+
+        lastOneWithoutThree = lastOneWithoutThreeList.ToArray();
+        lastOneWithoutThreePow2 = lastOneWithoutThreePow2List.ToArray();
+        lastSevenWithoutThree = lastSevenWithoutThreeList.ToArray();
+        lastSevenWithoutThreePow2 = lastSevenWithoutThreePow2List.ToArray();
+        lastNineWithoutThree = lastNineWithoutThreeList.ToArray();
+        lastNineWithoutThreePow2 = lastNineWithoutThreePow2List.ToArray();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
