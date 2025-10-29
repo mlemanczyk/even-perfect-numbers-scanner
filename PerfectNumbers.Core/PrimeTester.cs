@@ -208,35 +208,15 @@ public sealed class PrimeTester
 
 			public Accelerator Accelerator { get; }
 
-			private KernelState? _kernelState;
-
-			
 			public PooledContext()
 			{
 				Context = Context.CreateDefault();
 				Accelerator = Context.GetPreferredDevice(false).CreateAccelerator(Context);
-				_kernelState = GpuKernelState.GetOrCreate(Accelerator);
-			}
-
-			public KernelState KernelState
-			{
-				get
-				{
-					var state = _kernelState;
-					if (state is null || state.IsDisposed)
-					{
-						state = GpuKernelState.GetOrCreate(Accelerator);
-						_kernelState = state;
-					}
-
-					return state;
-				}
 			}
 
 			public void Dispose()
 			{
 				ClearGpuCaches(Accelerator);
-				_kernelState = null;
 				Accelerator.Dispose();
 				Context.Dispose();
 			}
@@ -292,7 +272,7 @@ public sealed class PrimeTester
 
 				_ctx = ctx;
 				Accelerator = ctx.Accelerator;
-				State = ctx.KernelState;
+				State = GpuKernelState.GetOrCreate(Accelerator);
 				Input = Accelerator.Allocate1D<ulong>(minBufferCapacity);
 				Output = Accelerator.Allocate1D<byte>(minBufferCapacity);
 				BufferCapacity = minBufferCapacity;
