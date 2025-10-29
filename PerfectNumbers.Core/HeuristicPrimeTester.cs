@@ -122,10 +122,10 @@ public sealed class HeuristicPrimeTester
             return EvaluateWithOpenNumericFallback(n);
         }
 
-        if (!UseHeuristicGroupBTrialDivision)
-        {
-            return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10, includeGroupB: false);
-        }
+        // if (!UseHeuristicGroupBTrialDivision)
+        // {
+        //     return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10, includeGroupB: false);
+        // }
 
         bool compositeDetected = HeuristicTrialDivisionGpuDetectsDivisor(n, sqrtLimit, nMod10);
         return !compositeDetected;
@@ -260,8 +260,8 @@ public sealed class HeuristicPrimeTester
 
     private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong sqrtLimit, byte nMod10)
     {
-        int batchCapacity = Math.Max(1, HeuristicGpuDivisorBatchSize);
-        int interleaveBatchSize = Math.Max(1, HeuristicDivisorInterleaveBatchSize);
+        int batchCapacity = HeuristicGpuDivisorBatchSize;
+        int interleaveBatchSize = HeuristicDivisorInterleaveBatchSize;
         var divisorPool = ThreadStaticPools.UlongPool;
         var hitPool = ThreadStaticPools.BytePool;
 
@@ -277,7 +277,7 @@ public sealed class HeuristicPrimeTester
         bool compositeDetected = false;
         int count = 0;
 
-        lock (gpu.ExecutionLock)
+        // lock (gpu.ExecutionLock)
         {
             var input = scratch.Input;
             var output = scratch.Output;

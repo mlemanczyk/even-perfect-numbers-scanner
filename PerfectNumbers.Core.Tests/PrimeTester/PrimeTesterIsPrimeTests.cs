@@ -26,7 +26,7 @@ public class PrimeTesterIsPrimeTests
     {
         var tester = new PrimeTester();
 
-        tester.IsPrime(n, CancellationToken.None).Should().Be(expected);
+		PrimeTester.IsPrime(n, CancellationToken.None).Should().Be(expected);
     }
 
     [Theory]
