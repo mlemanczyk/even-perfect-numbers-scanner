@@ -269,7 +269,7 @@ public sealed class HeuristicPrimeTester
         var limiter = GpuPrimeWorkLimiter.Acquire();
         var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(batchCapacity);
         var accelerator = gpu.Accelerator;
-        var state = gpu.State;
+        var kernel = gpu.HeuristicTrialDivisionKernel;
 
         bool compositeDetected = false;
         int count = 0;
@@ -282,7 +282,7 @@ public sealed class HeuristicPrimeTester
             inputView.CopyFromCPU(ref divisorArray[0], length);
             byte compositeFlag = 0;
             outputView.CopyFromCPU(ref compositeFlag, 1);
-            state.HeuristicTrialDivisionKernel(length, inputView, n, outputView);
+            kernel(length, inputView, n, outputView);
             accelerator.Synchronize();
             outputView.CopyToCPU(ref compositeFlag, 1);
 

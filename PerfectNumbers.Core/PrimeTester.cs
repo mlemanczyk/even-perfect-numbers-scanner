@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using ILGPU;
@@ -97,51 +98,51 @@ public sealed class PrimeTester
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public bool IsPrimeGpu(ulong n, CancellationToken ct)
-	{
-		bool forceCpu = GpuContextPool.ForceCpu;
-		bool belowGpuRange = n < 31UL;
+        {
+                bool forceCpu = GpuContextPool.ForceCpu;
+                bool belowGpuRange = n < 31UL;
 
-		if (forceCpu || belowGpuRange)
-		{
-			return IsPrimeCpu(n, ct);
-		}
+                if (forceCpu || belowGpuRange)
+                {
+                        return IsPrimeCpu(n, ct);
+                }
 
-		var limiter = GpuPrimeWorkLimiter.Acquire();
-		var gpu = PrimeTesterGpuContextPool.Rent(1);
-		var state = gpu.State;
-		var accelerator = gpu.Accelerator;
+                var limiter = GpuPrimeWorkLimiter.Acquire();
+                var gpu = PrimeTesterGpuContextPool.Rent(1);
+                var accelerator = gpu.Accelerator;
+                var kernel = gpu.Kernel;
 
-		ulong value = n;
-		byte flag = 0;
+                ulong value = n;
+                byte flag = 0;
 
-		var input = gpu.Input;
-		var output = gpu.Output;
+                var input = gpu.Input;
+                var output = gpu.Output;
 
-		input.View.CopyFromCPU(ref value, 1);
-		state.Kernel(
-				1,
-				input.View,
-				state.DevicePrimesDefault.View,
-				state.DevicePrimesLastOne.View,
-				state.DevicePrimesLastSeven.View,
-				state.DevicePrimesLastThree.View,
-				state.DevicePrimesLastNine.View,
-				state.DevicePrimesPow2Default.View,
-				state.DevicePrimesPow2LastOne.View,
-				state.DevicePrimesPow2LastSeven.View,
-				state.DevicePrimesPow2LastThree.View,
-				state.DevicePrimesPow2LastNine.View,
-				output.View);
-		accelerator.Synchronize();
-		output.View.CopyToCPU(ref flag, 1);
+                input.View.CopyFromCPU(ref value, 1);
+                kernel(
+                                1,
+                                input.View,
+                                gpu.DevicePrimesDefault.View,
+                                gpu.DevicePrimesLastOne.View,
+                                gpu.DevicePrimesLastSeven.View,
+                                gpu.DevicePrimesLastThree.View,
+                                gpu.DevicePrimesLastNine.View,
+                                gpu.DevicePrimesPow2Default.View,
+                                gpu.DevicePrimesPow2LastOne.View,
+                                gpu.DevicePrimesPow2LastSeven.View,
+                                gpu.DevicePrimesPow2LastThree.View,
+                                gpu.DevicePrimesPow2LastNine.View,
+                                output.View);
+                accelerator.Synchronize();
+                output.View.CopyToCPU(ref flag, 1);
 
-		gpu.Dispose();
-		limiter.Dispose();
+                gpu.Dispose();
+                limiter.Dispose();
 
-		return flag != 0;
-	}
+                return flag != 0;
+        }
 
-	public static bool IsPrimeCpu(ulong n, CancellationToken ct)
+public static bool IsPrimeCpu(ulong n, CancellationToken ct)
 	{
 		// Preserve the legacy entry point for callers that bypass the thread-local caches.
 		return IsPrime(n, ct);
@@ -152,276 +153,295 @@ public sealed class PrimeTester
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void IsPrimeBatchGpu(ReadOnlySpan<ulong> values, Span<byte> results)
-	{
-		var limiter = GpuPrimeWorkLimiter.Acquire();
-		var gpu = PrimeTesterGpuContextPool.Rent(GpuBatchSize);
-		var state = gpu.State;
-		var accelerator = gpu.Accelerator;
-		int totalLength = values.Length;
-		int batchSize = GpuBatchSize;
+        {
+                var limiter = GpuPrimeWorkLimiter.Acquire();
+                var gpu = PrimeTesterGpuContextPool.Rent(GpuBatchSize);
+                var accelerator = gpu.Accelerator;
+                var kernel = gpu.Kernel;
+                int totalLength = values.Length;
+                int batchSize = GpuBatchSize;
 
-		var input = gpu.Input;
-		var output = gpu.Output;
-		ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
-		ulong[] temp = pool.Rent(batchSize);
+                var input = gpu.Input;
+                var output = gpu.Output;
+                ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
+                ulong[] temp = pool.Rent(batchSize);
 
-		int pos = 0;
-		while (pos < totalLength)
-		{
-			int remaining = totalLength - pos;
-			int count = remaining > batchSize ? batchSize : remaining;
+                int pos = 0;
+                while (pos < totalLength)
+                {
+                        int remaining = totalLength - pos;
+                        int count = remaining > batchSize ? batchSize : remaining;
 
-			values.Slice(pos, count).CopyTo(temp);
-			input.View.CopyFromCPU(ref temp[0], count);
+                        values.Slice(pos, count).CopyTo(temp);
+                        input.View.CopyFromCPU(ref temp[0], count);
 
-			state.Kernel(
-				count,
-				input.View,
-				state.DevicePrimesDefault.View,
-				state.DevicePrimesLastOne.View,
-				state.DevicePrimesLastSeven.View,
-				state.DevicePrimesLastThree.View,
-				state.DevicePrimesLastNine.View,
-				state.DevicePrimesPow2Default.View,
-				state.DevicePrimesPow2LastOne.View,
-				state.DevicePrimesPow2LastSeven.View,
-				state.DevicePrimesPow2LastThree.View,
-				state.DevicePrimesPow2LastNine.View,
-				output.View);
-			accelerator.Synchronize();
-			output.View.CopyToCPU(ref results[pos], count);
+                        kernel(
+                                count,
+                                input.View,
+                                gpu.DevicePrimesDefault.View,
+                                gpu.DevicePrimesLastOne.View,
+                                gpu.DevicePrimesLastSeven.View,
+                                gpu.DevicePrimesLastThree.View,
+                                gpu.DevicePrimesLastNine.View,
+                                gpu.DevicePrimesPow2Default.View,
+                                gpu.DevicePrimesPow2LastOne.View,
+                                gpu.DevicePrimesPow2LastSeven.View,
+                                gpu.DevicePrimesPow2LastThree.View,
+                                gpu.DevicePrimesPow2LastNine.View,
+                                output.View);
+                        accelerator.Synchronize();
+                        output.View.CopyToCPU(ref results[pos], count);
 
-			pos += count;
-		}
+                        pos += count;
+                }
 
-		pool.Return(temp, clearArray: false);
+                pool.Return(temp, clearArray: false);
 
-		gpu.Dispose();
-		limiter.Dispose();
-	}
+                gpu.Dispose();
+                limiter.Dispose();
+        }
 
-	internal static class PrimeTesterGpuContextPool
-	{
-		internal sealed class PooledContext
-		{
-			public Context Context { get; }
+        internal static class PrimeTesterGpuContextPool
+        {
+                internal sealed class PooledContext
+                {
+                        public Context Context { get; }
 
-			public Accelerator Accelerator { get; }
+                        public Accelerator Accelerator { get; }
 
-			public PooledContext()
-			{
-				Context = Context.CreateDefault();
-				Accelerator = Context.GetPreferredDevice(false).CreateAccelerator(Context);
-			}
+                        public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> Kernel { get; }
 
-			public void Dispose()
-			{
-				ClearGpuCaches(Accelerator);
-				Accelerator.Dispose();
-				Context.Dispose();
-			}
-		}
+                        public Action<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>> HeuristicTrialDivisionKernel { get; }
 
-		private static readonly ConcurrentQueue<PooledContext> Pool = new();
+                        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesDefault { get; }
 
-		internal static PrimeTesterGpuContextLease Rent(int minBufferCapacity = 1)
-		{
-			if (Pool.TryDequeue(out var ctx))
-			{
-				return new PrimeTesterGpuContextLease(ctx, minBufferCapacity);
-			}
+                        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne { get; }
 
-			return new PrimeTesterGpuContextLease(new PooledContext(), minBufferCapacity);
-		}
+                        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven { get; }
 
-		internal static void DisposeAll()
-		{
-			while (Pool.TryDequeue(out var ctx))
-			{
-				ctx.Dispose();
-			}
-		}
+                        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastThree { get; }
 
-		private static void Return(PooledContext ctx)
-		{
-			ctx.Accelerator.Synchronize();
-			Pool.Enqueue(ctx);
-		}
+                        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastNine { get; }
 
-		internal sealed class PrimeTesterGpuContextLease : IDisposable
-		{
-			private readonly PooledContext _ctx;
+                        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2Default { get; }
 
-			public readonly Accelerator Accelerator;
+                        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastOne { get; }
 
-			public readonly KernelState State;
+                        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastSeven { get; }
 
-			public MemoryBuffer1D<ulong, Stride1D.Dense> Input;
+                        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastThree { get; }
 
-			public MemoryBuffer1D<byte, Stride1D.Dense> Output;
+                        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastNine { get; }
 
-			public int BufferCapacity;
+                        public MemoryBuffer1D<ulong, Stride1D.Dense> Input { get; private set; }
 
-			internal PrimeTesterGpuContextLease(PooledContext ctx, int minBufferCapacity)
-			{
-				// The pool never requests a zero-length buffer, so the old guard stays commented out to document the invariant.
-				// if (minBufferCapacity < 1)
-				// {
-				// 	minBufferCapacity = 1;
-				// }
+                        public MemoryBuffer1D<byte, Stride1D.Dense> Output { get; private set; }
 
-				_ctx = ctx;
-				Accelerator = ctx.Accelerator;
-				State = GpuKernelState.GetOrCreate(Accelerator);
-				Input = Accelerator.Allocate1D<ulong>(minBufferCapacity);
-				Output = Accelerator.Allocate1D<byte>(minBufferCapacity);
-				BufferCapacity = minBufferCapacity;
-			}
+                        public int BufferCapacity { get; private set; }
 
-			public void EnsureCapacity(int minCapacity)
-			{
-				if (minCapacity <= BufferCapacity)
-				{
-					return;
-				}
+                        public PooledContext(int minBufferCapacity)
+                        {
+                                Context = Context.CreateDefault();
+                                Accelerator = Context.GetPreferredDevice(false).CreateAccelerator(Context);
+                                Kernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
+                                HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
-				Input.Dispose();
-				Output.Dispose();
+                                var primesDefault = DivisorGenerator.SmallPrimes;
+                                DevicePrimesDefault = Accelerator.Allocate1D<uint>(primesDefault.Length);
+                                DevicePrimesDefault.View.CopyFromCPU(primesDefault);
 
-				Input = Accelerator.Allocate1D<ulong>(minCapacity);
-				Output = Accelerator.Allocate1D<byte>(minCapacity);
-				BufferCapacity = minCapacity;
-			}
+                                var primesLastOne = DivisorGenerator.SmallPrimesLastOne;
+                                DevicePrimesLastOne = Accelerator.Allocate1D<uint>(primesLastOne.Length);
+                                DevicePrimesLastOne.View.CopyFromCPU(primesLastOne);
 
-			public void Dispose()
-			{
-				Input.Dispose();
-				Output.Dispose();
-				BufferCapacity = 0;
-				Return(_ctx);
-			}
-		}
-		}
-	// Per-accelerator GPU state for prime sieve (kernel + uploaded primes).
-	internal sealed class KernelState
-	{
-		public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> Kernel;
-		public Action<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>> HeuristicTrialDivisionKernel;
-		public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesDefault;
-		public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne;
-		public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven;
-		public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastThree;
-		public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastNine;
-		public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2Default;
-		public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastOne;
-		public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastSeven;
-		public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastThree;
-		public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastNine;
-		public bool IsDisposed;
+                                var primesLastSeven = DivisorGenerator.SmallPrimesLastSeven;
+                                DevicePrimesLastSeven = Accelerator.Allocate1D<uint>(primesLastSeven.Length);
+                                DevicePrimesLastSeven.View.CopyFromCPU(primesLastSeven);
 
-		public KernelState(Accelerator accelerator)
-		{
-			IsDisposed = false;
-			// Compile once per accelerator and upload primes once.
-			Kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
-			HeuristicTrialDivisionKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
+                                var primesLastThree = DivisorGenerator.SmallPrimesLastThree;
+                                DevicePrimesLastThree = Accelerator.Allocate1D<uint>(primesLastThree.Length);
+                                DevicePrimesLastThree.View.CopyFromCPU(primesLastThree);
 
-			var primesDefault = DivisorGenerator.SmallPrimes;
-			DevicePrimesDefault = accelerator.Allocate1D<uint>(primesDefault.Length);
-			DevicePrimesDefault.View.CopyFromCPU(primesDefault);
+                                var primesLastNine = DivisorGenerator.SmallPrimesLastNine;
+                                DevicePrimesLastNine = Accelerator.Allocate1D<uint>(primesLastNine.Length);
+                                DevicePrimesLastNine.View.CopyFromCPU(primesLastNine);
 
-			var primesLastOne = DivisorGenerator.SmallPrimesLastOne;
-			DevicePrimesLastOne = accelerator.Allocate1D<uint>(primesLastOne.Length);
-			DevicePrimesLastOne.View.CopyFromCPU(primesLastOne);
+                                var primesPow2Default = DivisorGenerator.SmallPrimesPow2;
+                                DevicePrimesPow2Default = Accelerator.Allocate1D<ulong>(primesPow2Default.Length);
+                                DevicePrimesPow2Default.View.CopyFromCPU(primesPow2Default);
 
-			var primesLastSeven = DivisorGenerator.SmallPrimesLastSeven;
-			DevicePrimesLastSeven = accelerator.Allocate1D<uint>(primesLastSeven.Length);
-			DevicePrimesLastSeven.View.CopyFromCPU(primesLastSeven);
+                                var primesPow2LastOne = DivisorGenerator.SmallPrimesPow2LastOne;
+                                DevicePrimesPow2LastOne = Accelerator.Allocate1D<ulong>(primesPow2LastOne.Length);
+                                DevicePrimesPow2LastOne.View.CopyFromCPU(primesPow2LastOne);
 
-			var primesLastThree = DivisorGenerator.SmallPrimesLastThree;
-			DevicePrimesLastThree = accelerator.Allocate1D<uint>(primesLastThree.Length);
-			DevicePrimesLastThree.View.CopyFromCPU(primesLastThree);
+                                var primesPow2LastSeven = DivisorGenerator.SmallPrimesPow2LastSeven;
+                                DevicePrimesPow2LastSeven = Accelerator.Allocate1D<ulong>(primesPow2LastSeven.Length);
+                                DevicePrimesPow2LastSeven.View.CopyFromCPU(primesPow2LastSeven);
 
-			var primesLastNine = DivisorGenerator.SmallPrimesLastNine;
-			DevicePrimesLastNine = accelerator.Allocate1D<uint>(primesLastNine.Length);
-			DevicePrimesLastNine.View.CopyFromCPU(primesLastNine);
+                                var primesPow2LastThree = DivisorGenerator.SmallPrimesPow2LastThree;
+                                DevicePrimesPow2LastThree = Accelerator.Allocate1D<ulong>(primesPow2LastThree.Length);
+                                DevicePrimesPow2LastThree.View.CopyFromCPU(primesPow2LastThree);
 
-			var primesPow2Default = DivisorGenerator.SmallPrimesPow2;
-			DevicePrimesPow2Default = accelerator.Allocate1D<ulong>(primesPow2Default.Length);
-			DevicePrimesPow2Default.View.CopyFromCPU(primesPow2Default);
+                                var primesPow2LastNine = DivisorGenerator.SmallPrimesPow2LastNine;
+                                DevicePrimesPow2LastNine = Accelerator.Allocate1D<ulong>(primesPow2LastNine.Length);
+                                DevicePrimesPow2LastNine.View.CopyFromCPU(primesPow2LastNine);
 
-			var primesPow2LastOne = DivisorGenerator.SmallPrimesPow2LastOne;
-			DevicePrimesPow2LastOne = accelerator.Allocate1D<ulong>(primesPow2LastOne.Length);
-			DevicePrimesPow2LastOne.View.CopyFromCPU(primesPow2LastOne);
+                                BufferCapacity = minBufferCapacity < 1 ? 1 : minBufferCapacity;
+                                Input = Accelerator.Allocate1D<ulong>(BufferCapacity);
+                                Output = Accelerator.Allocate1D<byte>(BufferCapacity);
+                        }
 
-			var primesPow2LastSeven = DivisorGenerator.SmallPrimesPow2LastSeven;
-			DevicePrimesPow2LastSeven = accelerator.Allocate1D<ulong>(primesPow2LastSeven.Length);
-			DevicePrimesPow2LastSeven.View.CopyFromCPU(primesPow2LastSeven);
+                        public void EnsureCapacity(int minCapacity)
+                        {
+                                if (minCapacity < 1)
+                                {
+                                        minCapacity = 1;
+                                }
 
-			var primesPow2LastThree = DivisorGenerator.SmallPrimesPow2LastThree;
-			DevicePrimesPow2LastThree = accelerator.Allocate1D<ulong>(primesPow2LastThree.Length);
-			DevicePrimesPow2LastThree.View.CopyFromCPU(primesPow2LastThree);
+                                if (minCapacity <= BufferCapacity)
+                                {
+                                        return;
+                                }
 
-			var primesPow2LastNine = DivisorGenerator.SmallPrimesPow2LastNine;
-			DevicePrimesPow2LastNine = accelerator.Allocate1D<ulong>(primesPow2LastNine.Length);
-			DevicePrimesPow2LastNine.View.CopyFromCPU(primesPow2LastNine);
-		}
+                                Input.Dispose();
+                                Output.Dispose();
 
-		public void Clear()
-		{
-			if (IsDisposed)
-			{
-				return;
-			}
+                                Input = Accelerator.Allocate1D<ulong>(minCapacity);
+                                Output = Accelerator.Allocate1D<byte>(minCapacity);
+                                BufferCapacity = minCapacity;
+                        }
 
-			DevicePrimesDefault.Dispose();
-			DevicePrimesLastOne.Dispose();
-			DevicePrimesLastSeven.Dispose();
-			DevicePrimesLastThree.Dispose();
-			DevicePrimesLastNine.Dispose();
-			DevicePrimesPow2Default.Dispose();
-			DevicePrimesPow2LastOne.Dispose();
-			DevicePrimesPow2LastSeven.Dispose();
-			DevicePrimesPow2LastThree.Dispose();
-			DevicePrimesPow2LastNine.Dispose();
-			IsDisposed = true;
-		}
-	}
+                        public void DisposeResources()
+                        {
+                                Input.Dispose();
+                                Output.Dispose();
+                                DevicePrimesDefault.Dispose();
+                                DevicePrimesLastOne.Dispose();
+                                DevicePrimesLastSeven.Dispose();
+                                DevicePrimesLastThree.Dispose();
+                                DevicePrimesLastNine.Dispose();
+                                DevicePrimesPow2Default.Dispose();
+                                DevicePrimesPow2LastOne.Dispose();
+                                DevicePrimesPow2LastSeven.Dispose();
+                                DevicePrimesPow2LastThree.Dispose();
+                                DevicePrimesPow2LastNine.Dispose();
+                                Accelerator.Dispose();
+                                Context.Dispose();
+                        }
+                }
 
-	internal static class GpuKernelState
-	{
-		// Map accelerator to cached state; use Lazy to serialize kernel creation
-		private static readonly System.Collections.Concurrent.ConcurrentDictionary<Accelerator, Lazy<KernelState>> States = new();
-		// TODO: Prewarm this per-accelerator cache during startup (and reuse a simple array keyed by accelerator index)
-		// once the kernel pool exposes deterministic ordering; the Lazy wrappers showed measurable overhead in the
-		// GpuModularArithmeticBenchmarks hot path.
+                private static readonly ConcurrentQueue<PooledContext> Pool = new();
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static KernelState GetOrCreate(Accelerator accelerator)
-		{
-			var lazy = States.GetOrAdd(
-				accelerator,
-				acc => new Lazy<KernelState>(() => new KernelState(acc), LazyThreadSafetyMode.ExecutionAndPublication));
-			return lazy.Value;
-		}
+                internal static PrimeTesterGpuContextLease Rent(int minBufferCapacity = 1)
+                {
+                        if (!Pool.TryDequeue(out var ctx))
+                        {
+                                ctx = new PooledContext(minBufferCapacity);
+                        }
+                        else
+                        {
+                                ctx.EnsureCapacity(minBufferCapacity);
+                        }
 
-		public static void Clear(Accelerator accelerator)
-		{
-			if (States.TryRemove(accelerator, out var lazy))
-			{
-				if (lazy.IsValueCreated)
-				{
-					var state = lazy.Value;
-					state.Clear();
-				}
-			}
-		}
-	}
+                        return new PrimeTesterGpuContextLease(ctx);
+                }
 
-	// Expose cache clearing for accelerator disposal coordination
+                internal static void DisposeAll()
+                {
+                        while (Pool.TryDequeue(out var ctx))
+                        {
+                                ctx.DisposeResources();
+                        }
+                }
+
+                internal static void Clear(Accelerator accelerator)
+                {
+                        if (accelerator is null)
+                        {
+                                return;
+                        }
+
+                        var retained = new List<PooledContext>();
+                        while (Pool.TryDequeue(out var ctx))
+                        {
+                                if (ctx.Accelerator == accelerator)
+                                {
+                                        ctx.DisposeResources();
+                                }
+                                else
+                                {
+                                        retained.Add(ctx);
+                                }
+                        }
+
+                        for (int i = 0; i < retained.Count; i++)
+                        {
+                                Pool.Enqueue(retained[i]);
+                        }
+                }
+
+                private static void Return(PooledContext ctx)
+                {
+                        ctx.Accelerator.Synchronize();
+                        Pool.Enqueue(ctx);
+                }
+
+                internal sealed class PrimeTesterGpuContextLease : IDisposable
+                {
+                        private readonly PooledContext _ctx;
+
+                        internal PrimeTesterGpuContextLease(PooledContext ctx)
+                        {
+                                _ctx = ctx;
+                        }
+
+                        public Accelerator Accelerator => _ctx.Accelerator;
+
+                        public Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> Kernel => _ctx.Kernel;
+
+                        public Action<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>> HeuristicTrialDivisionKernel => _ctx.HeuristicTrialDivisionKernel;
+
+                        public MemoryBuffer1D<ulong, Stride1D.Dense> Input => _ctx.Input;
+
+                        public MemoryBuffer1D<byte, Stride1D.Dense> Output => _ctx.Output;
+
+                        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesDefault => _ctx.DevicePrimesDefault;
+
+                        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne => _ctx.DevicePrimesLastOne;
+
+                        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven => _ctx.DevicePrimesLastSeven;
+
+                        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastThree => _ctx.DevicePrimesLastThree;
+
+                        public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastNine => _ctx.DevicePrimesLastNine;
+
+                        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2Default => _ctx.DevicePrimesPow2Default;
+
+                        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastOne => _ctx.DevicePrimesPow2LastOne;
+
+                        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastSeven => _ctx.DevicePrimesPow2LastSeven;
+
+                        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastThree => _ctx.DevicePrimesPow2LastThree;
+
+                        public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastNine => _ctx.DevicePrimesPow2LastNine;
+
+                        public int BufferCapacity => _ctx.BufferCapacity;
+
+                        public void EnsureCapacity(int minCapacity)
+                        {
+                                _ctx.EnsureCapacity(minCapacity);
+                        }
+
+                        public void Dispose()
+                        {
+                                Return(_ctx);
+                        }
+                }
+        }
+        // Expose cache clearing for accelerator disposal coordination
 	public static void ClearGpuCaches(Accelerator accelerator)
 	{
-		GpuKernelState.Clear(accelerator);
+		PrimeTesterGpuContextPool.Clear(accelerator);
 	}
 
 	internal static void DisposeGpuContexts()

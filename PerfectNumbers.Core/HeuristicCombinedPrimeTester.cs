@@ -213,29 +213,29 @@ public sealed class HeuristicCombinedPrimeTester
 	        ulong[] divisorArray = divisorPool.Rent(batchCapacity);
 
 	        var limiter = GpuPrimeWorkLimiter.Acquire();
-	        var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(batchCapacity);
-	        var accelerator = gpu.Accelerator;
-	        var state = gpu.State;
+                var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(batchCapacity);
+                var accelerator = gpu.Accelerator;
+                var kernel = gpu.HeuristicTrialDivisionKernel;
 
-	        bool compositeDetected = false;
-	        int count = 0;
+                bool compositeDetected = false;
+                int count = 0;
 
-	        var inputView = gpu.Input.View;
-	        var outputView = gpu.Output.View;
+                var inputView = gpu.Input.View;
+                var outputView = gpu.Output.View;
 
-	        bool ProcessBatch(int length)
-	        {
-	                inputView.CopyFromCPU(ref divisorArray[0], length);
-	                byte compositeFlag = 0;
-	                outputView.CopyFromCPU(ref compositeFlag, 1);
-	                state.HeuristicTrialDivisionKernel(length, inputView, n, outputView);
-	                accelerator.Synchronize();
-	                outputView.CopyToCPU(ref compositeFlag, 1);
+                bool ProcessBatch(int length)
+                {
+                        inputView.CopyFromCPU(ref divisorArray[0], length);
+                        byte compositeFlag = 0;
+                        outputView.CopyFromCPU(ref compositeFlag, 1);
+                        kernel(length, inputView, n, outputView);
+                        accelerator.Synchronize();
+                        outputView.CopyToCPU(ref compositeFlag, 1);
 
-	                return compositeFlag != 0;
-	        }
+                        return compositeFlag != 0;
+                }
 
-	        ReadOnlySpan<uint> combinedDivisors = GetCombinedDivisors(nMod10);
+                ReadOnlySpan<uint> combinedDivisors = GetCombinedDivisors(nMod10);
                 ReadOnlySpan<ulong> combinedDivisorSquares = GetCombinedDivisorSquares(nMod10);
 
                 int length = combinedDivisors.Length;
