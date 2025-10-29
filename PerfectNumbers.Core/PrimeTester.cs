@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
@@ -117,11 +118,13 @@ public sealed class PrimeTester
 
                 var input = gpu.Input;
                 var output = gpu.Output;
+                var inputView = input.View;
+                var outputView = output.View;
 
-                input.View.CopyFromCPU(ref value, 1);
+                inputView.CopyFromCPU(ref value, 1);
                 kernel(
                                 1,
-                                input.View,
+                                inputView,
                                 gpu.DevicePrimesDefault.View,
                                 gpu.DevicePrimesLastOne.View,
                                 gpu.DevicePrimesLastSeven.View,
@@ -132,9 +135,9 @@ public sealed class PrimeTester
                                 gpu.DevicePrimesPow2LastSeven.View,
                                 gpu.DevicePrimesPow2LastThree.View,
                                 gpu.DevicePrimesPow2LastNine.View,
-                                output.View);
+                                outputView);
                 accelerator.Synchronize();
-                output.View.CopyToCPU(ref flag, 1);
+                outputView.CopyToCPU(ref flag, 1);
 
                 gpu.Dispose();
                 limiter.Dispose();
@@ -163,8 +166,8 @@ public static bool IsPrimeCpu(ulong n, CancellationToken ct)
 
                 var input = gpu.Input;
                 var output = gpu.Output;
-                ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
-                ulong[] temp = pool.Rent(batchSize);
+                var inputView = input.View;
+                var outputView = output.View;
 
                 int pos = 0;
                 while (pos < totalLength)
@@ -172,12 +175,13 @@ public static bool IsPrimeCpu(ulong n, CancellationToken ct)
                         int remaining = totalLength - pos;
                         int count = remaining > batchSize ? batchSize : remaining;
 
-                        values.Slice(pos, count).CopyTo(temp);
-                        input.View.CopyFromCPU(ref temp[0], count);
+                        var valueSlice = values.Slice(pos, count);
+                        ref ulong valueRef = ref MemoryMarshal.GetReference(valueSlice);
+                        inputView.CopyFromCPU(ref valueRef, count);
 
                         kernel(
                                 count,
-                                input.View,
+                                inputView,
                                 gpu.DevicePrimesDefault.View,
                                 gpu.DevicePrimesLastOne.View,
                                 gpu.DevicePrimesLastSeven.View,
@@ -188,14 +192,14 @@ public static bool IsPrimeCpu(ulong n, CancellationToken ct)
                                 gpu.DevicePrimesPow2LastSeven.View,
                                 gpu.DevicePrimesPow2LastThree.View,
                                 gpu.DevicePrimesPow2LastNine.View,
-                                output.View);
+                                outputView);
                         accelerator.Synchronize();
-                        output.View.CopyToCPU(ref results[pos], count);
+                        var resultSlice = results.Slice(pos, count);
+                        ref byte resultRef = ref MemoryMarshal.GetReference(resultSlice);
+                        outputView.CopyToCPU(ref resultRef, count);
 
                         pos += count;
                 }
-
-                pool.Return(temp, clearArray: false);
 
                 gpu.Dispose();
                 limiter.Dispose();
