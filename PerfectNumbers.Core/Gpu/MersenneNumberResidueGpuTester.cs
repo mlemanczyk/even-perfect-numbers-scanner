@@ -30,7 +30,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
         var gpuLease = RentAccelerator();
         var accelerator = gpuLease.Accelerator;
 
-        Monitor.Enter(gpuLease.ExecutionLock);
+        // Monitor.Enter(gpuLease.ExecutionLock);
 
         var stream = accelerator.CreateStream();
         var kernel = GetPow2ModKernel(accelerator);
@@ -108,7 +108,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 
         ReturnResources(accelerator, resources);
         stream.Dispose();
-        Monitor.Exit(gpuLease.ExecutionLock);
+        // Monitor.Exit(gpuLease.ExecutionLock);
         ReturnAccelerator(gpuLease);
         limiter.Dispose();
     }

@@ -94,7 +94,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         var gpuLease = RentAccelerator();
         var accelerator = gpuLease.Accelerator;
 
-        Monitor.Enter(gpuLease.ExecutionLock);
+        // Monitor.Enter(gpuLease.ExecutionLock);
 
         var kernel = GetKernel(accelerator);
         var resources = RentBatchResources(accelerator, batchCapacity);
@@ -121,7 +121,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             out processedCount);
 
         ReturnBatchResources(resources);
-        Monitor.Exit(gpuLease.ExecutionLock);
+        // Monitor.Exit(gpuLease.ExecutionLock);
         ReturnAccelerator(gpuLease);
 
         if (composite)
@@ -560,7 +560,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
                 }
             }
 
-            Monitor.Enter(_lease.ExecutionLock);
+            // Monitor.Enter(_lease.ExecutionLock);
 
             EnsureExecutionResourcesLocked(length);
 
@@ -601,7 +601,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             ref byte hitRef = ref MemoryMarshal.GetReference(hitSlice);
             hitView.CopyToCPU(ref hitRef, length);
 
-            Monitor.Exit(_lease.ExecutionLock);
+            // Monitor.Exit(_lease.ExecutionLock);
         }
 
         public void Dispose()
