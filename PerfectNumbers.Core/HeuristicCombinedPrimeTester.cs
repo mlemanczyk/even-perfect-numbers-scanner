@@ -180,7 +180,7 @@ public sealed class HeuristicCombinedPrimeTester
 
 	private static bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong sqrtLimit, byte nMod10)
 	{
-		int batchCapacity = Math.Max(1, HeuristicGpuDivisorBatchSize);
+		int batchCapacity = HeuristicGpuDivisorBatchSize;
 		var divisorPool = ThreadStaticPools.UlongPool;
 		var hitPool = ThreadStaticPools.BytePool;
 
@@ -201,11 +201,6 @@ public sealed class HeuristicCombinedPrimeTester
 
 		bool ProcessBatch(int length)
 		{
-			if (length <= 0)
-			{
-				return false;
-			}
-
 			input.View.CopyFromCPU(ref divisorArray[0], length);
 			state.HeuristicTrialDivisionKernel(length, input.View, n, output.View);
 			accelerator.Synchronize();
