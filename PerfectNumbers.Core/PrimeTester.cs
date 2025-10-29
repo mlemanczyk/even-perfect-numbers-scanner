@@ -183,7 +183,6 @@ public sealed class PrimeTester
 			public Accelerator Accelerator { get; }
 
 			private KernelState? _kernelState;
-			private KernelState.ScratchBuffers? _scratch;
 
 			public PooledContext()
 			{
@@ -207,46 +206,8 @@ public sealed class PrimeTester
 				}
 			}
 
-			public KernelState.ScratchBuffers GetScratch(int minCapacity, int outputClearLength)
-			{
-				var scratch = _scratch;
-				var state = KernelState;
-				if (scratch is null)
-				{
-					scratch = state.RentScratch(minCapacity, Accelerator);
-					_scratch = scratch;
-				}
-				else if (scratch.Capacity < minCapacity)
-				{
-					scratch.Dispose();
-					scratch = state.RentScratch(minCapacity, Accelerator);
-					_scratch = scratch;
-				}
-
-				int clearLength = outputClearLength <= 0 ? 0 : outputClearLength;
-				if (clearLength > 0)
-				{
-					int outputLength = (int)scratch.Output.Length;
-					if (clearLength > outputLength)
-					{
-						clearLength = outputLength;
-					}
-
-					scratch.Output.View.SubView(0, clearLength).MemSetToZero();
-					Accelerator.Synchronize();
-				}
-
-				return scratch;
-			}
-
 			public void Dispose()
 			{
-				if (_scratch is not null)
-				{
-					_scratch.Dispose();
-					_scratch = null;
-				}
-
 				ClearGpuCaches(Accelerator);
 				_kernelState = null;
 				Accelerator.Dispose();
@@ -254,16 +215,62 @@ public sealed class PrimeTester
 			}
 		}
 
+		private sealed class DeviceBuffers : IDisposable
+		{
+			public DeviceBuffers(Accelerator accelerator, int capacity)
+			{
+				Accelerator = accelerator;
+				Capacity = Math.Max(1, capacity);
+				Input = accelerator.Allocate1D<ulong>(Capacity);
+				Output = accelerator.Allocate1D<byte>(Capacity);
+			}
+
+			public Accelerator Accelerator { get; }
+
+			public MemoryBuffer1D<ulong, Stride1D.Dense> Input { get; private set; }
+
+			public MemoryBuffer1D<byte, Stride1D.Dense> Output { get; private set; }
+
+			public int Capacity { get; private set; }
+
+			public void EnsureCapacity(int minCapacity)
+			{
+				int required = Math.Max(1, minCapacity);
+				if (Capacity >= required)
+				{
+					return;
+				}
+
+				DisposeBuffers();
+				Capacity = required;
+				Input = Accelerator.Allocate1D<ulong>(Capacity);
+				Output = Accelerator.Allocate1D<byte>(Capacity);
+			}
+
+			private void DisposeBuffers()
+			{
+				Output.Dispose();
+				Input.Dispose();
+			}
+
+			public void Dispose()
+			{
+				DisposeBuffers();
+			}
+		}
+
 		private static readonly ConcurrentQueue<PooledContext> Pool = new();
 
-		internal static PrimeTesterGpuContextLease Rent(int minScratchCapacity = 0, int outputClearLength = 0)
+		private static readonly ConcurrentQueue<DeviceBuffers> BufferPool = new();
+
+		internal static PrimeTesterGpuContextLease Rent(int minBufferCapacity = 0)
 		{
 			if (Pool.TryDequeue(out var ctx))
 			{
-				return new PrimeTesterGpuContextLease(ctx, minScratchCapacity, outputClearLength);
+				return new PrimeTesterGpuContextLease(ctx, minBufferCapacity);
 			}
 
-			return new PrimeTesterGpuContextLease(new PooledContext(), minScratchCapacity, outputClearLength);
+			return new PrimeTesterGpuContextLease(new PooledContext(), minBufferCapacity);
 		}
 
 		internal static void DisposeAll()
@@ -272,6 +279,37 @@ public sealed class PrimeTester
 			{
 				ctx.Dispose();
 			}
+
+			while (BufferPool.TryDequeue(out var buffers))
+			{
+				buffers.Dispose();
+			}
+		}
+
+		private static DeviceBuffers? AcquireBuffers(Accelerator accelerator, int minCapacity)
+		{
+			if (minCapacity <= 0)
+			{
+				return null;
+			}
+
+			while (BufferPool.TryDequeue(out var buffers))
+			{
+				if (buffers.Accelerator == accelerator)
+				{
+					buffers.EnsureCapacity(minCapacity);
+					return buffers;
+				}
+
+				buffers.Dispose();
+			}
+
+			return new DeviceBuffers(accelerator, minCapacity);
+		}
+
+		private static void ReturnBuffers(DeviceBuffers buffers)
+		{
+			BufferPool.Enqueue(buffers);
 		}
 
 		private static void Return(PooledContext ctx)
@@ -283,50 +321,41 @@ public sealed class PrimeTester
 		internal readonly struct PrimeTesterGpuContextLease
 		{
 			private readonly PooledContext? _ctx;
-			private readonly KernelState? _state;
-			private readonly KernelState.ScratchBuffers? _scratch;
-			private readonly MemoryBuffer1D<ulong, Stride1D.Dense>? _input;
-			private readonly MemoryBuffer1D<byte, Stride1D.Dense>? _output;
 
-			internal PrimeTesterGpuContextLease(PooledContext ctx, int minScratchCapacity, int outputClearLength)
+			private readonly KernelState? _state;
+
+			private readonly DeviceBuffers? _buffers;
+
+			internal PrimeTesterGpuContextLease(PooledContext ctx, int minBufferCapacity)
 			{
 				_ctx = ctx;
 				_state = ctx.KernelState;
-				if (minScratchCapacity > 0 || outputClearLength > 0)
-				{
-					var scratch = ctx.GetScratch(minScratchCapacity, outputClearLength);
-					_scratch = scratch;
-					_input = scratch.Input;
-					_output = scratch.Output;
-				}
-				else
-				{
-					_scratch = null;
-					_input = null;
-					_output = null;
-				}
+				_buffers = AcquireBuffers(ctx.Accelerator, minBufferCapacity);
 			}
 
 			public Accelerator Accelerator => (_ctx ?? throw new InvalidOperationException("GPU context lease is not initialized.")).Accelerator;
 
 			public KernelState State => _state ?? throw new InvalidOperationException("GPU kernel state is not initialized.");
 
-			public MemoryBuffer1D<ulong, Stride1D.Dense> Input => _input ?? throw new InvalidOperationException("Input buffer was not rented for this lease.");
+			public MemoryBuffer1D<ulong, Stride1D.Dense> Input => (_buffers ?? throw new InvalidOperationException("Input buffer was not rented for this lease.")).Input;
 
-			public MemoryBuffer1D<byte, Stride1D.Dense> Output => _output ?? throw new InvalidOperationException("Output buffer was not rented for this lease.");
+			public MemoryBuffer1D<byte, Stride1D.Dense> Output => (_buffers ?? throw new InvalidOperationException("Output buffer was not rented for this lease.")).Output;
 
-			public int ScratchCapacity => _scratch?.Capacity ?? 0;
+			public int BufferCapacity => _buffers?.Capacity ?? 0;
 
 			public void Dispose()
 			{
 				var ctx = _ctx ?? throw new InvalidOperationException("GPU context lease is not initialized.");
 
+				if (_buffers is not null)
+				{
+					ReturnBuffers(_buffers);
+				}
+
 				Return(ctx);
 			}
 		}
-
-		}
-
+	}
 	// Per-accelerator GPU state for prime sieve (kernel + uploaded primes).
 	internal sealed class KernelState
 	{
@@ -343,10 +372,6 @@ public sealed class PrimeTester
 		public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastThree;
 		public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastNine;
 		public bool IsDisposed;
-		private readonly ConcurrentBag<ScratchBuffers> _scratchPool = [];
-		// TODO: Replace this ConcurrentBag with the lock-free ring buffer variant validated in
-		// GpuModularArithmeticBenchmarks so renting scratch buffers stops contending on the bag's internal locks when
-		// thousands of GPU batches execute per second.
 
 		public KernelState(Accelerator accelerator)
 		{
@@ -396,58 +421,11 @@ public sealed class PrimeTester
 			DevicePrimesPow2LastNine.View.CopyFromCPU(primesPow2LastNine);
 		}
 
-		internal sealed class ScratchBuffers
-		{
-			public MemoryBuffer1D<ulong, Stride1D.Dense> Input { get; private set; }
-			public MemoryBuffer1D<byte, Stride1D.Dense> Output { get; private set; }
-			public int Capacity { get; private set; }
-
-			public ScratchBuffers(Accelerator accel, int capacity)
-			{
-				Capacity = Math.Max(1, capacity);
-				Input = accel.Allocate1D<ulong>(Capacity);
-				Output = accel.Allocate1D<byte>(Capacity);
-			}
-
-			public void Dispose()
-			{
-				Output.Dispose();
-				Input.Dispose();
-			}
-		}
-
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public ScratchBuffers RentScratch(int minCapacity, Accelerator accel)
-		{
-			while (_scratchPool.TryTake(out var sb))
-			{
-				if (sb.Capacity >= minCapacity)
-				{
-					return sb;
-				}
-
-				sb.Dispose();
-			}
-
-			return new ScratchBuffers(accel, minCapacity);
-		}
-
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public void ReturnScratch(ScratchBuffers scratch)
-		{
-			_scratchPool.Add(scratch);
-		}
-
 		public void Clear()
 		{
 			if (IsDisposed)
 			{
 				return;
-			}
-
-			while (_scratchPool.TryTake(out var sb))
-			{
-				sb.Dispose();
 			}
 
 			DevicePrimesDefault.Dispose();

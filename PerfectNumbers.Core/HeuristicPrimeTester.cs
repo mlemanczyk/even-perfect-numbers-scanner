@@ -267,7 +267,7 @@ public sealed class HeuristicPrimeTester
         ulong[] divisorArray = divisorPool.Rent(batchCapacity);
 
         var limiter = GpuPrimeWorkLimiter.Acquire();
-        var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(batchCapacity, 1);
+        var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(batchCapacity);
         var accelerator = gpu.Accelerator;
         var state = gpu.State;
 
