@@ -106,14 +106,40 @@ public sealed class PrimeTester
 			return IsPrimeCpu(n, ct);
 		}
 
-		Span<ulong> one = stackalloc ulong[1];
-		Span<byte> outFlags = stackalloc byte[1];
-		one[0] = n;
-		outFlags[0] = 0;
+		var limiter = GpuPrimeWorkLimiter.Acquire();
+		var gpu = PrimeTesterGpuContextPool.Rent(1);
+		var state = gpu.State;
+		var accelerator = gpu.Accelerator;
+		gpu.EnsureCapacity(1);
 
-		IsPrimeBatchGpu(one, outFlags);
+		ulong value = n;
+		byte flag = 0;
 
-		return outFlags[0] != 0;
+		var input = gpu.Input;
+		var output = gpu.Output;
+
+		input.View.CopyFromCPU(ref value, 1);
+		state.Kernel(
+				1,
+				input.View,
+				state.DevicePrimesDefault.View,
+				state.DevicePrimesLastOne.View,
+				state.DevicePrimesLastSeven.View,
+				state.DevicePrimesLastThree.View,
+				state.DevicePrimesLastNine.View,
+				state.DevicePrimesPow2Default.View,
+				state.DevicePrimesPow2LastOne.View,
+				state.DevicePrimesPow2LastSeven.View,
+				state.DevicePrimesPow2LastThree.View,
+				state.DevicePrimesPow2LastNine.View,
+				output.View);
+		accelerator.Synchronize();
+		output.View.CopyToCPU(ref flag, 1);
+
+		gpu.Dispose();
+		limiter.Dispose();
+
+		return flag != 0;
 	}
 
 	public static bool IsPrimeCpu(ulong n, CancellationToken ct)
@@ -185,6 +211,10 @@ public sealed class PrimeTester
 
 			private KernelState? _kernelState;
 
+			internal MemoryBuffer1D<ulong, Stride1D.Dense>? InputBuffer;
+			internal MemoryBuffer1D<byte, Stride1D.Dense>? OutputBuffer;
+			internal int BufferCapacity;
+
 			public PooledContext()
 			{
 				Context = Context.CreateDefault();
@@ -207,8 +237,36 @@ public sealed class PrimeTester
 				}
 			}
 
+			public void EnsureBufferCapacity(int minCapacity)
+			{
+				if (minCapacity < 1)
+				{
+					minCapacity = 1;
+				}
+
+				var input = InputBuffer;
+				var output = OutputBuffer;
+
+				if (BufferCapacity >= minCapacity && input is not null && output is not null && !input.IsDisposed && !output.IsDisposed)
+				{
+					return;
+				}
+
+				input?.Dispose();
+				output?.Dispose();
+
+				BufferCapacity = minCapacity;
+				InputBuffer = Accelerator.Allocate1D<ulong>(BufferCapacity);
+				OutputBuffer = Accelerator.Allocate1D<byte>(BufferCapacity);
+			}
+
 			public void Dispose()
 			{
+				InputBuffer?.Dispose();
+				OutputBuffer?.Dispose();
+				InputBuffer = null;
+				OutputBuffer = null;
+				BufferCapacity = 0;
 				ClearGpuCaches(Accelerator);
 				_kernelState = null;
 				Accelerator.Dispose();
@@ -246,24 +304,30 @@ public sealed class PrimeTester
 		{
 			private readonly PooledContext _ctx;
 
-			public Accelerator Accelerator { get; }
+			public readonly Accelerator Accelerator;
 
-			public KernelState State { get; }
+			public readonly KernelState State;
 
-			public MemoryBuffer1D<ulong, Stride1D.Dense> Input { get; private set; }
+			public MemoryBuffer1D<ulong, Stride1D.Dense> Input;
 
-			public MemoryBuffer1D<byte, Stride1D.Dense> Output { get; private set; }
+			public MemoryBuffer1D<byte, Stride1D.Dense> Output;
 
-			public int BufferCapacity { get; private set; }
+			public int BufferCapacity;
 
 			internal PrimeTesterGpuContextLease(PooledContext ctx, int minBufferCapacity)
 			{
+				if (minBufferCapacity < 1)
+				{
+					minBufferCapacity = 1;
+				}
+
 				_ctx = ctx;
 				Accelerator = ctx.Accelerator;
 				State = ctx.KernelState;
-				BufferCapacity = Math.Max(1, minBufferCapacity);
-				Input = Accelerator.Allocate1D<ulong>(BufferCapacity);
-				Output = Accelerator.Allocate1D<byte>(BufferCapacity);
+				ctx.EnsureBufferCapacity(minBufferCapacity);
+				Input = ctx.InputBuffer ?? throw new InvalidOperationException("GPU context input buffer is not initialized.");
+				Output = ctx.OutputBuffer ?? throw new InvalidOperationException("GPU context output buffer is not initialized.");
+				BufferCapacity = ctx.BufferCapacity;
 			}
 
 			public void EnsureCapacity(int minCapacity)
@@ -273,22 +337,21 @@ public sealed class PrimeTester
 					return;
 				}
 
-				Input.Dispose();
-				Output.Dispose();
-
-				BufferCapacity = Math.Max(1, minCapacity);
-				Input = Accelerator.Allocate1D<ulong>(BufferCapacity);
-				Output = Accelerator.Allocate1D<byte>(BufferCapacity);
+				_ctx.EnsureBufferCapacity(minCapacity);
+				Input = _ctx.InputBuffer ?? throw new InvalidOperationException("GPU context input buffer is not initialized.");
+				Output = _ctx.OutputBuffer ?? throw new InvalidOperationException("GPU context output buffer is not initialized.");
+				BufferCapacity = _ctx.BufferCapacity;
 			}
 
 			public void Dispose()
 			{
-				Input.Dispose();
-				Output.Dispose();
+				BufferCapacity = _ctx.BufferCapacity;
+				Input = _ctx.InputBuffer ?? throw new InvalidOperationException("GPU context input buffer is not initialized.");
+				Output = _ctx.OutputBuffer ?? throw new InvalidOperationException("GPU context output buffer is not initialized.");
 				Return(_ctx);
 			}
 		}
-	}
+		}
 	// Per-accelerator GPU state for prime sieve (kernel + uploaded primes).
 	internal sealed class KernelState
 	{
