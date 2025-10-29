@@ -86,15 +86,15 @@ public sealed class HeuristicPrimeTester
         ct.ThrowIfCancellationRequested();
 
         byte nMod10 = (byte)n.Mod10();
-        ulong sqrtLimit = ComputeHeuristicSqrt(n);
+        ulong maxDivisorSquare = ComputeHeuristicDivisorSquareLimit(n);
 
-        if (sqrtLimit < 3UL)
+        if (maxDivisorSquare < 9UL)
         {
             return EvaluateWithOpenNumericFallback(n);
         }
 
         bool includeGroupB = UseHeuristicGroupBTrialDivision;
-        return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10, includeGroupB);
+        return HeuristicTrialDivisionCpu(n, maxDivisorSquare, nMod10, includeGroupB);
     }
 
     public bool IsPrimeCpu(ulong n)
@@ -105,33 +105,33 @@ public sealed class HeuristicPrimeTester
     public bool IsPrimeGpu(ulong n)
     {
         byte nMod10 = (byte)n.Mod10();
-        ulong sqrtLimit = ComputeHeuristicSqrt(n);
-        return IsPrimeGpu(n, sqrtLimit, nMod10);
+        ulong maxDivisorSquare = ComputeHeuristicDivisorSquareLimit(n);
+        return IsPrimeGpu(n, maxDivisorSquare, nMod10);
     }
 
-    public bool IsPrimeGpu(ulong n, ulong sqrtLimit, byte nMod10)
+    public bool IsPrimeGpu(ulong n, ulong maxDivisorSquare, byte nMod10)
     {
-        return HeuristicIsPrimeGpuCore(n, sqrtLimit, nMod10);
+        return HeuristicIsPrimeGpuCore(n, maxDivisorSquare, nMod10);
     }
 
-    private bool HeuristicIsPrimeGpuCore(ulong n, ulong sqrtLimit, byte nMod10)
+    private bool HeuristicIsPrimeGpuCore(ulong n, ulong maxDivisorSquare, byte nMod10)
     {
         // TODO: Is this condition ever met on the execution path in EvenPerfectBitScanner?
-        if (sqrtLimit < 3UL)
+        if (maxDivisorSquare < 9UL)
         {
             return EvaluateWithOpenNumericFallback(n);
         }
 
         // if (!UseHeuristicGroupBTrialDivision)
         // {
-        //     return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10, includeGroupB: false);
+        //     return HeuristicTrialDivisionCpu(n, maxDivisorSquare, nMod10, includeGroupB: false);
         // }
 
-        bool compositeDetected = HeuristicTrialDivisionGpuDetectsDivisor(n, sqrtLimit, nMod10);
+        bool compositeDetected = HeuristicTrialDivisionGpuDetectsDivisor(n, maxDivisorSquare, nMod10);
         return !compositeDetected;
     }
 
-    private static bool HeuristicTrialDivisionCpu(ulong n, ulong sqrtLimit, byte nMod10, bool includeGroupB)
+    private static bool HeuristicTrialDivisionCpu(ulong n, ulong maxDivisorSquare, byte nMod10, bool includeGroupB)
     {
         ReadOnlySpan<int> groupADivisors = HeuristicPrimeSieves.GroupADivisors;
         int interleaveBatchSize = Math.Max(1, HeuristicDivisorInterleaveBatchSize);
@@ -145,7 +145,7 @@ public sealed class HeuristicPrimeTester
                 while (processed < interleaveBatchSize && groupAIndex < groupADivisors.Length)
                 {
                     ulong divisor = (ulong)groupADivisors[groupAIndex];
-                    if (divisor > sqrtLimit)
+                    if (!DivisorWithinSquareLimit(divisor, maxDivisorSquare))
                     {
                         groupAIndex = groupADivisors.Length;
                         break;
@@ -165,7 +165,7 @@ public sealed class HeuristicPrimeTester
                     break;
                 }
 
-                if ((ulong)groupADivisors[groupAIndex] > sqrtLimit)
+                if (!DivisorWithinSquareLimit((ulong)groupADivisors[groupAIndex], maxDivisorSquare))
                 {
                     groupAIndex = groupADivisors.Length;
                     break;
@@ -185,8 +185,8 @@ public sealed class HeuristicPrimeTester
             ? stackalloc int[endingOrder.Length]
             : new int[endingOrder.Length];
 
-        bool groupAHasMore = groupAIndex < groupADivisors.Length && (ulong)groupADivisors[groupAIndex] <= sqrtLimit;
-        bool groupBHasMore = HasGroupBCandidates(endingOrder, indices, sqrtLimit);
+        bool groupAHasMore = groupAIndex < groupADivisors.Length && DivisorWithinSquareLimit((ulong)groupADivisors[groupAIndex], maxDivisorSquare);
+        bool groupBHasMore = HasGroupBCandidates(endingOrder, indices, maxDivisorSquare);
 
         while (groupAHasMore || groupBHasMore)
         {
@@ -196,7 +196,7 @@ public sealed class HeuristicPrimeTester
                 while (processed < interleaveBatchSize && groupAIndex < groupADivisors.Length)
                 {
                     ulong divisor = (ulong)groupADivisors[groupAIndex];
-                    if (divisor > sqrtLimit)
+                    if (!DivisorWithinSquareLimit(divisor, maxDivisorSquare))
                     {
                         groupAIndex = groupADivisors.Length;
                         groupAHasMore = false;
@@ -218,7 +218,7 @@ public sealed class HeuristicPrimeTester
                 }
                 else
                 {
-                    groupAHasMore = (ulong)groupADivisors[groupAIndex] <= sqrtLimit;
+                    groupAHasMore = DivisorWithinSquareLimit((ulong)groupADivisors[groupAIndex], maxDivisorSquare);
                     if (!groupAHasMore)
                     {
                         groupAIndex = groupADivisors.Length;
@@ -231,7 +231,7 @@ public sealed class HeuristicPrimeTester
                 int processed = 0;
                 while (processed < interleaveBatchSize)
                 {
-                    if (!TrySelectNextGroupBDivisor(endingOrder, indices, sqrtLimit, out ulong divisor))
+                    if (!TrySelectNextGroupBDivisor(endingOrder, indices, maxDivisorSquare, out ulong divisor))
                     {
                         groupBHasMore = false;
                         break;
@@ -247,7 +247,7 @@ public sealed class HeuristicPrimeTester
 
                 if (groupBHasMore)
                 {
-                    groupBHasMore = HasGroupBCandidates(endingOrder, indices, sqrtLimit);
+                    groupBHasMore = HasGroupBCandidates(endingOrder, indices, maxDivisorSquare);
                 }
             }
         }
@@ -258,7 +258,7 @@ public sealed class HeuristicPrimeTester
 
 
 
-    private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong sqrtLimit, byte nMod10)
+    private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
     {
         int batchCapacity = HeuristicGpuDivisorBatchSize;
         int interleaveBatchSize = HeuristicDivisorInterleaveBatchSize;
@@ -296,8 +296,8 @@ public sealed class HeuristicPrimeTester
             ? stackalloc int[endingOrder.Length]
             : new int[endingOrder.Length];
 
-        bool groupAHasMore = groupAIndex < groupADivisors.Length && (ulong)groupADivisors[groupAIndex] <= sqrtLimit;
-        bool groupBHasMore = !endingOrder.IsEmpty && HasGroupBCandidates(endingOrder, indices, sqrtLimit);
+        bool groupAHasMore = groupAIndex < groupADivisors.Length && DivisorWithinSquareLimit((ulong)groupADivisors[groupAIndex], maxDivisorSquare);
+        bool groupBHasMore = !endingOrder.IsEmpty && HasGroupBCandidates(endingOrder, indices, maxDivisorSquare);
 
         while (!compositeDetected && (groupAHasMore || groupBHasMore))
         {
@@ -307,7 +307,7 @@ public sealed class HeuristicPrimeTester
                 while (processed < interleaveBatchSize && groupAIndex < groupADivisors.Length)
                 {
                     ulong divisor = (ulong)groupADivisors[groupAIndex];
-                    if (divisor > sqrtLimit)
+                    if (!DivisorWithinSquareLimit(divisor, maxDivisorSquare))
                     {
                         groupAIndex = groupADivisors.Length;
                         groupAHasMore = false;
@@ -338,7 +338,7 @@ public sealed class HeuristicPrimeTester
                 }
                 else
                 {
-                    groupAHasMore = (ulong)groupADivisors[groupAIndex] <= sqrtLimit;
+                    groupAHasMore = DivisorWithinSquareLimit((ulong)groupADivisors[groupAIndex], maxDivisorSquare);
                     if (!groupAHasMore)
                     {
                         groupAIndex = groupADivisors.Length;
@@ -351,7 +351,7 @@ public sealed class HeuristicPrimeTester
                 int processed = 0;
                 while (processed < interleaveBatchSize)
                 {
-                    if (!TrySelectNextGroupBDivisor(endingOrder, indices, sqrtLimit, out ulong divisor))
+                    if (!TrySelectNextGroupBDivisor(endingOrder, indices, maxDivisorSquare, out ulong divisor))
                     {
                         groupBHasMore = false;
                         break;
@@ -376,7 +376,7 @@ public sealed class HeuristicPrimeTester
 
                 if (groupBHasMore)
                 {
-                    groupBHasMore = HasGroupBCandidates(endingOrder, indices, sqrtLimit);
+                    groupBHasMore = HasGroupBCandidates(endingOrder, indices, maxDivisorSquare);
                 }
             }
         }
@@ -399,28 +399,15 @@ Cleanup:
     {
         return Prime.Numbers.IsPrime(n);
     }
-
-    internal static ulong ComputeHeuristicSqrt(ulong n)
+    internal static ulong ComputeHeuristicDivisorSquareLimit(ulong n)
     {
-        ulong sqrt = (ulong)Math.Sqrt(n);
-        UInt128 square = (UInt128)sqrt * sqrt;
+        return n;
+    }
 
-        while (square > n)
-        {
-            sqrt--;
-            square = (UInt128)sqrt * sqrt;
-        }
-
-        ulong next = sqrt + 1UL;
-        UInt128 nextSquare = (UInt128)next * next;
-        while (nextSquare <= n)
-        {
-            sqrt = next;
-            next++;
-            nextSquare = (UInt128)next * next;
-        }
-
-        return sqrt;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool DivisorWithinSquareLimit(ulong divisor, ulong maxDivisorSquare)
+    {
+        return divisor != 0UL && divisor <= maxDivisorSquare / divisor;
     }
 
     private static ReadOnlySpan<byte> GetGroupBEndingOrder(byte nMod10) => nMod10 switch
@@ -434,7 +421,7 @@ Cleanup:
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TrySelectNextGroupBDivisor(ReadOnlySpan<byte> endingOrder, Span<int> indices, ulong sqrtLimit, out ulong divisor)
+    private static bool TrySelectNextGroupBDivisor(ReadOnlySpan<byte> endingOrder, Span<int> indices, ulong maxDivisorSquare, out ulong divisor)
     {
         ulong bestCandidate = ulong.MaxValue;
         int bestEndingIndex = -1;
@@ -449,7 +436,7 @@ Cleanup:
             }
 
             ulong candidate = (ulong)divisors[index];
-            if (candidate > sqrtLimit)
+            if (!DivisorWithinSquareLimit(candidate, maxDivisorSquare))
             {
                 indices[i] = divisors.Length;
                 continue;
@@ -474,7 +461,7 @@ Cleanup:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool HasGroupBCandidates(ReadOnlySpan<byte> endingOrder, Span<int> indices, ulong sqrtLimit)
+    private static bool HasGroupBCandidates(ReadOnlySpan<byte> endingOrder, Span<int> indices, ulong maxDivisorSquare)
     {
         for (int i = 0; i < endingOrder.Length; i++)
         {
@@ -486,7 +473,7 @@ Cleanup:
             }
 
             ulong candidate = (ulong)divisors[index];
-            if (candidate > sqrtLimit)
+            if (!DivisorWithinSquareLimit(candidate, maxDivisorSquare))
             {
                 indices[i] = divisors.Length;
                 continue;
@@ -533,9 +520,9 @@ Cleanup:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static HeuristicDivisorEnumerator CreateHeuristicDivisorEnumerator(ulong sqrtLimit, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
+    internal static HeuristicDivisorEnumerator CreateHeuristicDivisorEnumerator(ulong maxDivisorSquare, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
     {
-        return new HeuristicDivisorEnumerator(sqrtLimit, nMod10, groupBBuffer);
+        return new HeuristicDivisorEnumerator(maxDivisorSquare, nMod10, groupBBuffer);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -613,20 +600,20 @@ Cleanup:
 
     internal ref struct HeuristicDivisorEnumerator
     {
-        private readonly ulong sqrtLimit;
+        private readonly ulong maxDivisorSquare;
         private int groupAConstantIndex;
         private ulong groupAWheelCandidate;
         private int groupAIncrementIndex;
         private bool groupAWheelActive;
         private Span<HeuristicGroupBSequenceState> groupBStates;
 
-        public HeuristicDivisorEnumerator(ulong sqrtLimit, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
+        public HeuristicDivisorEnumerator(ulong maxDivisorSquare, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
         {
-            this.sqrtLimit = sqrtLimit;
+            this.maxDivisorSquare = maxDivisorSquare;
             groupAConstantIndex = 0;
             groupAWheelCandidate = 23UL;
             groupAIncrementIndex = 0;
-            groupAWheelActive = sqrtLimit >= 23UL;
+            groupAWheelActive = DivisorWithinSquareLimit(23UL, maxDivisorSquare);
 
             int count = InitializeGroupBStates(nMod10, groupBBuffer);
             groupBStates = count == 0 ? Span<HeuristicGroupBSequenceState>.Empty : groupBBuffer[..count];
@@ -643,7 +630,7 @@ Cleanup:
             while (groupAConstantIndex < GroupAConstantDivisors.Length)
             {
                 ulong value = GroupAConstantDivisors[groupAConstantIndex++];
-				if (value > sqrtLimit)
+				if (!DivisorWithinSquareLimit(value, maxDivisorSquare))
 				{
 					groupAConstantIndex = GroupAConstantDivisors.Length;
 					break;
@@ -657,7 +644,7 @@ Cleanup:
             if (groupAWheelActive)
             {
                 ulong value = groupAWheelCandidate;
-                if (value <= sqrtLimit)
+                if (DivisorWithinSquareLimit(value, maxDivisorSquare))
                 {
                     candidate = new HeuristicDivisorCandidate(value, HeuristicDivisorGroup.GroupAWheel, 3, 0, (ushort)(value % Wheel210));
                     byte increment = GroupAIncrementPattern[groupAIncrementIndex];
@@ -691,7 +678,7 @@ Cleanup:
                     continue;
                 }
 
-                if (value > sqrtLimit)
+                if (!DivisorWithinSquareLimit(value, maxDivisorSquare))
                 {
                     state.Candidate = ulong.MaxValue;
                     continue;

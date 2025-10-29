@@ -131,7 +131,7 @@ The plan incorporates the updated divisor-class heuristics (Groups A/B, wheels, 
    * [done] The CPU heuristic now operates as a pure trial-division sweep without maintaining per-call summaries, relying on `PrepareHeuristicDivisor` only when downstream consumers request Montgomery data.
    * [done] Introduced the temporary `UseHeuristicGroupBTrialDivision` gate so current builds execute Group A locally and then fall back to `Open.Numeric.Primes.Prime.Numbers.IsPrime`, keeping the full Group B implementation available for reactivation.
 7. [done] **Implement `IsPrimeGpu`**
-   * [done] Mirror CPU structure while batching divisor checks on the accelerator via `HeuristicTrialDivisionGpu`, drawing divisors from `HeuristicPrimeSieves`, reusing caller-provided `sqrtLimit`/`nMod10` inputs, and falling back to CPU when GPUs are disabled.
+   * [done] Mirror CPU structure while batching divisor checks on the accelerator via `HeuristicTrialDivisionGpu`, drawing divisors from `HeuristicPrimeSieves`, reusing caller-provided `maxDivisorSquare`/`nMod10` inputs, and falling back to CPU when GPUs are disabled.
    * [done] Added `PrimeTesterKernels.HeuristicTrialDivisionKernel` so GPU batches respect Group A/B ordering while emitting hit flags for early exits.
    * [done] Kept GPU divisibility in standard modular arithmetic while reserving Montgomery transforms for CPU confirmation logic.
    * [done] When the temporary Group B gate is disabled, delegate GPU calls to the CPU fallback so Group A coverage remains in place while the accelerator path stays available for future re-enablement.

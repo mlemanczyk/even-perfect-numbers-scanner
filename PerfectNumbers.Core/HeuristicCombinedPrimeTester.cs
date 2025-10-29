@@ -152,36 +152,36 @@ public sealed class HeuristicCombinedPrimeTester
 	public static bool IsPrimeCpu(ulong n)
 	{
 		byte nMod10 = (byte)n.Mod10();
-		ulong sqrtLimit = ComputeHeuristicSqrt(n);
+		ulong maxDivisorSquare = ComputeHeuristicDivisorSquareLimit(n);
 
-		if (sqrtLimit < 3UL)
+		if (maxDivisorSquare < 9UL)
 		{
 			return EvaluateWithOpenNumericFallback(n);
 		}
 
-		return HeuristicTrialDivisionCpu(n, sqrtLimit, nMod10);
+		return HeuristicTrialDivisionCpu(n, maxDivisorSquare, nMod10);
 	}
 
 	public static bool IsPrimeGpu(ulong n)
 	{
 		byte nMod10 = (byte)n.Mod10();
-		ulong sqrtLimit = ComputeHeuristicSqrt(n);
-		return IsPrimeGpu(n, sqrtLimit, nMod10);
+		ulong maxDivisorSquare = ComputeHeuristicDivisorSquareLimit(n);
+		return IsPrimeGpu(n, maxDivisorSquare, nMod10);
 	}
 
-	public static bool IsPrimeGpu(ulong n, ulong sqrtLimit, byte nMod10)
+	public static bool IsPrimeGpu(ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
 		// TODO: Is this condition ever met on the execution path in EvenPerfectBitScanner?
-		if (sqrtLimit < 3UL)
+		if (maxDivisorSquare < 9UL)
 		{
 			return EvaluateWithOpenNumericFallback(n);
 		}
 
-		bool compositeDetected = HeuristicTrialDivisionGpuDetectsDivisor(n, sqrtLimit, nMod10);
+		bool compositeDetected = HeuristicTrialDivisionGpuDetectsDivisor(n, maxDivisorSquare, nMod10);
 		return !compositeDetected;
 	}
 
-	private static bool HeuristicTrialDivisionCpu(ulong n, ulong sqrtLimit, byte nMod10)
+	private static bool HeuristicTrialDivisionCpu(ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
 		ReadOnlySpan<uint> combinedDivisors = GetCombinedDivisors(nMod10);
 		ReadOnlySpan<ulong> combinedDivisorSquares = GetCombinedDivisorSquares(nMod10);
@@ -191,7 +191,7 @@ public sealed class HeuristicCombinedPrimeTester
 		for (int i = 0; i < length; i++)
 		{
 			ulong divisorSquare = combinedDivisorSquares[i];
-			if (divisorSquare > n)
+			if (divisorSquare > maxDivisorSquare)
 			{
 				break;
 			}
@@ -205,7 +205,7 @@ public sealed class HeuristicCombinedPrimeTester
 		return EvaluateWithOpenNumericFallback(n);
 	}
 
-	private static bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong sqrtLimit, byte nMod10)
+	private static bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
 	        int batchCapacity = HeuristicGpuDivisorBatchSize;
 	        var divisorPool = ThreadStaticPools.UlongPool;
@@ -243,7 +243,7 @@ public sealed class HeuristicCombinedPrimeTester
                 for (int i = 0; i < length; i++)
                 {
                         ulong divisorSquare = combinedDivisorSquares[i];
-                        if (divisorSquare > n)
+                        if (divisorSquare > maxDivisorSquare)
                         {
                                 break;
                         }
@@ -282,29 +282,10 @@ Cleanup:
 	{
 		return Prime.Numbers.IsPrime(n);
 	}
-
-	internal static ulong ComputeHeuristicSqrt(ulong n)
-	{
-		ulong sqrt = (ulong)Math.Sqrt(n);
-		UInt128 square = (UInt128)sqrt * sqrt;
-
-		while (square > n)
-		{
-			sqrt--;
-			square = (UInt128)sqrt * sqrt;
-		}
-
-		ulong next = sqrt + 1UL;
-		UInt128 nextSquare = (UInt128)next * next;
-		while (nextSquare <= n)
-		{
-			sqrt = next;
-			next++;
-			nextSquare = (UInt128)next * next;
-		}
-
-		return sqrt;
-	}
+        internal static ulong ComputeHeuristicDivisorSquareLimit(ulong n)
+        {
+                return n;
+        }
 
 	private static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10)
 	{
@@ -514,9 +495,9 @@ Cleanup:
 	};
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static HeuristicDivisorEnumerator CreateHeuristicDivisorEnumerator(ulong sqrtLimit, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
+	internal static HeuristicDivisorEnumerator CreateHeuristicDivisorEnumerator(ulong maxDivisorSquare, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
 	{
-		return new HeuristicDivisorEnumerator(sqrtLimit, nMod10, groupBBuffer);
+		return new HeuristicDivisorEnumerator(maxDivisorSquare, nMod10, groupBBuffer);
 	}
 
 	internal struct HeuristicGroupBSequenceState
@@ -597,44 +578,50 @@ Cleanup:
 	}
 
 	internal ref struct HeuristicDivisorEnumerator
-	{
-		private readonly ulong sqrtLimit;
-		private readonly ReadOnlySpan<uint> combinedDivisors;
-		private int index;
+        {
+                private readonly ulong maxDivisorSquare;
+                private readonly ReadOnlySpan<uint> combinedDivisors;
+                private readonly ReadOnlySpan<ulong> combinedDivisorSquares;
+                private int index;
 
-		public HeuristicDivisorEnumerator(ulong sqrtLimit, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
-		{
-			this.sqrtLimit = sqrtLimit;
-			_ = groupBBuffer;
-			combinedDivisors = GetCombinedDivisors(nMod10);
-			index = 0;
-		}
+                public HeuristicDivisorEnumerator(ulong maxDivisorSquare, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
+                {
+                        this.maxDivisorSquare = maxDivisorSquare;
+                        _ = groupBBuffer;
+                        combinedDivisors = GetCombinedDivisors(nMod10);
+                        combinedDivisorSquares = GetCombinedDivisorSquares(nMod10);
+                        index = 0;
+                }
 
-		public bool TryGetNext(out HeuristicDivisorCandidate candidate)
-		{
-			while (index < combinedDivisors.Length)
-			{
-				uint entry = combinedDivisors[index++];
-				if (entry > sqrtLimit)
-				{
-					index = combinedDivisors.Length;
-					break;
-				}
+                public bool TryGetNext(out HeuristicDivisorCandidate candidate)
+                {
+                        while (index < combinedDivisors.Length)
+                        {
+                                int currentIndex = index;
+                                ulong divisorSquare = combinedDivisorSquares[currentIndex];
+                                if (divisorSquare > maxDivisorSquare)
+                                {
+                                        index = combinedDivisors.Length;
+                                        break;
+                                }
 
-				HeuristicDivisorGroup group = ResolveGroup(entry);
-				ulong value = entry;
-				byte ending = (byte)(value % 10UL);
-				ushort residue = (ushort)(value % Wheel210);
-				candidate = new HeuristicDivisorCandidate(value, group, ending, 0, residue);
-				return true;
-			}
+                                uint entry = combinedDivisors[currentIndex];
+                                index = currentIndex + 1;
 
-			candidate = default;
-			return false;
-		}
-	}
+                                HeuristicDivisorGroup group = ResolveGroup(entry);
+                                ulong value = entry;
+                                byte ending = (byte)(value % 10UL);
+                                ushort residue = (ushort)(value % Wheel210);
+                                candidate = new HeuristicDivisorCandidate(value, group, ending, 0, residue);
+                                return true;
+                        }
 
-	internal ref struct MersenneHeuristicDivisorEnumerator
+                        candidate = default;
+                        return false;
+                }
+        }
+
+        internal ref struct MersenneHeuristicDivisorEnumerator
 	{
 		private readonly GpuUInt128 step;
 		private readonly GpuUInt128 limit;
