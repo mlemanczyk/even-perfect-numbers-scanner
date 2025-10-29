@@ -17,29 +17,33 @@ public sealed class HeuristicCombinedPrimeTester
 	{
 		HeuristicPrimeSieves.EnsureInitialized();
 
-		CombinedDivisorsEnding1TwoAOneB = BuildCombinedDivisors(1, CombinedDivisorPattern.TwoAOneB);
-		CombinedDivisorsEnding3TwoAOneB = BuildCombinedDivisors(3, CombinedDivisorPattern.TwoAOneB);
-		CombinedDivisorsEnding7TwoAOneB = BuildCombinedDivisors(7, CombinedDivisorPattern.TwoAOneB);
-		CombinedDivisorsEnding9TwoAOneB = BuildCombinedDivisors(9, CombinedDivisorPattern.TwoAOneB);
+		CombinedDivisorsEnding1TwoAOneB = BuildCombinedDivisors(1, CombinedDivisorPattern.TwoAOneB, out CombinedDivisorsEnding1TwoAOneBSquares);
+		CombinedDivisorsEnding3TwoAOneB = BuildCombinedDivisors(3, CombinedDivisorPattern.TwoAOneB, out CombinedDivisorsEnding3TwoAOneBSquares);
+		CombinedDivisorsEnding7TwoAOneB = BuildCombinedDivisors(7, CombinedDivisorPattern.TwoAOneB, out CombinedDivisorsEnding7TwoAOneBSquares);
+		CombinedDivisorsEnding9TwoAOneB = BuildCombinedDivisors(9, CombinedDivisorPattern.TwoAOneB, out CombinedDivisorsEnding9TwoAOneBSquares);
 
-		CombinedDivisorsEnding1OneAOneB = BuildCombinedDivisors(1, CombinedDivisorPattern.OneAOneB);
-		CombinedDivisorsEnding3OneAOneB = BuildCombinedDivisors(3, CombinedDivisorPattern.OneAOneB);
-		CombinedDivisorsEnding7OneAOneB = BuildCombinedDivisors(7, CombinedDivisorPattern.OneAOneB);
-		CombinedDivisorsEnding9OneAOneB = BuildCombinedDivisors(9, CombinedDivisorPattern.OneAOneB);
+		CombinedDivisorsEnding1OneAOneB = BuildCombinedDivisors(1, CombinedDivisorPattern.OneAOneB, out CombinedDivisorsEnding1OneAOneBSquares);
+		CombinedDivisorsEnding3OneAOneB = BuildCombinedDivisors(3, CombinedDivisorPattern.OneAOneB, out CombinedDivisorsEnding3OneAOneBSquares);
+		CombinedDivisorsEnding7OneAOneB = BuildCombinedDivisors(7, CombinedDivisorPattern.OneAOneB, out CombinedDivisorsEnding7OneAOneBSquares);
+		CombinedDivisorsEnding9OneAOneB = BuildCombinedDivisors(9, CombinedDivisorPattern.OneAOneB, out CombinedDivisorsEnding9OneAOneBSquares);
 
-		CombinedDivisorsEnding1ThreeAOneB = BuildCombinedDivisors(1, CombinedDivisorPattern.ThreeAOneB);
-		CombinedDivisorsEnding3ThreeAOneB = BuildCombinedDivisors(3, CombinedDivisorPattern.ThreeAOneB);
-		CombinedDivisorsEnding7ThreeAOneB = BuildCombinedDivisors(7, CombinedDivisorPattern.ThreeAOneB);
-		CombinedDivisorsEnding9ThreeAOneB = BuildCombinedDivisors(9, CombinedDivisorPattern.ThreeAOneB);
+		CombinedDivisorsEnding1ThreeAOneB = BuildCombinedDivisors(1, CombinedDivisorPattern.ThreeAOneB, out CombinedDivisorsEnding1ThreeAOneBSquares);
+		CombinedDivisorsEnding3ThreeAOneB = BuildCombinedDivisors(3, CombinedDivisorPattern.ThreeAOneB, out CombinedDivisorsEnding3ThreeAOneBSquares);
+		CombinedDivisorsEnding7ThreeAOneB = BuildCombinedDivisors(7, CombinedDivisorPattern.ThreeAOneB, out CombinedDivisorsEnding7ThreeAOneBSquares);
+		CombinedDivisorsEnding9ThreeAOneB = BuildCombinedDivisors(9, CombinedDivisorPattern.ThreeAOneB, out CombinedDivisorsEnding9ThreeAOneBSquares);
 
-		CombinedDivisorsEnding1ThreeATwoB = BuildCombinedDivisors(1, CombinedDivisorPattern.ThreeATwoB);
-		CombinedDivisorsEnding3ThreeATwoB = BuildCombinedDivisors(3, CombinedDivisorPattern.ThreeATwoB);
-		CombinedDivisorsEnding7ThreeATwoB = BuildCombinedDivisors(7, CombinedDivisorPattern.ThreeATwoB);
-		CombinedDivisorsEnding9ThreeATwoB = BuildCombinedDivisors(9, CombinedDivisorPattern.ThreeATwoB);
+		CombinedDivisorsEnding1ThreeATwoB = BuildCombinedDivisors(1, CombinedDivisorPattern.ThreeATwoB, out CombinedDivisorsEnding1ThreeATwoBSquares);
+		CombinedDivisorsEnding3ThreeATwoB = BuildCombinedDivisors(3, CombinedDivisorPattern.ThreeATwoB, out CombinedDivisorsEnding3ThreeATwoBSquares);
+		CombinedDivisorsEnding7ThreeATwoB = BuildCombinedDivisors(7, CombinedDivisorPattern.ThreeATwoB, out CombinedDivisorsEnding7ThreeATwoBSquares);
+		CombinedDivisorsEnding9ThreeATwoB = BuildCombinedDivisors(9, CombinedDivisorPattern.ThreeATwoB, out CombinedDivisorsEnding9ThreeATwoBSquares);
 		CombinedDivisorsEnding1 = CombinedDivisorsEnding1OneAOneB;
 		CombinedDivisorsEnding3 = CombinedDivisorsEnding3OneAOneB;
 		CombinedDivisorsEnding7 = CombinedDivisorsEnding7OneAOneB;
 		CombinedDivisorsEnding9 = CombinedDivisorsEnding9OneAOneB;
+		CombinedDivisorsEnding1Squares = CombinedDivisorsEnding1OneAOneBSquares;
+		CombinedDivisorsEnding3Squares = CombinedDivisorsEnding3OneAOneBSquares;
+		CombinedDivisorsEnding7Squares = CombinedDivisorsEnding7OneAOneBSquares;
+		CombinedDivisorsEnding9Squares = CombinedDivisorsEnding9OneAOneBSquares;
 	}
 
 	private const ulong Wheel210 = 210UL;
@@ -70,6 +74,31 @@ public sealed class HeuristicCombinedPrimeTester
 	private static readonly uint[] CombinedDivisorsEnding3;
 	private static readonly uint[] CombinedDivisorsEnding7;
 	private static readonly uint[] CombinedDivisorsEnding9;
+
+	private static readonly ulong[] CombinedDivisorsEnding1TwoAOneBSquares;
+	private static readonly ulong[] CombinedDivisorsEnding3TwoAOneBSquares;
+	private static readonly ulong[] CombinedDivisorsEnding7TwoAOneBSquares;
+	private static readonly ulong[] CombinedDivisorsEnding9TwoAOneBSquares;
+
+	private static readonly ulong[] CombinedDivisorsEnding1OneAOneBSquares;
+	private static readonly ulong[] CombinedDivisorsEnding3OneAOneBSquares;
+	private static readonly ulong[] CombinedDivisorsEnding7OneAOneBSquares;
+	private static readonly ulong[] CombinedDivisorsEnding9OneAOneBSquares;
+
+	private static readonly ulong[] CombinedDivisorsEnding1ThreeAOneBSquares;
+	private static readonly ulong[] CombinedDivisorsEnding3ThreeAOneBSquares;
+	private static readonly ulong[] CombinedDivisorsEnding7ThreeAOneBSquares;
+	private static readonly ulong[] CombinedDivisorsEnding9ThreeAOneBSquares;
+
+	private static readonly ulong[] CombinedDivisorsEnding1ThreeATwoBSquares;
+	private static readonly ulong[] CombinedDivisorsEnding3ThreeATwoBSquares;
+	private static readonly ulong[] CombinedDivisorsEnding7ThreeATwoBSquares;
+	private static readonly ulong[] CombinedDivisorsEnding9ThreeATwoBSquares;
+
+	private static readonly ulong[] CombinedDivisorsEnding1Squares;
+	private static readonly ulong[] CombinedDivisorsEnding3Squares;
+	private static readonly ulong[] CombinedDivisorsEnding7Squares;
+	private static readonly ulong[] CombinedDivisorsEnding9Squares;
 
 	private static readonly ulong[] HeuristicSmallCycleSnapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
 
@@ -155,21 +184,28 @@ public sealed class HeuristicCombinedPrimeTester
 	private static bool HeuristicTrialDivisionCpu(ulong n, ulong sqrtLimit, byte nMod10)
 	{
 		ReadOnlySpan<uint> combinedDivisors = GetCombinedDivisors(nMod10);
-		if (combinedDivisors.IsEmpty)
+		ReadOnlySpan<ulong> combinedDivisorSquares = GetCombinedDivisorSquares(nMod10);
+		if (combinedDivisors.IsEmpty || combinedDivisorSquares.IsEmpty)
 		{
 			return EvaluateWithOpenNumericFallback(n);
 		}
 
 		int length = combinedDivisors.Length;
+		int squaresLength = combinedDivisorSquares.Length;
+		if (squaresLength < length)
+		{
+			length = squaresLength;
+		}
+
 		for (int i = 0; i < length; i++)
 		{
-			uint entry = combinedDivisors[i];
-			if (entry > sqrtLimit)
+			ulong divisorSquare = combinedDivisorSquares[i];
+			if (divisorSquare > n)
 			{
 				break;
 			}
 
-			if (n % entry == 0UL)
+			if (n % combinedDivisors[i] == 0UL)
 			{
 				return false;
 			}
@@ -180,97 +216,87 @@ public sealed class HeuristicCombinedPrimeTester
 
 	private static bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong sqrtLimit, byte nMod10)
 	{
-		int batchCapacity = HeuristicGpuDivisorBatchSize;
-		var divisorPool = ThreadStaticPools.UlongPool;
-		var hitPool = ThreadStaticPools.BytePool;
+	        int batchCapacity = HeuristicGpuDivisorBatchSize;
+	        var divisorPool = ThreadStaticPools.UlongPool;
 
-		ulong[] divisorArray = divisorPool.Rent(batchCapacity);
-		byte[] hitFlags = hitPool.Rent(batchCapacity);
+	        ulong[] divisorArray = divisorPool.Rent(batchCapacity);
 
-		var limiter = GpuPrimeWorkLimiter.Acquire();
-		var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent();
-		var accelerator = gpu.Accelerator;
-		var state = PrimeTester.GpuKernelState.GetOrCreate(accelerator);
-		var scratch = state.RentScratch(batchCapacity, accelerator);
+	        var limiter = GpuPrimeWorkLimiter.Acquire();
+	        var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(batchCapacity, 1);
+	        var accelerator = gpu.Accelerator;
+	        var state = gpu.State;
+	        var scratch = gpu.Scratch;
 
-		bool compositeDetected = false;
-		int count = 0;
+	        bool compositeDetected = false;
+	        int count = 0;
 
-		var input = scratch.Input;
-		var output = scratch.Output;
+	        var inputView = scratch.Input.View;
+	        var outputView = scratch.Output.View;
 
-		bool ProcessBatch(int length)
-		{
-			input.View.CopyFromCPU(ref divisorArray[0], length);
-			state.HeuristicTrialDivisionKernel(length, input.View, n, output.View);
-			accelerator.Synchronize();
-			output.View.CopyToCPU(ref hitFlags[0], length);
+	        bool ProcessBatch(int length)
+	        {
+	                inputView.CopyFromCPU(ref divisorArray[0], length);
+	                byte compositeFlag = 0;
+	                outputView.CopyFromCPU(ref compositeFlag, 1);
+	                state.HeuristicTrialDivisionKernel(length, inputView, n, outputView);
+	                accelerator.Synchronize();
+	                outputView.CopyToCPU(ref compositeFlag, 1);
 
-			for (int i = 0; i < length; i++)
-			{
-				if (hitFlags[i] == 0)
-				{
-					continue;
-				}
+	                return compositeFlag != 0;
+	        }
 
-				return true;
-				// ulong divisor = divisorArray[i];
-				// if (divisor > 1UL && n % divisor == 0UL)
-				// {
-				// 	return true;
-				// }
-			}
+	        ReadOnlySpan<uint> combinedDivisors = GetCombinedDivisors(nMod10);
+                ReadOnlySpan<ulong> combinedDivisorSquares = GetCombinedDivisorSquares(nMod10);
 
-			return false;
-		}
+                if (combinedDivisors.IsEmpty || combinedDivisorSquares.IsEmpty)
+                {
+                        goto Cleanup;
+                }
 
-		ReadOnlySpan<uint> combinedDivisors = GetCombinedDivisors(nMod10);
-		if (combinedDivisors.IsEmpty)
-		{
-			goto Cleanup;
-		}
+                int length = combinedDivisors.Length;
+                int squaresLength = combinedDivisorSquares.Length;
+                if (squaresLength < length)
+                {
+                        length = squaresLength;
+                }
 
-		int length = combinedDivisors.Length;
-		for (int i = 0; i < length; i++)
-		{
-			uint entry = combinedDivisors[i];
-			if (entry > sqrtLimit)
-			{
-				break;
-			}
+                for (int i = 0; i < length; i++)
+                {
+                        ulong divisorSquare = combinedDivisorSquares[i];
+                        if (divisorSquare > n)
+                        {
+                                break;
+                        }
 
-			divisorArray[count] = entry;
-			count++;
+                        divisorArray[count] = combinedDivisors[i];
+                        count++;
 
-			if (count == batchCapacity)
-			{
-				if (ProcessBatch(count))
-				{
-					compositeDetected = true;
-					goto Cleanup;
-				}
+                        if (count == batchCapacity)
+                        {
+                                if (ProcessBatch(count))
+                                {
+                                        compositeDetected = true;
+                                        goto Cleanup;
+                                }
 
-				count = 0;
-			}
-		}
+                                count = 0;
+                        }
+                }
 
-		if (!compositeDetected && count > 0)
-		{
-			if (ProcessBatch(count))
-			{
-				compositeDetected = true;
-				goto Cleanup;
-			}
-		}
+                if (count > 0 && ProcessBatch(count))
+                {
+                        compositeDetected = true;
+                        goto Cleanup;
+                }
 
-	Cleanup:
-		state.ReturnScratch(scratch);
-		divisorPool.Return(divisorArray);
-		hitPool.Return(hitFlags);
-		gpu.Dispose();
-		limiter.Dispose();
-		return compositeDetected;
+
+Cleanup:
+	        divisorPool.Return(divisorArray);
+	        gpu.Dispose();
+	        limiter.Dispose();
+	        return compositeDetected;
 	}
+
 
 	private static bool EvaluateWithOpenNumericFallback(ulong n)
 	{
@@ -309,6 +335,18 @@ public sealed class HeuristicCombinedPrimeTester
 			7 => CombinedDivisorsEnding7,
 			9 => CombinedDivisorsEnding9,
 			_ => ReadOnlySpan<uint>.Empty,
+		};
+	}
+
+	private static ReadOnlySpan<ulong> GetCombinedDivisorSquares(byte nMod10)
+	{
+		return nMod10 switch
+		{
+			1 => CombinedDivisorsEnding1Squares,
+			3 => CombinedDivisorsEnding3Squares,
+			7 => CombinedDivisorsEnding7Squares,
+			9 => CombinedDivisorsEnding9Squares,
+			_ => ReadOnlySpan<ulong>.Empty,
 		};
 	}
 
@@ -352,7 +390,47 @@ public sealed class HeuristicCombinedPrimeTester
 		};
 	}
 
-	private static uint[] BuildCombinedDivisors(byte nMod10, CombinedDivisorPattern pattern)
+	internal static ReadOnlySpan<ulong> GetCombinedDivisorSquares(byte nMod10, CombinedDivisorPattern pattern)
+	{
+		return pattern switch
+		{
+			CombinedDivisorPattern.TwoAOneB => nMod10 switch
+			{
+				1 => CombinedDivisorsEnding1TwoAOneBSquares,
+				3 => CombinedDivisorsEnding3TwoAOneBSquares,
+				7 => CombinedDivisorsEnding7TwoAOneBSquares,
+				9 => CombinedDivisorsEnding9TwoAOneBSquares,
+				_ => ReadOnlySpan<ulong>.Empty,
+			},
+			CombinedDivisorPattern.OneAOneB => nMod10 switch
+			{
+				1 => CombinedDivisorsEnding1OneAOneBSquares,
+				3 => CombinedDivisorsEnding3OneAOneBSquares,
+				7 => CombinedDivisorsEnding7OneAOneBSquares,
+				9 => CombinedDivisorsEnding9OneAOneBSquares,
+				_ => ReadOnlySpan<ulong>.Empty,
+			},
+			CombinedDivisorPattern.ThreeAOneB => nMod10 switch
+			{
+				1 => CombinedDivisorsEnding1ThreeAOneBSquares,
+				3 => CombinedDivisorsEnding3ThreeAOneBSquares,
+				7 => CombinedDivisorsEnding7ThreeAOneBSquares,
+				9 => CombinedDivisorsEnding9ThreeAOneBSquares,
+				_ => ReadOnlySpan<ulong>.Empty,
+			},
+			CombinedDivisorPattern.ThreeATwoB => nMod10 switch
+			{
+				1 => CombinedDivisorsEnding1ThreeATwoBSquares,
+				3 => CombinedDivisorsEnding3ThreeATwoBSquares,
+				7 => CombinedDivisorsEnding7ThreeATwoBSquares,
+				9 => CombinedDivisorsEnding9ThreeATwoBSquares,
+				_ => ReadOnlySpan<ulong>.Empty,
+			},
+			_ => ReadOnlySpan<ulong>.Empty,
+		};
+	}
+
+	private static uint[] BuildCombinedDivisors(byte nMod10, CombinedDivisorPattern pattern, out ulong[] squares)
 	{
 		ReadOnlySpan<int> groupA = HeuristicPrimeSieves.GroupADivisors;
 		ReadOnlySpan<uint> groupB = GetGroupBDivisors(nMod10);
@@ -412,7 +490,16 @@ public sealed class HeuristicCombinedPrimeTester
 			}
 		}
 
-		return combined.ToArray();
+		uint[] result = combined.ToArray();
+		ulong[] resultSquares = new ulong[result.Length];
+		for (int i = 0; i < result.Length; i++)
+		{
+			ulong divisor = result[i];
+			resultSquares[i] = divisor * divisor;
+		}
+
+		squares = resultSquares;
+		return result;
 	}
 
 

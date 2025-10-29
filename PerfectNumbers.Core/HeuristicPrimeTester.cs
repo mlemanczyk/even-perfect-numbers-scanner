@@ -263,166 +263,138 @@ public sealed class HeuristicPrimeTester
         int batchCapacity = HeuristicGpuDivisorBatchSize;
         int interleaveBatchSize = HeuristicDivisorInterleaveBatchSize;
         var divisorPool = ThreadStaticPools.UlongPool;
-        var hitPool = ThreadStaticPools.BytePool;
 
         ulong[] divisorArray = divisorPool.Rent(batchCapacity);
-        byte[] hitFlags = hitPool.Rent(batchCapacity);
 
         var limiter = GpuPrimeWorkLimiter.Acquire();
-        var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent();
+        var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(batchCapacity, 1);
         var accelerator = gpu.Accelerator;
-        var state = PrimeTester.GpuKernelState.GetOrCreate(accelerator);
-        var scratch = state.RentScratch(batchCapacity, accelerator);
+        var state = gpu.State;
+        var scratch = gpu.Scratch;
 
         bool compositeDetected = false;
         int count = 0;
 
-        // lock (gpu.ExecutionLock)
+        var inputView = scratch.Input.View;
+        var outputView = scratch.Output.View;
+
+        bool ProcessBatch(int length)
         {
-            var input = scratch.Input;
-            var output = scratch.Output;
+            inputView.CopyFromCPU(ref divisorArray[0], length);
+            byte compositeFlag = 0;
+            outputView.CopyFromCPU(ref compositeFlag, 1);
+            state.HeuristicTrialDivisionKernel(length, inputView, n, outputView);
+            accelerator.Synchronize();
+            outputView.CopyToCPU(ref compositeFlag, 1);
 
-            bool ProcessBatch(int length)
+            return compositeFlag != 0;
+        }
+
+        ReadOnlySpan<int> groupADivisors = HeuristicPrimeSieves.GroupADivisors;
+        int groupAIndex = 0;
+        ReadOnlySpan<byte> endingOrder = GetGroupBEndingOrder(nMod10);
+        Span<int> indices = endingOrder.Length <= 8
+            ? stackalloc int[endingOrder.Length]
+            : new int[endingOrder.Length];
+
+        bool groupAHasMore = groupAIndex < groupADivisors.Length && (ulong)groupADivisors[groupAIndex] <= sqrtLimit;
+        bool groupBHasMore = !endingOrder.IsEmpty && HasGroupBCandidates(endingOrder, indices, sqrtLimit);
+
+        while (!compositeDetected && (groupAHasMore || groupBHasMore))
+        {
+            if (groupAHasMore)
             {
-                if (length <= 0)
+                int processed = 0;
+                while (processed < interleaveBatchSize && groupAIndex < groupADivisors.Length)
                 {
-                    return false;
-                }
-
-                input.View.CopyFromCPU(ref divisorArray[0], length);
-                state.HeuristicTrialDivisionKernel(length, input.View, n, output.View);
-                accelerator.Synchronize();
-                output.View.CopyToCPU(ref hitFlags[0], length);
-
-                for (int i = 0; i < length; i++)
-                {
-                    if (hitFlags[i] == 0)
+                    ulong divisor = (ulong)groupADivisors[groupAIndex];
+                    if (divisor > sqrtLimit)
                     {
-                        continue;
-                    }
-
-                    ulong divisor = divisorArray[i];
-                    if (divisor > 1UL && n % divisor == 0UL)
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-
-            ReadOnlySpan<int> groupADivisors = HeuristicPrimeSieves.GroupADivisors;
-            int groupAIndex = 0;
-            ReadOnlySpan<byte> endingOrder = GetGroupBEndingOrder(nMod10);
-            Span<int> indices = endingOrder.Length <= 8
-                ? stackalloc int[endingOrder.Length]
-                : new int[endingOrder.Length];
-
-            bool groupAHasMore = groupAIndex < groupADivisors.Length && (ulong)groupADivisors[groupAIndex] <= sqrtLimit;
-            bool groupBHasMore = !endingOrder.IsEmpty && HasGroupBCandidates(endingOrder, indices, sqrtLimit);
-
-            while (!compositeDetected && (groupAHasMore || groupBHasMore))
-            {
-                if (groupAHasMore)
-                {
-                    int processed = 0;
-                    while (processed < interleaveBatchSize && groupAIndex < groupADivisors.Length)
-                    {
-                        ulong divisor = (ulong)groupADivisors[groupAIndex];
-                        if (divisor > sqrtLimit)
-                        {
-                            groupAIndex = groupADivisors.Length;
-                            groupAHasMore = false;
-                            break;
-                        }
-
-                        divisorArray[count] = divisor;
-                        count++;
-
-                        if (count == batchCapacity)
-                        {
-                            if (ProcessBatch(count))
-                            {
-                                compositeDetected = true;
-                                goto Cleanup;
-                            }
-
-                            count = 0;
-                        }
-
-                        groupAIndex++;
-                        processed++;
-                    }
-
-                    if (groupAIndex >= groupADivisors.Length)
-                    {
+                        groupAIndex = groupADivisors.Length;
                         groupAHasMore = false;
+                        break;
                     }
-                    else
+
+                    divisorArray[count] = divisor;
+                    count++;
+
+                    if (count == batchCapacity)
                     {
-                        groupAHasMore = (ulong)groupADivisors[groupAIndex] <= sqrtLimit;
-                        if (!groupAHasMore)
+                        if (ProcessBatch(count))
                         {
-                            groupAIndex = groupADivisors.Length;
+                            compositeDetected = true;
+                            goto Cleanup;
                         }
+
+                        count = 0;
                     }
+
+                    groupAIndex++;
+                    processed++;
                 }
 
-                if (!compositeDetected && groupBHasMore)
+                if (groupAIndex >= groupADivisors.Length)
                 {
-                    int processed = 0;
-                    while (processed < interleaveBatchSize)
+                    groupAHasMore = false;
+                }
+                else
+                {
+                    groupAHasMore = (ulong)groupADivisors[groupAIndex] <= sqrtLimit;
+                    if (!groupAHasMore)
                     {
-                        if (!TrySelectNextGroupBDivisor(endingOrder, indices, sqrtLimit, out ulong divisor))
-                        {
-                            groupBHasMore = false;
-                            break;
-                        }
-
-                        divisorArray[count] = divisor;
-                        count++;
-
-                        if (count == batchCapacity)
-                        {
-                            if (ProcessBatch(count))
-                            {
-                                compositeDetected = true;
-                                goto Cleanup;
-                            }
-
-                            count = 0;
-                        }
-
-                        processed++;
-                    }
-
-                    if (groupBHasMore)
-                    {
-                        groupBHasMore = HasGroupBCandidates(endingOrder, indices, sqrtLimit);
+                        groupAIndex = groupADivisors.Length;
                     }
                 }
             }
 
-            if (!compositeDetected && count > 0)
+            if (!compositeDetected && groupBHasMore)
             {
-                if (ProcessBatch(count))
+                int processed = 0;
+                while (processed < interleaveBatchSize)
                 {
-                    compositeDetected = true;
-                    goto Cleanup;
+                    if (!TrySelectNextGroupBDivisor(endingOrder, indices, sqrtLimit, out ulong divisor))
+                    {
+                        groupBHasMore = false;
+                        break;
+                    }
+
+                    divisorArray[count] = divisor;
+                    count++;
+
+                    if (count == batchCapacity)
+                    {
+                        if (ProcessBatch(count))
+                        {
+                            compositeDetected = true;
+                            goto Cleanup;
+                        }
+
+                        count = 0;
+                    }
+
+                    processed++;
                 }
 
-                count = 0;
+                if (groupBHasMore)
+                {
+                    groupBHasMore = HasGroupBCandidates(endingOrder, indices, sqrtLimit);
+                }
             }
         }
 
+        if (count > 0 && ProcessBatch(count))
+        {
+            compositeDetected = true;
+            goto Cleanup;
+        }
+
 Cleanup:
-        state.ReturnScratch(scratch);
         divisorPool.Return(divisorArray);
-        hitPool.Return(hitFlags);
         gpu.Dispose();
         limiter.Dispose();
         return compositeDetected;
     }
+
 
     private static bool EvaluateWithOpenNumericFallback(ulong n)
     {

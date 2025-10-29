@@ -128,13 +128,13 @@ public sealed class PrimeTester
 	public static void IsPrimeBatchGpu(ReadOnlySpan<ulong> values, Span<byte> results)
 	{
 		var limiter = GpuPrimeWorkLimiter.Acquire();
-		var gpu = PrimeTesterGpuContextPool.Rent();
+		var gpu = PrimeTesterGpuContextPool.Rent(GpuBatchSize);
+		var scratch = gpu.Scratch;
 		var state = gpu.State;
 		var accelerator = gpu.Accelerator;
 		int totalLength = values.Length;
-		int batchSize = Math.Max(1, GpuBatchSize);
+		int batchSize = GpuBatchSize;
 
-		var scratch = state.RentScratch(batchSize, accelerator);
 		var input = scratch.Input;
 		var output = scratch.Output;
 		ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
@@ -170,7 +170,6 @@ public sealed class PrimeTester
 		}
 
 		pool.Return(temp, clearArray: false);
-		state.ReturnScratch(scratch);
 
 		gpu.Dispose();
 		limiter.Dispose();
@@ -185,6 +184,7 @@ public sealed class PrimeTester
 			public Accelerator Accelerator { get; }
 
 			private KernelState? _kernelState;
+			private KernelState.ScratchBuffers? _scratch;
 
 			public PooledContext()
 			{
@@ -208,8 +208,51 @@ public sealed class PrimeTester
 				}
 			}
 
+			public KernelState.ScratchBuffers GetScratch(int minCapacity, int outputClearLength)
+			{
+				if (minCapacity <= 0)
+				{
+					minCapacity = 1;
+				}
+
+				var scratch = _scratch;
+				var state = KernelState;
+				if (scratch is null)
+				{
+					scratch = state.RentScratch(minCapacity, Accelerator);
+					_scratch = scratch;
+				}
+				else if (scratch.Capacity < minCapacity)
+				{
+					scratch.Dispose();
+					scratch = state.RentScratch(minCapacity, Accelerator);
+					_scratch = scratch;
+				}
+
+				int clearLength = outputClearLength <= 0 ? 0 : outputClearLength;
+				if (clearLength > 0)
+				{
+					int outputLength = (int)scratch.Output.Length;
+					if (clearLength > outputLength)
+					{
+						clearLength = outputLength;
+					}
+
+					scratch.Output.View.SubView(0, clearLength).MemSetToZero();
+					Accelerator.Synchronize();
+				}
+
+				return scratch;
+			}
+
 			public void Dispose()
 			{
+				if (_scratch is not null)
+				{
+					_scratch.Dispose();
+					_scratch = null;
+				}
+
 				ClearGpuCaches(Accelerator);
 				_kernelState = null;
 				Accelerator.Dispose();
@@ -219,14 +262,14 @@ public sealed class PrimeTester
 
 		private static readonly ConcurrentQueue<PooledContext> Pool = new();
 
-		internal static PrimeTesterGpuContextLease Rent()
+		internal static PrimeTesterGpuContextLease Rent(int minScratchCapacity = 0, int outputClearLength = 0)
 		{
 			if (Pool.TryDequeue(out var ctx))
 			{
-				return new PrimeTesterGpuContextLease(ctx);
+				return new PrimeTesterGpuContextLease(ctx, minScratchCapacity, outputClearLength);
 			}
 
-			return new PrimeTesterGpuContextLease(new PooledContext());
+			return new PrimeTesterGpuContextLease(new PooledContext(), minScratchCapacity, outputClearLength);
 		}
 
 		internal static void DisposeAll()
@@ -243,18 +286,30 @@ public sealed class PrimeTester
 			Pool.Enqueue(ctx);
 		}
 
-		internal readonly struct PrimeTesterGpuContextLease(PrimeTesterGpuContextPool.PooledContext ctx)
+		internal readonly struct PrimeTesterGpuContextLease
 		{
-			private readonly PooledContext? _ctx = ctx;
+			private readonly PooledContext? _ctx;
+			private readonly KernelState? _state;
+			private readonly KernelState.ScratchBuffers? _scratch;
 
-			public readonly Accelerator Accelerator => _ctx!.Accelerator;
-
-
-			public readonly KernelState State => _ctx!.KernelState;
-
-			public readonly void Dispose()
+			internal PrimeTesterGpuContextLease(PooledContext ctx, int minScratchCapacity, int outputClearLength)
 			{
-				Return(_ctx ?? throw new InvalidOperationException("GPU context lease is not initialized."));
+				_ctx = ctx;
+				_state = ctx.KernelState;
+				_scratch = minScratchCapacity > 0 ? ctx.GetScratch(minScratchCapacity, outputClearLength) : null;
+			}
+
+			public Accelerator Accelerator => (_ctx ?? throw new InvalidOperationException("GPU context lease is not initialized.")).Accelerator;
+
+			public KernelState State => _state ?? throw new InvalidOperationException("GPU kernel state is not initialized.");
+
+			public KernelState.ScratchBuffers Scratch => _scratch ?? throw new InvalidOperationException("Scratch buffers were not rented for this lease.");
+
+			public void Dispose()
+			{
+				var ctx = _ctx ?? throw new InvalidOperationException("GPU context lease is not initialized.");
+
+				Return(ctx);
 			}
 		}
 	}
