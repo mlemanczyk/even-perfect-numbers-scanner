@@ -129,14 +129,13 @@ public sealed class PrimeTester
 	{
 		var limiter = GpuPrimeWorkLimiter.Acquire();
 		var gpu = PrimeTesterGpuContextPool.Rent(GpuBatchSize);
-		var scratch = gpu.Scratch;
 		var state = gpu.State;
 		var accelerator = gpu.Accelerator;
 		int totalLength = values.Length;
 		int batchSize = GpuBatchSize;
 
-		var input = scratch.Input;
-		var output = scratch.Output;
+		var input = gpu.Input;
+		var output = gpu.Output;
 		ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
 		ulong[] temp = pool.Rent(batchSize);
 
@@ -210,11 +209,6 @@ public sealed class PrimeTester
 
 			public KernelState.ScratchBuffers GetScratch(int minCapacity, int outputClearLength)
 			{
-				if (minCapacity <= 0)
-				{
-					minCapacity = 1;
-				}
-
 				var scratch = _scratch;
 				var state = KernelState;
 				if (scratch is null)
@@ -291,19 +285,37 @@ public sealed class PrimeTester
 			private readonly PooledContext? _ctx;
 			private readonly KernelState? _state;
 			private readonly KernelState.ScratchBuffers? _scratch;
+			private readonly MemoryBuffer1D<ulong, Stride1D.Dense>? _input;
+			private readonly MemoryBuffer1D<byte, Stride1D.Dense>? _output;
 
 			internal PrimeTesterGpuContextLease(PooledContext ctx, int minScratchCapacity, int outputClearLength)
 			{
 				_ctx = ctx;
 				_state = ctx.KernelState;
-				_scratch = minScratchCapacity > 0 ? ctx.GetScratch(minScratchCapacity, outputClearLength) : null;
+				if (minScratchCapacity > 0 || outputClearLength > 0)
+				{
+					var scratch = ctx.GetScratch(minScratchCapacity, outputClearLength);
+					_scratch = scratch;
+					_input = scratch.Input;
+					_output = scratch.Output;
+				}
+				else
+				{
+					_scratch = null;
+					_input = null;
+					_output = null;
+				}
 			}
 
 			public Accelerator Accelerator => (_ctx ?? throw new InvalidOperationException("GPU context lease is not initialized.")).Accelerator;
 
 			public KernelState State => _state ?? throw new InvalidOperationException("GPU kernel state is not initialized.");
 
-			public KernelState.ScratchBuffers Scratch => _scratch ?? throw new InvalidOperationException("Scratch buffers were not rented for this lease.");
+			public MemoryBuffer1D<ulong, Stride1D.Dense> Input => _input ?? throw new InvalidOperationException("Input buffer was not rented for this lease.");
+
+			public MemoryBuffer1D<byte, Stride1D.Dense> Output => _output ?? throw new InvalidOperationException("Output buffer was not rented for this lease.");
+
+			public int ScratchCapacity => _scratch?.Capacity ?? 0;
 
 			public void Dispose()
 			{
@@ -312,7 +324,8 @@ public sealed class PrimeTester
 				Return(ctx);
 			}
 		}
-	}
+
+		}
 
 	// Per-accelerator GPU state for prime sieve (kernel + uploaded primes).
 	internal sealed class KernelState

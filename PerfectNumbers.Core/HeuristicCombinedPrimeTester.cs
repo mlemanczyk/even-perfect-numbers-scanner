@@ -216,13 +216,12 @@ public sealed class HeuristicCombinedPrimeTester
 	        var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(batchCapacity, 1);
 	        var accelerator = gpu.Accelerator;
 	        var state = gpu.State;
-	        var scratch = gpu.Scratch;
 
 	        bool compositeDetected = false;
 	        int count = 0;
 
-	        var inputView = scratch.Input.View;
-	        var outputView = scratch.Output.View;
+	        var inputView = gpu.Input.View;
+	        var outputView = gpu.Output.View;
 
 	        bool ProcessBatch(int length)
 	        {
