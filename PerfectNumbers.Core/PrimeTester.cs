@@ -272,7 +272,7 @@ public static bool IsPrimeCpu(ulong n, CancellationToken ct)
                         internal readonly Context AcceleratorContext;
                         public readonly Accelerator Accelerator;
                         public readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> Kernel;
-                        public readonly Action<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>> HeuristicTrialDivisionKernel;
+                        public readonly Action<Index1D, ArrayView<ulong>, ulong, ArrayView<int>> HeuristicTrialDivisionKernel;
                         public readonly MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesDefault;
                         public readonly MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne;
                         public readonly MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven;
@@ -285,6 +285,7 @@ public static bool IsPrimeCpu(ulong n, CancellationToken ct)
                         public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastNine;
                         public MemoryBuffer1D<ulong, Stride1D.Dense> Input;
                         public MemoryBuffer1D<byte, Stride1D.Dense> Output;
+                        public MemoryBuffer1D<int, Stride1D.Dense> HeuristicFlag;
                         public int BufferCapacity;
 
                         internal PrimeTesterGpuContextLease(int minBufferCapacity)
@@ -292,7 +293,7 @@ public static bool IsPrimeCpu(ulong n, CancellationToken ct)
                                 AcceleratorContext = Context.CreateDefault();
                                 Accelerator = AcceleratorContext.GetPreferredDevice(false).CreateAccelerator(AcceleratorContext);
                                 Kernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
-                                HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ulong, ArrayView<byte>>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
+                                HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ulong, ArrayView<int>>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
                                 var primesDefault = DivisorGenerator.SmallPrimes;
                                 DevicePrimesDefault = Accelerator.Allocate1D<uint>(primesDefault.Length);
@@ -337,6 +338,7 @@ public static bool IsPrimeCpu(ulong n, CancellationToken ct)
                                 BufferCapacity = minBufferCapacity < 1 ? 1 : minBufferCapacity;
                                 Input = Accelerator.Allocate1D<ulong>(BufferCapacity);
                                 Output = Accelerator.Allocate1D<byte>(BufferCapacity);
+                                HeuristicFlag = Accelerator.Allocate1D<int>(BufferCapacity);
                                 _returned = false;
                         }
 
@@ -350,8 +352,10 @@ public static bool IsPrimeCpu(ulong n, CancellationToken ct)
 
                                 Input.Dispose();
                                 Output.Dispose();
+                                HeuristicFlag.Dispose();
                                 Input = Accelerator.Allocate1D<ulong>(required);
                                 Output = Accelerator.Allocate1D<byte>(required);
+                                HeuristicFlag = Accelerator.Allocate1D<int>(required);
                                 BufferCapacity = required;
                         }
 
@@ -375,6 +379,7 @@ public static bool IsPrimeCpu(ulong n, CancellationToken ct)
                         {
                                 Input.Dispose();
                                 Output.Dispose();
+                                HeuristicFlag.Dispose();
                                 DevicePrimesDefault.Dispose();
                                 DevicePrimesLastOne.Dispose();
                                 DevicePrimesLastSeven.Dispose();

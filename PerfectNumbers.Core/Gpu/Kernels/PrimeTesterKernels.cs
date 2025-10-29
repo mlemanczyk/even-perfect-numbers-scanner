@@ -68,18 +68,10 @@ internal static class PrimeTesterKernels
         results[index] = result;
     }
 
-    public static void HeuristicTrialDivisionKernel(Index1D index, ArrayView<ulong> divisors, ulong n, ArrayView<byte> resultFlag)
+    public static void HeuristicTrialDivisionKernel(Index1D index, ArrayView<ulong> divisors, ulong n, ArrayView<int> resultFlag)
     {
         ulong divisor = divisors[index];
-        if (divisor <= 1UL)
-        {
-            return;
-        }
-
-        if (n % divisor == 0UL)
-        {
-            resultFlag[0] = 1;
-        }
+        Atomic.Or(ref resultFlag[0], divisor <= 1UL ? 0 : (n % divisor == 0UL ? 1 : 0));
     }
 
     public static void SharesFactorKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<byte> results)

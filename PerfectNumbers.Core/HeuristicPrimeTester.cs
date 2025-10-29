@@ -279,7 +279,7 @@ public sealed class HeuristicPrimeTester
         int count = 0;
 
         var inputView = gpu.Input.View;
-        var outputView = gpu.Output.View;
+        var flagView = gpu.HeuristicFlag.View;
 
         bool ProcessBatch(int length)
         {
@@ -289,11 +289,11 @@ public sealed class HeuristicPrimeTester
             }
 
             inputView.CopyFromCPU(ref divisorArray[0], length);
-            byte compositeFlag = 0;
-            outputView.CopyFromCPU(ref compositeFlag, 1);
-            kernel(length, inputView, n, outputView);
+            int compositeFlag = 0;
+            flagView.CopyFromCPU(ref compositeFlag, 1);
+            kernel(length, inputView, n, flagView);
             accelerator.Synchronize();
-            outputView.CopyToCPU(ref compositeFlag, 1);
+            flagView.CopyToCPU(ref compositeFlag, 1);
             return compositeFlag != 0;
         }
 
