@@ -19,7 +19,7 @@ public class HeuristicCombinedPrimeTesterTests
         Span<HeuristicCombinedPrimeTester.HeuristicGroupBSequenceState> groupBState =
             stackalloc HeuristicCombinedPrimeTester.HeuristicGroupBSequenceState[4];
 
-        var enumerator = HeuristicCombinedPrimeTester.CreateHeuristicDivisorEnumerator(500, lastDigit, groupBState);
+        var enumerator = HeuristicCombinedPrimeTester.CreateHeuristicDivisorEnumerator(500UL * 500UL, lastDigit, groupBState);
         var results = new List<HeuristicCombinedPrimeTester.HeuristicDivisorCandidate>(32);
 
         while (results.Count < 20 && enumerator.TryGetNext(out var candidate))
@@ -230,14 +230,10 @@ public class HeuristicCombinedPrimeTesterTests
     [InlineData(18_446_744_073_709_551_615UL)]
     [InlineData(18_446_744_073_709_551_614UL)]
     [InlineData(18_446_744_073_709_551_613UL)]
-    public void ComputeHeuristicSqrt_returns_floor_square_root(ulong value)
+    public void ComputeHeuristicDivisorSquareLimit_returns_input_value(ulong value)
     {
-        ulong sqrt = HeuristicCombinedPrimeTester.ComputeHeuristicSqrt(value);
+        ulong limit = HeuristicCombinedPrimeTester.ComputeHeuristicDivisorSquareLimit(value);
 
-        bool squareBelowOrEqual = (UInt128)sqrt * sqrt <= (UInt128)value;
-        bool nextSquareAbove = (UInt128)(sqrt + 1UL) * (UInt128)(sqrt + 1UL) > (UInt128)value;
-
-        squareBelowOrEqual.Should().BeTrue();
-        nextSquareAbove.Should().BeTrue();
+        limit.Should().Be(value);
     }
 }

@@ -411,8 +411,8 @@ public class MersenneDivisorCycles
 		// Atomic.Add(ref _tryFactorIntoCountsInternalHits, 1UL);
 		// Console.WriteLine($"MersenneDivisorCycles.TryFactorIntoCountsInternal hits {Volatile.Read(ref _tryFactorIntoCountsInternalHits)}");
 
-		HeuristicPrimeTester primeTester = _primeTester ??= new();
-		if (primeTester.IsPrimeGpu(remaining))
+		// HeuristicPrimeTester primeTester = _primeTester ??= new();
+		if (PrimeTester.IsPrime(remaining))
 		// if (PrimeTester.IsPrimeCpu(remaining, CancellationToken.None))
 		{
 			AddFactor(counts, remaining);
@@ -917,8 +917,8 @@ public class MersenneDivisorCycles
         return CalculateCycleLengthFallback(divisor);
     }
 
-	[ThreadStatic]
-	private static HeuristicPrimeTester? _primeTester;
+	// [ThreadStatic]
+	// private static HeuristicPrimeTester? _primeTester;
 
 	internal static bool TryCalculateCycleLengthHeuristic(ulong divisor, in MontgomeryDivisorData divisorData, out ulong cycleLength, bool skipPrimeOrderHeuristic = false)
 	{
@@ -940,10 +940,10 @@ public class MersenneDivisorCycles
 		// 	Console.WriteLine($"MersenneDivisorCycles.CalculateCycleLengthFallback hits {Volatile.Read(ref _tryCalculateCycleLengthHeuristicHits)}");			
 		// }
 
-		HeuristicPrimeTester primeTester = _primeTester ??= new();
+		// HeuristicPrimeTester primeTester = _primeTester ??= new();
 		// if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.Exclusive.IsPrimeCpu(divisor, CancellationToken.None))
-		if (!skipPrimeOrderHeuristic && primeTester.IsPrimeGpu(divisor))
-		// if (!skipPrimeOrderHeuristic && PrimeTester.IsPrimeCpu(divisor, CancellationToken.None))
+		// if (!skipPrimeOrderHeuristic && primeTester.IsPrimeGpu(divisor))
+		if (!skipPrimeOrderHeuristic && PrimeTester.IsPrime(divisor))
 		{
 			ulong computedOrder = PrimeOrderCalculator.Calculate(
 					divisor,

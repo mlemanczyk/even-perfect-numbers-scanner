@@ -17,7 +17,7 @@ public class PrimeTesterGpuTests
             ulong[] primes = [31UL, 61UL, 89UL, 107UL, 127UL, 521UL];
             foreach (ulong prime in primes)
             {
-                tester.IsPrimeGpu(prime, CancellationToken.None).Should().BeTrue();
+                tester.IsPrimeGpu(prime).Should().BeTrue();
             }
         }
         finally
@@ -37,7 +37,7 @@ public class PrimeTesterGpuTests
             ulong[] composites = [33UL, 39UL, 51UL, 77UL, 91UL];
             foreach (ulong composite in composites)
             {
-                tester.IsPrimeGpu(composite, CancellationToken.None).Should().BeFalse();
+                tester.IsPrimeGpu(composite).Should().BeFalse();
             }
         }
         finally

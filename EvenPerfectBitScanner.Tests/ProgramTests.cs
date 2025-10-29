@@ -55,7 +55,7 @@ public class ProgramTests
     [InlineData(81UL, false)]
     public void IsPrime_identifies_primes_correctly(ulong n, bool expected)
     {
-        PrimeTester.IsPrime(n, CancellationToken.None).Should().Be(expected);
+        PrimeTester.IsPrime(n).Should().Be(expected);
     }
 
     [Fact]

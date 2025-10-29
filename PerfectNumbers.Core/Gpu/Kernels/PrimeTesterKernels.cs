@@ -48,7 +48,7 @@ internal static class PrimeTesterKernels
                 break;
         }
 
-        int length = XMath.Min((int)primes.Length, (int)primeSquares.Length);
+        int length = (int)primes.Length;
         for (int i = 0; i < length; i++)
         {
             ulong prime = primes[i];
@@ -68,16 +68,10 @@ internal static class PrimeTesterKernels
         results[index] = result;
     }
 
-    public static void HeuristicTrialDivisionKernel(Index1D index, ArrayView<ulong> divisors, ulong n, ArrayView<byte> results)
+    public static void HeuristicTrialDivisionKernel(Index1D index, ArrayView<ulong> divisors, ulong n, ArrayView<int> resultFlag)
     {
         ulong divisor = divisors[index];
-        if (divisor <= 1UL)
-        {
-            results[index] = 0;
-            return;
-        }
-
-        results[index] = n % divisor == 0UL ? (byte)1 : (byte)0;
+        Atomic.Or(ref resultFlag[0], divisor <= 1UL ? 0 : (n % divisor == 0UL ? 1 : 0));
     }
 
     public static void SharesFactorKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<byte> results)
