@@ -1079,7 +1079,7 @@ internal static partial class PrimeOrderCalculator
 		PartialFactorResult result;
 		PrimeTester primeTester = PrimeTester.Exclusive;
 		CancellationToken ct = CancellationToken.None;
-		HeuristicPrimeTester? tester = _tester ??= new();
+		// HeuristicPrimeTester? tester = _tester ??= new();
 
 		if (!gpuFactored)
 		{
@@ -1152,7 +1152,7 @@ internal static partial class PrimeOrderCalculator
 					// Console.WriteLine($"Partial factor hits {Volatile.Read(ref _partialFactorHits)}");
 
 					// bool isPrime = PrimeTester.IsPrimeCpu(composite, CancellationToken.None);
-					bool isPrime = tester.IsPrimeGpu(composite);
+					bool isPrime = PrimeTester.IsPrime(composite);
 					// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
 					if (isPrime)
@@ -1220,7 +1220,7 @@ internal static partial class PrimeOrderCalculator
 				// Console.WriteLine($"Partial factor pending hits {Volatile.Read(ref _partialFactorPendingHits)}");
 
 				// bool isPrime = PrimeTester.IsPrimeCpu(composite, CancellationToken.None);
-				bool isPrime = tester.IsPrimeGpu(composite);
+				bool isPrime = PrimeTester.IsPrime(composite);
 				// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
 				entry = entry.WithPrimality(isPrime);
@@ -1257,7 +1257,7 @@ internal static partial class PrimeOrderCalculator
 			// Atomic.Add(ref _partialFactorCofactorHits, 1UL);
 			// Console.WriteLine($"Partial factor cofactor hits {Volatile.Read(ref _partialFactorCofactorHits)}");
 
-			cofactorIsPrime = tester.IsPrimeGpu(cofactor);
+			cofactorIsPrime = PrimeTester.IsPrime(cofactor);
 			// cofactorIsPrime = PrimeTester.IsPrimeGpu(cofactor);
 			// cofactorIsPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(cofactor);
 		}
@@ -1782,8 +1782,8 @@ internal static partial class PrimeOrderCalculator
 
 	// private static ulong _factorCompletelyHits;
 	// private static ulong _factorCompletelyPollardRhoHits;
-	[ThreadStatic]
-	private static HeuristicPrimeTester? _tester;
+	// [ThreadStatic]
+	// private static HeuristicPrimeTester? _tester;
 
 	private static void FactorCompletely(ulong value, Dictionary<ulong, int> counts, bool knownComposite)
 	{
@@ -1794,10 +1794,10 @@ internal static partial class PrimeOrderCalculator
 
 		// Atomic.Add(ref _factorCompletelyHits, 1UL);
 		// Console.WriteLine($"Factor completely hits {Volatile.Read(ref _factorCompletelyHits)}");
-		HeuristicPrimeTester tester = _tester ??= new();
+		// HeuristicPrimeTester tester = _tester ??= new();
 
 		// bool isPrime = primeTester.HeuristicIsPrimeGpu(value);
-		bool isPrime = tester.IsPrimeGpu(value);
+		bool isPrime = PrimeTester.IsPrime(value);
 		// bool isPrime = PrimeTester.IsPrimeGpu(value);
 		// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(value);
 		if (!knownComposite && isPrime)
@@ -1813,7 +1813,7 @@ internal static partial class PrimeOrderCalculator
 		// Console.WriteLine($"Factor completely after PollardRho hits {Volatile.Read(ref _factorCompletelyPollardRhoHits)}");
 
 		// isPrime = primeTester.HeuristicIsPrimeGpu(factor);
-		isPrime = tester.IsPrimeGpu(factor);
+		isPrime = PrimeTester.IsPrime(factor);
 		// isPrime = PrimeTester.IsPrimeGpu(factor);
 		// isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(factor);
 		if (isPrime)
@@ -1850,7 +1850,7 @@ internal static partial class PrimeOrderCalculator
 			// Atomic.Add(ref _partialFactorCofactorHits, 1UL);
 			// Console.WriteLine($"Partial factor cofactor hits {Volatile.Read(ref _partialFactorCofactorHits)}");
 
-			isPrime = tester.IsPrimeGpu(quotient);
+			isPrime = PrimeTester.IsPrime(quotient);
 			// isPrime = PrimeTester.IsPrimeGpu(quotient);
 			// isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(quotient);
 		}

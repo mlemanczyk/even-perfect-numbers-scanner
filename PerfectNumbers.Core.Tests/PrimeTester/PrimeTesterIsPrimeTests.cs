@@ -26,7 +26,7 @@ public class PrimeTesterIsPrimeTests
     {
         var tester = new PrimeTester();
 
-		PrimeTester.IsPrime(n, CancellationToken.None).Should().Be(expected);
+		PrimeTester.IsPrime(n).Should().Be(expected);
     }
 
     [Theory]
@@ -40,7 +40,7 @@ public class PrimeTesterIsPrimeTests
         GpuContextPool.ForceCpu = false;
         var tester = new PrimeTester();
 
-        tester.IsPrimeGpu(n, CancellationToken.None).Should().Be(expected);
+        tester.IsPrimeGpu(n).Should().Be(expected);
     }
 
     [Fact]
@@ -50,9 +50,9 @@ public class PrimeTesterIsPrimeTests
         var tester = new PrimeTester();
         GpuContextPool.ForceCpu = true;
 
-        tester.IsPrimeGpu(137UL, CancellationToken.None).Should().BeTrue();
+        tester.IsPrimeGpu(137UL).Should().BeTrue();
 
-        tester.IsPrimeGpu(341UL, CancellationToken.None).Should().BeFalse();
+        tester.IsPrimeGpu(341UL).Should().BeFalse();
 
         GpuContextPool.ForceCpu = false;
     }
@@ -71,7 +71,7 @@ public class PrimeTesterIsPrimeTests
         var testers = new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true);
         Parallel.For(0, primes.Length, i =>
         {
-            results[i] = testers.Value!.IsPrimeGpu(primes[i], CancellationToken.None);
+            results[i] = testers.Value!.IsPrimeGpu(primes[i]);
         });
 
         results.Should().AllBeEquivalentTo(true);
@@ -80,7 +80,7 @@ public class PrimeTesterIsPrimeTests
         {
             foreach (ulong prime in primes)
             {
-                testers.Value!.IsPrimeGpu(prime, CancellationToken.None).Should().BeTrue();
+                testers.Value!.IsPrimeGpu(prime).Should().BeTrue();
             }
         });
     }

@@ -622,8 +622,8 @@ internal static class Program
 		if (!_cliArguments.UseByDivisor)
 		{
 			if (!(GpuContextPool.ForceCpu
-											? PrimeTester.IsPrime(p, CancellationToken.None)
-											: PrimeTesters.Value!.IsPrimeGpu(p, CancellationToken.None)))
+					? PrimeTester.IsPrime(p)
+					: PrimeTesters.Value!.IsPrimeGpu(p)))
 			{
 				_lastCompositeP = true;
 				return false;

@@ -29,8 +29,7 @@ public class PrimeTesterBenchmarks
             return;
         }
 
-        CancellationToken cancellationToken = CancellationToken.None;
-        _ = _heuristicTester.IsPrimeCpu(_candidates[0], cancellationToken);
+        _ = _heuristicTester.IsPrimeCpu(_candidates[0]);
         _ = _heuristicTester.IsPrimeGpu(_candidates[0]);
         _ = Prime.Numbers.IsPrime(_candidates[0]);
     }
@@ -40,12 +39,11 @@ public class PrimeTesterBenchmarks
     {
         HeuristicPrimeTester tester = _heuristicTester;
         ulong[] values = _candidates;
-        CancellationToken cancellationToken = CancellationToken.None;
         int primeCount = 0;
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (tester.IsPrimeCpu(values[i], cancellationToken))
+            if (tester.IsPrimeCpu(values[i]))
             {
                 primeCount++;
             }
@@ -75,7 +73,6 @@ public class PrimeTesterBenchmarks
     [Benchmark]
     public int HeuristicCombinedGpu()
     {
-        HeuristicCombinedPrimeTester tester = _heuristicCombinedTester;
         ulong[] values = _candidates;
         int primeCount = 0;
 
@@ -93,7 +90,6 @@ public class PrimeTesterBenchmarks
     [Benchmark]
     public int HeuristicCombinedCpu()
     {
-        HeuristicCombinedPrimeTester tester = _heuristicCombinedTester;
         ulong[] values = _candidates;
         int primeCount = 0;
 
@@ -115,12 +111,11 @@ public class PrimeTesterBenchmarks
 	{
 		PrimeTester tester = _nonHeuristicTester;
         ulong[] values = _candidates;
-        CancellationToken cancellationToken = CancellationToken.None;
         int primeCount = 0;
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (tester.IsPrimeGpu(values[i], cancellationToken))
+            if (tester.IsPrimeGpu(values[i]))
             {
                 primeCount++;
             }
@@ -133,12 +128,11 @@ public class PrimeTesterBenchmarks
     public int NonHeuristicCpu()
     {
         ulong[] values = _candidates;
-        CancellationToken cancellationToken = CancellationToken.None;
         int primeCount = 0;
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (PrimeTester.IsPrimeCpu(values[i], cancellationToken))
+            if (PrimeTester.IsPrime(values[i]))
             {
                 primeCount++;
             }

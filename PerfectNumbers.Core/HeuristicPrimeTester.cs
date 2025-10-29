@@ -77,10 +77,8 @@ public sealed class HeuristicPrimeTester
 
     public static HeuristicPrimeTester Exclusive => _tester ??= new();
 
-    public bool IsPrimeCpu(ulong n, CancellationToken ct)
+    public bool IsPrimeCpu(ulong n)
     {
-        ct.ThrowIfCancellationRequested();
-
         byte nMod10 = (byte)n.Mod10();
         ulong maxDivisorSquare = ComputeHeuristicDivisorSquareLimit(n);
 
@@ -91,11 +89,6 @@ public sealed class HeuristicPrimeTester
 
         bool includeGroupB = UseHeuristicGroupBTrialDivision;
         return HeuristicTrialDivisionCpu(n, maxDivisorSquare, nMod10, includeGroupB);
-    }
-
-    public bool IsPrimeCpu(ulong n)
-    {
-        return IsPrimeCpu(n, CancellationToken.None);
     }
 
     public bool IsPrimeGpu(ulong n)
