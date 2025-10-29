@@ -431,25 +431,36 @@ Cleanup:
 
     internal static ulong ComputeHeuristicSqrt(ulong n)
     {
-        ulong sqrt = (ulong)Math.Sqrt(n);
-        UInt128 square = (UInt128)sqrt * sqrt;
-
-        while (square > n)
+        if (n < 2UL)
         {
-            sqrt--;
-            square = (UInt128)sqrt * sqrt;
+            return n;
         }
 
-        ulong next = sqrt + 1UL;
-        UInt128 nextSquare = (UInt128)next * next;
-        while (nextSquare <= n)
+        ulong bit = 1UL << 62;
+        while (bit > n)
         {
-            sqrt = next;
-            next++;
-            nextSquare = (UInt128)next * next;
+            bit >>= 2;
         }
 
-        return sqrt;
+        ulong result = 0UL;
+        ulong remainder = n;
+        while (bit != 0)
+        {
+            ulong candidate = result + bit;
+            if (remainder >= candidate)
+            {
+                remainder -= candidate;
+                result = (result >> 1) + bit;
+            }
+            else
+            {
+                result >>= 1;
+            }
+
+            bit >>= 2;
+        }
+
+        return result;
     }
 
     private static ReadOnlySpan<byte> GetGroupBEndingOrder(byte nMod10) => nMod10 switch

@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using System.Collections.Generic;
 using PerfectNumbers.Core;
 using FluentAssertions;
@@ -192,5 +193,51 @@ public class HeuristicCombinedPrimeTesterTests
             groupBValue.Should().BeGreaterThan(13U);
             (groupBValue % 10U).Should().NotBe(3U);
         }
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(0UL)]
+    [InlineData(1UL)]
+    [InlineData(2UL)]
+    [InlineData(3UL)]
+    [InlineData(4UL)]
+    [InlineData(5UL)]
+    [InlineData(8UL)]
+    [InlineData(9UL)]
+    [InlineData(15UL)]
+    [InlineData(16UL)]
+    [InlineData(17UL)]
+    [InlineData(24UL)]
+    [InlineData(25UL)]
+    [InlineData(26UL)]
+    [InlineData(255UL)]
+    [InlineData(256UL)]
+    [InlineData(257UL)]
+    [InlineData(1_000UL)]
+    [InlineData(1_048_575UL)]
+    [InlineData(1_048_576UL)]
+    [InlineData(1_048_577UL)]
+    [InlineData(4_000_000UL)]
+    [InlineData(4_000_001UL)]
+    [InlineData(4_000_004UL)]
+    [InlineData(65_535_999UL)]
+    [InlineData(65_536_000UL)]
+    [InlineData(65_536_001UL)]
+    [InlineData(4_294_967_295UL)]
+    [InlineData(4_294_967_296UL)]
+    [InlineData(4_294_967_297UL)]
+    [InlineData(18_446_744_073_709_551_615UL)]
+    [InlineData(18_446_744_073_709_551_614UL)]
+    [InlineData(18_446_744_073_709_551_613UL)]
+    public void ComputeHeuristicSqrt_returns_floor_square_root(ulong value)
+    {
+        ulong sqrt = HeuristicCombinedPrimeTester.ComputeHeuristicSqrt(value);
+
+        bool squareBelowOrEqual = (UInt128)sqrt * sqrt <= (UInt128)value;
+        bool nextSquareAbove = (UInt128)(sqrt + 1UL) * (UInt128)(sqrt + 1UL) > (UInt128)value;
+
+        squareBelowOrEqual.Should().BeTrue();
+        nextSquareAbove.Should().BeTrue();
     }
 }
