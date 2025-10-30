@@ -436,58 +436,39 @@ public sealed class PrimeTester
 				HeuristicCombinedPrimeTester.EnsureInitialized();
 
 				var heuristicGroupA = HeuristicPrimeSieves.GroupADivisors;
-				HeuristicGroupADivisors = accelerator.Allocate1D<ulong>(heuristicGroupA.Length);
-				HeuristicGroupADivisors.View.CopyFromCPU(heuristicGroupA.ToArray());
+				HeuristicGroupADivisors = CopySpanToDevice(accelerator, heuristicGroupA);
 
 				var heuristicGroupASquares = HeuristicPrimeSieves.GroupADivisorSquares;
-				HeuristicGroupADivisorSquares = accelerator.Allocate1D<ulong>(heuristicGroupASquares.Length);
-				HeuristicGroupADivisorSquares.View.CopyFromCPU(heuristicGroupASquares.ToArray());
+				HeuristicGroupADivisorSquares = CopySpanToDevice(accelerator, heuristicGroupASquares);
 
-				var groupBEnding1 = ConvertToUlongArray(DivisorGenerator.SmallPrimesLastOneWithoutLastThree);
-				HeuristicGroupBDivisorsEnding1 = accelerator.Allocate1D<ulong>(groupBEnding1.Length);
-				HeuristicGroupBDivisorsEnding1.View.CopyFromCPU(groupBEnding1);
-				HeuristicGroupBDivisorSquaresEnding1 = accelerator.Allocate1D<ulong>(DivisorGenerator.SmallPrimesPow2LastOneWithoutLastThree.Length);
-				HeuristicGroupBDivisorSquaresEnding1.View.CopyFromCPU(DivisorGenerator.SmallPrimesPow2LastOneWithoutLastThree);
+				HeuristicGroupBDivisorsEnding1 = CopyUintSpanToDevice(accelerator, DivisorGenerator.SmallPrimesLastOneWithoutLastThree);
+				HeuristicGroupBDivisorSquaresEnding1 = CopySpanToDevice(accelerator, DivisorGenerator.SmallPrimesPow2LastOneWithoutLastThree);
 
-				var groupBEnding7 = ConvertToUlongArray(DivisorGenerator.SmallPrimesLastSevenWithoutLastThree);
-				HeuristicGroupBDivisorsEnding7 = accelerator.Allocate1D<ulong>(groupBEnding7.Length);
-				HeuristicGroupBDivisorsEnding7.View.CopyFromCPU(groupBEnding7);
-				HeuristicGroupBDivisorSquaresEnding7 = accelerator.Allocate1D<ulong>(DivisorGenerator.SmallPrimesPow2LastSevenWithoutLastThree.Length);
-				HeuristicGroupBDivisorSquaresEnding7.View.CopyFromCPU(DivisorGenerator.SmallPrimesPow2LastSevenWithoutLastThree);
+				HeuristicGroupBDivisorsEnding7 = CopyUintSpanToDevice(accelerator, DivisorGenerator.SmallPrimesLastSevenWithoutLastThree);
+				HeuristicGroupBDivisorSquaresEnding7 = CopySpanToDevice(accelerator, DivisorGenerator.SmallPrimesPow2LastSevenWithoutLastThree);
 
-				var groupBEnding9 = ConvertToUlongArray(DivisorGenerator.SmallPrimesLastNineWithoutLastThree);
-				HeuristicGroupBDivisorsEnding9 = accelerator.Allocate1D<ulong>(groupBEnding9.Length);
-				HeuristicGroupBDivisorsEnding9.View.CopyFromCPU(groupBEnding9);
-				HeuristicGroupBDivisorSquaresEnding9 = accelerator.Allocate1D<ulong>(DivisorGenerator.SmallPrimesPow2LastNineWithoutLastThree.Length);
-				HeuristicGroupBDivisorSquaresEnding9.View.CopyFromCPU(DivisorGenerator.SmallPrimesPow2LastNineWithoutLastThree);
+				HeuristicGroupBDivisorsEnding9 = CopyUintSpanToDevice(accelerator, DivisorGenerator.SmallPrimesLastNineWithoutLastThree);
+				HeuristicGroupBDivisorSquaresEnding9 = CopySpanToDevice(accelerator, DivisorGenerator.SmallPrimesPow2LastNineWithoutLastThree);
 
 				var combinedEnding1 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding1Span;
-				HeuristicCombinedDivisorsEnding1 = accelerator.Allocate1D<ulong>(combinedEnding1.Length);
-				HeuristicCombinedDivisorsEnding1.View.CopyFromCPU(combinedEnding1.ToArray());
+				HeuristicCombinedDivisorsEnding1 = CopySpanToDevice(accelerator, combinedEnding1);
 				var combinedSquaresEnding1 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding1SquaresSpan;
-				HeuristicCombinedDivisorSquaresEnding1 = accelerator.Allocate1D<ulong>(combinedSquaresEnding1.Length);
-				HeuristicCombinedDivisorSquaresEnding1.View.CopyFromCPU(combinedSquaresEnding1.ToArray());
+				HeuristicCombinedDivisorSquaresEnding1 = CopySpanToDevice(accelerator, combinedSquaresEnding1);
 
 				var combinedEnding3 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding3Span;
-				HeuristicCombinedDivisorsEnding3 = accelerator.Allocate1D<ulong>(combinedEnding3.Length);
-				HeuristicCombinedDivisorsEnding3.View.CopyFromCPU(combinedEnding3.ToArray());
+				HeuristicCombinedDivisorsEnding3 = CopySpanToDevice(accelerator, combinedEnding3);
 				var combinedSquaresEnding3 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding3SquaresSpan;
-				HeuristicCombinedDivisorSquaresEnding3 = accelerator.Allocate1D<ulong>(combinedSquaresEnding3.Length);
-				HeuristicCombinedDivisorSquaresEnding3.View.CopyFromCPU(combinedSquaresEnding3.ToArray());
+				HeuristicCombinedDivisorSquaresEnding3 = CopySpanToDevice(accelerator, combinedSquaresEnding3);
 
 				var combinedEnding7 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding7Span;
-				HeuristicCombinedDivisorsEnding7 = accelerator.Allocate1D<ulong>(combinedEnding7.Length);
-				HeuristicCombinedDivisorsEnding7.View.CopyFromCPU(combinedEnding7.ToArray());
+				HeuristicCombinedDivisorsEnding7 = CopySpanToDevice(accelerator, combinedEnding7);
 				var combinedSquaresEnding7 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding7SquaresSpan;
-				HeuristicCombinedDivisorSquaresEnding7 = accelerator.Allocate1D<ulong>(combinedSquaresEnding7.Length);
-				HeuristicCombinedDivisorSquaresEnding7.View.CopyFromCPU(combinedSquaresEnding7.ToArray());
+				HeuristicCombinedDivisorSquaresEnding7 = CopySpanToDevice(accelerator, combinedSquaresEnding7);
 
 				var combinedEnding9 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding9Span;
-				HeuristicCombinedDivisorsEnding9 = accelerator.Allocate1D<ulong>(combinedEnding9.Length);
-				HeuristicCombinedDivisorsEnding9.View.CopyFromCPU(combinedEnding9.ToArray());
+				HeuristicCombinedDivisorsEnding9 = CopySpanToDevice(accelerator, combinedEnding9);
 				var combinedSquaresEnding9 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding9SquaresSpan;
-				HeuristicCombinedDivisorSquaresEnding9 = accelerator.Allocate1D<ulong>(combinedSquaresEnding9.Length);
-				HeuristicCombinedDivisorSquaresEnding9.View.CopyFromCPU(combinedSquaresEnding9.ToArray());
+				HeuristicCombinedDivisorSquaresEnding9 = CopySpanToDevice(accelerator, combinedSquaresEnding9);
 			}
 
 			internal string Key { get; }
@@ -535,15 +516,33 @@ public sealed class PrimeTester
 				return false;
 			}
 
-			private static ulong[] ConvertToUlongArray(uint[] source)
+			private static MemoryBuffer1D<ulong, Stride1D.Dense> CopySpanToDevice(Accelerator accelerator, ReadOnlySpan<ulong> span)
 			{
-				var result = new ulong[source.Length];
-				for (int i = 0; i < source.Length; i++)
+				var buffer = accelerator.Allocate1D<ulong>(span.Length);
+				if (!span.IsEmpty)
 				{
-					result[i] = source[i];
+					ref ulong sourceRef = ref MemoryMarshal.GetReference(span);
+					buffer.View.CopyFromCPU(ref sourceRef, span.Length);
 				}
 
-				return result;
+				return buffer;
+			}
+
+			private static MemoryBuffer1D<ulong, Stride1D.Dense> CopyUintSpanToDevice(Accelerator accelerator, ReadOnlySpan<uint> span)
+			{
+				var buffer = accelerator.Allocate1D<ulong>(span.Length);
+				if (!span.IsEmpty)
+				{
+					var converted = new ulong[span.Length];
+					for (int i = 0; i < span.Length; i++)
+					{
+						converted[i] = span[i];
+					}
+
+					buffer.View.CopyFromCPU(converted);
+				}
+
+				return buffer;
 			}
 
 			private void Dispose()

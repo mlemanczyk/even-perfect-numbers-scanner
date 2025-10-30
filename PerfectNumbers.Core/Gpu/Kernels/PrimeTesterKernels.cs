@@ -50,63 +50,25 @@ internal static class PrimeTesterKernels
         }
 
         int length = (int)primes.Length;
-        if (length <= 0)
+        for (int i = 0; i < length; i++)
         {
-            results[index] = result;
-            return;
-        }
-
-        int tileSize = Group.Dimension.X;
-        if (tileSize <= 0)
-        {
-            tileSize = 1;
-        }
-
-        var sharedPrimes = SharedMemory.Allocate<uint>(tileSize);
-        var sharedPrimeSquares = SharedMemory.Allocate<ulong>(tileSize);
-        bool completed = false;
-
-        int offset = 0;
-        while (offset < length)
-        {
-            int chunkLength = length - offset;
-            if (chunkLength > tileSize)
+            ulong primeSquare = primeSquares[i];
+            if (primeSquare > n)
             {
-                chunkLength = tileSize;
+                break;
             }
 
-            if (!completed && Group.Index.X < chunkLength)
+            ulong prime = primes[i];
+            if (prime == 0)
             {
-                int loadIndex = offset + Group.Index.X;
-                sharedPrimes[Group.Index.X] = primes[loadIndex];
-                sharedPrimeSquares[Group.Index.X] = primeSquares[loadIndex];
+                break;
             }
 
-            Group.Barrier();
-
-            if (!completed)
+            if (n % prime == 0UL)
             {
-                for (int i = 0; i < chunkLength; i++)
-                {
-                    ulong primeSquare = sharedPrimeSquares[i];
-                    if (primeSquare > n)
-                    {
-                        completed = true;
-                        break;
-                    }
-
-                    ulong prime = sharedPrimes[i];
-                    if (n % prime == 0UL)
-                    {
-                        result = 0;
-                        completed = true;
-                        break;
-                    }
-                }
+                result = 0;
+                break;
             }
-
-            Group.Barrier();
-            offset += chunkLength;
         }
 
         results[index] = result;
