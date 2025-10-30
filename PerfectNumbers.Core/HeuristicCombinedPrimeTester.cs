@@ -1,11 +1,5 @@
-using System;
 using Open.Numeric.Primes;
-using System.Collections.Generic;
-using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Threading;
-using ILGPU;
-using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
 
@@ -47,8 +41,6 @@ public sealed class HeuristicCombinedPrimeTester
 	}
 
 	private const ulong Wheel210 = 210UL;
-
-	private static readonly bool UseHeuristicGroupBTrialDivision = false; // Temporary fallback gate for Group B.
 
 	private static readonly uint[] CombinedDivisorsEnding1TwoAOneB;
 	private static readonly uint[] CombinedDivisorsEnding3TwoAOneB;
@@ -141,8 +133,6 @@ public sealed class HeuristicCombinedPrimeTester
 	}
 
 
-	internal static int HeuristicGpuDivisorBatchSize = 4_096;
-	internal static int HeuristicDivisorInterleaveBatchSize = 64;
 
 	[ThreadStatic]
 	private static HeuristicCombinedPrimeTester? _tester;
@@ -205,76 +195,84 @@ public sealed class HeuristicCombinedPrimeTester
 		return EvaluateWithOpenNumericFallback(n);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	internal static int GetBatchSize(ulong n) => n switch
+	{
+		< 1_000 => 8,
+		< 10_000 => 16,
+		< 100_000 => 32,
+		< 1_000_000 => 128,
+		_ => 256,
+	};
+
 	private static bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
-	        int batchCapacity = HeuristicGpuDivisorBatchSize;
-	        var divisorPool = ThreadStaticPools.UlongPool;
-
-	        ulong[] divisorArray = divisorPool.Rent(batchCapacity);
-
-	        var limiter = GpuPrimeWorkLimiter.Acquire();
-                var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(batchCapacity);
-                var accelerator = gpu.Accelerator;
-                var kernel = gpu.HeuristicTrialDivisionKernel;
-
-                bool compositeDetected = false;
-                int count = 0;
-
-                var inputView = gpu.Input.View;
-                var flagView = gpu.HeuristicFlag.View;
-
-                bool ProcessBatch(int length)
-                {
-                        inputView.CopyFromCPU(ref divisorArray[0], length);
-                        int compositeFlag = 0;
-                        flagView.CopyFromCPU(ref compositeFlag, 1);
-                        kernel(length, inputView, n, flagView);
-                        accelerator.Synchronize();
-                        flagView.CopyToCPU(ref compositeFlag, 1);
-
-                        return compositeFlag != 0;
-                }
-
-                ReadOnlySpan<uint> combinedDivisors = GetCombinedDivisors(nMod10);
-                ReadOnlySpan<ulong> combinedDivisorSquares = GetCombinedDivisorSquares(nMod10);
-
-                int length = combinedDivisors.Length;
-
-                for (int i = 0; i < length; i++)
-                {
-                        ulong divisorSquare = combinedDivisorSquares[i];
-                        if (divisorSquare > maxDivisorSquare)
-                        {
-                                break;
-                        }
-
-                        divisorArray[count] = combinedDivisors[i];
-                        count++;
-
-                        if (count == batchCapacity)
-                        {
-                                if (ProcessBatch(count))
-                                {
-                                        compositeDetected = true;
-                                        goto Cleanup;
-                                }
-
-                                count = 0;
-                        }
-                }
-
-                if (count > 0 && ProcessBatch(count))
-                {
-                        compositeDetected = true;
-                        goto Cleanup;
-                }
+		int batchCapacity = GetBatchSize(n);
 
 
-Cleanup:
-	        divisorPool.Return(divisorArray);
-	        gpu.Dispose();
-	        limiter.Dispose();
-	        return compositeDetected;
+		var limiter = GpuPrimeWorkLimiter.Acquire();
+		var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(batchCapacity);
+		var accelerator = gpu.Accelerator;
+		var kernel = gpu.HeuristicTrialDivisionKernel;
+
+		bool compositeDetected = false;
+		int count = 0;
+
+		var inputView = gpu.Input.View;
+		var flagView = gpu.HeuristicFlag.View;
+		ulong[] divisorArray = gpu.DivisorArray;
+
+		bool ProcessBatch(int length)
+		{
+			inputView.CopyFromCPU(ref divisorArray[0], length);
+			int compositeFlag = 0;
+			flagView.CopyFromCPU(ref compositeFlag, 1);
+			kernel(length, inputView, n, flagView);
+			accelerator.Synchronize();
+			flagView.CopyToCPU(ref compositeFlag, 1);
+
+			return compositeFlag != 0;
+		}
+
+		ReadOnlySpan<uint> combinedDivisors = GetCombinedDivisors(nMod10);
+		ReadOnlySpan<ulong> combinedDivisorSquares = GetCombinedDivisorSquares(nMod10);
+
+		int length = combinedDivisors.Length;
+
+		for (int i = 0; i < length; i++)
+		{
+			ulong divisorSquare = combinedDivisorSquares[i];
+			if (divisorSquare > maxDivisorSquare)
+			{
+				break;
+			}
+
+			divisorArray[count] = combinedDivisors[i];
+			count++;
+
+			if (count == batchCapacity)
+			{
+				if (ProcessBatch(count))
+				{
+					compositeDetected = true;
+					goto Cleanup;
+				}
+
+				count = 0;
+			}
+		}
+
+		if (count > 0 && ProcessBatch(count))
+		{
+			compositeDetected = true;
+			goto Cleanup;
+		}
+
+
+	Cleanup:
+		gpu.Dispose();
+		limiter.Dispose();
+		return compositeDetected;
 	}
 
 
@@ -282,10 +280,10 @@ Cleanup:
 	{
 		return Prime.Numbers.IsPrime(n);
 	}
-        internal static ulong ComputeHeuristicDivisorSquareLimit(ulong n)
-        {
-                return n;
-        }
+	internal static ulong ComputeHeuristicDivisorSquareLimit(ulong n)
+	{
+		return n;
+	}
 
 	private static ReadOnlySpan<uint> GetCombinedDivisors(byte nMod10)
 	{
@@ -451,7 +449,7 @@ Cleanup:
 			}
 		}
 
-		uint[] result = combined.ToArray();
+		uint[] result = [.. combined];
 		ulong[] resultSquares = new ulong[result.Length];
 		for (int i = 0; i < result.Length; i++)
 		{
@@ -488,10 +486,10 @@ Cleanup:
 	private static ReadOnlySpan<uint> GetGroupBDivisors(byte ending) => ending switch
 	{
 		1 => DivisorGenerator.SmallPrimesLastOneWithoutLastThree,
-		3 => ReadOnlySpan<uint>.Empty,
+		3 => [],
 		7 => DivisorGenerator.SmallPrimesLastSevenWithoutLastThree,
 		9 => DivisorGenerator.SmallPrimesLastNineWithoutLastThree,
-		_ => ReadOnlySpan<uint>.Empty,
+		_ => [],
 	};
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -578,50 +576,50 @@ Cleanup:
 	}
 
 	internal ref struct HeuristicDivisorEnumerator
-        {
-                private readonly ulong maxDivisorSquare;
-                private readonly ReadOnlySpan<uint> combinedDivisors;
-                private readonly ReadOnlySpan<ulong> combinedDivisorSquares;
-                private int index;
+	{
+		private readonly ulong maxDivisorSquare;
+		private readonly ReadOnlySpan<uint> combinedDivisors;
+		private readonly ReadOnlySpan<ulong> combinedDivisorSquares;
+		private int index;
 
-                public HeuristicDivisorEnumerator(ulong maxDivisorSquare, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
-                {
-                        this.maxDivisorSquare = maxDivisorSquare;
-                        _ = groupBBuffer;
-                        combinedDivisors = GetCombinedDivisors(nMod10);
-                        combinedDivisorSquares = GetCombinedDivisorSquares(nMod10);
-                        index = 0;
-                }
+		public HeuristicDivisorEnumerator(ulong maxDivisorSquare, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
+		{
+			this.maxDivisorSquare = maxDivisorSquare;
+			_ = groupBBuffer;
+			combinedDivisors = GetCombinedDivisors(nMod10);
+			combinedDivisorSquares = GetCombinedDivisorSquares(nMod10);
+			index = 0;
+		}
 
-                public bool TryGetNext(out HeuristicDivisorCandidate candidate)
-                {
-                        while (index < combinedDivisors.Length)
-                        {
-                                int currentIndex = index;
-                                ulong divisorSquare = combinedDivisorSquares[currentIndex];
-                                if (divisorSquare > maxDivisorSquare)
-                                {
-                                        index = combinedDivisors.Length;
-                                        break;
-                                }
+		public bool TryGetNext(out HeuristicDivisorCandidate candidate)
+		{
+			while (index < combinedDivisors.Length)
+			{
+				int currentIndex = index;
+				ulong divisorSquare = combinedDivisorSquares[currentIndex];
+				if (divisorSquare > maxDivisorSquare)
+				{
+					index = combinedDivisors.Length;
+					break;
+				}
 
-                                uint entry = combinedDivisors[currentIndex];
-                                index = currentIndex + 1;
+				uint entry = combinedDivisors[currentIndex];
+				index = currentIndex + 1;
 
-                                HeuristicDivisorGroup group = ResolveGroup(entry);
-                                ulong value = entry;
-                                byte ending = (byte)(value % 10UL);
-                                ushort residue = (ushort)(value % Wheel210);
-                                candidate = new HeuristicDivisorCandidate(value, group, ending, 0, residue);
-                                return true;
-                        }
+				HeuristicDivisorGroup group = ResolveGroup(entry);
+				ulong value = entry;
+				byte ending = (byte)(value % 10UL);
+				ushort residue = (ushort)(value % Wheel210);
+				candidate = new HeuristicDivisorCandidate(value, group, ending, 0, residue);
+				return true;
+			}
 
-                        candidate = default;
-                        return false;
-                }
-        }
+			candidate = default;
+			return false;
+		}
+	}
 
-        internal ref struct MersenneHeuristicDivisorEnumerator
+	internal ref struct MersenneHeuristicDivisorEnumerator
 	{
 		private readonly GpuUInt128 step;
 		private readonly GpuUInt128 limit;
@@ -690,11 +688,11 @@ Cleanup:
 			residueStepper.Advance();
 		}
 
-		public ulong ProcessedCount => processedCount;
+		public readonly ulong ProcessedCount => processedCount;
 
-		public ulong LastDivisor => lastDivisor;
+		public readonly ulong LastDivisor => lastDivisor;
 
-		public bool Exhausted => !active;
+		public readonly bool Exhausted => !active;
 
 		private static HeuristicDivisorCandidate CreateCandidate(ulong value)
 		{

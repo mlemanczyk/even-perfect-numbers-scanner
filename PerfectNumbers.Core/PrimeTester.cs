@@ -273,6 +273,7 @@ public sealed class PrimeTester
 			public MemoryBuffer1D<byte, Stride1D.Dense> Output;
 			public MemoryBuffer1D<int, Stride1D.Dense> HeuristicFlag;
 			public int BufferCapacity;
+	        public ulong[] DivisorArray;
 
 			internal PrimeTesterGpuContextLease(int minBufferCapacity)
 			{
@@ -321,16 +322,18 @@ public sealed class PrimeTester
 				DevicePrimesPow2LastNine = Accelerator.Allocate1D<ulong>(primesPow2LastNine.Length);
 				DevicePrimesPow2LastNine.View.CopyFromCPU(primesPow2LastNine);
 
-				BufferCapacity = minBufferCapacity < 1 ? 1 : minBufferCapacity;
-				Input = Accelerator.Allocate1D<ulong>(BufferCapacity);
-				Output = Accelerator.Allocate1D<byte>(BufferCapacity);
-				HeuristicFlag = Accelerator.Allocate1D<int>(BufferCapacity);
+				BufferCapacity = minBufferCapacity;
+				Input = Accelerator.Allocate1D<ulong>(minBufferCapacity);
+				Output = Accelerator.Allocate1D<byte>(minBufferCapacity);
+				HeuristicFlag = Accelerator.Allocate1D<int>(minBufferCapacity);
+				DivisorArray = ThreadStaticPools.UlongPool.Rent(minBufferCapacity);
+
 				_returned = false;
 			}
 
 			public void EnsureCapacity(int minCapacity)
 			{
-				int required = minCapacity < 1 ? 1 : minCapacity;
+				int required = minCapacity;
 				if (required <= BufferCapacity)
 				{
 					return;
@@ -339,9 +342,11 @@ public sealed class PrimeTester
 				Input.Dispose();
 				Output.Dispose();
 				HeuristicFlag.Dispose();
+				ThreadStaticPools.UlongPool.Return(DivisorArray);
 				Input = Accelerator.Allocate1D<ulong>(required);
 				Output = Accelerator.Allocate1D<byte>(required);
 				HeuristicFlag = Accelerator.Allocate1D<int>(required);
+				DivisorArray = ThreadStaticPools.UlongPool.Rent(required);
 				BufferCapacity = required;
 			}
 
