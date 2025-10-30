@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Algorithms;
+using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -49,38 +50,99 @@ internal static class PrimeTesterKernels
         }
 
         int length = (int)primes.Length;
-        for (int i = 0; i < length; i++)
+        if (length <= 0)
         {
-            ulong prime = primes[i];
-            ulong primeSquare = primeSquares[i];
-            if (primeSquare > n)
+            results[index] = result;
+            return;
+        }
+
+        int tileSize = Group.Dimension.X;
+        if (tileSize <= 0)
+        {
+            tileSize = 1;
+        }
+
+        var sharedPrimes = SharedMemory.Allocate<uint>(tileSize);
+        var sharedPrimeSquares = SharedMemory.Allocate<ulong>(tileSize);
+        bool completed = false;
+
+        int offset = 0;
+        while (offset < length)
+        {
+            int chunkLength = length - offset;
+            if (chunkLength > tileSize)
             {
-                break;
+                chunkLength = tileSize;
             }
 
-            if (n % prime == 0UL)
+            if (!completed && Group.Index.X < chunkLength)
             {
-                result = 0;
-                break;
+                int loadIndex = offset + Group.Index.X;
+                sharedPrimes[Group.Index.X] = primes[loadIndex];
+                sharedPrimeSquares[Group.Index.X] = primeSquares[loadIndex];
             }
+
+            Group.Barrier();
+
+            if (!completed)
+            {
+                for (int i = 0; i < chunkLength; i++)
+                {
+                    ulong primeSquare = sharedPrimeSquares[i];
+                    if (primeSquare > n)
+                    {
+                        completed = true;
+                        break;
+                    }
+
+                    ulong prime = sharedPrimes[i];
+                    if (n % prime == 0UL)
+                    {
+                        result = 0;
+                        completed = true;
+                        break;
+                    }
+                }
+            }
+
+            Group.Barrier();
+            offset += chunkLength;
         }
 
         results[index] = result;
     }
 
-    public static void HeuristicTrialDivisionKernel(Index1D index, ArrayView<ulong> divisors, ulong n, ArrayView<int> resultFlag)
+    public static void HeuristicTrialDivisionKernel(
+        Index1D index,
+        ArrayView1D<ulong, Stride1D.Dense> divisors,
+        ArrayView1D<ulong, Stride1D.Dense> divisorSquares,
+        ulong n,
+        ulong maxDivisorSquare,
+        ArrayView<int> resultFlag)
     {
-		ulong divisor = divisors[index];
-		if (divisor <= 1UL)
-		{
-			return;
-		}
+        int idx = index;
+        int length = (int)divisors.Length;
+        if ((uint)idx >= (uint)length)
+        {
+            return;
+        }
 
-		ulong residue = n % divisor;
-		if (residue == 0UL)
-		{
-			resultFlag[0] = 1;
-		}
+        ulong divisorSquare = divisorSquares[idx];
+        if (divisorSquare <= 1UL || divisorSquare > maxDivisorSquare)
+        {
+            return;
+        }
+
+        ulong divisor = divisors[idx];
+        if (divisor <= 1UL)
+        {
+            return;
+        }
+
+        if (n % divisor == 0UL)
+        {
+            resultFlag[0] = 1;
+        }
     }
 
     public static void SharesFactorKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<byte> results)
