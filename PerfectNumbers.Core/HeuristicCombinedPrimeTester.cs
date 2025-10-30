@@ -1,8 +1,7 @@
 using Open.Numeric.Primes;
 using System;
-using System.Runtime.CompilerServices;
-using ILGPU;
 using ILGPU.Runtime;
+using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
@@ -230,45 +229,44 @@ public sealed class HeuristicCombinedPrimeTester
                 var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(1);
                 var accelerator = gpu.Accelerator;
                 var kernel = gpu.HeuristicTrialDivisionKernel;
-                var flagView = gpu.HeuristicFlag.View;
+                var flagView1D = gpu.HeuristicFlag.View;
+                var flagView = flagView1D.AsContiguous();
 
-                ReadOnlySpan<ulong> combinedSquares = GetCombinedDivisorSquares(nMod10);
-                int available = CountDivisorsWithinLimit(combinedSquares, maxDivisorSquare, combinedSquares.Length);
+                var tables = new HeuristicGpuDivisorTables(
+                        gpu.HeuristicCombinedDivisorsEnding1.View,
+                        gpu.HeuristicCombinedDivisorSquaresEnding1.View,
+                        gpu.HeuristicCombinedDivisorsEnding3.View,
+                        gpu.HeuristicCombinedDivisorSquaresEnding3.View,
+                        gpu.HeuristicCombinedDivisorsEnding7.View,
+                        gpu.HeuristicCombinedDivisorSquaresEnding7.View,
+                        gpu.HeuristicCombinedDivisorsEnding9.View,
+                        gpu.HeuristicCombinedDivisorSquaresEnding9.View,
+                        gpu.HeuristicGroupADivisors.View,
+                        gpu.HeuristicGroupADivisorSquares.View,
+                        gpu.HeuristicGroupBDivisorsEnding1.View,
+                        gpu.HeuristicGroupBDivisorSquaresEnding1.View,
+                        gpu.HeuristicGroupBDivisorsEnding7.View,
+                        gpu.HeuristicGroupBDivisorSquaresEnding7.View,
+                        gpu.HeuristicGroupBDivisorsEnding9.View,
+                        gpu.HeuristicGroupBDivisorSquaresEnding9.View);
+
                 bool compositeDetected = false;
+                int divisorLength = GetCombinedDivisors(nMod10).Length;
 
-                if (available > 0)
+                if (divisorLength > 0)
                 {
-                        MemoryBuffer1D<ulong, Stride1D.Dense> divisorsBuffer;
-                        MemoryBuffer1D<ulong, Stride1D.Dense> squaresBuffer;
-                        switch (nMod10)
-                        {
-                                case 1:
-                                        divisorsBuffer = gpu.HeuristicCombinedDivisorsEnding1;
-                                        squaresBuffer = gpu.HeuristicCombinedDivisorSquaresEnding1;
-                                        break;
-                                case 3:
-                                        divisorsBuffer = gpu.HeuristicCombinedDivisorsEnding3;
-                                        squaresBuffer = gpu.HeuristicCombinedDivisorSquaresEnding3;
-                                        break;
-                                case 7:
-                                        divisorsBuffer = gpu.HeuristicCombinedDivisorsEnding7;
-                                        squaresBuffer = gpu.HeuristicCombinedDivisorSquaresEnding7;
-                                        break;
-                                case 9:
-                                        divisorsBuffer = gpu.HeuristicCombinedDivisorsEnding9;
-                                        squaresBuffer = gpu.HeuristicCombinedDivisorSquaresEnding9;
-                                        break;
-                                default:
-                                        throw new InvalidOperationException($"Unsupported combined divisor selector for digit {nMod10}.");
-                        }
-
-                        var divisorsView = divisorsBuffer.View.SubView(0, available);
-                        var squaresView = squaresBuffer.View.SubView(0, available);
                         int compositeFlag = 0;
-                        flagView.CopyFromCPU(ref compositeFlag, 1);
-                        kernel(available, divisorsView, squaresView, n, maxDivisorSquare, flagView);
+                        flagView1D.CopyFromCPU(ref compositeFlag, 1);
+                        kernel(
+                                divisorLength,
+                                tables,
+                                flagView,
+                                n,
+                                maxDivisorSquare,
+                                HeuristicGpuDivisorTableKind.Combined,
+                                nMod10);
                         accelerator.Synchronize();
-                        flagView.CopyToCPU(ref compositeFlag, 1);
+                        flagView1D.CopyToCPU(ref compositeFlag, 1);
                         compositeDetected = compositeFlag != 0;
                 }
 
@@ -277,26 +275,9 @@ public sealed class HeuristicCombinedPrimeTester
                 return compositeDetected;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int CountDivisorsWithinLimit(ReadOnlySpan<ulong> squares, ulong maxDivisorSquare, int maxCount)
-        {
-                int length = squares.Length;
-                if (length > maxCount)
-                {
-                        length = maxCount;
-                }
-
-                int count = 0;
-                while (count < length && squares[count] <= maxDivisorSquare)
-                {
-                        count++;
-                }
-
-                return count;
-        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                private static bool EvaluateWithOpenNumericFallback(ulong n)
+        private static bool EvaluateWithOpenNumericFallback(ulong n)
 	{
 		return Prime.Numbers.IsPrime(n);
 	}

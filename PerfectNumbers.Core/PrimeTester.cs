@@ -1,3 +1,4 @@
+using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -295,7 +296,7 @@ public sealed class PrimeTester
 			internal readonly Context AcceleratorContext;
 			public readonly Accelerator Accelerator;
 			public readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> Kernel;
-			public readonly Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ArrayView<int>> HeuristicTrialDivisionKernel;
+			public readonly Action<Index1D, HeuristicGpuDivisorTables, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, byte> HeuristicTrialDivisionKernel;
 			public MemoryBuffer1D<ulong, Stride1D.Dense> Input = null!;
 			public MemoryBuffer1D<byte, Stride1D.Dense> Output = null!;
 			public MemoryBuffer1D<int, Stride1D.Dense> HeuristicFlag = null!;
@@ -333,7 +334,7 @@ public sealed class PrimeTester
 				AcceleratorContext = Context.CreateDefault();
 				Accelerator = AcceleratorContext.GetPreferredDevice(false).CreateAccelerator(AcceleratorContext);
 				Kernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
-				HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ArrayView<int>>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
+				HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, HeuristicGpuDivisorTables, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, byte>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
 				_sharedTables = RentSharedTables(Accelerator);
 
