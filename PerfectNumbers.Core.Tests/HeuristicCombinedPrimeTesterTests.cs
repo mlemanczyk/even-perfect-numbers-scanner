@@ -62,28 +62,28 @@ public class HeuristicCombinedPrimeTesterTests
     [InlineData((byte)9)]
     public void One_a_one_b_pattern_interleaves_group_a_and_group_b_values(byte lastDigit)
     {
-        ReadOnlySpan<uint> combined = HeuristicCombinedPrimeTester.GetCombinedDivisors(
+        ReadOnlySpan<ulong> combined = HeuristicCombinedPrimeTester.GetCombinedDivisors(
             lastDigit,
             HeuristicCombinedPrimeTester.CombinedDivisorPattern.OneAOneB);
 
         combined.Length.Should().BeGreaterThan(18);
-        combined[0].Should().Be(3U);
-        combined[1].Should().Be(7U);
-        combined[2].Should().Be(11U);
-        combined[3].Should().Be(13U);
+        combined[0].Should().Be(3UL);
+        combined[1].Should().Be(7UL);
+        combined[2].Should().Be(11UL);
+        combined[3].Should().Be(13UL);
 
         int index = 4;
         const int segmentsToCheck = 6;
 
         for (int segment = 0; segment < segmentsToCheck; segment++)
         {
-            uint groupAValue = combined[index++];
-            groupAValue.Should().BeGreaterThan(13U);
-            (groupAValue % 10U).Should().Be(3U);
+            ulong groupAValue = combined[index++];
+            groupAValue.Should().BeGreaterThan(13UL);
+            (groupAValue % 10UL).Should().Be(3UL);
 
-            uint groupBValue = combined[index++];
-            groupBValue.Should().BeGreaterThan(13U);
-            (groupBValue % 10U).Should().NotBe(3U);
+            ulong groupBValue = combined[index++];
+            groupBValue.Should().BeGreaterThan(13UL);
+            (groupBValue % 10UL).Should().NotBe(3UL);
         }
     }
 
@@ -94,15 +94,15 @@ public class HeuristicCombinedPrimeTesterTests
     [InlineData((byte)9)]
     public void Two_a_one_b_pattern_interleaves_two_group_a_values_before_group_b(byte lastDigit)
     {
-        ReadOnlySpan<uint> combined = HeuristicCombinedPrimeTester.GetCombinedDivisors(
+        ReadOnlySpan<ulong> combined = HeuristicCombinedPrimeTester.GetCombinedDivisors(
             lastDigit,
             HeuristicCombinedPrimeTester.CombinedDivisorPattern.TwoAOneB);
 
         combined.Length.Should().BeGreaterThan(20);
-        combined[0].Should().Be(3U);
-        combined[1].Should().Be(7U);
-        combined[2].Should().Be(11U);
-        combined[3].Should().Be(13U);
+        combined[0].Should().Be(3UL);
+        combined[1].Should().Be(7UL);
+        combined[2].Should().Be(11UL);
+        combined[3].Should().Be(13UL);
 
         int index = 4;
         const int segmentsToCheck = 5;
@@ -111,14 +111,14 @@ public class HeuristicCombinedPrimeTesterTests
         {
             for (int i = 0; i < 2; i++)
             {
-                uint groupAValue = combined[index++];
-                groupAValue.Should().BeGreaterThan(13U);
-                (groupAValue % 10U).Should().Be(3U);
+                ulong groupAValue = combined[index++];
+                groupAValue.Should().BeGreaterThan(13UL);
+                (groupAValue % 10UL).Should().Be(3UL);
             }
 
-            uint groupBValue = combined[index++];
-            groupBValue.Should().BeGreaterThan(13U);
-            (groupBValue % 10U).Should().NotBe(3U);
+            ulong groupBValue = combined[index++];
+            groupBValue.Should().BeGreaterThan(13UL);
+            (groupBValue % 10UL).Should().NotBe(3UL);
         }
     }
 
@@ -129,15 +129,15 @@ public class HeuristicCombinedPrimeTesterTests
     [InlineData((byte)9)]
     public void Three_a_two_b_pattern_interleaves_three_group_a_values_before_two_group_b_values(byte lastDigit)
     {
-        ReadOnlySpan<uint> combined = HeuristicCombinedPrimeTester.GetCombinedDivisors(
+        ReadOnlySpan<ulong> combined = HeuristicCombinedPrimeTester.GetCombinedDivisors(
             lastDigit,
             HeuristicCombinedPrimeTester.CombinedDivisorPattern.ThreeATwoB);
 
         combined.Length.Should().BeGreaterThan(28);
-        combined[0].Should().Be(3U);
-        combined[1].Should().Be(7U);
-        combined[2].Should().Be(11U);
-        combined[3].Should().Be(13U);
+        combined[0].Should().Be(3UL);
+        combined[1].Should().Be(7UL);
+        combined[2].Should().Be(11UL);
+        combined[3].Should().Be(13UL);
 
         int index = 4;
         const int segmentsToCheck = 4;
@@ -146,16 +146,16 @@ public class HeuristicCombinedPrimeTesterTests
         {
             for (int i = 0; i < 3; i++)
             {
-                uint groupAValue = combined[index++];
-                groupAValue.Should().BeGreaterThan(13U);
-                (groupAValue % 10U).Should().Be(3U);
+                ulong groupAValue = combined[index++];
+                groupAValue.Should().BeGreaterThan(13UL);
+                (groupAValue % 10UL).Should().Be(3UL);
             }
 
             for (int i = 0; i < 2; i++)
             {
-                uint groupBValue = combined[index++];
-                groupBValue.Should().BeGreaterThan(13U);
-                (groupBValue % 10U).Should().NotBe(3U);
+                ulong groupBValue = combined[index++];
+                groupBValue.Should().BeGreaterThan(13UL);
+                (groupBValue % 10UL).Should().NotBe(3UL);
             }
         }
     }
@@ -167,15 +167,15 @@ public class HeuristicCombinedPrimeTesterTests
     [InlineData((byte)9)]
     public void Three_a_one_b_pattern_interleaves_three_group_a_values_before_group_b(byte lastDigit)
     {
-        ReadOnlySpan<uint> combined = HeuristicCombinedPrimeTester.GetCombinedDivisors(
+        ReadOnlySpan<ulong> combined = HeuristicCombinedPrimeTester.GetCombinedDivisors(
             lastDigit,
             HeuristicCombinedPrimeTester.CombinedDivisorPattern.ThreeAOneB);
 
         combined.Length.Should().BeGreaterThan(24);
-        combined[0].Should().Be(3U);
-        combined[1].Should().Be(7U);
-        combined[2].Should().Be(11U);
-        combined[3].Should().Be(13U);
+        combined[0].Should().Be(3UL);
+        combined[1].Should().Be(7UL);
+        combined[2].Should().Be(11UL);
+        combined[3].Should().Be(13UL);
 
         int index = 4;
         const int segmentsToCheck = 4;
@@ -184,14 +184,14 @@ public class HeuristicCombinedPrimeTesterTests
         {
             for (int i = 0; i < 3; i++)
             {
-                uint groupAValue = combined[index++];
-                groupAValue.Should().BeGreaterThan(13U);
-                (groupAValue % 10U).Should().Be(3U);
+                ulong groupAValue = combined[index++];
+                groupAValue.Should().BeGreaterThan(13UL);
+                (groupAValue % 10UL).Should().Be(3UL);
             }
 
-            uint groupBValue = combined[index++];
-            groupBValue.Should().BeGreaterThan(13U);
-            (groupBValue % 10U).Should().NotBe(3U);
+            ulong groupBValue = combined[index++];
+            groupBValue.Should().BeGreaterThan(13UL);
+            (groupBValue % 10UL).Should().NotBe(3UL);
         }
     }
 
