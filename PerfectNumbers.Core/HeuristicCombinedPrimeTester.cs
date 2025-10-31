@@ -235,21 +235,18 @@ public sealed class HeuristicCombinedPrimeTester
                 bool compositeDetected = false;
                 int divisorLength = GetCombinedDivisors(nMod10).Length;
 
-                if (divisorLength > 0)
-                {
-                        int compositeFlag = 0;
-                        flagView1D.CopyFromCPU(ref compositeFlag, 1);
-                        kernel(
-                                divisorLength,
-                                flagView,
-                                n,
-                                maxDivisorSquare,
-                                HeuristicGpuDivisorTableKind.Combined,
-                                gpu.HeuristicGpuTables);
-                        accelerator.Synchronize();
-                        flagView1D.CopyToCPU(ref compositeFlag, 1);
-                        compositeDetected = compositeFlag != 0;
-                }
+                int compositeFlag = 0;
+                flagView1D.CopyFromCPU(ref compositeFlag, 1);
+                kernel(
+                        divisorLength,
+                        flagView,
+                        n,
+                        maxDivisorSquare,
+                        HeuristicGpuDivisorTableKind.Combined,
+                        gpu.HeuristicGpuTables);
+                accelerator.Synchronize();
+                flagView1D.CopyToCPU(ref compositeFlag, 1);
+                compositeDetected = compositeFlag != 0;
 
                 gpu.Dispose();
                 limiter.Dispose();

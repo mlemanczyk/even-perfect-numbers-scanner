@@ -7,7 +7,6 @@ namespace PerfectNumbers.Core.Gpu;
 
 public static class GpuContextPool
 {
-        private static readonly bool PoolingEnabled = true;
         // The pool intentionally skips pre-loading ProcessEightBitWindows kernels so accelerator initialization
         // stays stable; GpuKernelPool JIT-compiles them on first use alongside the small-cycle uploads.
         // Default device preference for generic GPU kernels (prime scans, NTT, etc.)
@@ -48,7 +47,6 @@ public static class GpuContextPool
 
 	private static readonly ConcurrentQueue<PooledContext> CpuPool = new();
 	private static readonly ConcurrentQueue<PooledContext> GpuPool = new();
-        private static readonly object WarmUpLock = new();
         private static int WarmedGpuContextCount;
 
 	public static GpuContextLease Rent()
@@ -59,17 +57,14 @@ public static class GpuContextPool
 	// Allows callers to choose CPU/GPU per use-case, decoupled from ForceCpu.
 	public static GpuContextLease RentPreferred(bool preferCpu)
 	{
-		if (PoolingEnabled)
+		if (preferCpu && CpuPool.TryDequeue(out var cpu))
 		{
-			if (preferCpu && CpuPool.TryDequeue(out var cpu))
-			{
-				return new GpuContextLease(cpu);
-			}
+			return new GpuContextLease(cpu);
+		}
 
-			if (!preferCpu && GpuPool.TryDequeue(out var gpu))
-			{
-				return new GpuContextLease(gpu);
-			}
+		if (!preferCpu && GpuPool.TryDequeue(out var gpu))
+		{
+			return new GpuContextLease(gpu);
 		}
 
 		// Create a new accelerator when the pool does not have one available.
@@ -78,53 +73,40 @@ public static class GpuContextPool
 
         public static void WarmUpPool(int threadCount)
         {
-                if (!PoolingEnabled || ForceCpu)
+                if (ForceCpu)
                 {
                         return;
                 }
 
-                if (threadCount <= 0)
-                {
-                        return;
-                }
-
-                int target = threadCount / 4;
+                int target = threadCount >> 2;
                 if (target == 0)
                 {
-                        target = 1;
+                        target = threadCount;
                 }
 
-                lock (WarmUpLock)
+                if (target <= WarmedGpuContextCount)
                 {
-                        if (target <= WarmedGpuContextCount)
-                        {
-                                return;
-                        }
-
-                        int toCreate = target - WarmedGpuContextCount;
-                        var contexts = new PooledContext[toCreate];
-                        for (int i = 0; i < toCreate; i++)
-                        {
-                                contexts[i] = new PooledContext(preferCpu: false);
-                        }
-
-                        for (int i = 0; i < toCreate; i++)
-                        {
-                                GpuPool.Enqueue(contexts[i]);
-                        }
-
-                        WarmedGpuContextCount = target;
+                        return;
                 }
+
+                int toCreate = target - WarmedGpuContextCount;
+                var contexts = new PooledContext[toCreate];
+                for (int i = 0; i < toCreate; i++)
+                {
+                        contexts[i] = new PooledContext(preferCpu: false);
+                }
+
+                for (int i = 0; i < toCreate; i++)
+                {
+                        GpuPool.Enqueue(contexts[i]);
+                }
+
+                WarmedGpuContextCount = target;
         }
 
 
 	public static void DisposeAll()
 	{
-		if (!PoolingEnabled)
-		{
-			return;
-		}
-
 		while (CpuPool.TryDequeue(out var cpu))
 		{
 			cpu.Dispose();
@@ -141,24 +123,16 @@ public static class GpuContextPool
 
 	private static void Return(PooledContext ctx)
 	{
-		if (PoolingEnabled)
+		ctx.Accelerator.Synchronize();
+		if (ctx.IsCpu)
 		{
-			ctx.Accelerator.Synchronize();
-			if (ctx.IsCpu)
-			{
-				CpuPool.Enqueue(ctx);
-			}
-			else
-			{
-				GpuPool.Enqueue(ctx);
-			}
+			CpuPool.Enqueue(ctx);
 		}
-
-                else
-                {
-                        ctx.Dispose();
-                }
-        }
+		else
+		{
+			GpuPool.Enqueue(ctx);
+		}
+	}
 
     public struct GpuContextLease
     {

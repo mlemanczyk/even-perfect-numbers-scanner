@@ -68,11 +68,6 @@ internal static class PrimeTesterKernels
             }
 
             ulong prime = primes[i];
-            if (prime == 0)
-            {
-                break;
-            }
-
             if (n % prime == 0UL)
             {
                 result = 0;
@@ -94,32 +89,23 @@ internal static class PrimeTesterKernels
         byte nMod10 = (byte)(n % 10UL);
         ArrayView1D<ulong, Stride1D.Dense> divisors = tables.SelectDivisors(tableKind, nMod10);
         ArrayView1D<ulong, Stride1D.Dense> divisorSquares = tables.SelectDivisorSquares(tableKind, nMod10);
-        if (divisors.Length == 0 || divisorSquares.Length == 0)
-        {
-            return;
-        }
 
-        int divisorLength = (int)divisors.Length;
-        int squareLength = (int)divisorSquares.Length;
+        int divisorLength = (int)divisorSquares.Length;
         int threadIndex = index;
-        if (threadIndex >= divisorLength || threadIndex >= squareLength)
+        if (threadIndex >= divisorLength)
         {
             return;
         }
 
         ulong divisorSquare = divisorSquares[threadIndex];
-        if (divisorSquare == 0UL || divisorSquare > maxDivisorSquare)
+        if (divisorSquare > maxDivisorSquare)
         {
             return;
         }
 
         ulong divisor = divisors[threadIndex];
+        divisor = n % divisor;
         if (divisor == 0UL)
-        {
-            return;
-        }
-
-        if (n % divisor == 0UL)
         {
             resultFlag[0] = 1;
         }

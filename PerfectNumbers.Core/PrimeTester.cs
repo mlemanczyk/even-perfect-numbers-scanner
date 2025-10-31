@@ -152,15 +152,10 @@ public sealed class PrimeTester
 			return;
 		}
 
-		if (threadCount <= 0)
-		{
-			return;
-		}
-
-		int target = threadCount / 4;
+		int target = threadCount >> 2;
 		if (target == 0)
 		{
-			target = 1;
+			target = threadCount;
 		}
 
 		lock (GpuWarmUpLock)
@@ -267,12 +262,14 @@ public sealed class PrimeTester
 
 		private static void ReleaseSharedTables(SharedHeuristicGpuTables tables)
 		{
+			if (tables is null)
+			{
+				return;
+			}
+
 			lock (SharedTablesLock)
 			{
-				if (tables.Release())
-				{
-					SharedTables.Remove(tables.Key);
-				}
+				tables.Release();
 			}
 		}
 
@@ -302,6 +299,16 @@ public sealed class PrimeTester
 			while (Pool.TryDequeue(out var lease))
 			{
 				lease.DisposeResources();
+			}
+
+			lock (SharedTablesLock)
+			{
+				foreach (var entry in SharedTables.Values)
+				{
+					entry.Dispose();
+				}
+
+				SharedTables.Clear();
 			}
 		}
 
@@ -572,16 +579,12 @@ public sealed class PrimeTester
 				_referenceCount++;
 			}
 
-			internal bool Release()
+			internal void Release()
 			{
-				_referenceCount--;
-				if (_referenceCount == 0)
+				if (_referenceCount > 0)
 				{
-					Dispose();
-					return true;
+					_referenceCount--;
 				}
-
-				return false;
 			}
 
 			private static MemoryBuffer1D<ulong, Stride1D.Dense> CopySpanToDevice(Accelerator accelerator, ReadOnlySpan<ulong> span)
@@ -613,7 +616,7 @@ public sealed class PrimeTester
 				return buffer;
 			}
 
-			private void Dispose()
+			internal void Dispose()
 			{
 				DevicePrimesDefault.Dispose();
 				DevicePrimesLastOne.Dispose();
