@@ -92,20 +92,14 @@ internal static class PrimeTesterKernels
 
         int divisorLength = (int)divisorSquares.Length;
         int threadIndex = index;
-        if (threadIndex >= divisorLength)
-        {
-            return;
-        }
+        bool skipThread = threadIndex >= divisorLength;
+        ulong divisorSquare = skipThread ? 0UL : divisorSquares[threadIndex];
+        skipThread = skipThread | (divisorSquare > maxDivisorSquare);
 
-        ulong divisorSquare = divisorSquares[threadIndex];
-        if (divisorSquare > maxDivisorSquare)
-        {
-            return;
-        }
-
-        ulong divisor = divisors[threadIndex];
-        divisor = n % divisor;
-        if (divisor == 0UL)
+        ulong divisor = skipThread ? 1UL : divisors[threadIndex];
+        ulong remainder = skipThread ? 1UL : n % divisor;
+        bool hasFactor = !skipThread & (remainder == 0UL);
+        if (hasFactor)
         {
             resultFlag[0] = 1;
         }
