@@ -24,6 +24,10 @@ public static class GpuContextPool
 			Context = Context.CreateDefault();
 			Accelerator = Context.GetPreferredDevice(preferCpu).CreateAccelerator(Context);
 			IsCpu = Accelerator.AcceleratorType == AcceleratorType.CPU;
+			if (!IsCpu)
+			{
+				DivisorGeneratorGpuCache.WarmUpByDivisorTables(Accelerator);
+			}
 			// NOTE: Avoid loading/compiling any kernel here to prevent implicit
 			// CL stream/queue creation during accelerator construction.
 			// Some OpenCL drivers are fragile when a queue is created immediately
@@ -38,6 +42,7 @@ public static class GpuContextPool
 			// Release PrimeTester GPU state for this accelerator (kernel/device primes)
 			// Clear any per-accelerator cached resources to avoid releasing
 			// after the accelerator is destroyed.
+			DivisorGeneratorGpuCache.Clear(Accelerator);
 			PrimeTester.ClearGpuCaches(Accelerator);
 
 			Accelerator.Dispose();
@@ -117,6 +122,7 @@ public static class GpuContextPool
 			gpu.Dispose();
 		}
 
+		DivisorGeneratorGpuCache.DisposeAll();
 		PrimeTester.DisposeGpuContexts();
                 WarmedGpuContextCount = 0;
 	}
