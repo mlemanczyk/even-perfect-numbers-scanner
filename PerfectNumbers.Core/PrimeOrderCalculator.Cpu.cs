@@ -1289,11 +1289,7 @@ internal static partial class PrimeOrderCalculator
 		if (primeSlotArray is not null)
 		{
 			ThreadStaticPools.UlongPool.Return(primeSlotArray, clearArray: false);
-		}
-
-		if (exponentSlotArray is not null)
-		{
-			ThreadStaticPools.IntPool.Return(exponentSlotArray, clearArray: false);
+			ThreadStaticPools.IntPool.Return(exponentSlotArray!, clearArray: false);
 		}
 
 		if (compositeStack is not null)
@@ -1340,12 +1336,20 @@ internal static partial class PrimeOrderCalculator
 			}
 
 			ulong primeSquare = squares[i];
+			// primeSquare will never == 0 in production code
+			// if (primeSquare != 0 && primeSquare > remainingLocal)
 			if (primeSquare > remainingLocal)
 			{
 				break;
 			}
 
 			ulong primeValue = primeCandidate;
+			// primeCandidate will never equal 0 in production code
+			// if (primeCandidate == 0UL)
+			// {
+			// 	continue;
+			// }
+
 			if ((remainingLocal % primeValue) != 0UL)
 			{
 				continue;
@@ -1626,11 +1630,7 @@ internal static partial class PrimeOrderCalculator
 		if (primeArray is not null)
 		{
 			ThreadStaticPools.UlongPool.Return(primeArray, clearArray: false);
-		}
-
-		if (exponentArray is not null)
-		{
-			ThreadStaticPools.IntPool.Return(exponentArray, clearArray: false);
+			ThreadStaticPools.IntPool.Return(exponentArray!, clearArray: false);
 		}
 
 		primeArray = newPrimeArray;
