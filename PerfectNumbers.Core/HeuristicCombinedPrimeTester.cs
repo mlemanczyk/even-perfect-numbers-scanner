@@ -232,24 +232,6 @@ public sealed class HeuristicCombinedPrimeTester
                 var flagView1D = gpu.HeuristicFlag.View;
                 var flagView = flagView1D.AsContiguous();
 
-                var tables = new HeuristicGpuDivisorTables(
-                        gpu.HeuristicCombinedDivisorsEnding1.View,
-                        gpu.HeuristicCombinedDivisorSquaresEnding1.View,
-                        gpu.HeuristicCombinedDivisorsEnding3.View,
-                        gpu.HeuristicCombinedDivisorSquaresEnding3.View,
-                        gpu.HeuristicCombinedDivisorsEnding7.View,
-                        gpu.HeuristicCombinedDivisorSquaresEnding7.View,
-                        gpu.HeuristicCombinedDivisorsEnding9.View,
-                        gpu.HeuristicCombinedDivisorSquaresEnding9.View,
-                        gpu.HeuristicGroupADivisors.View,
-                        gpu.HeuristicGroupADivisorSquares.View,
-                        gpu.HeuristicGroupBDivisorsEnding1.View,
-                        gpu.HeuristicGroupBDivisorSquaresEnding1.View,
-                        gpu.HeuristicGroupBDivisorsEnding7.View,
-                        gpu.HeuristicGroupBDivisorSquaresEnding7.View,
-                        gpu.HeuristicGroupBDivisorsEnding9.View,
-                        gpu.HeuristicGroupBDivisorSquaresEnding9.View);
-
                 bool compositeDetected = false;
                 int divisorLength = GetCombinedDivisors(nMod10).Length;
 
@@ -259,12 +241,19 @@ public sealed class HeuristicCombinedPrimeTester
                         flagView1D.CopyFromCPU(ref compositeFlag, 1);
                         kernel(
                                 divisorLength,
-                                tables,
                                 flagView,
                                 n,
                                 maxDivisorSquare,
                                 HeuristicGpuDivisorTableKind.Combined,
-                                nMod10);
+                                nMod10,
+                                gpu.HeuristicCombinedDivisorsEnding1.View,
+                                gpu.HeuristicCombinedDivisorsEnding3.View,
+                                gpu.HeuristicCombinedDivisorsEnding7.View,
+                                gpu.HeuristicCombinedDivisorsEnding9.View,
+                                gpu.HeuristicGroupADivisors.View,
+                                gpu.HeuristicGroupBDivisorsEnding1.View,
+                                gpu.HeuristicGroupBDivisorsEnding7.View,
+                                gpu.HeuristicGroupBDivisorsEnding9.View);
                         accelerator.Synchronize();
                         flagView1D.CopyToCPU(ref compositeFlag, 1);
                         compositeDetected = compositeFlag != 0;

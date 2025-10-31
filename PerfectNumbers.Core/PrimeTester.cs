@@ -290,13 +290,16 @@ public sealed class PrimeTester
 
 		internal sealed class PrimeTesterGpuContextLease : IDisposable
 		{
+
 			private bool _returned;
 			private readonly SharedHeuristicGpuTables _sharedTables;
 
 			internal readonly Context AcceleratorContext;
 			public readonly Accelerator Accelerator;
 			public readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> Kernel;
-			public readonly Action<Index1D, HeuristicGpuDivisorTables, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, byte> HeuristicTrialDivisionKernel;
+                                                public readonly Action<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, byte,
+            ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>,
+            ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> HeuristicTrialDivisionKernel;
 			public MemoryBuffer1D<ulong, Stride1D.Dense> Input = null!;
 			public MemoryBuffer1D<byte, Stride1D.Dense> Output = null!;
 			public MemoryBuffer1D<int, Stride1D.Dense> HeuristicFlag = null!;
@@ -334,7 +337,9 @@ public sealed class PrimeTester
 				AcceleratorContext = Context.CreateDefault();
 				Accelerator = AcceleratorContext.GetPreferredDevice(false).CreateAccelerator(AcceleratorContext);
 				Kernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
-				HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, HeuristicGpuDivisorTables, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, byte>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
+				HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, byte,
+                                        ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>,
+                                        ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
 				_sharedTables = RentSharedTables(Accelerator);
 
