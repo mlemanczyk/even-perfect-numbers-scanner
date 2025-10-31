@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
@@ -47,6 +48,8 @@ public static class GpuContextPool
 
 	private static readonly ConcurrentQueue<PooledContext> CpuPool = new();
 	private static readonly ConcurrentQueue<PooledContext> GpuPool = new();
+        private static readonly object WarmUpLock = new();
+        private static int WarmedGpuContextCount;
 
 	public static GpuContextLease Rent()
 	{
@@ -73,6 +76,48 @@ public static class GpuContextPool
 		return new GpuContextLease(new PooledContext(preferCpu));
 	}
 
+        public static void WarmUpPool(int threadCount)
+        {
+                if (!PoolingEnabled || ForceCpu)
+                {
+                        return;
+                }
+
+                if (threadCount <= 0)
+                {
+                        return;
+                }
+
+                int target = threadCount / 4;
+                if (target == 0)
+                {
+                        target = 1;
+                }
+
+                lock (WarmUpLock)
+                {
+                        if (target <= WarmedGpuContextCount)
+                        {
+                                return;
+                        }
+
+                        int toCreate = target - WarmedGpuContextCount;
+                        var contexts = new PooledContext[toCreate];
+                        for (int i = 0; i < toCreate; i++)
+                        {
+                                contexts[i] = new PooledContext(preferCpu: false);
+                        }
+
+                        for (int i = 0; i < toCreate; i++)
+                        {
+                                GpuPool.Enqueue(contexts[i]);
+                        }
+
+                        WarmedGpuContextCount = target;
+                }
+        }
+
+
 	public static void DisposeAll()
 	{
 		if (!PoolingEnabled)
@@ -91,6 +136,7 @@ public static class GpuContextPool
 		}
 
 		PrimeTester.DisposeGpuContexts();
+                WarmedGpuContextCount = 0;
 	}
 
 	private static void Return(PooledContext ctx)

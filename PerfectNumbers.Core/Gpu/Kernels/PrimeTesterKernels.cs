@@ -1,8 +1,18 @@
 using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Algorithms;
+using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
+
+internal enum HeuristicGpuDivisorTableKind : byte
+{
+    GroupA = 0,
+    GroupBEnding1 = 1,
+    GroupBEnding7 = 7,
+    GroupBEnding9 = 9,
+    Combined = 255,
+}
 
 internal static class PrimeTesterKernels
 {
@@ -51,9 +61,14 @@ internal static class PrimeTesterKernels
         int length = (int)primes.Length;
         for (int i = 0; i < length; i++)
         {
-            ulong prime = primes[i];
             ulong primeSquare = primeSquares[i];
             if (primeSquare > n)
+            {
+                break;
+            }
+
+            ulong prime = primes[i];
+            if (prime == 0)
             {
                 break;
             }
@@ -68,19 +83,46 @@ internal static class PrimeTesterKernels
         results[index] = result;
     }
 
-    public static void HeuristicTrialDivisionKernel(Index1D index, ArrayView<ulong> divisors, ulong n, ArrayView<int> resultFlag)
+    public static void HeuristicTrialDivisionKernel(
+        Index1D index,
+        ArrayView<int> resultFlag,
+        ulong n,
+        ulong maxDivisorSquare,
+        HeuristicGpuDivisorTableKind tableKind,
+        HeuristicGpuDivisorTables tables)
     {
-		ulong divisor = divisors[index];
-		if (divisor <= 1UL)
-		{
-			return;
-		}
+        byte nMod10 = (byte)(n % 10UL);
+        ArrayView1D<ulong, Stride1D.Dense> divisors = tables.SelectDivisors(tableKind, nMod10);
+        ArrayView1D<ulong, Stride1D.Dense> divisorSquares = tables.SelectDivisorSquares(tableKind, nMod10);
+        if (divisors.Length == 0 || divisorSquares.Length == 0)
+        {
+            return;
+        }
 
-		ulong residue = n % divisor;
-		if (residue == 0UL)
-		{
-			resultFlag[0] = 1;
-		}
+        int divisorLength = (int)divisors.Length;
+        int squareLength = (int)divisorSquares.Length;
+        int threadIndex = index;
+        if (threadIndex >= divisorLength || threadIndex >= squareLength)
+        {
+            return;
+        }
+
+        ulong divisorSquare = divisorSquares[threadIndex];
+        if (divisorSquare == 0UL || divisorSquare > maxDivisorSquare)
+        {
+            return;
+        }
+
+        ulong divisor = divisors[threadIndex];
+        if (divisor == 0UL)
+        {
+            return;
+        }
+
+        if (n % divisor == 0UL)
+        {
+            resultFlag[0] = 1;
+        }
     }
 
     public static void SharesFactorKernel(Index1D index, ArrayView<ulong> numbers, ArrayView<byte> results)
