@@ -82,21 +82,22 @@ internal static class PrimeTesterKernels
         Index1D index,
         ArrayView<int> resultFlag,
         ulong n,
-        ulong maxDivisorSquare,
+        ulong maxDivisor,
         HeuristicGpuDivisorTableKind tableKind,
-        HeuristicGpuDivisorTables tables)
+        HeuristicGpuDivisorTables tables,
+        HeuristicGpuCombinedDivisorTables combinedTables)
     {
         byte nMod10 = (byte)(n % 10UL);
-        ArrayView1D<ulong, Stride1D.Dense> divisors = tables.SelectDivisors(tableKind, nMod10);
-        ArrayView1D<ulong, Stride1D.Dense> divisorSquares = tables.SelectDivisorSquares(tableKind, nMod10);
+        ArrayView1D<ulong, Stride1D.Dense> divisors = tableKind == HeuristicGpuDivisorTableKind.Combined
+            ? combinedTables.SelectCombined(nMod10)
+            : tables.SelectDivisors(tableKind, nMod10);
 
-        int divisorLength = (int)divisorSquares.Length;
+        int divisorLength = (int)divisors.Length;
         int threadIndex = index;
         bool skipThread = threadIndex >= divisorLength;
-        ulong divisorSquare = skipThread ? 0UL : divisorSquares[threadIndex];
-        skipThread = skipThread | (divisorSquare > maxDivisorSquare);
-
         ulong divisor = skipThread ? 1UL : divisors[threadIndex];
+        skipThread = skipThread | (divisor > maxDivisor);
+
         ulong remainder = skipThread ? 1UL : n % divisor;
         bool hasFactor = !skipThread & (remainder == 0UL);
         if (hasFactor)

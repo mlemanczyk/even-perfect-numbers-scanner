@@ -241,12 +241,13 @@ public sealed class HeuristicPrimeTester
         private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
         {
                 var limiter = GpuPrimeWorkLimiter.Acquire();
-                var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(1);
+                var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(nMod10, 1, PrimeTester.PrimeTesterGpuContextPool.HeuristicGpuTableScope.GroupAB);
                 var accelerator = gpu.Accelerator;
                 var kernel = gpu.HeuristicTrialDivisionKernel;
                 var flagView1D = gpu.HeuristicFlag.View;
                 var flagView = flagView1D.AsContiguous();
 
+                ulong maxDivisor = ComputeMaxDivisorLimit(maxDivisorSquare);
                 bool compositeDetected = false;
                 int compositeFlag = 0;
 
@@ -257,9 +258,10 @@ public sealed class HeuristicPrimeTester
                         groupALength,
                         flagView,
                         n,
-                        maxDivisorSquare,
+                        maxDivisor,
                         HeuristicGpuDivisorTableKind.GroupA,
-                        gpu.HeuristicGpuTables);
+                        gpu.HeuristicGpuTables,
+                        gpu.HeuristicCombinedTables);
                 accelerator.Synchronize();
                 flagView1D.CopyToCPU(ref compositeFlag, 1);
                 compositeDetected = compositeFlag != 0;
@@ -291,9 +293,10 @@ public sealed class HeuristicPrimeTester
                                         divisorLength,
                                         flagView,
                                         n,
-                                        maxDivisorSquare,
+                                        maxDivisor,
                                         tableKind,
-                                        gpu.HeuristicGpuTables);
+                                        gpu.HeuristicGpuTables,
+                        gpu.HeuristicCombinedTables);
                                 accelerator.Synchronize();
                                 flagView1D.CopyToCPU(ref compositeFlag, 1);
                                 compositeDetected = compositeFlag != 0;
@@ -311,6 +314,23 @@ public sealed class HeuristicPrimeTester
         private static bool EvaluateWithOpenNumericFallback(ulong n)
 	{
 		return Prime.Numbers.IsPrime(n);
+	}
+
+	private static ulong ComputeMaxDivisorLimit(ulong maxDivisorSquare)
+	{
+		ulong maxDivisor = (ulong)Math.Sqrt(maxDivisorSquare);
+
+		while ((maxDivisor + 1) != 0 && (maxDivisor + 1) <= maxDivisorSquare / (maxDivisor + 1))
+		{
+			maxDivisor++;
+		}
+
+		while (maxDivisor != 0 && maxDivisor > maxDivisorSquare / maxDivisor)
+		{
+			maxDivisor--;
+		}
+
+		return maxDivisor;
 	}
 	internal static ulong ComputeHeuristicDivisorSquareLimit(ulong n)
 	{

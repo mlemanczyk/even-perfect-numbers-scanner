@@ -226,12 +226,13 @@ public sealed class HeuristicCombinedPrimeTester
         private static bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
         {
                 var limiter = GpuPrimeWorkLimiter.Acquire();
-                var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(1);
+                var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(nMod10, 1, PrimeTester.PrimeTesterGpuContextPool.HeuristicGpuTableScope.GroupABWithCombined);
                 var accelerator = gpu.Accelerator;
                 var kernel = gpu.HeuristicTrialDivisionKernel;
                 var flagView1D = gpu.HeuristicFlag.View;
                 var flagView = flagView1D.AsContiguous();
 
+                ulong maxDivisor = ComputeMaxDivisorLimit(maxDivisorSquare);
                 bool compositeDetected = false;
                 int divisorLength = GetCombinedDivisors(nMod10).Length;
 
@@ -241,9 +242,10 @@ public sealed class HeuristicCombinedPrimeTester
                         divisorLength,
                         flagView,
                         n,
-                        maxDivisorSquare,
+                        maxDivisor,
                         HeuristicGpuDivisorTableKind.Combined,
-                        gpu.HeuristicGpuTables);
+                        gpu.HeuristicGpuTables,
+                        gpu.HeuristicCombinedTables);
                 accelerator.Synchronize();
                 flagView1D.CopyToCPU(ref compositeFlag, 1);
                 compositeDetected = compositeFlag != 0;
@@ -255,7 +257,24 @@ public sealed class HeuristicCombinedPrimeTester
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool EvaluateWithOpenNumericFallback(ulong n)
+        
+        private static ulong ComputeMaxDivisorLimit(ulong maxDivisorSquare)
+        {
+                ulong maxDivisor = (ulong)Math.Sqrt(maxDivisorSquare);
+
+                while ((maxDivisor + 1) != 0 && (maxDivisor + 1) <= maxDivisorSquare / (maxDivisor + 1))
+                {
+                        maxDivisor++;
+                }
+
+                while (maxDivisor != 0 && maxDivisor > maxDivisorSquare / maxDivisor)
+                {
+                        maxDivisor--;
+                }
+
+                return maxDivisor;
+        }
+	private static bool EvaluateWithOpenNumericFallback(ulong n)
 	{
 		return Prime.Numbers.IsPrime(n);
 	}
