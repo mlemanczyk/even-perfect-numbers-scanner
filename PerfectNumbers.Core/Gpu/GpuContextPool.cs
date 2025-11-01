@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
@@ -6,24 +7,19 @@ namespace PerfectNumbers.Core.Gpu;
 
 public static class GpuContextPool
 {
-        private static readonly bool PoolingEnabled = true;
-        // The pool intentionally skips pre-loading ProcessEightBitWindows kernels so accelerator initialization
-        // stays stable; GpuKernelPool JIT-compiles them on first use alongside the small-cycle uploads.
-        // Default device preference for generic GPU kernels (prime scans, NTT, etc.)
-        public static bool ForceCpu { get; set; } = false;
+	// The pool intentionally skips pre-loading ProcessEightBitWindows kernels so accelerator initialization
+	// stays stable; GpuKernelPool JIT-compiles them on first use alongside the small-cycle uploads.
+	// Default device preference for generic GPU kernels (prime scans, NTT, etc.)
+	internal sealed class PooledContext
+	{
+		public Context Context { get; }
+		public Accelerator Accelerator { get; }
 
-        internal sealed class PooledContext
-        {
-                public Context Context { get; }
-                public Accelerator Accelerator { get; }
-                public bool IsCpu { get; }
-                public object ExecutionLock { get; } = new();
-
-		public PooledContext(bool preferCpu)
+		public PooledContext()
 		{
 			Context = Context.CreateDefault();
-			Accelerator = Context.GetPreferredDevice(preferCpu).CreateAccelerator(Context);
-			IsCpu = Accelerator.AcceleratorType == AcceleratorType.CPU;
+			Accelerator = Context.GetPreferredDevice(false).CreateAccelerator(Context);
+			DivisorGeneratorGpuCache.WarmUpByDivisorTables(Accelerator);
 			// NOTE: Avoid loading/compiling any kernel here to prevent implicit
 			// CL stream/queue creation during accelerator construction.
 			// Some OpenCL drivers are fragile when a queue is created immediately
@@ -32,12 +28,12 @@ public static class GpuContextPool
 
 		public void Dispose()
 		{
-
 			// Ensure all cached GPU buffers for this accelerator are released.
 			NttGpuMath.ClearCaches(Accelerator);
 			// Release PrimeTester GPU state for this accelerator (kernel/device primes)
 			// Clear any per-accelerator cached resources to avoid releasing
 			// after the accelerator is destroyed.
+			DivisorGeneratorGpuCache.Clear(Accelerator);
 			PrimeTester.ClearGpuCaches(Accelerator);
 
 			Accelerator.Dispose();
@@ -45,96 +41,77 @@ public static class GpuContextPool
 		}
 	}
 
-	private static readonly ConcurrentQueue<PooledContext> CpuPool = new();
 	private static readonly ConcurrentQueue<PooledContext> GpuPool = new();
-
-	public static GpuContextLease Rent()
-	{
-		return RentPreferred(ForceCpu);
-	}
+	private static int WarmedGpuContextCount;
 
 	// Allows callers to choose CPU/GPU per use-case, decoupled from ForceCpu.
-	public static GpuContextLease RentPreferred(bool preferCpu)
+	public static GpuContextLease Rent()
 	{
-		if (PoolingEnabled)
+		if (GpuPool.TryDequeue(out var gpu))
 		{
-			if (preferCpu && CpuPool.TryDequeue(out var cpu))
-			{
-				return new GpuContextLease(cpu);
-			}
-
-			if (!preferCpu && GpuPool.TryDequeue(out var gpu))
-			{
-				return new GpuContextLease(gpu);
-			}
+			return new GpuContextLease(gpu);
 		}
 
 		// Create a new accelerator when the pool does not have one available.
-		return new GpuContextLease(new PooledContext(preferCpu));
+		return new GpuContextLease(new PooledContext());
 	}
 
-	public static void DisposeAll()
+	public static void WarmUpPool(int threadCount)
 	{
-		if (!PoolingEnabled)
+		if (threadCount <= WarmedGpuContextCount)
 		{
 			return;
 		}
 
-		while (CpuPool.TryDequeue(out var cpu))
+		int toCreate = threadCount - WarmedGpuContextCount;
+		var contexts = new PooledContext[toCreate];
+		for (int i = 0; i < toCreate; i++)
 		{
-			cpu.Dispose();
+			contexts[i] = new PooledContext();
 		}
 
+		for (int i = 0; i < toCreate; i++)
+		{
+			GpuPool.Enqueue(contexts[i]);
+		}
+
+		WarmedGpuContextCount = threadCount;
+	}
+
+	public static void DisposeAll()
+	{
 		while (GpuPool.TryDequeue(out var gpu))
 		{
 			gpu.Dispose();
 		}
 
+		DivisorGeneratorGpuCache.DisposeAll();
 		PrimeTester.DisposeGpuContexts();
+		WarmedGpuContextCount = 0;
 	}
 
 	private static void Return(PooledContext ctx)
 	{
-		if (PoolingEnabled)
+		ctx.Accelerator.Synchronize();
+		GpuPool.Enqueue(ctx);
+	}
+
+	public readonly struct GpuContextLease
+	{
+		private readonly PooledContext _ctx;
+
+		internal GpuContextLease(PooledContext ctx)
 		{
-			ctx.Accelerator.Synchronize();
-			if (ctx.IsCpu)
-			{
-				CpuPool.Enqueue(ctx);
-			}
-			else
-			{
-				GpuPool.Enqueue(ctx);
-			}
+			_ctx = ctx;
 		}
 
-                else
-                {
-                        ctx.Dispose();
-                }
-        }
+		public readonly Context Context => _ctx.Context;
+		public readonly Accelerator Accelerator => _ctx.Accelerator;
 
-    public struct GpuContextLease
-    {
-        private readonly PooledContext _ctx;
-
-                internal GpuContextLease(PooledContext ctx)
-        {
-            _ctx = ctx;
-                }
-
-        public Context Context => _ctx.Context;
-
-        public Accelerator Accelerator => _ctx.Accelerator;
-
-                public object ExecutionLock => _ctx.ExecutionLock;
-
-
-                public void Dispose()
-                {
-
+		public readonly void Dispose()
+		{
 			Return(_ctx);
-        }
-    }
+		}
+	}
 }
 

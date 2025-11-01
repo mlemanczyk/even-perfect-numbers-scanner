@@ -28,6 +28,8 @@ internal static class Program
 	[ThreadStatic]
 	private static bool _lastCompositeP;
 
+	private static bool _runPrimesOnCpu;
+
 	private static void Main(string[] args)
 	{
 		try
@@ -49,18 +51,21 @@ internal static class Program
 
 			NttGpuMath.GpuTransformBackend = _cliArguments.NttBackend;
 			NttGpuMath.ReductionMode = _cliArguments.ModReductionMode;
-			GpuContextPool.ForceCpu = _cliArguments.ForcePrimeKernelsOnCpu;
+			_runPrimesOnCpu = _cliArguments.ForcePrimeKernelsOnCpu;
 
 			ulong currentP = _cliArguments.StartPrime;
 			ulong remainder = currentP % 6UL;
 			bool startPrimeProvided = _cliArguments.StartPrimeProvided;
 			int threadCount = Math.Max(1, _cliArguments.ThreadCount);
+			int gpuPrimeBatch = Math.Max(1, _cliArguments.GpuPrimeBatch);
 			UnboundedTaskScheduler.ConfigureThreadCount(threadCount);
+			PrimeTester.GpuBatchSize = gpuPrimeBatch;
+			GpuContextPool.WarmUpPool(threadCount);
+			PrimeTester.WarmUpGpuKernels(threadCount);
 			Console.WriteLine("Starting up threads...");
 			_ = UnboundedTaskScheduler.Instance;
 			int blockSize = Math.Max(1, _cliArguments.BlockSize);
 			int gpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads);
-			int gpuPrimeBatch = Math.Max(1, _cliArguments.GpuPrimeBatch);
 			GpuKernelType kernelType = _cliArguments.KernelType;
 			bool useBitTransform = _cliArguments.UseBitTransform;
 			bool useOrder = _cliArguments.UseOrder;
@@ -114,7 +119,7 @@ internal static class Program
 
 			// Apply GPU prime sieve runtime configuration
 			GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
-			PrimeTester.GpuBatchSize = Math.Max(1, gpuPrimeBatch);
+			PrimeTester.GpuBatchSize = gpuPrimeBatch;
 
 			MersenneDivisorCycles mersenneDivisorCycles = new();
 			if (!File.Exists(cyclesPath) || continueCyclesGeneration)
@@ -256,7 +261,7 @@ internal static class Program
 			orderWarmupLimitOverride ?? 5_000_000UL,
 			NttGpuMath.ReductionMode,
 			mersenneOnGpu ? "gpu" : "cpu",
-			GpuContextPool.ForceCpu ? "cpu" : "gpu",
+			_runPrimesOnCpu ? "cpu" : "gpu",
 			orderOnGpu ? "gpu" : "cpu");
 
 			if (!string.IsNullOrEmpty(_cliArguments.ResultsPrefix))
@@ -621,7 +626,7 @@ internal static class Program
 		// If primes-device=gpu, route p primality through GPU-assisted sieve with deterministic MR validation.
 		if (!_cliArguments.UseByDivisor)
 		{
-			if (!(GpuContextPool.ForceCpu
+			if (!(_runPrimesOnCpu
 					? PrimeTester.IsPrime(p)
 					: PrimeTesters.Value!.IsPrimeGpu(p)))
 			{

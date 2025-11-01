@@ -1057,13 +1057,13 @@ internal static partial class PrimeOrderCalculator
 		// Span<int> exponentSlots = exponentSlotsArray.AsSpan(0, FactorSlotCount);
 		Span<ulong> primeSlots = stackalloc ulong[FactorSlotCount];
 		Span<int> exponentSlots = stackalloc int[FactorSlotCount];
+		ulong[]? primeSlotArray = null;
+		int[]? exponentSlotArray = null;
 		// We don't need to worry about leftovers, because we always use indexes within the calculated counts
 		// primeSlots.Clear();
 		// exponentSlots.Clear();
 
 		int factorCount = 0;
-		Dictionary<ulong, int>? counts = null;
-		bool useDictionary = false;
 
 		uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
 		ulong remaining = value;
@@ -1083,41 +1083,15 @@ internal static partial class PrimeOrderCalculator
 
 		if (!gpuFactored)
 		{
-			// We don't need to worry about leftovers, because we always use indexes within the calculated counts
-			// primeSlots.Clear();
-			// exponentSlots.Clear();
-
-			counts = ThreadStaticPools.RentUlongIntDictionary(Math.Max(FactorSlotCount, 8));
-			counts.Clear();
-
-			// bool gpuPopulated = TryPopulateSmallPrimeFactorsGpu(value, limit, primeSlots, exponentSlots, out factorCount, out remaining);
-			// if (!gpuPopulated)
-			// {
-			// 	throw new InvalidOperationException($"GPU didn't populate factors for {value}");
-			// counts.Clear();
-			remaining = PopulateSmallPrimeFactorsCpu(value, limit, counts);
-			// }
-
-			int dictionaryCount = counts.Count;
-			if (dictionaryCount <= FactorSlotCount)
-			{
-				int copyIndex = 0;
-				foreach (KeyValuePair<ulong, int> entry in counts)
-				{
-					primeSlots[copyIndex] = entry.Key;
-					exponentSlots[copyIndex] = entry.Value;
-					copyIndex++;
-				}
-
-				factorCount = copyIndex;
-				ThreadStaticPools.ReturnUlongIntDictionary(counts);
-				counts = null;
-			}
-			else
-			{
-				useDictionary = true;
-				factorCount = dictionaryCount;
-			}
+			PopulateSmallPrimeFactorsCpu(
+				value,
+				limit,
+				ref primeSlots,
+				ref exponentSlots,
+				ref primeSlotArray,
+				ref exponentSlotArray,
+				out factorCount,
+				out remaining);
 		}
 
 
@@ -1157,7 +1131,7 @@ internal static partial class PrimeOrderCalculator
 
 					if (isPrime)
 					{
-						AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
+						AddFactorToCollector(ref primeSlots, ref exponentSlots, ref primeSlotArray, ref exponentSlotArray, ref factorCount, composite, 1);
 						continue;
 					}
 
@@ -1229,7 +1203,7 @@ internal static partial class PrimeOrderCalculator
 
 			if (entry.IsPrime)
 			{
-				AddFactorToCollector(ref useDictionary, ref counts, primeSlots, exponentSlots, ref factorCount, composite, 1);
+				AddFactorToCollector(ref primeSlots, ref exponentSlots, ref primeSlotArray, ref exponentSlotArray, ref factorCount, composite, 1);
 			}
 			// composite is never smaller on the execution path
 			// else if (composite > 1UL)
@@ -1264,33 +1238,15 @@ internal static partial class PrimeOrderCalculator
 
 		ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
 		bool temp;
-		if (useDictionary)
+		if (factorCount == 0)
 		{
-			temp = counts is null || counts.Count == 0;
-			if (temp && cofactor == value)
+			if (cofactor == value)
 			{
 				result = PartialFactorResult.Rent(null, cofactor, false, 0, cofactorIsPrime);
 				goto ReturnResult;
 			}
 
-			if (temp)
-			{
-				result = PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0, cofactorIsPrime);
-				goto ReturnResult;
-			}
-
-			FactorEntry[] factors = pool.Rent(counts!.Count);
-			index = 0;
-			foreach (KeyValuePair<ulong, int> entry in counts)
-			{
-				factors[index] = new FactorEntry(entry.Key, entry.Value, true);
-				index++;
-			}
-
-			Array.Sort(factors, static (a, b) => a.Value.CompareTo(b.Value));
-
-			temp = cofactor == 1UL;
-			result = PartialFactorResult.Rent(factors, cofactor, temp, index, cofactorIsPrime);
+			result = PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0, cofactorIsPrime);
 			goto ReturnResult;
 		}
 
@@ -1330,14 +1286,10 @@ internal static partial class PrimeOrderCalculator
 		result = PartialFactorResult.Rent(array, cofactor, temp, arrayIndex, cofactorIsPrime);
 
 	ReturnResult:
-		// ThreadStaticPools.UlongPool.Return(primeSlotsArray);
-		// ThreadStaticPools.IntPool.Return(exponentSlotsArray);
-
-
-		if (counts is not null)
+		if (primeSlotArray is not null)
 		{
-			counts.Clear();
-			ThreadStaticPools.ReturnUlongIntDictionary(counts);
+			ThreadStaticPools.UlongPool.Return(primeSlotArray, clearArray: false);
+			ThreadStaticPools.IntPool.Return(exponentSlotArray!, clearArray: false);
 		}
 
 		if (compositeStack is not null)
@@ -1351,35 +1303,28 @@ internal static partial class PrimeOrderCalculator
 		return result;
 	}
 
-
-	private static bool TryPopulateSmallPrimeFactorsCpu(
-			ulong value,
-			uint limit,
-			Span<ulong> primeTargets,
-			Span<int> exponentTargets,
-			out int factorCount,
-			out ulong remaining)
+	private static void PopulateSmallPrimeFactorsCpu(
+				ulong value,
+				uint limit,
+				ref Span<ulong> primeTargets,
+				ref Span<int> exponentTargets,
+				ref ulong[]? primeArray,
+				ref int[]? exponentArray,
+				out int factorCount,
+				out ulong remaining)
 	{
 		factorCount = 0;
-		remaining = value;
+		ulong remainingLocal = value;
 
-		// value will never <= 1 in production code
-		// if (value <= 1UL)
-		// {
-		//     return true;
-		// }
-
-		int capacity = Math.Min(primeTargets.Length, exponentTargets.Length);
-		// capacity will never equal 0 in production code
-		// if (capacity == 0)
-		// {
-		// 	return false;
-		// }
+		if (value <= 1UL)
+		{
+			remaining = remainingLocal;
+			return;
+		}
 
 		uint[] primes = PrimesGenerator.SmallPrimes;
 		ulong[] squares = PrimesGenerator.SmallPrimesPow2;
 		int primeCount = primes.Length;
-		ulong remainingLocal = value;
 		uint effectiveLimit = limit == 0 ? uint.MaxValue : limit;
 
 		for (int i = 0; i < primeCount && remainingLocal > 1UL; i++)
@@ -1398,13 +1343,13 @@ internal static partial class PrimeOrderCalculator
 				break;
 			}
 
+			ulong primeValue = primeCandidate;
 			// primeCandidate will never equal 0 in production code
 			// if (primeCandidate == 0UL)
 			// {
 			// 	continue;
 			// }
 
-			ulong primeValue = primeCandidate;
 			if ((remainingLocal % primeValue) != 0UL)
 			{
 				continue;
@@ -1416,10 +1361,13 @@ internal static partial class PrimeOrderCalculator
 				continue;
 			}
 
-			if (factorCount >= capacity)
-			{
-				throw new InvalidOperationException($"Capacity is smaller than factor count");
-			}
+			EnsureCollectorCapacity(
+				ref primeTargets,
+				ref exponentTargets,
+				ref primeArray,
+				ref exponentArray,
+				factorCount,
+				factorCount + 1);
 
 			primeTargets[factorCount] = primeValue;
 			exponentTargets[factorCount] = exponent;
@@ -1427,7 +1375,6 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		remaining = remainingLocal;
-		return true;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1493,46 +1440,6 @@ internal static partial class PrimeOrderCalculator
 
 		value = dividend;
 		return exponent;
-	}
-
-	private static ulong PopulateSmallPrimeFactorsCpu(ulong value, uint limit, Dictionary<ulong, int> counts)
-	{
-		ulong remaining = value;
-		uint[] primes = PrimesGenerator.SmallPrimes;
-		ulong[] squares = PrimesGenerator.SmallPrimesPow2;
-		int primeCount = primes.Length;
-
-		for (int i = 0; i < primeCount; i++)
-		{
-			uint primeCandidate = primes[i];
-			if (primeCandidate > limit)
-			{
-				break;
-			}
-
-			if (squares[i] > remaining)
-			{
-				break;
-			}
-
-			if ((remaining % primeCandidate) != 0UL)
-			{
-				continue;
-			}
-
-			int exponent = 0;
-			do
-			{
-				// TODO: Implement DivRem like solution or residue stepper to re-use previous iteration results in new calculation. Add / use method, likely to ULongExtensions
-				remaining /= primeCandidate;
-				exponent++;
-			}
-			while ((remaining % primeCandidate) == 0UL);
-
-			counts[primeCandidate] = exponent;
-		}
-
-		return remaining;
 	}
 
 	private static long CreateDeadlineTimestamp(int milliseconds)
@@ -1657,11 +1564,18 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
-	private static bool TryAppendFactor(Span<ulong> primes, Span<int> exponents, ref int count, ulong prime, int exponent)
+	private static void AddFactorToCollector(
+				ref Span<ulong> primes,
+				ref Span<int> exponents,
+				ref ulong[]? primeArray,
+				ref int[]? exponentArray,
+				ref int count,
+				ulong prime,
+				int exponent)
 	{
 		if (exponent <= 0)
 		{
-			return true;
+			return;
 		}
 
 		for (int i = 0; i < count; i++)
@@ -1669,70 +1583,60 @@ internal static partial class PrimeOrderCalculator
 			if (primes[i] == prime)
 			{
 				exponents[i] += exponent;
-				return true;
+				return;
 			}
 		}
 
-		if (count >= primes.Length)
-		{
-			return false;
-		}
+		EnsureCollectorCapacity(
+			ref primes,
+			ref exponents,
+			ref primeArray,
+			ref exponentArray,
+			count,
+			count + 1);
 
 		primes[count] = prime;
 		exponents[count] = exponent;
 		count++;
-		return true;
 	}
 
-	private static void AddFactorToCollector(
-		ref bool useDictionary,
-		ref Dictionary<ulong, int>? counts,
-		Span<ulong> primes,
-		Span<int> exponents,
-		ref int count,
-		ulong prime,
-		int exponent)
+	private static void EnsureCollectorCapacity(
+				ref Span<ulong> primes,
+				ref Span<int> exponents,
+				ref ulong[]? primeArray,
+				ref int[]? exponentArray,
+				int count,
+				int requiredCapacity)
 	{
-		if (exponent <= 0)
+		if (requiredCapacity <= primes.Length)
 		{
 			return;
 		}
 
-		if (useDictionary)
+		int newCapacity = primes.Length << 1;
+		if (newCapacity < requiredCapacity)
 		{
-			AddFactor(counts!, prime, exponent);
-			return;
+			newCapacity = requiredCapacity;
 		}
 
-		if (TryAppendFactor(primes, exponents, ref count, prime, exponent))
+		ulong[] newPrimeArray = ThreadStaticPools.UlongPool.Rent(newCapacity);
+		int[] newExponentArray = ThreadStaticPools.IntPool.Rent(newCapacity);
+		Span<ulong> newPrimeSpan = newPrimeArray.AsSpan();
+		Span<int> newExponentSpan = newExponentArray.AsSpan();
+
+		primes.Slice(0, count).CopyTo(newPrimeSpan);
+		exponents.Slice(0, count).CopyTo(newExponentSpan);
+
+		if (primeArray is not null)
 		{
-			return;
+			ThreadStaticPools.UlongPool.Return(primeArray, clearArray: false);
+			ThreadStaticPools.IntPool.Return(exponentArray!, clearArray: false);
 		}
 
-		counts ??= ThreadStaticPools.RentUlongIntDictionary(Math.Max(count, 8));
-		CopyFactorsToDictionary(primes, exponents, count, counts);
-		count = 0;
-		useDictionary = true;
-		AddFactor(counts, prime, exponent);
-	}
-
-	private static void CopyFactorsToDictionary(
-		in ReadOnlySpan<ulong> primes,
-		in ReadOnlySpan<int> exponents,
-		int count,
-		Dictionary<ulong, int> target)
-	{
-		for (int i = 0; i < count; i++)
-		{
-			ulong prime = primes[i];
-			int exponent = exponents[i];
-			if (prime == 0UL || exponent == 0)
-			{
-				continue;
-			}
-
-			target[prime] = exponent;
-		}
+		primeArray = newPrimeArray;
+		exponentArray = newExponentArray;
+		primes = newPrimeSpan;
+		exponents = newExponentSpan;
 	}
 
 	private static ulong CalculateByFactorizationCpu(ulong prime, in MontgomeryDivisorData divisorData)

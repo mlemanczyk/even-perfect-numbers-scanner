@@ -37,7 +37,6 @@ public class PrimeTesterIsPrimeTests
     [InlineData(279UL, false)]
     public void IsPrimeGpu_uses_residue_specific_tables(ulong n, bool expected)
     {
-        GpuContextPool.ForceCpu = false;
         var tester = new PrimeTester();
 
         tester.IsPrimeGpu(n).Should().Be(expected);
@@ -48,20 +47,14 @@ public class PrimeTesterIsPrimeTests
     public void IsPrimeGpu_falls_back_to_cpu_when_forced()
     {
         var tester = new PrimeTester();
-        GpuContextPool.ForceCpu = true;
-
-        tester.IsPrimeGpu(137UL).Should().BeTrue();
-
-        tester.IsPrimeGpu(341UL).Should().BeFalse();
-
-        GpuContextPool.ForceCpu = false;
+        PrimeTester.IsPrime(137UL).Should().BeTrue();
+        PrimeTester.IsPrime(341UL).Should().BeFalse();
     }
 
     [Fact]
     [Trait("Category", "Fast")]
     public void IsPrimeGpu_handles_parallel_calls_for_known_primes()
     {
-        GpuContextPool.ForceCpu = false;
         GpuPrimeWorkLimiter.SetLimit(64);
         PrimeTester.GpuBatchSize = 256_000;
 

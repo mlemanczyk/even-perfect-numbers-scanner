@@ -261,43 +261,6 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
-        private static List<Dictionary<ulong, int>>? _ulongIntDictionaryPool;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static Dictionary<ulong, int> RentUlongIntDictionary(int capacityHint)
-        {
-            List<Dictionary<ulong, int>>? pool = _ulongIntDictionaryPool;
-            if (pool is not null)
-            {
-                int poolCount = pool.Count;
-                if (poolCount > 0)
-                {
-                    int lastIndex = poolCount - 1;
-                    Dictionary<ulong, int> dictionary = pool[lastIndex];
-                    pool.RemoveAt(lastIndex);
-                    dictionary.EnsureCapacity(capacityHint);
-
-                    return dictionary;
-                }
-            }
-
-            return new Dictionary<ulong, int>(capacityHint);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void ReturnUlongIntDictionary(Dictionary<ulong, int> dictionary)
-        {
-            List<Dictionary<ulong, int>>? pool = _ulongIntDictionaryPool;
-            if (pool is null)
-            {
-                pool = new List<Dictionary<ulong, int>>(4);
-                _ulongIntDictionaryPool = pool;
-            }
-
-            pool.Add(dictionary);
-        }
-
-        [ThreadStatic]
         private static Dictionary<ulong, int>? _factorCountDictionary;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
