@@ -492,7 +492,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         internal DivisorScanSession(MersenneNumberDivisorByDivisorGpuTester owner)
         {
             _owner = owner;
-            _lease = GpuContextPool.RentPreferred(preferCpu: false);
+            _lease = GpuContextPool.Rent();
             _accelerator = _lease.Accelerator;
             _capacity = Math.Max(1, owner._gpuBatchSize);
         }
@@ -657,7 +657,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
             return lease;
         }
 
-        return GpuContextPool.RentPreferred(preferCpu: false);
+        return GpuContextPool.Rent();
     }
 
     private void ReturnAccelerator(GpuContextPool.GpuContextLease lease) => _acceleratorPool.Add(lease);

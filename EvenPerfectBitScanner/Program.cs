@@ -28,6 +28,8 @@ internal static class Program
 	[ThreadStatic]
 	private static bool _lastCompositeP;
 
+	private static bool _runPrimesOnCpu;
+
 	private static void Main(string[] args)
 	{
 		try
@@ -49,7 +51,7 @@ internal static class Program
 
 			NttGpuMath.GpuTransformBackend = _cliArguments.NttBackend;
 			NttGpuMath.ReductionMode = _cliArguments.ModReductionMode;
-			GpuContextPool.ForceCpu = _cliArguments.ForcePrimeKernelsOnCpu;
+			_runPrimesOnCpu = _cliArguments.ForcePrimeKernelsOnCpu;
 
 			ulong currentP = _cliArguments.StartPrime;
 			ulong remainder = currentP % 6UL;
@@ -259,7 +261,7 @@ internal static class Program
 			orderWarmupLimitOverride ?? 5_000_000UL,
 			NttGpuMath.ReductionMode,
 			mersenneOnGpu ? "gpu" : "cpu",
-			GpuContextPool.ForceCpu ? "cpu" : "gpu",
+			_runPrimesOnCpu ? "cpu" : "gpu",
 			orderOnGpu ? "gpu" : "cpu");
 
 			if (!string.IsNullOrEmpty(_cliArguments.ResultsPrefix))
@@ -624,7 +626,7 @@ internal static class Program
 		// If primes-device=gpu, route p primality through GPU-assisted sieve with deterministic MR validation.
 		if (!_cliArguments.UseByDivisor)
 		{
-			if (!(GpuContextPool.ForceCpu
+			if (!(_runPrimesOnCpu
 					? PrimeTester.IsPrime(p)
 					: PrimeTesters.Value!.IsPrimeGpu(p)))
 			{
