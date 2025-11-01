@@ -280,7 +280,7 @@ public class GpuKernelPool
     public static GpuKernelLease GetKernel(bool useGpuOrder)
     {
         var limiter = GpuPrimeWorkLimiter.Acquire();
-        var gpu = RentPreferred(preferCpu: !useGpuOrder);
+        var gpu = Rent();
         var accelerator = gpu.Accelerator;
         var kernels = GetKernels(accelerator);
         return GpuKernelLease.Rent(limiter, gpu, kernels);

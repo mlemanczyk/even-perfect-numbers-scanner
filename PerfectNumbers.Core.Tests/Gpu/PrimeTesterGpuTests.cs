@@ -10,7 +10,6 @@ public class PrimeTesterGpuTests
     [Fact]
     public void IsPrimeGpu_accepts_known_primes()
     {
-        GpuContextPool.ForceCpu = false;
         try
         {
             var tester = new PrimeTester();
@@ -22,7 +21,6 @@ public class PrimeTesterGpuTests
         }
         finally
         {
-            GpuContextPool.ForceCpu = false;
             GpuContextPool.DisposeAll();
         }
     }
@@ -30,7 +28,6 @@ public class PrimeTesterGpuTests
     [Fact]
     public void IsPrimeGpu_rejects_composites()
     {
-        GpuContextPool.ForceCpu = false;
         try
         {
             var tester = new PrimeTester();
@@ -42,7 +39,6 @@ public class PrimeTesterGpuTests
         }
         finally
         {
-            GpuContextPool.ForceCpu = false;
             GpuContextPool.DisposeAll();
         }
     }

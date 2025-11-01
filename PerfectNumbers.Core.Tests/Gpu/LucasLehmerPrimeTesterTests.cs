@@ -14,7 +14,7 @@ public class LucasLehmerPrimeTesterTests
     [Trait("Category", "Fast")]
     public void IsMersennePrime_gpu_returns_expected_results(ulong p, bool expected)
     {
-        new MersenneNumberLucasLehmerGpuTester().IsMersennePrime(p).Should().Be(expected);
+        new MersenneNumberLucasLehmerGpuTester().IsPrime(p, true).Should().Be(expected);
     }
 
     [Fact]
@@ -26,7 +26,7 @@ public class LucasLehmerPrimeTesterTests
         const ulong exponent = 128UL;
         var tester = new MersenneNumberLucasLehmerGpuTester();
         tester.WarmUpNttParameters(exponent);
-        tester.IsMersennePrime(exponent).Should().BeFalse();
+        tester.IsPrime(exponent, true).Should().BeFalse();
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class LucasLehmerPrimeTesterTests
     {
         var tester = new MersenneNumberLucasLehmerGpuTester();
         tester.WarmUpNttParameters(exponent);
-        tester.IsMersennePrime(exponent).Should().BeFalse();
+        tester.IsPrime(exponent, true).Should().BeFalse();
     }
 
     [Theory]

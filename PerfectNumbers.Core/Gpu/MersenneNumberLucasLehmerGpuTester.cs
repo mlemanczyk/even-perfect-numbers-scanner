@@ -38,16 +38,6 @@ public class MersenneNumberLucasLehmerGpuTester
     // Configurable LL slice size to keep kernels short. Default 32.
     public int SliceSize = 32;
 
-    public bool IsMersennePrime(ulong exponent)
-    {
-        // Default to global kernel preference for backward compatibility.
-        bool runOnGpu = !GpuContextPool.ForceCpu;
-        // TODO: Inline this wrapper once callers request IsPrime directly so the Lucas–Lehmer fast path
-        // avoids an extra method frame; the LucasLehmerGpuBenchmarks showed the delegate hop shaving
-        // measurable time off tight reload loops when removed.
-        return IsPrime(exponent, runOnGpu);
-    }
-
     public bool IsPrime(ulong exponent, bool runOnGpu)
     {
         // Early rejections aligned with incremental/order sieves, but safe for small p:
@@ -78,7 +68,7 @@ public class MersenneNumberLucasLehmerGpuTester
         }
         else
         {
-            var gpu = GpuContextPool.RentPreferred(preferCpu: !runOnGpu);
+            var gpu = GpuContextPool.Rent();
             var accelerator = gpu.Accelerator;
             var kernel = GetKernel(accelerator);
             var modulus = new GpuUInt128(((UInt128)1 << (int)exponent) - 1UL); // TODO: Cache these Mersenne moduli per exponent so LL GPU runs skip rebuilding them every launch.
@@ -110,7 +100,7 @@ public class MersenneNumberLucasLehmerGpuTester
             }
         }
 
-        var gpu = GpuContextPool.RentPreferred(preferCpu: false);
+        var gpu = GpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
         var kernel = GetBatchKernel(accelerator);
 
@@ -162,7 +152,7 @@ public class MersenneNumberLucasLehmerGpuTester
 
     private bool IsMersennePrimeNtt(ulong exponent, GpuUInt128 nttMod, GpuUInt128 primitiveRoot, bool runOnGpu)
     {
-        var gpu = GpuContextPool.RentPreferred(preferCpu: !runOnGpu);
+        var gpu = GpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
         var addKernel = GetAddSmallKernel(accelerator);
         var subKernel = GetSubSmallKernel(accelerator);

@@ -132,7 +132,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
             return lease;
         }
 
-        return GpuContextPool.RentPreferred(preferCpu: !_useGpuOrder);
+        return GpuContextPool.Rent();
     }
 
     private void ReturnAccelerator(GpuContextPool.GpuContextLease lease) => _acceleratorPool.Add(lease);
