@@ -19,7 +19,6 @@ public static class GpuContextPool
 		{
 			Context = Context.CreateDefault();
 			Accelerator = Context.GetPreferredDevice(false).CreateAccelerator(Context);
-			DivisorGeneratorGpuCache.WarmUpByDivisorTables(Accelerator);
 			// NOTE: Avoid loading/compiling any kernel here to prevent implicit
 			// CL stream/queue creation during accelerator construction.
 			// Some OpenCL drivers are fragile when a queue is created immediately
