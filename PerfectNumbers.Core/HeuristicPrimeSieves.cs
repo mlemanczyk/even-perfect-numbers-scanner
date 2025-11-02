@@ -15,19 +15,19 @@ public static class HeuristicPrimeSieves
     private static readonly ushort[] GroupBResiduesEnding7 = [17, 37, 47, 67, 97, 107, 127, 137, 157, 167, 187, 197];
     private static readonly ushort[] GroupBResiduesEnding9 = [19, 29, 59, 79, 89, 109, 139, 149, 169, 179, 199, 209];
 
-    private static readonly ulong[] GroupADivisorsStorage;
+    private static readonly int[] GroupADivisorsStorage;
     private static readonly ulong[] GroupADivisorSquaresStorage;
 
-    private static readonly ulong[] GroupBDivisorsEnding1Storage;
+    private static readonly int[] GroupBDivisorsEnding1Storage;
     private static readonly ulong[] GroupBDivisorSquaresEnding1Storage;
 
-    private static readonly ulong[] GroupBDivisorsEnding3Storage;
+    private static readonly int[] GroupBDivisorsEnding3Storage;
     private static readonly ulong[] GroupBDivisorSquaresEnding3Storage;
 
-    private static readonly ulong[] GroupBDivisorsEnding7Storage;
+    private static readonly int[] GroupBDivisorsEnding7Storage;
     private static readonly ulong[] GroupBDivisorSquaresEnding7Storage;
 
-    private static readonly ulong[] GroupBDivisorsEnding9Storage;
+    private static readonly int[] GroupBDivisorsEnding9Storage;
     private static readonly ulong[] GroupBDivisorSquaresEnding9Storage;
 
     static HeuristicPrimeSieves()
@@ -46,46 +46,45 @@ public static class HeuristicPrimeSieves
         // Intentionally left blank. Accessing this method forces the static constructor to run.
     }
 
-    public static ReadOnlySpan<ulong> GroupADivisors => GroupADivisorsStorage;
+    public static ReadOnlySpan<int> GroupADivisors => GroupADivisorsStorage;
 
     public static ReadOnlySpan<ulong> GroupADivisorSquares => GroupADivisorSquaresStorage;
 
-    public static ReadOnlySpan<ulong> GroupBDivisorsEnding1 => GroupBDivisorsEnding1Storage;
+    public static ReadOnlySpan<int> GroupBDivisorsEnding1 => GroupBDivisorsEnding1Storage;
 
     public static ReadOnlySpan<ulong> GroupBDivisorSquaresEnding1 => GroupBDivisorSquaresEnding1Storage;
 
-    public static ReadOnlySpan<ulong> GroupBDivisorsEnding3 => GroupBDivisorsEnding3Storage;
+    public static ReadOnlySpan<int> GroupBDivisorsEnding3 => GroupBDivisorsEnding3Storage;
 
     public static ReadOnlySpan<ulong> GroupBDivisorSquaresEnding3 => GroupBDivisorSquaresEnding3Storage;
 
-    public static ReadOnlySpan<ulong> GroupBDivisorsEnding7 => GroupBDivisorsEnding7Storage;
+    public static ReadOnlySpan<int> GroupBDivisorsEnding7 => GroupBDivisorsEnding7Storage;
 
     public static ReadOnlySpan<ulong> GroupBDivisorSquaresEnding7 => GroupBDivisorSquaresEnding7Storage;
 
-    public static ReadOnlySpan<ulong> GroupBDivisorsEnding9 => GroupBDivisorsEnding9Storage;
+    public static ReadOnlySpan<int> GroupBDivisorsEnding9 => GroupBDivisorsEnding9Storage;
 
     public static ReadOnlySpan<ulong> GroupBDivisorSquaresEnding9 => GroupBDivisorSquaresEnding9Storage;
 
-    private static (ulong[] divisors, ulong[] squares) BuildGroupADivisors()
+    private static (int[] divisors, ulong[] squares) BuildGroupADivisors()
     {
-        var divisors = new ulong[SieveLength];
+        var divisors = new int[SieveLength];
         var squares = new ulong[SieveLength];
 
         int index = 0;
         for (; index < GroupAConstants.Length && index < divisors.Length; index++)
         {
-            ulong value = (ulong)GroupAConstants[index];
+            int value = GroupAConstants[index];
             divisors[index] = value;
-            squares[index] = value * value;
+            squares[index] = (ulong)value * (ulong)value;
         }
 
         int candidate = 23;
         int incrementIndex = 0;
         while (index < divisors.Length)
         {
-            ulong value = (ulong)candidate;
-            divisors[index] = value;
-            squares[index] = value * value;
+            divisors[index] = candidate;
+            squares[index] = (ulong)candidate * (ulong)candidate;
 
             candidate += GroupAIncrementPattern[incrementIndex];
             incrementIndex ^= 1;
@@ -95,9 +94,9 @@ public static class HeuristicPrimeSieves
         return (divisors, squares);
     }
 
-    private static (ulong[] divisors, ulong[] squares) BuildGroupBResidueSieve(ReadOnlySpan<ushort> residues)
+    private static (int[] divisors, ulong[] squares) BuildGroupBResidueSieve(ReadOnlySpan<ushort> residues)
     {
-        var divisors = new ulong[SieveLength];
+        var divisors = new int[SieveLength];
         var squares = new ulong[SieveLength];
 
         int index = 0;
@@ -113,7 +112,7 @@ public static class HeuristicPrimeSieves
                     continue;
                 }
 
-                divisors[index] = candidate;
+                divisors[index] = (int)candidate;
                 squares[index] = candidate * candidate;
                 index++;
             }

@@ -37,7 +37,7 @@ public sealed class MersenneNumberDivisorGpuTester
 
     public bool IsDivisible(ulong exponent, in ReadOnlyGpuUInt128 divisor)
     {
-        var gpu = GpuContextPool.Rent();
+        var gpu = GpuContextPool.RentPreferred(preferCpu: false);
         var accelerator = gpu.Accelerator;
         var kernel = GetKernel(accelerator);
         var resultBuffer = _resultBuffers.GetOrAdd(accelerator, acc => acc.Allocate1D<byte>(1));

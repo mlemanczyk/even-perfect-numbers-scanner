@@ -1,7 +1,5 @@
-using System;
 using System.Buffers;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -95,85 +93,52 @@ public sealed class PrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public bool IsPrimeGpu(ulong n)
 	{
-		// bool belowGpuRange = n < 31UL;
+		bool forceCpu = GpuContextPool.ForceCpu;
+		bool belowGpuRange = n < 31UL;
 
-		// if (belowGpuRange)
-		// {
+		if (forceCpu || belowGpuRange)
+		{
 			return IsPrime(n);
-		// }
+		}
 
-		// var limiter = GpuPrimeWorkLimiter.Acquire();
-		// var gpu = PrimeTesterGpuContextPool.Rent(1);
-		// var accelerator = gpu.Accelerator;
-		// var kernel = gpu.Kernel;
+		var limiter = GpuPrimeWorkLimiter.Acquire();
+		var gpu = PrimeTesterGpuContextPool.Rent(1);
+		var accelerator = gpu.Accelerator;
+		var kernel = gpu.Kernel;
 
-		// ulong value = n;
-		// byte flag = 0;
+		ulong value = n;
+		byte flag = 0;
 
-		// var input = gpu.Input;
-		// var output = gpu.Output;
-		// var inputView = input.View;
-		// var outputView = output.View;
+		var input = gpu.Input;
+		var output = gpu.Output;
+		var inputView = input.View;
+		var outputView = output.View;
 
-		// inputView.CopyFromCPU(ref value, 1);
-		// kernel(
-		// 				1,
-		// 				inputView,
-		// 				gpu.DevicePrimesDefault.View,
-		// 				gpu.DevicePrimesLastOne.View,
-		// 				gpu.DevicePrimesLastSeven.View,
-		// 				gpu.DevicePrimesLastThree.View,
-		// 				gpu.DevicePrimesLastNine.View,
-		// 				gpu.DevicePrimesPow2Default.View,
-		// 				gpu.DevicePrimesPow2LastOne.View,
-		// 				gpu.DevicePrimesPow2LastSeven.View,
-		// 				gpu.DevicePrimesPow2LastThree.View,
-		// 				gpu.DevicePrimesPow2LastNine.View,
-		// 				outputView);
-		// accelerator.Synchronize();
-		// outputView.CopyToCPU(ref flag, 1);
+		inputView.CopyFromCPU(ref value, 1);
+		kernel(
+						1,
+						inputView,
+						gpu.DevicePrimesDefault.View,
+						gpu.DevicePrimesLastOne.View,
+						gpu.DevicePrimesLastSeven.View,
+						gpu.DevicePrimesLastThree.View,
+						gpu.DevicePrimesLastNine.View,
+						gpu.DevicePrimesPow2Default.View,
+						gpu.DevicePrimesPow2LastOne.View,
+						gpu.DevicePrimesPow2LastSeven.View,
+						gpu.DevicePrimesPow2LastThree.View,
+						gpu.DevicePrimesPow2LastNine.View,
+						outputView);
+		accelerator.Synchronize();
+		outputView.CopyToCPU(ref flag, 1);
 
-		// gpu.Dispose();
-		// limiter.Dispose();
+		gpu.Dispose();
+		limiter.Dispose();
 
-		// return flag != 0;
+		return flag != 0;
 	}
 
 	public static int GpuBatchSize { get; set; } = 262_144;
-
-	private static readonly object GpuWarmUpLock = new();
-	private static int WarmedGpuLeaseCount;
-
-	public static void WarmUpGpuKernels(int threadCount)
-	{
-		int target = threadCount >> 2;
-		if (target == 0)
-		{
-			target = threadCount;
-		}
-
-		lock (GpuWarmUpLock)
-		{
-			if (target <= WarmedGpuLeaseCount)
-			{
-				return;
-			}
-
-			int toWarm = target - WarmedGpuLeaseCount;
-			var leases = new PrimeTesterGpuContextPool.PrimeTesterGpuContextLease[toWarm];
-			for (int i = 0; i < toWarm; i++)
-			{
-				leases[i] = PrimeTesterGpuContextPool.Rent(GpuBatchSize);
-			}
-
-			for (int i = 0; i < toWarm; i++)
-			{
-				leases[i].Dispose();
-			}
-
-			WarmedGpuLeaseCount = target;
-		}
-	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void IsPrimeBatchGpu(ReadOnlySpan<ulong> values, Span<byte> results)
@@ -229,43 +194,6 @@ public sealed class PrimeTester
 	internal static class PrimeTesterGpuContextPool
 	{
 		private static readonly ConcurrentQueue<PrimeTesterGpuContextLease> Pool = new();
-		private static readonly object SharedTablesLock = new();
-		private static readonly Dictionary<string, SharedHeuristicGpuTables> SharedTables = new();
-
-		private static string CreateAcceleratorKey(Accelerator accelerator)
-		{
-			return accelerator.AcceleratorType + ":" + accelerator.Name;
-		}
-
-		private static SharedHeuristicGpuTables RentSharedTables(Accelerator accelerator)
-		{
-			string key = CreateAcceleratorKey(accelerator);
-
-			lock (SharedTablesLock)
-			{
-				if (!SharedTables.TryGetValue(key, out var tables))
-				{
-					tables = new SharedHeuristicGpuTables(accelerator, key);
-					SharedTables.Add(key, tables);
-				}
-
-				tables.AddReference();
-				return tables;
-			}
-		}
-
-		private static void ReleaseSharedTables(SharedHeuristicGpuTables tables)
-		{
-			if (tables is null)
-			{
-				return;
-			}
-
-			lock (SharedTablesLock)
-			{
-				tables.Release();
-			}
-		}
 
 		internal static PrimeTesterGpuContextLease Rent(int minBufferCapacity = 1)
 		{
@@ -293,16 +221,6 @@ public sealed class PrimeTester
 			while (Pool.TryDequeue(out var lease))
 			{
 				lease.DisposeResources();
-			}
-
-			lock (SharedTablesLock)
-			{
-				foreach (var entry in SharedTables.Values)
-				{
-					entry.Dispose();
-				}
-
-				SharedTables.Clear();
 			}
 		}
 
@@ -335,95 +253,101 @@ public sealed class PrimeTester
 
 		internal sealed class PrimeTesterGpuContextLease : IDisposable
 		{
-
 			private bool _returned;
-			private readonly SharedHeuristicGpuTables _sharedTables;
-			private readonly HeuristicGpuDivisorTables _heuristicDivisorTables;
 
 			internal readonly Context AcceleratorContext;
 			public readonly Accelerator Accelerator;
 			public readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> Kernel;
-			public readonly Action<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables> HeuristicTrialDivisionKernel;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> Input = null!;
-			public MemoryBuffer1D<byte, Stride1D.Dense> Output = null!;
-			public MemoryBuffer1D<int, Stride1D.Dense> HeuristicFlag = null!;
+			public readonly Action<Index1D, ArrayView<ulong>, ulong, ArrayView<int>> HeuristicTrialDivisionKernel;
+			public readonly MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesDefault;
+			public readonly MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne;
+			public readonly MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven;
+			public readonly MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastThree;
+			public readonly MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastNine;
+			public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2Default;
+			public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastOne;
+			public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastSeven;
+			public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastThree;
+			public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastNine;
+			public MemoryBuffer1D<ulong, Stride1D.Dense> Input;
+			public MemoryBuffer1D<byte, Stride1D.Dense> Output;
+			public MemoryBuffer1D<int, Stride1D.Dense> HeuristicFlag;
 			public int BufferCapacity;
-
-			public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesDefault => _sharedTables.DevicePrimesDefault;
-			public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne => _sharedTables.DevicePrimesLastOne;
-			public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven => _sharedTables.DevicePrimesLastSeven;
-			public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastThree => _sharedTables.DevicePrimesLastThree;
-			public MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastNine => _sharedTables.DevicePrimesLastNine;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2Default => _sharedTables.DevicePrimesPow2Default;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastOne => _sharedTables.DevicePrimesPow2LastOne;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastSeven => _sharedTables.DevicePrimesPow2LastSeven;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastThree => _sharedTables.DevicePrimesPow2LastThree;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastNine => _sharedTables.DevicePrimesPow2LastNine;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupADivisors => _sharedTables.HeuristicGroupADivisors;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupADivisorSquares => _sharedTables.HeuristicGroupADivisorSquares;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorsEnding1 => _sharedTables.HeuristicGroupBDivisorsEnding1;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorSquaresEnding1 => _sharedTables.HeuristicGroupBDivisorSquaresEnding1;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorsEnding7 => _sharedTables.HeuristicGroupBDivisorsEnding7;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorSquaresEnding7 => _sharedTables.HeuristicGroupBDivisorSquaresEnding7;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorsEnding9 => _sharedTables.HeuristicGroupBDivisorsEnding9;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorSquaresEnding9 => _sharedTables.HeuristicGroupBDivisorSquaresEnding9;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorsEnding1 => _sharedTables.HeuristicCombinedDivisorsEnding1;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding1 => _sharedTables.HeuristicCombinedDivisorSquaresEnding1;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorsEnding3 => _sharedTables.HeuristicCombinedDivisorsEnding3;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding3 => _sharedTables.HeuristicCombinedDivisorSquaresEnding3;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorsEnding7 => _sharedTables.HeuristicCombinedDivisorsEnding7;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding7 => _sharedTables.HeuristicCombinedDivisorSquaresEnding7;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorsEnding9 => _sharedTables.HeuristicCombinedDivisorsEnding9;
-			public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding9 => _sharedTables.HeuristicCombinedDivisorSquaresEnding9;
-
-			public HeuristicGpuDivisorTables HeuristicGpuTables => _heuristicDivisorTables;
+	        public ulong[] DivisorArray;
 
 			internal PrimeTesterGpuContextLease(int minBufferCapacity)
 			{
 				AcceleratorContext = Context.CreateDefault();
 				Accelerator = AcceleratorContext.GetPreferredDevice(false).CreateAccelerator(AcceleratorContext);
 				Kernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
-                                HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
+				HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ulong, ArrayView<int>>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
-				_sharedTables = RentSharedTables(Accelerator);
+				var primesDefault = DivisorGenerator.SmallPrimes;
+				DevicePrimesDefault = Accelerator.Allocate1D<uint>(primesDefault.Length);
+				DevicePrimesDefault.View.CopyFromCPU(primesDefault);
 
-				_heuristicDivisorTables = new HeuristicGpuDivisorTables(
-					_sharedTables.HeuristicCombinedDivisorsEnding1.View,
-					_sharedTables.HeuristicCombinedDivisorsEnding3.View,
-					_sharedTables.HeuristicCombinedDivisorsEnding7.View,
-					_sharedTables.HeuristicCombinedDivisorsEnding9.View,
-					_sharedTables.HeuristicCombinedDivisorSquaresEnding1.View,
-					_sharedTables.HeuristicCombinedDivisorSquaresEnding3.View,
-					_sharedTables.HeuristicCombinedDivisorSquaresEnding7.View,
-					_sharedTables.HeuristicCombinedDivisorSquaresEnding9.View,
-					_sharedTables.HeuristicGroupADivisors.View,
-					_sharedTables.HeuristicGroupADivisorSquares.View,
-					_sharedTables.HeuristicGroupBDivisorsEnding1.View,
-					_sharedTables.HeuristicGroupBDivisorSquaresEnding1.View,
-					_sharedTables.HeuristicGroupBDivisorsEnding7.View,
-					_sharedTables.HeuristicGroupBDivisorSquaresEnding7.View,
-					_sharedTables.HeuristicGroupBDivisorsEnding9.View,
-					_sharedTables.HeuristicGroupBDivisorSquaresEnding9.View);
-				HeuristicGpuDivisorTables.InitializeShared(in _heuristicDivisorTables);
+				var primesLastOne = DivisorGenerator.SmallPrimesLastOne;
+				DevicePrimesLastOne = Accelerator.Allocate1D<uint>(primesLastOne.Length);
+				DevicePrimesLastOne.View.CopyFromCPU(primesLastOne);
 
-				EnsureCapacity(minBufferCapacity);
+				var primesLastSeven = DivisorGenerator.SmallPrimesLastSeven;
+				DevicePrimesLastSeven = Accelerator.Allocate1D<uint>(primesLastSeven.Length);
+				DevicePrimesLastSeven.View.CopyFromCPU(primesLastSeven);
+
+				var primesLastThree = DivisorGenerator.SmallPrimesLastThree;
+				DevicePrimesLastThree = Accelerator.Allocate1D<uint>(primesLastThree.Length);
+				DevicePrimesLastThree.View.CopyFromCPU(primesLastThree);
+
+				var primesLastNine = DivisorGenerator.SmallPrimesLastNine;
+				DevicePrimesLastNine = Accelerator.Allocate1D<uint>(primesLastNine.Length);
+				DevicePrimesLastNine.View.CopyFromCPU(primesLastNine);
+
+				var primesPow2Default = DivisorGenerator.SmallPrimesPow2;
+				DevicePrimesPow2Default = Accelerator.Allocate1D<ulong>(primesPow2Default.Length);
+				DevicePrimesPow2Default.View.CopyFromCPU(primesPow2Default);
+
+				var primesPow2LastOne = DivisorGenerator.SmallPrimesPow2LastOne;
+				DevicePrimesPow2LastOne = Accelerator.Allocate1D<ulong>(primesPow2LastOne.Length);
+				DevicePrimesPow2LastOne.View.CopyFromCPU(primesPow2LastOne);
+
+				var primesPow2LastSeven = DivisorGenerator.SmallPrimesPow2LastSeven;
+				DevicePrimesPow2LastSeven = Accelerator.Allocate1D<ulong>(primesPow2LastSeven.Length);
+				DevicePrimesPow2LastSeven.View.CopyFromCPU(primesPow2LastSeven);
+
+				var primesPow2LastThree = DivisorGenerator.SmallPrimesPow2LastThree;
+				DevicePrimesPow2LastThree = Accelerator.Allocate1D<ulong>(primesPow2LastThree.Length);
+				DevicePrimesPow2LastThree.View.CopyFromCPU(primesPow2LastThree);
+
+				var primesPow2LastNine = DivisorGenerator.SmallPrimesPow2LastNine;
+				DevicePrimesPow2LastNine = Accelerator.Allocate1D<ulong>(primesPow2LastNine.Length);
+				DevicePrimesPow2LastNine.View.CopyFromCPU(primesPow2LastNine);
+
+				BufferCapacity = minBufferCapacity;
+				Input = Accelerator.Allocate1D<ulong>(minBufferCapacity);
+				Output = Accelerator.Allocate1D<byte>(minBufferCapacity);
+				HeuristicFlag = Accelerator.Allocate1D<int>(minBufferCapacity);
+				DivisorArray = ThreadStaticPools.UlongPool.Rent(minBufferCapacity);
+
 				_returned = false;
 			}
 
 			public void EnsureCapacity(int minCapacity)
 			{
-				if (minCapacity <= BufferCapacity)
+				int required = minCapacity;
+				if (required <= BufferCapacity)
 				{
 					return;
 				}
 
-				Input?.Dispose();
-				Output?.Dispose();
-				HeuristicFlag?.Dispose();
-				Input = Accelerator.Allocate1D<ulong>(minCapacity);
-				Output = Accelerator.Allocate1D<byte>(minCapacity);
-				HeuristicFlag = Accelerator.Allocate1D<int>(minCapacity);
-				BufferCapacity = minCapacity;
+				Input.Dispose();
+				Output.Dispose();
+				HeuristicFlag.Dispose();
+				ThreadStaticPools.UlongPool.Return(DivisorArray);
+				Input = Accelerator.Allocate1D<ulong>(required);
+				Output = Accelerator.Allocate1D<byte>(required);
+				HeuristicFlag = Accelerator.Allocate1D<int>(required);
+				DivisorArray = ThreadStaticPools.UlongPool.Rent(required);
+				BufferCapacity = required;
 			}
 
 			internal void ResetReturnFlag()
@@ -444,174 +368,9 @@ public sealed class PrimeTester
 
 			internal void DisposeResources()
 			{
-				Input?.Dispose();
-				Output?.Dispose();
-				HeuristicFlag?.Dispose();
-				ReleaseSharedTables(_sharedTables);
-				Accelerator.Dispose();
-				AcceleratorContext.Dispose();
-			}
-		}
-
-		private sealed class SharedHeuristicGpuTables
-		{
-			private int _referenceCount;
-
-			internal SharedHeuristicGpuTables(Accelerator accelerator, string key)
-			{
-				Key = key;
-
-				var primesDefault = DivisorGenerator.SmallPrimes;
-				DevicePrimesDefault = accelerator.Allocate1D<uint>(primesDefault.Length);
-				DevicePrimesDefault.View.CopyFromCPU(primesDefault);
-
-				var primesLastOne = DivisorGenerator.SmallPrimesLastOne;
-				DevicePrimesLastOne = accelerator.Allocate1D<uint>(primesLastOne.Length);
-				DevicePrimesLastOne.View.CopyFromCPU(primesLastOne);
-
-				var primesLastSeven = DivisorGenerator.SmallPrimesLastSeven;
-				DevicePrimesLastSeven = accelerator.Allocate1D<uint>(primesLastSeven.Length);
-				DevicePrimesLastSeven.View.CopyFromCPU(primesLastSeven);
-
-				var primesLastThree = DivisorGenerator.SmallPrimesLastThree;
-				DevicePrimesLastThree = accelerator.Allocate1D<uint>(primesLastThree.Length);
-				DevicePrimesLastThree.View.CopyFromCPU(primesLastThree);
-
-				var primesLastNine = DivisorGenerator.SmallPrimesLastNine;
-				DevicePrimesLastNine = accelerator.Allocate1D<uint>(primesLastNine.Length);
-				DevicePrimesLastNine.View.CopyFromCPU(primesLastNine);
-
-				var primesPow2Default = DivisorGenerator.SmallPrimesPow2;
-				DevicePrimesPow2Default = accelerator.Allocate1D<ulong>(primesPow2Default.Length);
-				DevicePrimesPow2Default.View.CopyFromCPU(primesPow2Default);
-
-				var primesPow2LastOne = DivisorGenerator.SmallPrimesPow2LastOne;
-				DevicePrimesPow2LastOne = accelerator.Allocate1D<ulong>(primesPow2LastOne.Length);
-				DevicePrimesPow2LastOne.View.CopyFromCPU(primesPow2LastOne);
-
-				var primesPow2LastSeven = DivisorGenerator.SmallPrimesPow2LastSeven;
-				DevicePrimesPow2LastSeven = accelerator.Allocate1D<ulong>(primesPow2LastSeven.Length);
-				DevicePrimesPow2LastSeven.View.CopyFromCPU(primesPow2LastSeven);
-
-				var primesPow2LastThree = DivisorGenerator.SmallPrimesPow2LastThree;
-				DevicePrimesPow2LastThree = accelerator.Allocate1D<ulong>(primesPow2LastThree.Length);
-				DevicePrimesPow2LastThree.View.CopyFromCPU(primesPow2LastThree);
-
-				var primesPow2LastNine = DivisorGenerator.SmallPrimesPow2LastNine;
-				DevicePrimesPow2LastNine = accelerator.Allocate1D<ulong>(primesPow2LastNine.Length);
-				DevicePrimesPow2LastNine.View.CopyFromCPU(primesPow2LastNine);
-
-				HeuristicPrimeSieves.EnsureInitialized();
-				HeuristicCombinedPrimeTester.EnsureInitialized();
-
-				var heuristicGroupA = HeuristicPrimeSieves.GroupADivisors;
-				HeuristicGroupADivisors = CopySpanToDevice(accelerator, heuristicGroupA);
-
-				var heuristicGroupASquares = HeuristicPrimeSieves.GroupADivisorSquares;
-				HeuristicGroupADivisorSquares = CopySpanToDevice(accelerator, heuristicGroupASquares);
-
-				HeuristicGroupBDivisorsEnding1 = CopyUintSpanToDevice(accelerator, DivisorGenerator.SmallPrimesLastOneWithoutLastThree);
-				HeuristicGroupBDivisorSquaresEnding1 = CopySpanToDevice(accelerator, DivisorGenerator.SmallPrimesPow2LastOneWithoutLastThree);
-
-				HeuristicGroupBDivisorsEnding7 = CopyUintSpanToDevice(accelerator, DivisorGenerator.SmallPrimesLastSevenWithoutLastThree);
-				HeuristicGroupBDivisorSquaresEnding7 = CopySpanToDevice(accelerator, DivisorGenerator.SmallPrimesPow2LastSevenWithoutLastThree);
-
-				HeuristicGroupBDivisorsEnding9 = CopyUintSpanToDevice(accelerator, DivisorGenerator.SmallPrimesLastNineWithoutLastThree);
-				HeuristicGroupBDivisorSquaresEnding9 = CopySpanToDevice(accelerator, DivisorGenerator.SmallPrimesPow2LastNineWithoutLastThree);
-
-				var combinedEnding1 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding1Span;
-				HeuristicCombinedDivisorsEnding1 = CopySpanToDevice(accelerator, combinedEnding1);
-				var combinedSquaresEnding1 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding1SquaresSpan;
-				HeuristicCombinedDivisorSquaresEnding1 = CopySpanToDevice(accelerator, combinedSquaresEnding1);
-
-				var combinedEnding3 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding3Span;
-				HeuristicCombinedDivisorsEnding3 = CopySpanToDevice(accelerator, combinedEnding3);
-				var combinedSquaresEnding3 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding3SquaresSpan;
-				HeuristicCombinedDivisorSquaresEnding3 = CopySpanToDevice(accelerator, combinedSquaresEnding3);
-
-				var combinedEnding7 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding7Span;
-				HeuristicCombinedDivisorsEnding7 = CopySpanToDevice(accelerator, combinedEnding7);
-				var combinedSquaresEnding7 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding7SquaresSpan;
-				HeuristicCombinedDivisorSquaresEnding7 = CopySpanToDevice(accelerator, combinedSquaresEnding7);
-
-				var combinedEnding9 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding9Span;
-				HeuristicCombinedDivisorsEnding9 = CopySpanToDevice(accelerator, combinedEnding9);
-				var combinedSquaresEnding9 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding9SquaresSpan;
-				HeuristicCombinedDivisorSquaresEnding9 = CopySpanToDevice(accelerator, combinedSquaresEnding9);
-			}
-
-			internal string Key { get; }
-			internal MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesDefault { get; }
-			internal MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne { get; }
-			internal MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven { get; }
-			internal MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastThree { get; }
-			internal MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastNine { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2Default { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastOne { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastSeven { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastThree { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastNine { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupADivisors { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupADivisorSquares { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorsEnding1 { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorSquaresEnding1 { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorsEnding7 { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorSquaresEnding7 { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorsEnding9 { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorSquaresEnding9 { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorsEnding1 { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding1 { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorsEnding3 { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding3 { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorsEnding7 { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding7 { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorsEnding9 { get; }
-			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding9 { get; }
-
-			internal void AddReference()
-			{
-				_referenceCount++;
-			}
-
-			internal void Release()
-			{
-				if (_referenceCount > 0)
-				{
-					_referenceCount--;
-				}
-			}
-
-			private static MemoryBuffer1D<ulong, Stride1D.Dense> CopySpanToDevice(Accelerator accelerator, ReadOnlySpan<ulong> span)
-			{
-				var buffer = accelerator.Allocate1D<ulong>(span.Length);
-				if (!span.IsEmpty)
-				{
-					ref ulong sourceRef = ref MemoryMarshal.GetReference(span);
-					buffer.View.CopyFromCPU(ref sourceRef, span.Length);
-				}
-
-				return buffer;
-			}
-
-			private static MemoryBuffer1D<ulong, Stride1D.Dense> CopyUintSpanToDevice(Accelerator accelerator, ReadOnlySpan<uint> span)
-			{
-				var buffer = accelerator.Allocate1D<ulong>(span.Length);
-				if (!span.IsEmpty)
-				{
-					var converted = new ulong[span.Length];
-					for (int i = 0; i < span.Length; i++)
-					{
-						converted[i] = span[i];
-					}
-
-					buffer.View.CopyFromCPU(converted);
-				}
-
-				return buffer;
-			}
-
-			internal void Dispose()
-			{
+				Input.Dispose();
+				Output.Dispose();
+				HeuristicFlag.Dispose();
 				DevicePrimesDefault.Dispose();
 				DevicePrimesLastOne.Dispose();
 				DevicePrimesLastSeven.Dispose();
@@ -622,26 +381,11 @@ public sealed class PrimeTester
 				DevicePrimesPow2LastSeven.Dispose();
 				DevicePrimesPow2LastThree.Dispose();
 				DevicePrimesPow2LastNine.Dispose();
-				HeuristicGroupADivisors.Dispose();
-				HeuristicGroupADivisorSquares.Dispose();
-				HeuristicGroupBDivisorsEnding1.Dispose();
-				HeuristicGroupBDivisorSquaresEnding1.Dispose();
-				HeuristicGroupBDivisorsEnding7.Dispose();
-				HeuristicGroupBDivisorSquaresEnding7.Dispose();
-				HeuristicGroupBDivisorsEnding9.Dispose();
-				HeuristicGroupBDivisorSquaresEnding9.Dispose();
-				HeuristicCombinedDivisorsEnding1.Dispose();
-				HeuristicCombinedDivisorSquaresEnding1.Dispose();
-				HeuristicCombinedDivisorsEnding3.Dispose();
-				HeuristicCombinedDivisorSquaresEnding3.Dispose();
-				HeuristicCombinedDivisorsEnding7.Dispose();
-				HeuristicCombinedDivisorSquaresEnding7.Dispose();
-				HeuristicCombinedDivisorsEnding9.Dispose();
-				HeuristicCombinedDivisorSquaresEnding9.Dispose();
+				Accelerator.Dispose();
+				AcceleratorContext.Dispose();
 			}
 		}
 	}
-
 	// Expose cache clearing for accelerator disposal coordination
 	public static void ClearGpuCaches(Accelerator accelerator)
 	{
@@ -651,10 +395,6 @@ public sealed class PrimeTester
 	internal static void DisposeGpuContexts()
 	{
 		PrimeTesterGpuContextPool.DisposeAll();
-		lock (GpuWarmUpLock)
-		{
-			WarmedGpuLeaseCount = 0;
-		}
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
