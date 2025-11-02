@@ -1,3 +1,6 @@
+using System;
+using System.Threading;
+
 namespace PerfectNumbers.Core.Gpu;
 
 public static class GpuPrimeWorkLimiter
@@ -10,24 +13,31 @@ public static class GpuPrimeWorkLimiter
         // TODO: Inline the pooled limiter guard from the GpuLimiterThroughputBenchmarks so prime-sieve
         // GPU jobs stop allocating Lease instances on every acquisition.
         var sem = _semaphore;
-        // sem.Wait();
+        sem.Wait();
         return new Lease(sem);
     }
 
     public static void SetLimit(int value)
     {
-		if (value == _currentLimit)
-		{
-			return;
-		}
+        if (value <= 0)
+        {
+            value = 1;
+        }
 
-		// TODO: Switch to a shared limiter implementation with GpuWorkLimiter so we can coordinate CPU/GPU prime work using
-		// the same semaphore pool without reallocating per adjustment.
-		_semaphore = new SemaphoreSlim(value, value);
-		_currentLimit = value;
+        if (value == _currentLimit)
+        {
+            return;
+        }
+
+        // TODO: Switch to a shared limiter implementation with GpuWorkLimiter so we can coordinate CPU/GPU prime work using
+        // the same semaphore pool without reallocating per adjustment.
+        var previous = _semaphore;
+        _semaphore = new SemaphoreSlim(value, value);
+        _currentLimit = value;
+        previous.Dispose();
     }
 
-    public sealed class Lease
+    public sealed class Lease : IDisposable
     {
         private readonly SemaphoreSlim _sem;
 
@@ -38,8 +48,7 @@ public static class GpuPrimeWorkLimiter
 
         public void Dispose()
         {
-            // _sem.Release();
+            _sem.Release();
         }
     }
 }
-

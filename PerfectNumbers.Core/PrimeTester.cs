@@ -159,18 +159,7 @@ public sealed class PrimeTester
 				return;
 			}
 
-			int toWarm = target - WarmedGpuLeaseCount;
-			var leases = new PrimeTesterGpuContextPool.PrimeTesterGpuContextLease[toWarm];
-			for (int i = 0; i < toWarm; i++)
-			{
-				leases[i] = PrimeTesterGpuContextPool.Rent(GpuBatchSize);
-			}
-
-			for (int i = 0; i < toWarm; i++)
-			{
-				leases[i].Dispose();
-			}
-
+			PrimeTesterGpuContextPool.WarmUp(target, GpuBatchSize);
 			WarmedGpuLeaseCount = target;
 		}
 	}
@@ -229,6 +218,8 @@ public sealed class PrimeTester
 	internal static class PrimeTesterGpuContextPool
 	{
 		private static readonly ConcurrentQueue<PrimeTesterGpuContextLease> Pool = new();
+		private static readonly object WarmUpLock = new();
+		private static int WarmedLeaseCount;
 		private static readonly object SharedTablesLock = new();
 		private static readonly Dictionary<string, SharedHeuristicGpuTables> SharedTables = new();
 
@@ -267,20 +258,45 @@ public sealed class PrimeTester
 			}
 		}
 
-		internal static PrimeTesterGpuContextLease Rent(int minBufferCapacity = 1)
+		internal static void WarmUp(int target, int minBufferCapacity)
 		{
-			if (!Pool.TryDequeue(out var lease))
+			if (target <= 0)
 			{
-				lease = new PrimeTesterGpuContextLease(minBufferCapacity);
-			}
-			else
-			{
-				lease.EnsureCapacity(minBufferCapacity);
+				return;
 			}
 
-			lease.ResetReturnFlag();
-			return lease;
+			lock (WarmUpLock)
+			{
+				if (target <= WarmedLeaseCount)
+				{
+					return;
+				}
+
+				int toCreate = target - WarmedLeaseCount;
+				for (int i = 0; i < toCreate; i++)
+				{
+					Pool.Enqueue(new PrimeTesterGpuContextLease(minBufferCapacity));
+				}
+
+				WarmedLeaseCount = target;
+			}
 		}
+
+                internal static PrimeTesterGpuContextLease Rent(int minBufferCapacity = 1)
+                {
+                        if (!Pool.TryDequeue(out var lease))
+                        {
+                                lease = new PrimeTesterGpuContextLease(minBufferCapacity);
+                        }
+                        else
+                        {
+                                lease.EnsureCapacity(minBufferCapacity);
+                        }
+
+                        lease.ResetReturnFlag();
+                        return lease;
+                }
+
 
 		internal static void Return(PrimeTesterGpuContextLease lease)
 		{
@@ -304,6 +320,8 @@ public sealed class PrimeTester
 
 				SharedTables.Clear();
 			}
+
+			WarmedLeaseCount = 0;
 		}
 
 		internal static void Clear(Accelerator accelerator)
@@ -313,23 +331,28 @@ public sealed class PrimeTester
 				return;
 			}
 
-			var retained = new List<PrimeTesterGpuContextLease>();
-			while (Pool.TryDequeue(out var lease))
+			lock (WarmUpLock)
 			{
-				if (lease.Accelerator == accelerator)
+				var retained = new List<PrimeTesterGpuContextLease>();
+				while (Pool.TryDequeue(out var lease))
 				{
-					lease.DisposeResources();
+					if (lease.Accelerator == accelerator)
+					{
+						lease.DisposeResources();
+					}
+					else
+					{
+						retained.Add(lease);
+					}
 				}
-				else
-				{
-					retained.Add(lease);
-				}
-			}
 
-			int retainedCount = retained.Count;
-			for (int i = 0; i < retainedCount; i++)
-			{
-				Pool.Enqueue(retained[i]);
+				int retainedCount = retained.Count;
+				for (int i = 0; i < retainedCount; i++)
+				{
+					Pool.Enqueue(retained[i]);
+				}
+
+				WarmedLeaseCount = Pool.Count;
 			}
 		}
 
