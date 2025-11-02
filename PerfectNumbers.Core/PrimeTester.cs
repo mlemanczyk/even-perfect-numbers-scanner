@@ -99,7 +99,7 @@ public sealed class PrimeTester
 
 		// if (belowGpuRange)
 		// {
-			return IsPrime(n);
+		return IsPrime(n);
 		// }
 
 		// var limiter = GpuPrimeWorkLimiter.Acquire();
@@ -378,12 +378,16 @@ public sealed class PrimeTester
 
 			public HeuristicGpuDivisorTables HeuristicGpuTables => _heuristicDivisorTables;
 
+			private static readonly Context _sharedContext = Context.CreateDefault();
+			private static readonly Device _sharedDevice = _sharedContext.GetPreferredDevice(false);
+			private static readonly Accelerator _sharedAccelerator = _sharedDevice.CreateAccelerator(_sharedContext);
+
 			internal PrimeTesterGpuContextLease(int minBufferCapacity)
 			{
-				AcceleratorContext = Context.CreateDefault();
-				Accelerator = AcceleratorContext.GetPreferredDevice(false).CreateAccelerator(AcceleratorContext);
+				AcceleratorContext = _sharedContext;// Context.CreateDefault();
+				Accelerator = _sharedAccelerator; //AcceleratorContext.GetPreferredDevice(false).CreateAccelerator(AcceleratorContext);
 				Kernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
-                                HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
+				HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
 				_sharedTables = RentSharedTables(Accelerator);
 
@@ -439,7 +443,7 @@ public sealed class PrimeTester
 				}
 
 				_returned = true;
-				PrimeTesterGpuContextPool.Return(this);
+				Return(this);
 			}
 
 			internal void DisposeResources()
@@ -448,8 +452,9 @@ public sealed class PrimeTester
 				Output?.Dispose();
 				HeuristicFlag?.Dispose();
 				ReleaseSharedTables(_sharedTables);
-				Accelerator.Dispose();
-				AcceleratorContext.Dispose();
+				// These resources are shared between GPU leases
+				// Accelerator.Dispose();
+				// AcceleratorContext.Dispose();
 			}
 		}
 

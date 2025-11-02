@@ -12,13 +12,17 @@ public static class GpuContextPool
 	// Default device preference for generic GPU kernels (prime scans, NTT, etc.)
 	internal sealed class PooledContext
 	{
-		public Context Context { get; }
-		public Accelerator Accelerator { get; }
+		public readonly Context Context;
+		public readonly Accelerator Accelerator;
+
+		private static readonly Context _sharedContext = Context.CreateDefault();
+		private static readonly Device _sharedDevice = _sharedContext.GetPreferredDevice(false);
+		private static readonly Accelerator _sharedAccelerator = _sharedDevice.CreateAccelerator(_sharedContext);
 
 		public PooledContext()
 		{
-			Context = Context.CreateDefault();
-			Accelerator = Context.GetPreferredDevice(false).CreateAccelerator(Context);
+			Context = _sharedContext;
+			Accelerator = _sharedAccelerator;
 			// NOTE: Avoid loading/compiling any kernel here to prevent implicit
 			// CL stream/queue creation during accelerator construction.
 			// Some OpenCL drivers are fragile when a queue is created immediately
@@ -34,8 +38,9 @@ public static class GpuContextPool
 			// after the accelerator is destroyed.
 			PrimeTester.ClearGpuCaches(Accelerator);
 
-			Accelerator.Dispose();
-			Context.Dispose();
+			// These resources are shared between GPU leases
+			//  Accelerator.Dispose();
+			// 	Context.Dispose();
 		}
 	}
 
@@ -62,15 +67,15 @@ public static class GpuContextPool
 		}
 
 		int toCreate = threadCount - WarmedGpuContextCount;
+		Console.WriteLine($"Warming up GPU context pool to {toCreate} contexts...");
 		var contexts = new PooledContext[toCreate];
+		var pool = GpuPool;
+		PooledContext context;
 		for (int i = 0; i < toCreate; i++)
 		{
-			contexts[i] = new PooledContext();
-		}
-
-		for (int i = 0; i < toCreate; i++)
-		{
-			GpuPool.Enqueue(contexts[i]);
+			context = new PooledContext();
+			contexts[i] = context;
+			pool.Enqueue(context);
 		}
 
 		WarmedGpuContextCount = threadCount;
