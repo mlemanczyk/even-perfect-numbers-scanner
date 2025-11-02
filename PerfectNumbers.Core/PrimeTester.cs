@@ -221,23 +221,16 @@ public sealed class PrimeTester
 		private static readonly object WarmUpLock = new();
 		private static int WarmedLeaseCount;
 		private static readonly object SharedTablesLock = new();
-		private static readonly Dictionary<string, SharedHeuristicGpuTables> SharedTables = new();
-
-		private static string CreateAcceleratorKey(Accelerator accelerator)
-		{
-			return accelerator.AcceleratorType + ":" + accelerator.Name;
-		}
+		private static readonly Dictionary<Accelerator, SharedHeuristicGpuTables> SharedTables = new(AcceleratorReferenceComparer.Instance);
 
 		private static SharedHeuristicGpuTables RentSharedTables(Accelerator accelerator)
 		{
-			string key = CreateAcceleratorKey(accelerator);
-
 			lock (SharedTablesLock)
 			{
-				if (!SharedTables.TryGetValue(key, out var tables))
+				if (!SharedTables.TryGetValue(accelerator, out var tables))
 				{
-					tables = new SharedHeuristicGpuTables(accelerator, key);
-					SharedTables.Add(key, tables);
+					tables = new SharedHeuristicGpuTables(accelerator);
+					SharedTables.Add(accelerator, tables);
 				}
 
 				tables.AddReference();
@@ -266,6 +259,8 @@ public sealed class PrimeTester
 			}
 
 			var tables = RentSharedTables(accelerator);
+			var heuristicTables = tables.CreateHeuristicDivisorTables();
+			HeuristicGpuDivisorTables.InitializeShared(in heuristicTables);
 			ReleaseSharedTables(tables);
 		}
 
@@ -333,6 +328,8 @@ public sealed class PrimeTester
 				}
 
 				SharedTables.Clear();
+				var emptyTables = default(HeuristicGpuDivisorTables);
+				HeuristicGpuDivisorTables.InitializeShared(in emptyTables);
 			}
 
 			WarmedLeaseCount = 0;
@@ -367,6 +364,20 @@ public sealed class PrimeTester
 				}
 
 				WarmedLeaseCount = Pool.Count;
+			}
+
+			lock (SharedTablesLock)
+			{
+				if (SharedTables.Remove(accelerator, out var tables))
+				{
+					tables.Dispose();
+				}
+
+				if (SharedTables.Count == 0)
+				{
+					var emptyTables = default(HeuristicGpuDivisorTables);
+					HeuristicGpuDivisorTables.InitializeShared(in emptyTables);
+				}
 			}
 		}
 
@@ -425,23 +436,7 @@ public sealed class PrimeTester
 
 				_sharedTables = RentSharedTables(Accelerator);
 
-				_heuristicDivisorTables = new HeuristicGpuDivisorTables(
-					_sharedTables.HeuristicCombinedDivisorsEnding1.View,
-					_sharedTables.HeuristicCombinedDivisorsEnding3.View,
-					_sharedTables.HeuristicCombinedDivisorsEnding7.View,
-					_sharedTables.HeuristicCombinedDivisorsEnding9.View,
-					_sharedTables.HeuristicCombinedDivisorSquaresEnding1.View,
-					_sharedTables.HeuristicCombinedDivisorSquaresEnding3.View,
-					_sharedTables.HeuristicCombinedDivisorSquaresEnding7.View,
-					_sharedTables.HeuristicCombinedDivisorSquaresEnding9.View,
-					_sharedTables.HeuristicGroupADivisors.View,
-					_sharedTables.HeuristicGroupADivisorSquares.View,
-					_sharedTables.HeuristicGroupBDivisorsEnding1.View,
-					_sharedTables.HeuristicGroupBDivisorSquaresEnding1.View,
-					_sharedTables.HeuristicGroupBDivisorsEnding7.View,
-					_sharedTables.HeuristicGroupBDivisorSquaresEnding7.View,
-					_sharedTables.HeuristicGroupBDivisorsEnding9.View,
-					_sharedTables.HeuristicGroupBDivisorSquaresEnding9.View);
+				_heuristicDivisorTables = _sharedTables.CreateHeuristicDivisorTables();
 				HeuristicGpuDivisorTables.InitializeShared(in _heuristicDivisorTables);
 
 				EnsureCapacity(minBufferCapacity);
@@ -492,13 +487,27 @@ public sealed class PrimeTester
 			}
 		}
 
+		private sealed class AcceleratorReferenceComparer : IEqualityComparer<Accelerator>
+		{
+			internal static AcceleratorReferenceComparer Instance { get; } = new();
+
+			public bool Equals(Accelerator? x, Accelerator? y)
+			{
+				return ReferenceEquals(x, y);
+			}
+
+			public int GetHashCode(Accelerator obj)
+			{
+				return RuntimeHelpers.GetHashCode(obj);
+			}
+		}
+
 		private sealed class SharedHeuristicGpuTables
 		{
 			private int _referenceCount;
 
-			internal SharedHeuristicGpuTables(Accelerator accelerator, string key)
+			internal SharedHeuristicGpuTables(Accelerator accelerator)
 			{
-				Key = key;
 
 				var primesDefault = DivisorGenerator.SmallPrimes;
 				DevicePrimesDefault = accelerator.Allocate1D<uint>(primesDefault.Length);
@@ -579,7 +588,6 @@ public sealed class PrimeTester
 				HeuristicCombinedDivisorSquaresEnding9 = CopySpanToDevice(accelerator, combinedSquaresEnding9);
 			}
 
-			internal string Key { get; }
 			internal MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesDefault { get; }
 			internal MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne { get; }
 			internal MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven { get; }
@@ -606,6 +614,27 @@ public sealed class PrimeTester
 			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding7 { get; }
 			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorsEnding9 { get; }
 			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding9 { get; }
+
+			internal HeuristicGpuDivisorTables CreateHeuristicDivisorTables()
+			{
+				return new HeuristicGpuDivisorTables(
+					HeuristicCombinedDivisorsEnding1.View,
+					HeuristicCombinedDivisorsEnding3.View,
+					HeuristicCombinedDivisorsEnding7.View,
+					HeuristicCombinedDivisorsEnding9.View,
+					HeuristicCombinedDivisorSquaresEnding1.View,
+					HeuristicCombinedDivisorSquaresEnding3.View,
+					HeuristicCombinedDivisorSquaresEnding7.View,
+					HeuristicCombinedDivisorSquaresEnding9.View,
+					HeuristicGroupADivisors.View,
+					HeuristicGroupADivisorSquares.View,
+					HeuristicGroupBDivisorsEnding1.View,
+					HeuristicGroupBDivisorSquaresEnding1.View,
+					HeuristicGroupBDivisorsEnding7.View,
+					HeuristicGroupBDivisorSquaresEnding7.View,
+					HeuristicGroupBDivisorsEnding9.View,
+					HeuristicGroupBDivisorSquaresEnding9.View);
+			}
 
 			internal void AddReference()
 			{
