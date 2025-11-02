@@ -61,7 +61,7 @@ internal static class Program
 			int gpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads);
 			UnboundedTaskScheduler.ConfigureThreadCount(threadCount);
 			PrimeTester.GpuBatchSize = gpuPrimeBatch;
-			GpuPrimeLeaseLimiter.Initialize(gpuPrimeThreads);
+			GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
 			GpuContextPool.WarmUpPool(threadCount);
 			PrimeTester.WarmUpGpuKernels(gpuPrimeThreads);
 			Console.WriteLine("Starting up threads...");
@@ -118,9 +118,6 @@ internal static class Program
 				return;
 			}
 
-			// Apply GPU prime sieve runtime configuration
-			GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
-			PrimeTester.GpuBatchSize = gpuPrimeBatch;
 
 			MersenneDivisorCycles mersenneDivisorCycles = new();
 			if (!File.Exists(cyclesPath) || continueCyclesGeneration)

@@ -48,26 +48,17 @@ public static class GpuContextPool
 	private static int WarmedGpuContextCount;
 
 	// Allows callers to choose CPU/GPU per use-case, decoupled from ForceCpu.
-	public static GpuContextLease Rent()
+        	public static GpuContextLease Rent()
 	{
-		GpuPrimeLeaseLimiter.Enter();
-
-		try
+		if (GpuPool.TryDequeue(out var gpu))
 		{
-			if (GpuPool.TryDequeue(out var gpu))
-			{
-				return new GpuContextLease(gpu);
-			}
+			return new GpuContextLease(gpu);
+		}
 
-			// Create a new accelerator when the pool does not have one available.
-			return new GpuContextLease(new PooledContext());
-		}
-		catch
-		{
-			GpuPrimeLeaseLimiter.Exit();
-			throw;
-		}
+		// Create a new accelerator when the pool does not have one available.
+		return new GpuContextLease(new PooledContext());
 	}
+
 
 	public static void WarmUpPool(int threadCount)
 	{
@@ -106,7 +97,6 @@ public static class GpuContextPool
 	{
 		ctx.Accelerator.Synchronize();
 		GpuPool.Enqueue(ctx);
-		GpuPrimeLeaseLimiter.Exit();
 	}
 
 	public struct GpuContextLease

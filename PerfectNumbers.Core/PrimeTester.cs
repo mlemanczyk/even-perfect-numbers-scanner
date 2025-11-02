@@ -282,36 +282,26 @@ public sealed class PrimeTester
 			}
 		}
 
-		internal static PrimeTesterGpuContextLease Rent(int minBufferCapacity = 1)
-		{
-			GpuPrimeLeaseLimiter.Enter();
+                internal static PrimeTesterGpuContextLease Rent(int minBufferCapacity = 1)
+                {
+                        if (!Pool.TryDequeue(out var lease))
+                        {
+                                lease = new PrimeTesterGpuContextLease(minBufferCapacity);
+                        }
+                        else
+                        {
+                                lease.EnsureCapacity(minBufferCapacity);
+                        }
 
-			try
-			{
-				if (!Pool.TryDequeue(out var lease))
-				{
-					lease = new PrimeTesterGpuContextLease(minBufferCapacity);
-				}
-				else
-				{
-					lease.EnsureCapacity(minBufferCapacity);
-				}
+                        lease.ResetReturnFlag();
+                        return lease;
+                }
 
-				lease.ResetReturnFlag();
-				return lease;
-			}
-			catch
-			{
-				GpuPrimeLeaseLimiter.Exit();
-				throw;
-			}
-		}
 
 		internal static void Return(PrimeTesterGpuContextLease lease)
 		{
 			lease.Accelerator.Synchronize();
 			Pool.Enqueue(lease);
-			GpuPrimeLeaseLimiter.Exit();
 		}
 
 		internal static void DisposeAll()
