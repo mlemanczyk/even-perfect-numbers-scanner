@@ -58,14 +58,15 @@ internal static class Program
 			bool startPrimeProvided = _cliArguments.StartPrimeProvided;
 			int threadCount = Math.Max(1, _cliArguments.ThreadCount);
 			int gpuPrimeBatch = Math.Max(1, _cliArguments.GpuPrimeBatch);
+			int gpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads);
 			UnboundedTaskScheduler.ConfigureThreadCount(threadCount);
 			PrimeTester.GpuBatchSize = gpuPrimeBatch;
+			GpuPrimeLeaseLimiter.Initialize(gpuPrimeThreads);
 			GpuContextPool.WarmUpPool(threadCount);
-			PrimeTester.WarmUpGpuKernels(threadCount);
+			PrimeTester.WarmUpGpuKernels(gpuPrimeThreads);
 			Console.WriteLine("Starting up threads...");
 			_ = UnboundedTaskScheduler.Instance;
 			int blockSize = Math.Max(1, _cliArguments.BlockSize);
-			int gpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads);
 			GpuKernelType kernelType = _cliArguments.KernelType;
 			bool useBitTransform = _cliArguments.UseBitTransform;
 			bool useOrder = _cliArguments.UseOrder;

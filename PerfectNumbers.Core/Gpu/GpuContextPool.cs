@@ -50,13 +50,23 @@ public static class GpuContextPool
 	// Allows callers to choose CPU/GPU per use-case, decoupled from ForceCpu.
 	public static GpuContextLease Rent()
 	{
-		if (GpuPool.TryDequeue(out var gpu))
-		{
-			return new GpuContextLease(gpu);
-		}
+		GpuPrimeLeaseLimiter.Enter();
 
-		// Create a new accelerator when the pool does not have one available.
-		return new GpuContextLease(new PooledContext());
+		try
+		{
+			if (GpuPool.TryDequeue(out var gpu))
+			{
+				return new GpuContextLease(gpu);
+			}
+
+			// Create a new accelerator when the pool does not have one available.
+			return new GpuContextLease(new PooledContext());
+		}
+		catch
+		{
+			GpuPrimeLeaseLimiter.Exit();
+			throw;
+		}
 	}
 
 	public static void WarmUpPool(int threadCount)
@@ -96,23 +106,33 @@ public static class GpuContextPool
 	{
 		ctx.Accelerator.Synchronize();
 		GpuPool.Enqueue(ctx);
+		GpuPrimeLeaseLimiter.Exit();
 	}
 
-	public readonly struct GpuContextLease
+	public struct GpuContextLease
 	{
-		private readonly PooledContext _ctx;
+		private PooledContext? _ctx;
+		private bool _disposed;
 
 		internal GpuContextLease(PooledContext ctx)
 		{
 			_ctx = ctx;
+			_disposed = false;
 		}
 
-		public readonly Context Context => _ctx.Context;
-		public readonly Accelerator Accelerator => _ctx.Accelerator;
+		public Context Context => _ctx!.Context;
+		public Accelerator Accelerator => _ctx!.Accelerator;
 
-		public readonly void Dispose()
+		public void Dispose()
 		{
-			Return(_ctx);
+			if (_disposed)
+			{
+				return;
+			}
+
+			_disposed = true;
+			Return(_ctx!);
+			_ctx = null;
 		}
 	}
 }
