@@ -258,6 +258,17 @@ public sealed class PrimeTester
 			}
 		}
 
+		internal static void EnsureStaticTables(Accelerator accelerator)
+		{
+			if (accelerator is null)
+			{
+				return;
+			}
+
+			var tables = RentSharedTables(accelerator);
+			ReleaseSharedTables(tables);
+		}
+
 		internal static void WarmUp(int target, int minBufferCapacity)
 		{
 			if (target <= 0)
@@ -271,6 +282,9 @@ public sealed class PrimeTester
 				{
 					return;
 				}
+
+				Accelerator accelerator = SharedGpuContext.Accelerator;
+				GpuStaticTableInitializer.EnsureStaticTables(accelerator);
 
 				int toCreate = target - WarmedLeaseCount;
 				for (int i = 0; i < toCreate; i++)
@@ -401,14 +415,11 @@ public sealed class PrimeTester
 
 			public HeuristicGpuDivisorTables HeuristicGpuTables => _heuristicDivisorTables;
 
-			private static readonly Context _sharedContext = Context.CreateDefault();
-			private static readonly Device _sharedDevice = _sharedContext.GetPreferredDevice(false);
-			private static readonly Accelerator _sharedAccelerator = _sharedDevice.CreateAccelerator(_sharedContext);
-
 			internal PrimeTesterGpuContextLease(int minBufferCapacity)
 			{
-				AcceleratorContext = _sharedContext;// Context.CreateDefault();
-				Accelerator = _sharedAccelerator; //AcceleratorContext.GetPreferredDevice(false).CreateAccelerator(AcceleratorContext);
+				AcceleratorContext = SharedGpuContext.Context;
+				Accelerator = SharedGpuContext.Accelerator;
+				GpuStaticTableInitializer.EnsureStaticTables(Accelerator);
 				Kernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
 				HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 

@@ -138,6 +138,13 @@ public class GpuKernelPool
         return KernelCache.GetOrAdd(accelerator, _ => new KernelContainer());
     }
 
+    internal static void PreloadStaticTables(Accelerator accelerator)
+    {
+        EnsureSmallCyclesOnDevice(accelerator);
+        _ = EnsureSmallPrimesOnDevice(accelerator);
+        _ = EnsureSmallPrimeFactorTables(accelerator);
+    }
+
     // Ensures the small cycles table is uploaded to the device for the given accelerator.
     // Returns the ArrayView to pass into kernels (when kernels are extended to accept it).
     public static ArrayView1D<ulong, Stride1D.Dense> EnsureSmallCyclesOnDevice(Accelerator accelerator)
