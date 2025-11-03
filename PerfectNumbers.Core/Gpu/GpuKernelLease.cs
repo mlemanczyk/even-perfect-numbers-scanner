@@ -12,22 +12,23 @@ public sealed class GpuKernelLease
     private static readonly ConcurrentQueue<GpuKernelLease> Pool = new();
 
     private GpuContextLease? _gpu;
-    public KernelContainer Kernels = null!;
+    public KernelContainer Kernels;
     private AcceleratorStream? _stream;
 
-    private GpuKernelLease()
+    private GpuKernelLease(KernelContainer kernels)
 	{
+		Kernels = kernels;
 	}
 
-    internal static GpuKernelLease Rent(GpuContextLease gpu)
+    internal static GpuKernelLease Rent(GpuContextLease gpu, KernelContainer kernels)
     {
         if (!Pool.TryDequeue(out var lease))
         {
-            lease = new GpuKernelLease();
+            lease = new GpuKernelLease(kernels);
         }
 
         lease._gpu = gpu;
-        lease.Kernels = gpu.Kernels;
+        lease.Kernels = kernels;
         lease._stream = null;
         return lease;
     }
@@ -155,9 +156,9 @@ public sealed class GpuKernelLease
 
         _gpu?.Dispose();
         _gpu = null;
-        Kernels = null!;
 
-        GpuPrimeWorkLimiter.Release();
+		Kernels?.Dispose();
+		GpuPrimeWorkLimiter.Release();
         Pool.Enqueue(this);
     }
 

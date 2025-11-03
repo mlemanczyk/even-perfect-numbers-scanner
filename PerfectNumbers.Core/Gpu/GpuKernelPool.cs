@@ -299,11 +299,10 @@ public class GpuKernelPool
 
 	public static GpuKernelLease GetKernel(bool useGpuOrder)
 	{
-		_ = useGpuOrder;
-
 		GpuPrimeWorkLimiter.Acquire();
 		var gpu = Rent();
-		return GpuKernelLease.Rent(gpu);
+		var kernels = GetKernels();
+		return GpuKernelLease.Rent(gpu, kernels);
 	}
 
 	/// <summary>
