@@ -93,50 +93,43 @@ public sealed class PrimeTester
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public bool IsPrimeGpu(ulong n)
+	public static bool IsPrimeGpu(ulong n)
 	{
-		// bool belowGpuRange = n < 31UL;
+		var limiter = GpuPrimeWorkLimiter.Acquire();
+		var gpu = PrimeTesterGpuContextPool.Rent(1);
+		var accelerator = gpu.Accelerator;
+		var kernel = gpu.Kernel;
 
-		// if (belowGpuRange)
-		// {
-		return IsPrime(n);
-		// }
+		ulong value = n;
+		byte flag = 0;
 
-		// var limiter = GpuPrimeWorkLimiter.Acquire();
-		// var gpu = PrimeTesterGpuContextPool.Rent(1);
-		// var accelerator = gpu.Accelerator;
-		// var kernel = gpu.Kernel;
+		var input = gpu.Input;
+		var output = gpu.Output;
+		var inputView = input.View;
+		var outputView = output.View;
 
-		// ulong value = n;
-		// byte flag = 0;
+		inputView.CopyFromCPU(ref value, 1);
+		kernel(
+						1,
+						inputView,
+						gpu.DevicePrimesDefault.View,
+						gpu.DevicePrimesLastOne.View,
+						gpu.DevicePrimesLastSeven.View,
+						gpu.DevicePrimesLastThree.View,
+						gpu.DevicePrimesLastNine.View,
+						gpu.DevicePrimesPow2Default.View,
+						gpu.DevicePrimesPow2LastOne.View,
+						gpu.DevicePrimesPow2LastSeven.View,
+						gpu.DevicePrimesPow2LastThree.View,
+						gpu.DevicePrimesPow2LastNine.View,
+						outputView);
+		accelerator.Synchronize();
+		outputView.CopyToCPU(ref flag, 1);
 
-		// var input = gpu.Input;
-		// var output = gpu.Output;
-		// var inputView = input.View;
-		// var outputView = output.View;
+		gpu.Dispose();
+		limiter.Dispose();
 
-		// inputView.CopyFromCPU(ref value, 1);
-		// kernel(
-		// 				1,
-		// 				inputView,
-		// 				gpu.DevicePrimesDefault.View,
-		// 				gpu.DevicePrimesLastOne.View,
-		// 				gpu.DevicePrimesLastSeven.View,
-		// 				gpu.DevicePrimesLastThree.View,
-		// 				gpu.DevicePrimesLastNine.View,
-		// 				gpu.DevicePrimesPow2Default.View,
-		// 				gpu.DevicePrimesPow2LastOne.View,
-		// 				gpu.DevicePrimesPow2LastSeven.View,
-		// 				gpu.DevicePrimesPow2LastThree.View,
-		// 				gpu.DevicePrimesPow2LastNine.View,
-		// 				outputView);
-		// accelerator.Synchronize();
-		// outputView.CopyToCPU(ref flag, 1);
-
-		// gpu.Dispose();
-		// limiter.Dispose();
-
-		// return flag != 0;
+		return flag != 0;
 	}
 
 	public static int GpuBatchSize { get; set; } = 262_144;
@@ -221,23 +214,16 @@ public sealed class PrimeTester
 		private static readonly object WarmUpLock = new();
 		private static int WarmedLeaseCount;
 		private static readonly object SharedTablesLock = new();
-		private static readonly Dictionary<string, SharedHeuristicGpuTables> SharedTables = new();
-
-		private static string CreateAcceleratorKey(Accelerator accelerator)
-		{
-			return accelerator.AcceleratorType + ":" + accelerator.Name;
-		}
+		private static readonly Dictionary<Accelerator, SharedHeuristicGpuTables> SharedTables = new(AcceleratorReferenceComparer.Instance);
 
 		private static SharedHeuristicGpuTables RentSharedTables(Accelerator accelerator)
 		{
-			string key = CreateAcceleratorKey(accelerator);
-
 			lock (SharedTablesLock)
 			{
-				if (!SharedTables.TryGetValue(key, out var tables))
+				if (!SharedTables.TryGetValue(accelerator, out var tables))
 				{
-					tables = new SharedHeuristicGpuTables(accelerator, key);
-					SharedTables.Add(key, tables);
+					tables = new SharedHeuristicGpuTables(accelerator);
+					SharedTables.Add(accelerator, tables);
 				}
 
 				tables.AddReference();
@@ -258,6 +244,19 @@ public sealed class PrimeTester
 			}
 		}
 
+		internal static void EnsureStaticTables(Accelerator accelerator)
+		{
+			if (accelerator is null)
+			{
+				return;
+			}
+
+			var tables = RentSharedTables(accelerator);
+			var heuristicTables = tables.CreateHeuristicDivisorTables();
+			HeuristicGpuDivisorTables.InitializeShared(in heuristicTables);
+			ReleaseSharedTables(tables);
+		}
+
 		internal static void WarmUp(int target, int minBufferCapacity)
 		{
 			if (target <= 0)
@@ -271,6 +270,9 @@ public sealed class PrimeTester
 				{
 					return;
 				}
+
+				Accelerator accelerator = SharedGpuContext.Accelerator;
+				GpuStaticTableInitializer.EnsureStaticTables(accelerator);
 
 				int toCreate = target - WarmedLeaseCount;
 				for (int i = 0; i < toCreate; i++)
@@ -319,6 +321,8 @@ public sealed class PrimeTester
 				}
 
 				SharedTables.Clear();
+				var emptyTables = default(HeuristicGpuDivisorTables);
+				HeuristicGpuDivisorTables.InitializeShared(in emptyTables);
 			}
 
 			WarmedLeaseCount = 0;
@@ -353,6 +357,20 @@ public sealed class PrimeTester
 				}
 
 				WarmedLeaseCount = Pool.Count;
+			}
+
+			lock (SharedTablesLock)
+			{
+				if (SharedTables.Remove(accelerator, out var tables))
+				{
+					tables.Dispose();
+				}
+
+				if (SharedTables.Count == 0)
+				{
+					var emptyTables = default(HeuristicGpuDivisorTables);
+					HeuristicGpuDivisorTables.InitializeShared(in emptyTables);
+				}
 			}
 		}
 
@@ -401,36 +419,17 @@ public sealed class PrimeTester
 
 			public HeuristicGpuDivisorTables HeuristicGpuTables => _heuristicDivisorTables;
 
-			private static readonly Context _sharedContext = Context.CreateDefault();
-			private static readonly Device _sharedDevice = _sharedContext.GetPreferredDevice(false);
-			private static readonly Accelerator _sharedAccelerator = _sharedDevice.CreateAccelerator(_sharedContext);
-
 			internal PrimeTesterGpuContextLease(int minBufferCapacity)
 			{
-				AcceleratorContext = _sharedContext;// Context.CreateDefault();
-				Accelerator = _sharedAccelerator; //AcceleratorContext.GetPreferredDevice(false).CreateAccelerator(AcceleratorContext);
+				AcceleratorContext = SharedGpuContext.Context;
+				Accelerator = SharedGpuContext.Accelerator;
+				GpuStaticTableInitializer.EnsureStaticTables(Accelerator);
 				Kernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
 				HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
 				_sharedTables = RentSharedTables(Accelerator);
 
-				_heuristicDivisorTables = new HeuristicGpuDivisorTables(
-					_sharedTables.HeuristicCombinedDivisorsEnding1.View,
-					_sharedTables.HeuristicCombinedDivisorsEnding3.View,
-					_sharedTables.HeuristicCombinedDivisorsEnding7.View,
-					_sharedTables.HeuristicCombinedDivisorsEnding9.View,
-					_sharedTables.HeuristicCombinedDivisorSquaresEnding1.View,
-					_sharedTables.HeuristicCombinedDivisorSquaresEnding3.View,
-					_sharedTables.HeuristicCombinedDivisorSquaresEnding7.View,
-					_sharedTables.HeuristicCombinedDivisorSquaresEnding9.View,
-					_sharedTables.HeuristicGroupADivisors.View,
-					_sharedTables.HeuristicGroupADivisorSquares.View,
-					_sharedTables.HeuristicGroupBDivisorsEnding1.View,
-					_sharedTables.HeuristicGroupBDivisorSquaresEnding1.View,
-					_sharedTables.HeuristicGroupBDivisorsEnding7.View,
-					_sharedTables.HeuristicGroupBDivisorSquaresEnding7.View,
-					_sharedTables.HeuristicGroupBDivisorsEnding9.View,
-					_sharedTables.HeuristicGroupBDivisorSquaresEnding9.View);
+				_heuristicDivisorTables = _sharedTables.CreateHeuristicDivisorTables();
 				HeuristicGpuDivisorTables.InitializeShared(in _heuristicDivisorTables);
 
 				EnsureCapacity(minBufferCapacity);
@@ -481,13 +480,27 @@ public sealed class PrimeTester
 			}
 		}
 
+		private sealed class AcceleratorReferenceComparer : IEqualityComparer<Accelerator>
+		{
+			internal static AcceleratorReferenceComparer Instance { get; } = new();
+
+			public bool Equals(Accelerator? x, Accelerator? y)
+			{
+				return ReferenceEquals(x, y);
+			}
+
+			public int GetHashCode(Accelerator obj)
+			{
+				return RuntimeHelpers.GetHashCode(obj);
+			}
+		}
+
 		private sealed class SharedHeuristicGpuTables
 		{
 			private int _referenceCount;
 
-			internal SharedHeuristicGpuTables(Accelerator accelerator, string key)
+			internal SharedHeuristicGpuTables(Accelerator accelerator)
 			{
-				Key = key;
 
 				var primesDefault = DivisorGenerator.SmallPrimes;
 				DevicePrimesDefault = accelerator.Allocate1D<uint>(primesDefault.Length);
@@ -568,7 +581,6 @@ public sealed class PrimeTester
 				HeuristicCombinedDivisorSquaresEnding9 = CopySpanToDevice(accelerator, combinedSquaresEnding9);
 			}
 
-			internal string Key { get; }
 			internal MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesDefault { get; }
 			internal MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne { get; }
 			internal MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven { get; }
@@ -595,6 +607,27 @@ public sealed class PrimeTester
 			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding7 { get; }
 			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorsEnding9 { get; }
 			internal MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding9 { get; }
+
+			internal HeuristicGpuDivisorTables CreateHeuristicDivisorTables()
+			{
+				return new HeuristicGpuDivisorTables(
+					HeuristicCombinedDivisorsEnding1.View,
+					HeuristicCombinedDivisorsEnding3.View,
+					HeuristicCombinedDivisorsEnding7.View,
+					HeuristicCombinedDivisorsEnding9.View,
+					HeuristicCombinedDivisorSquaresEnding1.View,
+					HeuristicCombinedDivisorSquaresEnding3.View,
+					HeuristicCombinedDivisorSquaresEnding7.View,
+					HeuristicCombinedDivisorSquaresEnding9.View,
+					HeuristicGroupADivisors.View,
+					HeuristicGroupADivisorSquares.View,
+					HeuristicGroupBDivisorsEnding1.View,
+					HeuristicGroupBDivisorSquaresEnding1.View,
+					HeuristicGroupBDivisorsEnding7.View,
+					HeuristicGroupBDivisorSquaresEnding7.View,
+					HeuristicGroupBDivisorsEnding9.View,
+					HeuristicGroupBDivisorSquaresEnding9.View);
+			}
 
 			internal void AddReference()
 			{

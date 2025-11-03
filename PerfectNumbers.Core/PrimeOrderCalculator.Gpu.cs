@@ -9,63 +9,112 @@ namespace PerfectNumbers.Core;
 
 internal static partial class PrimeOrderCalculator
 {
-        private static bool IsGpuPow2Allowed => s_pow2ModeInitialized && s_allowGpuPow2;
+	private static bool IsGpuPow2Allowed => s_pow2ModeInitialized && s_allowGpuPow2;
 
-        private const int GpuSmallPrimeFactorSlots = 64;
+	private const int GpuSmallPrimeFactorSlots = 64;
 
-        private static bool TryPopulateSmallPrimeFactorsGpu(ulong value, uint limit, Dictionary<ulong, int> counts, out int factorCount, out ulong remaining)
-        {
-                var primeBufferArray = ThreadStaticPools.UlongPool.Rent(GpuSmallPrimeFactorSlots);
-                var exponentBufferArray = ThreadStaticPools.IntPool.Rent(GpuSmallPrimeFactorSlots);
-                Span<ulong> primeBuffer = primeBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
-                Span<int> exponentBuffer = exponentBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
-                remaining = value;
+	private static bool TryPopulateSmallPrimeFactorsGpu(ulong value, uint limit, Dictionary<ulong, int> counts, out int factorCount, out ulong remaining)
+	{
+		var primeBufferArray = ThreadStaticPools.UlongPool.Rent(GpuSmallPrimeFactorSlots);
+		var exponentBufferArray = ThreadStaticPools.IntPool.Rent(GpuSmallPrimeFactorSlots);
+		Span<ulong> primeBuffer = primeBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
+		Span<int> exponentBuffer = exponentBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
+		remaining = value;
 
-                var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
-                Accelerator accelerator = lease.Accelerator;
-                AcceleratorStream stream = lease.Stream;
+		var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+		Accelerator accelerator = lease.Accelerator;
+		AcceleratorStream stream = lease.Stream;
 
-                SmallPrimeFactorTables tables = GpuKernelPool.EnsureSmallPrimeFactorTables(accelerator);
-                SmallPrimeFactorScratch scratch = GpuKernelPool.EnsureSmallPrimeFactorScratch(accelerator, GpuSmallPrimeFactorSlots);
+		SmallPrimeFactorTables tables = GpuKernelPool.EnsureSmallPrimeFactorTables(accelerator);
+		SmallPrimeFactorScratch scratch = GpuKernelPool.EnsureSmallPrimeFactorScratch(accelerator, GpuSmallPrimeFactorSlots);
 
-                var kernel = lease.SmallPrimeFactorKernel;
-                kernel(
-                        stream,
-                        1,
-                        value,
-                        limit,
-                        tables.PrimesView,
-                        tables.SquaresView,
-                        tables.Count,
-                        scratch.PrimeSlots.View,
-                        scratch.ExponentSlots.View,
-                        scratch.CountSlot.View,
-                        scratch.RemainingSlot.View);
+		var kernel = lease.SmallPrimeFactorKernel;
+		kernel(
+				stream,
+				1,
+				value,
+				limit,
+				tables.PrimesView,
+				tables.SquaresView,
+				tables.Count,
+				scratch.PrimeSlots.View,
+				scratch.ExponentSlots.View,
+				scratch.CountSlot.View,
+				scratch.RemainingSlot.View);
 
-                stream.Synchronize();
+		stream.Synchronize();
 
-                factorCount = 0;
-                scratch.CountSlot.View.CopyToCPU(ref factorCount, 1);
-                factorCount = Math.Min(factorCount, GpuSmallPrimeFactorSlots);
+		factorCount = 0;
+		scratch.CountSlot.View.CopyToCPU(ref factorCount, 1);
+		factorCount = Math.Min(factorCount, GpuSmallPrimeFactorSlots);
 
-                if (factorCount > 0)
-                {
-                        scratch.PrimeSlots.View.CopyToCPU(ref MemoryMarshal.GetReference(primeBuffer), factorCount);
-                        scratch.ExponentSlots.View.CopyToCPU(ref MemoryMarshal.GetReference(exponentBuffer), factorCount);
-                }
+		if (factorCount > 0)
+		{
+			scratch.PrimeSlots.View.CopyToCPU(ref MemoryMarshal.GetReference(primeBuffer), factorCount);
+			scratch.ExponentSlots.View.CopyToCPU(ref MemoryMarshal.GetReference(exponentBuffer), factorCount);
+		}
 
-                scratch.RemainingSlot.View.CopyToCPU(ref remaining, 1);
+		scratch.RemainingSlot.View.CopyToCPU(ref remaining, 1);
 
-                for (int i = 0; i < factorCount; i++)
-                {
-                        ulong primeValue = primeBuffer[i];
-                        int exponent = exponentBuffer[i];
-                        counts.Add(primeValue, exponent);
-                }
+		for (int i = 0; i < factorCount; i++)
+		{
+			ulong primeValue = primeBuffer[i];
+			int exponent = exponentBuffer[i];
+			counts.Add(primeValue, exponent);
+		}
 
-                lease.Dispose();
-                ThreadStaticPools.UlongPool.Return(primeBufferArray);
-                ThreadStaticPools.IntPool.Return(exponentBufferArray);
-                return true;
-        }
+		lease.Dispose();
+		ThreadStaticPools.UlongPool.Return(primeBufferArray);
+		ThreadStaticPools.IntPool.Return(exponentBufferArray);
+		return true;
+	}
+
+	private static bool EvaluateSpecialMaxCandidatesGpu(
+			Span<ulong> buffer,
+			ReadOnlySpan<FactorEntry> factors,
+			ulong phi,
+			ulong prime,
+			in MontgomeryDivisorData divisorData)
+	{
+		if (factors.Length == 0)
+		{
+			return true;
+		}
+
+		int factorCount = factors.Length;
+		Span<ulong> factorSpan = buffer[..factorCount];
+		for (int i = 0; i < factorCount; i++)
+		{
+			factorSpan[i] = factors[i].Value;
+		}
+
+		var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+		Accelerator accelerator = lease.Accelerator;
+		AcceleratorStream stream = lease.Stream;
+
+		SpecialMaxScratch scratch = GpuKernelPool.EnsureSpecialMaxScratch(accelerator, factorCount);
+
+		scratch.FactorsView.SubView(0, factorCount).CopyFromCPU(ref MemoryMarshal.GetReference(factorSpan), factorCount);
+
+		var kernel = lease.SpecialMaxKernel;
+		kernel(
+				stream,
+				1,
+				phi,
+				scratch.FactorsView,
+				factorCount,
+				divisorData,
+				scratch.CandidatesView,
+				scratch.ResultView);
+
+		stream.Synchronize();
+
+		byte result = 0;
+		scratch.ResultView.CopyToCPU(ref result, 1);
+
+		lease.Dispose();
+
+		return result != 0;
+	}
 }
+

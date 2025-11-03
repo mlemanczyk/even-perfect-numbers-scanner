@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
@@ -15,14 +14,11 @@ public static class GpuContextPool
 		public readonly Context Context;
 		public readonly Accelerator Accelerator;
 
-		private static readonly Context _sharedContext = Context.CreateDefault();
-		private static readonly Device _sharedDevice = _sharedContext.GetPreferredDevice(false);
-		private static readonly Accelerator _sharedAccelerator = _sharedDevice.CreateAccelerator(_sharedContext);
-
 		public PooledContext()
 		{
-			Context = _sharedContext;
-			Accelerator = _sharedAccelerator;
+			Context = SharedGpuContext.Context;
+			Accelerator = SharedGpuContext.Accelerator;
+			GpuStaticTableInitializer.EnsureStaticTables(Accelerator);
 			// NOTE: Avoid loading/compiling any kernel here to prevent implicit
 			// CL stream/queue creation during accelerator construction.
 			// Some OpenCL drivers are fragile when a queue is created immediately
@@ -48,7 +44,7 @@ public static class GpuContextPool
 	private static int WarmedGpuContextCount;
 
 	// Allows callers to choose CPU/GPU per use-case, decoupled from ForceCpu.
-        	public static GpuContextLease Rent()
+	public static GpuContextLease Rent()
 	{
 		if (GpuPool.TryDequeue(out var gpu))
 		{
