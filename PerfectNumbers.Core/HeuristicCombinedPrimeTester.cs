@@ -1,5 +1,4 @@
 using Open.Numeric.Primes;
-using System;
 using ILGPU.Runtime;
 using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Gpu;
@@ -42,20 +41,20 @@ public sealed class HeuristicCombinedPrimeTester
 	}
 
 
-        public static void EnsureInitialized()
-        {
-        // Intentionally left blank. Accessing this method forces the static constructor to run.
-        }
-        
-        internal static ReadOnlySpan<ulong> CombinedDivisorsEnding1Span => CombinedDivisorsEnding1;
-        internal static ReadOnlySpan<ulong> CombinedDivisorsEnding3Span => CombinedDivisorsEnding3;
-        internal static ReadOnlySpan<ulong> CombinedDivisorsEnding7Span => CombinedDivisorsEnding7;
-        internal static ReadOnlySpan<ulong> CombinedDivisorsEnding9Span => CombinedDivisorsEnding9;
-        
-        internal static ReadOnlySpan<ulong> CombinedDivisorsEnding1SquaresSpan => CombinedDivisorsEnding1Squares;
-        internal static ReadOnlySpan<ulong> CombinedDivisorsEnding3SquaresSpan => CombinedDivisorsEnding3Squares;
-        internal static ReadOnlySpan<ulong> CombinedDivisorsEnding7SquaresSpan => CombinedDivisorsEnding7Squares;
-        internal static ReadOnlySpan<ulong> CombinedDivisorsEnding9SquaresSpan => CombinedDivisorsEnding9Squares;
+	public static void EnsureInitialized()
+	{
+		// Intentionally left blank. Accessing this method forces the static constructor to run.
+	}
+
+	internal static ReadOnlySpan<ulong> CombinedDivisorsEnding1Span => CombinedDivisorsEnding1;
+	internal static ReadOnlySpan<ulong> CombinedDivisorsEnding3Span => CombinedDivisorsEnding3;
+	internal static ReadOnlySpan<ulong> CombinedDivisorsEnding7Span => CombinedDivisorsEnding7;
+	internal static ReadOnlySpan<ulong> CombinedDivisorsEnding9Span => CombinedDivisorsEnding9;
+
+	internal static ReadOnlySpan<ulong> CombinedDivisorsEnding1SquaresSpan => CombinedDivisorsEnding1Squares;
+	internal static ReadOnlySpan<ulong> CombinedDivisorsEnding3SquaresSpan => CombinedDivisorsEnding3Squares;
+	internal static ReadOnlySpan<ulong> CombinedDivisorsEnding7SquaresSpan => CombinedDivisorsEnding7Squares;
+	internal static ReadOnlySpan<ulong> CombinedDivisorsEnding9SquaresSpan => CombinedDivisorsEnding9Squares;
 
 	private const ulong Wheel210 = 210UL;
 
@@ -223,39 +222,39 @@ public sealed class HeuristicCombinedPrimeTester
 	};
 
 
-        private static bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
-        {
-                var limiter = GpuPrimeWorkLimiter.Acquire();
-                var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(1);
-                var accelerator = gpu.Accelerator;
-                var kernel = gpu.HeuristicTrialDivisionKernel;
-                var flagView1D = gpu.HeuristicFlag.View;
-                var flagView = flagView1D.AsContiguous();
+	private static bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
+	{
+		GpuPrimeWorkLimiter.Acquire();
+		var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(1);
+		var accelerator = gpu.Accelerator;
+		var kernel = PrimeTester.PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.HeuristicTrialDivisionKernel;
+		var flagView1D = gpu.HeuristicFlag.View;
+		var flagView = flagView1D.AsContiguous();
 
-                bool compositeDetected = false;
-                int divisorLength = GetCombinedDivisors(nMod10).Length;
+		bool compositeDetected = false;
+		int divisorLength = GetCombinedDivisors(nMod10).Length;
 
-                int compositeFlag = 0;
-                flagView1D.CopyFromCPU(ref compositeFlag, 1);
-                kernel(
-                        divisorLength,
-                        flagView,
-                        n,
-                        maxDivisorSquare,
-                        HeuristicGpuDivisorTableKind.Combined,
-                        gpu.HeuristicGpuTables);
-                accelerator.Synchronize();
-                flagView1D.CopyToCPU(ref compositeFlag, 1);
-                compositeDetected = compositeFlag != 0;
+		int compositeFlag = 0;
+		flagView1D.CopyFromCPU(ref compositeFlag, 1);
+		kernel(
+				divisorLength,
+				flagView,
+				n,
+				maxDivisorSquare,
+				HeuristicGpuDivisorTableKind.Combined,
+				gpu.HeuristicGpuTables);
+		accelerator.Synchronize();
+		flagView1D.CopyToCPU(ref compositeFlag, 1);
+		compositeDetected = compositeFlag != 0;
 
-                gpu.Dispose();
-                limiter.Dispose();
-                return compositeDetected;
-        }
+		gpu.Dispose();
+		GpuPrimeWorkLimiter.Release();
+		return compositeDetected;
+	}
 
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool EvaluateWithOpenNumericFallback(ulong n)
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool EvaluateWithOpenNumericFallback(ulong n)
 	{
 		return Prime.Numbers.IsPrime(n);
 	}

@@ -18,19 +18,19 @@ public class GpuPrimeLimiterTests
         var startedSecond = new TaskCompletionSource<bool>();
         var sw = new Stopwatch();
 
-        var first = GpuPrimeWorkLimiter.Acquire();
+        GpuPrimeWorkLimiter.Acquire();
         sw.Start();
 
         var secondTask = Task.Run(() =>
         {
-            var second = GpuPrimeWorkLimiter.Acquire();
+            GpuPrimeWorkLimiter.Acquire();
             try
             {
                 startedSecond.TrySetResult(true);
             }
             finally
             {
-                second.Dispose();
+				GpuPrimeWorkLimiter.Release();
             }
         });
 
@@ -43,7 +43,7 @@ public class GpuPrimeLimiterTests
         finally
         {
             // Release first after the initial wait so the second task can proceed.
-            first.Dispose();
+			GpuPrimeWorkLimiter.Release();
         }
 
         await secondTask.WaitAsync(TimeSpan.FromSeconds(1));

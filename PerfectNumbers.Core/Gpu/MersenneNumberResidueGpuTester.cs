@@ -26,7 +26,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
     // GPU residue variant: check 2^p % q == 1 for q = 2*p*k + 1.
     public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
     {
-        var limiter = GpuPrimeWorkLimiter.Acquire();
+        GpuPrimeWorkLimiter.Acquire();
         var gpuLease = RentAccelerator();
         var accelerator = gpuLease.Accelerator;
 
@@ -34,15 +34,16 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 
         var stream = accelerator.CreateStream();
         var kernel = GetPow2ModKernel(accelerator);
-        var resources = RentResources(accelerator, GpuConstants.ScanBatchSize);
+		var resources = RentResources(accelerator, GpuConstants.ScanBatchSize);
+		var gpuKernels = GpuKernelPool.GetKernels();
 
         var orderBuffer = resources.OrderBuffer;
         ulong[] orderArray = resources.OrderArray;
         int batchSize = resources.Capacity;
 
         // Ensure device has small cycles and primes tables for in-kernel lookup
-        var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
-        ResiduePrimeViews primeViews = GpuKernelPool.EnsureSmallPrimesOnDevice(accelerator);
+        var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(gpuKernels, accelerator);
+        ResiduePrimeViews primeViews = GpuKernelPool.EnsureSmallPrimesOnDevice(gpuKernels, accelerator);
 
         UInt128 kStart = 1UL;
         UInt128 limit = maxK + UInt128.One;
@@ -108,9 +109,10 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 
         ReturnResources(accelerator, resources);
         stream.Dispose();
-        // Monitor.Exit(gpuLease.ExecutionLock);
-        ReturnAccelerator(gpuLease);
-        limiter.Dispose();
+		// Monitor.Exit(gpuLease.ExecutionLock);
+		gpuKernels.Dispose();
+		ReturnAccelerator(gpuLease);
+		GpuPrimeWorkLimiter.Release();
     }
 
     private Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> GetPow2ModKernel(Accelerator accelerator) =>

@@ -54,13 +54,13 @@ public class MersenneNumberLucasLehmerGpuTester
             return false;
         }
 
-        var limiter = GpuPrimeWorkLimiter.Acquire();
+        GpuPrimeWorkLimiter.Acquire();
         bool result;
         if (exponent >= 128UL)
         {
             if (!TryGetNttParameters(exponent, out var nttMod, out var primitiveRoot))
             {
-                limiter.Dispose();
+				GpuPrimeWorkLimiter.Release();
                 throw new NotSupportedException("NTT parameters for the given exponent are not available.");
             }
 
@@ -80,7 +80,7 @@ public class MersenneNumberLucasLehmerGpuTester
             gpu.Dispose();
         }
 
-        limiter.Dispose();
+		GpuPrimeWorkLimiter.Release();
         return result;
     }
 
