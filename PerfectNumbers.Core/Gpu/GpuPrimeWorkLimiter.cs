@@ -8,16 +8,10 @@ public static class GpuPrimeWorkLimiter
     private static SemaphoreSlim _semaphore = new(1, int.MaxValue);
     private static int _currentLimit = 1;
 
-    public static Lease Acquire()
-    {
-        // TODO: Inline the pooled limiter guard from the GpuLimiterThroughputBenchmarks so prime-sieve
-        // GPU jobs stop allocating Lease instances on every acquisition.
-        var sem = _semaphore;
-        sem.Wait();
-        return new Lease(sem);
-    }
+	public static void Acquire() => _semaphore.Wait();
+	public static void Release() => _semaphore.Release();
 
-    public static void SetLimit(int value)
+	public static void SetLimit(int value)
     {
         if (value <= 0)
         {
@@ -35,20 +29,5 @@ public static class GpuPrimeWorkLimiter
         _semaphore = new SemaphoreSlim(value, value);
         _currentLimit = value;
         previous.Dispose();
-    }
-
-    public sealed class Lease : IDisposable
-    {
-        private readonly SemaphoreSlim _sem;
-
-        internal Lease(SemaphoreSlim sem)
-        {
-            _sem = sem;
-        }
-
-        public void Dispose()
-        {
-            _sem.Release();
-        }
     }
 }

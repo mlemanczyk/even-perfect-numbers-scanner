@@ -95,10 +95,10 @@ public sealed class PrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool IsPrimeGpu(ulong n)
 	{
-		var limiter = GpuPrimeWorkLimiter.Acquire();
+		GpuPrimeWorkLimiter.Acquire();
 		var gpu = PrimeTesterGpuContextPool.Rent(1);
 		var accelerator = gpu.Accelerator;
-		var kernel = gpu.Kernel;
+		var kernel = PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.Kernel;
 
 		ulong value = n;
 		byte flag = 0;
@@ -127,7 +127,7 @@ public sealed class PrimeTester
 		outputView.CopyToCPU(ref flag, 1);
 
 		gpu.Dispose();
-		limiter.Dispose();
+		GpuPrimeWorkLimiter.Release();
 
 		return flag != 0;
 	}
@@ -160,10 +160,10 @@ public sealed class PrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void IsPrimeBatchGpu(ReadOnlySpan<ulong> values, Span<byte> results)
 	{
-		var limiter = GpuPrimeWorkLimiter.Acquire();
+		GpuPrimeWorkLimiter.Acquire();
 		var gpu = PrimeTesterGpuContextPool.Rent(GpuBatchSize);
 		var accelerator = gpu.Accelerator;
-		var kernel = gpu.Kernel;
+		var kernel = PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.Kernel;
 		int totalLength = values.Length;
 		int batchSize = GpuBatchSize;
 
@@ -205,7 +205,7 @@ public sealed class PrimeTester
 		}
 
 		gpu.Dispose();
-		limiter.Dispose();
+		GpuPrimeWorkLimiter.Release();
 	}
 
 	internal static class PrimeTesterGpuContextPool
@@ -244,13 +244,8 @@ public sealed class PrimeTester
 			}
 		}
 
-		internal static void EnsureStaticTables(Accelerator accelerator)
+		internal static void EnsureStaticTables(KernelContainer kernels, Accelerator accelerator)
 		{
-			if (accelerator is null)
-			{
-				return;
-			}
-
 			var tables = RentSharedTables(accelerator);
 			var heuristicTables = tables.CreateHeuristicDivisorTables();
 			HeuristicGpuDivisorTables.InitializeShared(in heuristicTables);
@@ -271,8 +266,8 @@ public sealed class PrimeTester
 					return;
 				}
 
-				Accelerator accelerator = SharedGpuContext.Accelerator;
-				GpuStaticTableInitializer.EnsureStaticTables(accelerator);
+				KernelContainer kernels = GpuKernelPool.GetKernels();
+				GpuStaticTableInitializer.EnsureStaticTables(kernels, SharedGpuContext.Accelerator);
 
 				int toCreate = target - WarmedLeaseCount;
 				for (int i = 0; i < toCreate; i++)
@@ -280,6 +275,7 @@ public sealed class PrimeTester
 					Pool.Enqueue(new PrimeTesterGpuContextLease(minBufferCapacity));
 				}
 
+				kernels.Dispose();
 				WarmedLeaseCount = target;
 			}
 		}
@@ -383,8 +379,11 @@ public sealed class PrimeTester
 
 			internal readonly Context AcceleratorContext;
 			public readonly Accelerator Accelerator;
-			public readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> Kernel;
-			public readonly Action<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables> HeuristicTrialDivisionKernel;
+			
+			public static readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> Kernel = SharedGpuContext.Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
+
+			public static readonly Action<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables> HeuristicTrialDivisionKernel = SharedGpuContext.Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
+			
 			public MemoryBuffer1D<ulong, Stride1D.Dense> Input = null!;
 			public MemoryBuffer1D<byte, Stride1D.Dense> Output = null!;
 			public MemoryBuffer1D<int, Stride1D.Dense> HeuristicFlag = null!;
@@ -423,9 +422,9 @@ public sealed class PrimeTester
 			{
 				AcceleratorContext = SharedGpuContext.Context;
 				Accelerator = SharedGpuContext.Accelerator;
-				GpuStaticTableInitializer.EnsureStaticTables(Accelerator);
-				Kernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
-				HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
+				// GpuStaticTableInitializer.EnsureStaticTables(Accelerator);
+				// Kernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
+				// HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
 				_sharedTables = RentSharedTables(Accelerator);
 

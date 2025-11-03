@@ -11,18 +11,13 @@ internal static class GpuStaticTableInitializer
 {
     private static readonly ConcurrentDictionary<Accelerator, byte> Initialized = new(AcceleratorReferenceComparer.Instance);
 
-    internal static void EnsureStaticTables(Accelerator accelerator)
+    internal static void EnsureStaticTables(KernelContainer kernels, Accelerator accelerator)
     {
-        if (accelerator is null)
+        Initialized.GetOrAdd(accelerator, acc =>
         {
-            return;
-        }
-
-        Initialized.GetOrAdd(accelerator, static acc =>
-        {
-            PrimeTester.PrimeTesterGpuContextPool.EnsureStaticTables(acc);
-            GpuKernelPool.PreloadStaticTables(acc);
-            PrimeOrderGpuHeuristics.PreloadStaticTables(acc);
+            PrimeTester.PrimeTesterGpuContextPool.EnsureStaticTables(kernels, acc);
+            GpuKernelPool.PreloadStaticTables(kernels, acc);
+            PrimeOrderGpuHeuristics.PreloadStaticTables( acc);
             return 0;
         });
     }

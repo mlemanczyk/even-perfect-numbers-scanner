@@ -13,7 +13,7 @@ internal static partial class PrimeOrderGpuHeuristics
         int factorCount,
         MontgomeryDivisorData divisor,
         ArrayView1D<ulong, Stride1D.Dense> candidates,
-        ArrayView1D<byte, Stride1D.Dense> resultOut)
+        ArrayView1D<ushort, Stride1D.Dense> resultOut)
     {
         if (index != 0)
         {

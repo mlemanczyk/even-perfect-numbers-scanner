@@ -25,8 +25,8 @@ internal static partial class PrimeOrderCalculator
 		Accelerator accelerator = lease.Accelerator;
 		AcceleratorStream stream = lease.Stream;
 
-		SmallPrimeFactorTables tables = GpuKernelPool.EnsureSmallPrimeFactorTables(accelerator);
-		SmallPrimeFactorScratch scratch = GpuKernelPool.EnsureSmallPrimeFactorScratch(accelerator, GpuSmallPrimeFactorSlots);
+		SmallPrimeFactorTables tables = GpuKernelPool.EnsureSmallPrimeFactorTables(lease.Kernels, accelerator);
+		SmallPrimeFactorScratch scratch = GpuKernelPool.EnsureSmallPrimeFactorScratch(lease.Kernels, accelerator, GpuSmallPrimeFactorSlots);
 
 		var kernel = lease.SmallPrimeFactorKernel;
 		kernel(
@@ -92,7 +92,7 @@ internal static partial class PrimeOrderCalculator
 		Accelerator accelerator = lease.Accelerator;
 		AcceleratorStream stream = lease.Stream;
 
-		SpecialMaxScratch scratch = GpuKernelPool.EnsureSpecialMaxScratch(accelerator, factorCount);
+		SpecialMaxScratch scratch = GpuKernelPool.EnsureSpecialMaxScratch(lease.Kernels, accelerator, factorCapacity: factorCount);
 
 		scratch.FactorsView.SubView(0, factorCount).CopyFromCPU(ref MemoryMarshal.GetReference(factorSpan), factorCount);
 
@@ -109,9 +109,8 @@ internal static partial class PrimeOrderCalculator
 
 		stream.Synchronize();
 
-		byte result = 0;
+		ushort result = 0;
 		scratch.ResultView.CopyToCPU(ref result, 1);
-
 		lease.Dispose();
 
 		return result != 0;

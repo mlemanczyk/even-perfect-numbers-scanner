@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using ILGPU;
 using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
@@ -106,6 +107,7 @@ internal static partial class PrimeOrderCalculator
 		return candidateOrder;
 	}
 
+	// private static ulong specialMaxHits;
 	private static bool TrySpecialMaxCpu(ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
 	{
 		int length = factors.Count;
@@ -125,6 +127,8 @@ internal static partial class PrimeOrderCalculator
 			return EvaluateSpecialMaxCandidates(stackBuffer, factorSpan, phi, prime, divisorData);
 		}
 
+		// Atomic.Add(ref specialMaxHits, 1);
+		// Console.WriteLine($"Special max GPU hit {specialMaxHits} ({length})");
 		return EvaluateSpecialMaxCandidatesGpu(stackBuffer, factorSpan, phi, prime, divisorData);
 	}
 
