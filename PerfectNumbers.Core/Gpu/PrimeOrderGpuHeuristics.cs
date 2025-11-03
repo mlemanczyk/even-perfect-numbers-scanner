@@ -18,6 +18,11 @@ internal enum GpuPow2ModStatus
 
 internal static partial class PrimeOrderGpuHeuristics
 {
+    internal static void PreloadStaticTables(Accelerator accelerator)
+    {
+        _ = GetSmallPrimeDeviceCache(accelerator);
+    }
+
     private static readonly ConcurrentDictionary<ulong, byte> OverflowedPrimes = new();
     private static readonly ConcurrentDictionary<UInt128, byte> OverflowedPrimesWide = new();
     private static readonly ConcurrentDictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>> Pow2ModKernelCache = new();

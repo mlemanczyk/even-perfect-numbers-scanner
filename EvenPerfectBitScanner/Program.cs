@@ -12,7 +12,7 @@ namespace EvenPerfectBitScanner;
 
 internal static class Program
 {
-	private static ThreadLocal<PrimeTester> PrimeTesters = null!;
+	// private static ThreadLocal<PrimeTester> PrimeTesters = null!;
 	private static ThreadLocal<MersenneNumberTester> MersenneTesters = null!;
 	private const ulong InitialP = PerfectNumberConstants.BiggestKnownEvenPerfectP;
 	private static MersenneNumberDivisorGpuTester? _divisorTester;
@@ -176,7 +176,7 @@ internal static class Program
 			blockSize = useByDivisor ? 1 : blockSize;
 
 			CandidatesCalculator.Initialize(currentP);
-			PrimeTesters = new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true);
+			// PrimeTesters = new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true);
 			// Note: --primes-device controls default device for library kernels; p primality remains CPU here.
 			// Initialize per-thread p residue tracker (Identity model) at currentP
 			if (!useDivisor && !_cliArguments.UseByDivisor)
@@ -626,7 +626,7 @@ internal static class Program
 		{
 			if (!(_runPrimesOnCpu
 					? PrimeTester.IsPrime(p)
-					: PrimeTesters.Value!.IsPrimeGpu(p)))
+					: PrimeTester.IsPrimeGpu(p)))
 			{
 				_lastCompositeP = true;
 				return false;
