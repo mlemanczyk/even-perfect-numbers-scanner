@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
@@ -45,7 +44,7 @@ public static class GpuContextPool
 	private static int WarmedGpuContextCount;
 
 	// Allows callers to choose CPU/GPU per use-case, decoupled from ForceCpu.
-        	public static GpuContextLease Rent()
+	public static GpuContextLease Rent()
 	{
 		if (GpuPool.TryDequeue(out var gpu))
 		{
