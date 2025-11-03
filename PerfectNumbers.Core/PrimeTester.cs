@@ -93,50 +93,43 @@ public sealed class PrimeTester
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public bool IsPrimeGpu(ulong n)
+	public static bool IsPrimeGpu(ulong n)
 	{
-		// bool belowGpuRange = n < 31UL;
+		var limiter = GpuPrimeWorkLimiter.Acquire();
+		var gpu = PrimeTesterGpuContextPool.Rent(1);
+		var accelerator = gpu.Accelerator;
+		var kernel = gpu.Kernel;
 
-		// if (belowGpuRange)
-		// {
-		return IsPrime(n);
-		// }
+		ulong value = n;
+		byte flag = 0;
 
-		// var limiter = GpuPrimeWorkLimiter.Acquire();
-		// var gpu = PrimeTesterGpuContextPool.Rent(1);
-		// var accelerator = gpu.Accelerator;
-		// var kernel = gpu.Kernel;
+		var input = gpu.Input;
+		var output = gpu.Output;
+		var inputView = input.View;
+		var outputView = output.View;
 
-		// ulong value = n;
-		// byte flag = 0;
+		inputView.CopyFromCPU(ref value, 1);
+		kernel(
+						1,
+						inputView,
+						gpu.DevicePrimesDefault.View,
+						gpu.DevicePrimesLastOne.View,
+						gpu.DevicePrimesLastSeven.View,
+						gpu.DevicePrimesLastThree.View,
+						gpu.DevicePrimesLastNine.View,
+						gpu.DevicePrimesPow2Default.View,
+						gpu.DevicePrimesPow2LastOne.View,
+						gpu.DevicePrimesPow2LastSeven.View,
+						gpu.DevicePrimesPow2LastThree.View,
+						gpu.DevicePrimesPow2LastNine.View,
+						outputView);
+		accelerator.Synchronize();
+		outputView.CopyToCPU(ref flag, 1);
 
-		// var input = gpu.Input;
-		// var output = gpu.Output;
-		// var inputView = input.View;
-		// var outputView = output.View;
+		gpu.Dispose();
+		limiter.Dispose();
 
-		// inputView.CopyFromCPU(ref value, 1);
-		// kernel(
-		// 				1,
-		// 				inputView,
-		// 				gpu.DevicePrimesDefault.View,
-		// 				gpu.DevicePrimesLastOne.View,
-		// 				gpu.DevicePrimesLastSeven.View,
-		// 				gpu.DevicePrimesLastThree.View,
-		// 				gpu.DevicePrimesLastNine.View,
-		// 				gpu.DevicePrimesPow2Default.View,
-		// 				gpu.DevicePrimesPow2LastOne.View,
-		// 				gpu.DevicePrimesPow2LastSeven.View,
-		// 				gpu.DevicePrimesPow2LastThree.View,
-		// 				gpu.DevicePrimesPow2LastNine.View,
-		// 				outputView);
-		// accelerator.Synchronize();
-		// outputView.CopyToCPU(ref flag, 1);
-
-		// gpu.Dispose();
-		// limiter.Dispose();
-
-		// return flag != 0;
+		return flag != 0;
 	}
 
 	public static int GpuBatchSize { get; set; } = 262_144;
