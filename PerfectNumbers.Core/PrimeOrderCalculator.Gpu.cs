@@ -70,6 +70,7 @@ internal static partial class PrimeOrderCalculator
         }
 
         private static bool EvaluateSpecialMaxCandidatesGpu(
+                Span<ulong> buffer,
                 ReadOnlySpan<FactorEntry> factors,
                 ulong phi,
                 ulong prime,
@@ -83,8 +84,7 @@ internal static partial class PrimeOrderCalculator
                 }
 
                 int factorCount = factors.Length;
-                ulong[] hostBuffer = ThreadStaticPools.UlongPool.Rent(factorCount);
-                Span<ulong> factorSpan = hostBuffer.AsSpan(0, factorCount);
+                Span<ulong> factorSpan = buffer[..factorCount];
                 for (int i = 0; i < factorCount; i++)
                 {
                         factorSpan[i] = factors[i].Value;
@@ -115,7 +115,6 @@ internal static partial class PrimeOrderCalculator
                 scratch.ResultView.CopyToCPU(ref result, 1);
 
                 lease.Dispose();
-                ThreadStaticPools.UlongPool.Return(hostBuffer, clearArray: false);
 
                 return result != 0;
         }
