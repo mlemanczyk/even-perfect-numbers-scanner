@@ -13,13 +13,14 @@ public static class GpuContextPool
 	{
 		public readonly Context Context;
 		public readonly Accelerator Accelerator;
+		public readonly KernelContainer Kernels;
 
 		public PooledContext(KernelContainer kernels)
 		{
 			Context = SharedGpuContext.Context;
 			Accelerator = SharedGpuContext.Accelerator;
+			Kernels = kernels;
 			GpuStaticTableInitializer.EnsureStaticTables(kernels, Accelerator);
-			kernels.Dispose();
 			// NOTE: Avoid loading/compiling any kernel here to prevent implicit
 			// CL stream/queue creation during accelerator construction.
 			// Some OpenCL drivers are fragile when a queue is created immediately
@@ -34,6 +35,7 @@ public static class GpuContextPool
 			// Clear any per-accelerator cached resources to avoid releasing
 			// after the accelerator is destroyed.
 			PrimeTester.ClearGpuCaches(Accelerator);
+			Kernels.Dispose();
 
 			// These resources are shared between GPU leases
 			//  Accelerator.Dispose();
@@ -53,7 +55,9 @@ public static class GpuContextPool
 		}
 
 		// Create a new accelerator when the pool does not have one available.
-		return new GpuContextLease(new PooledContext(GpuKernelPool.GetKernels()));
+		KernelContainer kernels = GpuKernelPool.GetKernels();
+		var context = new PooledContext(kernels);
+		return new GpuContextLease(context);
 	}
 
 
@@ -110,6 +114,8 @@ public static class GpuContextPool
 
 		public Context Context => _ctx!.Context;
 		public Accelerator Accelerator => _ctx!.Accelerator;
+
+		public KernelContainer Kernels => _ctx!.Kernels;
 
 		public void Dispose()
 		{
