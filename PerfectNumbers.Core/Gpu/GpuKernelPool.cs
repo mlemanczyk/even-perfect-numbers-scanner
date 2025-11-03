@@ -38,8 +38,7 @@ public sealed class KernelContainer
     public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
         ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2ModOrder;
     public Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>? SmallPrimeFactor;
-    public Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>>? SpecialMaxFilter;
-    public Action<AcceleratorStream, Index1D, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>>? SpecialMaxFinalize;
+    public Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>? SpecialMax;
 
     // Optional device buffer with small divisor cycles (<= 4M). Index = divisor, value = cycle length.
     public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallCycles;
@@ -52,7 +51,6 @@ public sealed class KernelContainer
     public MemoryBuffer1D<ulong, Stride1D.Dense>? SpecialMaxFactors;
     public MemoryBuffer1D<ulong, Stride1D.Dense>? SpecialMaxCandidates;
     public MemoryBuffer1D<byte, Stride1D.Dense>? SpecialMaxResult;
-    public MemoryBuffer1D<int, Stride1D.Dense>? SpecialMaxCount;
     public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastOne;
     public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimesPow2LastOne;
     public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastSeven;
@@ -141,18 +139,15 @@ public readonly struct SpecialMaxScratch
     public readonly MemoryBuffer1D<ulong, Stride1D.Dense> FactorValues;
     public readonly MemoryBuffer1D<ulong, Stride1D.Dense> CandidateValues;
     public readonly MemoryBuffer1D<byte, Stride1D.Dense> ResultSlot;
-    public readonly MemoryBuffer1D<int, Stride1D.Dense> CountSlot;
 
     public SpecialMaxScratch(
         MemoryBuffer1D<ulong, Stride1D.Dense> factorValues,
         MemoryBuffer1D<ulong, Stride1D.Dense> candidateValues,
-        MemoryBuffer1D<byte, Stride1D.Dense> resultSlot,
-        MemoryBuffer1D<int, Stride1D.Dense> countSlot)
+        MemoryBuffer1D<byte, Stride1D.Dense> resultSlot)
     {
         FactorValues = factorValues;
         CandidateValues = candidateValues;
         ResultSlot = resultSlot;
-        CountSlot = countSlot;
     }
 
     public ArrayView1D<ulong, Stride1D.Dense> FactorsView => FactorValues.View;
@@ -160,13 +155,6 @@ public readonly struct SpecialMaxScratch
     public ArrayView1D<ulong, Stride1D.Dense> CandidatesView => CandidateValues.View;
 
     public ArrayView1D<byte, Stride1D.Dense> ResultView => ResultSlot.View;
-
-    public ArrayView1D<int, Stride1D.Dense> CountView => CountSlot.View;
-
-    public void ResetCount(AcceleratorStream stream)
-    {
-        CountSlot.MemSet(stream, 0, 0L, CountSlot.Length);
-    }
 }
 
 public class GpuKernelPool
@@ -357,14 +345,7 @@ public class GpuKernelPool
                 kernels.SpecialMaxResult = resultSlot;
             }
 
-            MemoryBuffer1D<int, Stride1D.Dense>? countSlot = kernels.SpecialMaxCount;
-            if (countSlot is null)
-            {
-                countSlot = accelerator.Allocate1D<int>(1);
-                kernels.SpecialMaxCount = countSlot;
-            }
-
-            return new SpecialMaxScratch(factorValues!, candidateValues!, resultSlot!, countSlot!);
+            return new SpecialMaxScratch(factorValues!, candidateValues!, resultSlot!);
         }
     }
 

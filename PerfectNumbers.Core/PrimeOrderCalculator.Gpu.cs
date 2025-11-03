@@ -1,7 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
 using ILGPU;
-using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using ILGPU.Runtime.OpenCL;
 using PerfectNumbers.Core.Gpu;
@@ -99,37 +98,16 @@ internal static partial class PrimeOrderCalculator
 
                 scratch.FactorsView.SubView(0, factorCount).CopyFromCPU(ref MemoryMarshal.GetReference(factorSpan), factorCount);
 
-                scratch.ResetCount(stream);
-
-                var (gridExtent, groupExtent) = GridExtensions.ComputeGridStrideLoopExtent(accelerator, factorCount);
-                long totalThreads = gridExtent.Size * (long)groupExtent.Size;
-                if (totalThreads <= 0L)
-                {
-                        totalThreads = 1L;
-                }
-                else if (totalThreads > int.MaxValue)
-                {
-                        totalThreads = int.MaxValue;
-                }
-
-                var filterKernel = lease.SpecialMaxFilterKernel;
-                filterKernel(
+                var kernel = lease.SpecialMaxKernel;
+                kernel(
                         stream,
-                        new Index1D((int)totalThreads),
+                        1,
                         phi,
                         scratch.FactorsView,
                         factorCount,
-                        scratch.CandidatesView,
-                        scratch.CountView);
-
-                var finalizeKernel = lease.SpecialMaxFinalizeKernel;
-                finalizeKernel(
-                        stream,
-                        1,
                         divisorData,
                         scratch.CandidatesView,
-                        scratch.ResultView,
-                        scratch.CountView);
+                        scratch.ResultView);
 
                 stream.Synchronize();
 

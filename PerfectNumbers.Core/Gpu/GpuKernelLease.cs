@@ -122,30 +122,16 @@ public sealed class GpuKernelLease
         }
     }
 
-    public Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>> SpecialMaxFilterKernel
+    public Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> SpecialMaxKernel
     {
         get
         {
             var accel = Accelerator;
-            return KernelContainer.InitOnce(ref _kernels!.SpecialMaxFilter, () =>
+            return KernelContainer.InitOnce(ref _kernels!.SpecialMax, () =>
             {
-                var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>>(PrimeOrderGpuHeuristics.EvaluateSpecialMaxCandidatesFilterKernel);
+                var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>(PrimeOrderGpuHeuristics.EvaluateSpecialMaxCandidatesKernel);
                 var kernel = KernelUtil.GetKernel(loaded);
-                return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>>>();
-            });
-        }
-    }
-
-    public Action<AcceleratorStream, Index1D, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>> SpecialMaxFinalizeKernel
-    {
-        get
-        {
-            var accel = Accelerator;
-            return KernelContainer.InitOnce(ref _kernels!.SpecialMaxFinalize, () =>
-            {
-                var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>>(PrimeOrderGpuHeuristics.EvaluateSpecialMaxCandidatesFinalizeKernel);
-                var kernel = KernelUtil.GetKernel(loaded);
-                return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>>>();
+                return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>>();
             });
         }
     }
