@@ -6,7 +6,6 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ILGPU;
-using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
 
@@ -96,66 +95,48 @@ public sealed class PrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public bool IsPrimeGpu(ulong n)
 	{
-		if (n <= 1UL)
-		{
-			return false;
-		}
+		// bool belowGpuRange = n < 31UL;
 
-		if (n == 2UL)
-		{
-			throw new InvalidOperationException("PrimeTester.IsPrime encountered the sentinel input 2.");
-		}
+		// if (belowGpuRange)
+		// {
+		return IsPrime(n);
+		// }
 
-		if ((n & 1UL) == 0UL)
-		{
-			return false;
-		}
+		// var limiter = GpuPrimeWorkLimiter.Acquire();
+		// var gpu = PrimeTesterGpuContextPool.Rent(1);
+		// var accelerator = gpu.Accelerator;
+		// var kernel = gpu.Kernel;
 
-		if (n < 7UL)
-		{
-			return true;
-		}
+		// ulong value = n;
+		// byte flag = 0;
 
-		var limiter = GpuPrimeWorkLimiter.Acquire();
-		var gpu = PrimeTesterGpuContextPool.Rent(1);
-		var accelerator = gpu.Accelerator;
-		var kernel = gpu.Kernel;
+		// var input = gpu.Input;
+		// var output = gpu.Output;
+		// var inputView = input.View;
+		// var outputView = output.View;
 
-		ulong value = n;
-		byte flag = 0;
+		// inputView.CopyFromCPU(ref value, 1);
+		// kernel(
+		// 				1,
+		// 				inputView,
+		// 				gpu.DevicePrimesDefault.View,
+		// 				gpu.DevicePrimesLastOne.View,
+		// 				gpu.DevicePrimesLastSeven.View,
+		// 				gpu.DevicePrimesLastThree.View,
+		// 				gpu.DevicePrimesLastNine.View,
+		// 				gpu.DevicePrimesPow2Default.View,
+		// 				gpu.DevicePrimesPow2LastOne.View,
+		// 				gpu.DevicePrimesPow2LastSeven.View,
+		// 				gpu.DevicePrimesPow2LastThree.View,
+		// 				gpu.DevicePrimesPow2LastNine.View,
+		// 				outputView);
+		// accelerator.Synchronize();
+		// outputView.CopyToCPU(ref flag, 1);
 
-		var input = gpu.Input;
-		var output = gpu.Output;
-		var inputView = input.View;
-		var outputView = output.View;
+		// gpu.Dispose();
+		// limiter.Dispose();
 
-		inputView.CopyFromCPU(ref value, 1);
-
-		int launchSize = ComputeGridStrideLaunchSize(accelerator, 1);
-
-		kernel(
-			new Index1D(launchSize),
-			inputView,
-			gpu.DevicePrimesDefault.View,
-			gpu.DevicePrimesLastOne.View,
-			gpu.DevicePrimesLastSeven.View,
-			gpu.DevicePrimesLastThree.View,
-			gpu.DevicePrimesLastNine.View,
-			gpu.DevicePrimesPow2Default.View,
-			gpu.DevicePrimesPow2LastOne.View,
-			gpu.DevicePrimesPow2LastSeven.View,
-			gpu.DevicePrimesPow2LastThree.View,
-			gpu.DevicePrimesPow2LastNine.View,
-			1,
-			outputView);
-
-		accelerator.Synchronize();
-		outputView.CopyToCPU(ref flag, 1);
-
-		gpu.Dispose();
-		limiter.Dispose();
-
-		return flag != 0;
+		// return flag != 0;
 	}
 
 	public static int GpuBatchSize { get; set; } = 262_144;
@@ -208,10 +189,8 @@ public sealed class PrimeTester
 			ref ulong valueRef = ref MemoryMarshal.GetReference(valueSlice);
 			inputView.CopyFromCPU(ref valueRef, count);
 
-			int launchSize = ComputeGridStrideLaunchSize(accelerator, count);
-
 			kernel(
-					new Index1D(launchSize),
+					count,
 					inputView,
 					gpu.DevicePrimesDefault.View,
 					gpu.DevicePrimesLastOne.View,
@@ -223,7 +202,6 @@ public sealed class PrimeTester
 					gpu.DevicePrimesPow2LastSeven.View,
 					gpu.DevicePrimesPow2LastThree.View,
 					gpu.DevicePrimesPow2LastNine.View,
-					count,
 					outputView);
 			accelerator.Synchronize();
 			var resultSlice = results.Slice(pos, count);
@@ -235,25 +213,6 @@ public sealed class PrimeTester
 
 		gpu.Dispose();
 		limiter.Dispose();
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static int ComputeGridStrideLaunchSize(Accelerator accelerator, int valueCount)
-	{
-		var (gridExtent, groupExtent) = GridExtensions.ComputeGridStrideLoopExtent(accelerator, valueCount);
-		long totalThreads = gridExtent.Size * (long)groupExtent.Size;
-
-		if (totalThreads <= 0L)
-		{
-			return 1;
-		}
-
-		if (totalThreads > int.MaxValue)
-		{
-			return int.MaxValue;
-		}
-
-		return (int)totalThreads;
 	}
 
 	internal static class PrimeTesterGpuContextPool
@@ -431,7 +390,7 @@ public sealed class PrimeTester
 
 			internal readonly Context AcceleratorContext;
 			public readonly Accelerator Accelerator;
-			public readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, int, ArrayView<byte>> Kernel;
+			public readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> Kernel;
 			public readonly Action<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables> HeuristicTrialDivisionKernel;
 			public MemoryBuffer1D<ulong, Stride1D.Dense> Input = null!;
 			public MemoryBuffer1D<byte, Stride1D.Dense> Output = null!;
@@ -472,7 +431,7 @@ public sealed class PrimeTester
 				AcceleratorContext = SharedGpuContext.Context;
 				Accelerator = SharedGpuContext.Accelerator;
 				GpuStaticTableInitializer.EnsureStaticTables(Accelerator);
-				Kernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, int, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
+				Kernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
 				HeuristicTrialDivisionKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>(PrimeTesterKernels.HeuristicTrialDivisionKernel);
 
 				_sharedTables = RentSharedTables(Accelerator);

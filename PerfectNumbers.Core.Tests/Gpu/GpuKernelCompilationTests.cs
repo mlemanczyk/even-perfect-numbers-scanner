@@ -121,7 +121,7 @@ public class GpuKernelCompilationTests
     private static readonly Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> MersenneDivisorCyclesKernel =
         DivisorCycleKernels.GpuDivisorCycleKernel;
 
-    private static readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, int, ArrayView<byte>> PrimeTesterSmallPrimeKernel =
+    private static readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> PrimeTesterSmallPrimeKernel =
         PrimeTesterKernels.SmallPrimeSieveKernel;
 
     private static readonly Action<Index1D, ArrayView<ulong>, ArrayView<byte>> PrimeTesterSharesFactorKernel =
@@ -336,7 +336,7 @@ public class GpuKernelCompilationTests
 
     private static void CompilePrimeTesterSmallPrimeKernel(Accelerator accelerator)
     {
-        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, int, ArrayView<byte>>(PrimeTesterSmallPrimeKernel);
+        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterSmallPrimeKernel);
         _ = kernel;
     }
 

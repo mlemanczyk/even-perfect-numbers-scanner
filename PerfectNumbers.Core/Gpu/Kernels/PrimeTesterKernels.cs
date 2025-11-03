@@ -30,65 +30,52 @@ internal static class PrimeTesterKernels
         ArrayView<ulong> smallPrimesPow2LastSeven,
         ArrayView<ulong> smallPrimesPow2LastThree,
         ArrayView<ulong> smallPrimesPow2LastNine,
-        int valueCount,
         ArrayView<byte> results)
     {
-        int threadIndex = index;
-        long strideValue = GridExtensions.GridStrideLoopStride.Size;
-        int stride = strideValue <= 0L ? 1 : (int)strideValue;
+        ulong n = numbers[index];
+        byte result = 1;
 
-        for (int i = threadIndex; i < valueCount; i += stride)
+        ArrayView<uint> primes = smallPrimes;
+        ArrayView<ulong> primeSquares = smallPrimesPow2;
+        ulong lastDigit = n % 10UL;
+        switch (lastDigit)
         {
-            ulong n = numbers[i];
-            byte result = 0;
+            case 1UL:
+                primes = smallPrimesLastOne;
+                primeSquares = smallPrimesPow2LastOne;
+                break;
+            case 3UL:
+                primes = smallPrimesLastThree;
+                primeSquares = smallPrimesPow2LastThree;
+                break;
+            case 7UL:
+                primes = smallPrimesLastSeven;
+                primeSquares = smallPrimesPow2LastSeven;
+                break;
+            case 9UL:
+                primes = smallPrimesLastNine;
+                primeSquares = smallPrimesPow2LastNine;
+                break;
+        }
 
-            if (n > 1UL && (n & 1UL) != 0UL)
+        int length = (int)primes.Length;
+        for (int i = 0; i < length; i++)
+        {
+            ulong primeSquare = primeSquares[i];
+            if (primeSquare > n)
             {
-                result = 1;
-
-                ArrayView<uint> primes = smallPrimes;
-                ArrayView<ulong> primeSquares = smallPrimesPow2;
-                ulong lastDigit = n % 10UL;
-                switch (lastDigit)
-                {
-                    case 1UL:
-                        primes = smallPrimesLastOne;
-                        primeSquares = smallPrimesPow2LastOne;
-                        break;
-                    case 3UL:
-                        primes = smallPrimesLastThree;
-                        primeSquares = smallPrimesPow2LastThree;
-                        break;
-                    case 7UL:
-                        primes = smallPrimesLastSeven;
-                        primeSquares = smallPrimesPow2LastSeven;
-                        break;
-                    case 9UL:
-                        primes = smallPrimesLastNine;
-                        primeSquares = smallPrimesPow2LastNine;
-                        break;
-                }
-
-                int length = (int)primes.Length;
-                for (int j = 0; j < length; j++)
-                {
-                    ulong primeSquare = primeSquares[j];
-                    if (primeSquare > n)
-                    {
-                        break;
-                    }
-
-                    ulong prime = primes[j];
-                    if (n % prime == 0UL)
-                    {
-                        result = 0;
-                        break;
-                    }
-                }
+                break;
             }
 
-            results[i] = result;
+            ulong prime = primes[i];
+            if (n % prime == 0UL)
+            {
+                result = 0;
+                break;
+            }
         }
+
+        results[index] = result;
     }
 
     public static void HeuristicTrialDivisionKernel(
