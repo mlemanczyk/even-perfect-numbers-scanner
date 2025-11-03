@@ -68,4 +68,56 @@ internal static partial class PrimeOrderCalculator
                 ThreadStaticPools.IntPool.Return(exponentBufferArray);
                 return true;
         }
+
+        private static bool EvaluateSpecialMaxCandidatesGpu(
+                ReadOnlySpan<FactorEntry> factors,
+                ulong phi,
+                ulong prime,
+                in MontgomeryDivisorData divisorData)
+        {
+                _ = prime;
+
+                if (factors.Length == 0)
+                {
+                        return true;
+                }
+
+                int factorCount = factors.Length;
+                ulong[] hostBuffer = ThreadStaticPools.UlongPool.Rent(factorCount);
+                Span<ulong> factorSpan = hostBuffer.AsSpan(0, factorCount);
+                for (int i = 0; i < factorCount; i++)
+                {
+                        factorSpan[i] = factors[i].Value;
+                }
+
+                var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+                Accelerator accelerator = lease.Accelerator;
+                AcceleratorStream stream = lease.Stream;
+
+                SpecialMaxScratch scratch = GpuKernelPool.EnsureSpecialMaxScratch(accelerator, factorCount);
+
+                scratch.FactorsView.SubView(0, factorCount).CopyFromCPU(ref MemoryMarshal.GetReference(factorSpan), factorCount);
+
+                var kernel = lease.SpecialMaxKernel;
+                kernel(
+                        stream,
+                        1,
+                        phi,
+                        scratch.FactorsView,
+                        factorCount,
+                        divisorData,
+                        scratch.CandidatesView,
+                        scratch.ResultView);
+
+                stream.Synchronize();
+
+                byte result = 0;
+                scratch.ResultView.CopyToCPU(ref result, 1);
+
+                lease.Dispose();
+                ThreadStaticPools.UlongPool.Return(hostBuffer, clearArray: false);
+
+                return result != 0;
+        }
 }
+

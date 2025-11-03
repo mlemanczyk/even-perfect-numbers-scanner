@@ -1,3 +1,4 @@
+using PerfectNumbers.Core;
 using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
@@ -37,6 +38,7 @@ public sealed class KernelContainer
     public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
         ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2ModOrder;
     public Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>? SmallPrimeFactor;
+    public Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>? SpecialMax;
 
     // Optional device buffer with small divisor cycles (<= 4M). Index = divisor, value = cycle length.
     public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallCycles;
@@ -46,6 +48,9 @@ public sealed class KernelContainer
     public MemoryBuffer1D<int, Stride1D.Dense>? SmallPrimeFactorExponentSlots;
     public MemoryBuffer1D<int, Stride1D.Dense>? SmallPrimeFactorCountSlot;
     public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimeFactorRemainingSlot;
+    public MemoryBuffer1D<ulong, Stride1D.Dense>? SpecialMaxFactors;
+    public MemoryBuffer1D<ulong, Stride1D.Dense>? SpecialMaxCandidates;
+    public MemoryBuffer1D<byte, Stride1D.Dense>? SpecialMaxResult;
     public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastOne;
     public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimesPow2LastOne;
     public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastSeven;
@@ -127,6 +132,29 @@ public readonly struct SmallPrimeFactorScratch
         CountSlot.MemSetToZero();
         RemainingSlot.MemSetToZero();
     }
+}
+
+public readonly struct SpecialMaxScratch
+{
+    public readonly MemoryBuffer1D<ulong, Stride1D.Dense> FactorValues;
+    public readonly MemoryBuffer1D<ulong, Stride1D.Dense> CandidateValues;
+    public readonly MemoryBuffer1D<byte, Stride1D.Dense> ResultSlot;
+
+    public SpecialMaxScratch(
+        MemoryBuffer1D<ulong, Stride1D.Dense> factorValues,
+        MemoryBuffer1D<ulong, Stride1D.Dense> candidateValues,
+        MemoryBuffer1D<byte, Stride1D.Dense> resultSlot)
+    {
+        FactorValues = factorValues;
+        CandidateValues = candidateValues;
+        ResultSlot = resultSlot;
+    }
+
+    public ArrayView1D<ulong, Stride1D.Dense> FactorsView => FactorValues.View;
+
+    public ArrayView1D<ulong, Stride1D.Dense> CandidatesView => CandidateValues.View;
+
+    public ArrayView1D<byte, Stride1D.Dense> ResultView => ResultSlot.View;
 }
 
 public class GpuKernelPool
@@ -281,6 +309,43 @@ public class GpuKernelPool
             }
 
             return new SmallPrimeFactorScratch(primeSlots!, exponentSlots!, countSlot!, remainingSlot!);
+        }
+    }
+
+    public static SpecialMaxScratch EnsureSpecialMaxScratch(Accelerator accelerator, int factorCapacity)
+    {
+        if (factorCapacity <= 0)
+        {
+            factorCapacity = 1;
+        }
+
+        var kernels = GetKernels(accelerator);
+        lock (kernels)
+        {
+            MemoryBuffer1D<ulong, Stride1D.Dense>? factorValues = kernels.SpecialMaxFactors;
+            if (factorValues is null || factorValues.Length < factorCapacity)
+            {
+                factorValues?.Dispose();
+                factorValues = accelerator.Allocate1D<ulong>(factorCapacity);
+                kernels.SpecialMaxFactors = factorValues;
+            }
+
+            MemoryBuffer1D<ulong, Stride1D.Dense>? candidateValues = kernels.SpecialMaxCandidates;
+            if (candidateValues is null || candidateValues.Length < factorCapacity)
+            {
+                candidateValues?.Dispose();
+                candidateValues = accelerator.Allocate1D<ulong>(factorCapacity);
+                kernels.SpecialMaxCandidates = candidateValues;
+            }
+
+            MemoryBuffer1D<byte, Stride1D.Dense>? resultSlot = kernels.SpecialMaxResult;
+            if (resultSlot is null)
+            {
+                resultSlot = accelerator.Allocate1D<byte>(1);
+                kernels.SpecialMaxResult = resultSlot;
+            }
+
+            return new SpecialMaxScratch(factorValues!, candidateValues!, resultSlot!);
         }
     }
 

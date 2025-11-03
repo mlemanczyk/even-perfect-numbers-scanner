@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
+using PerfectNumbers.Core;
 using static PerfectNumbers.Core.Gpu.GpuContextPool;
 
 namespace PerfectNumbers.Core.Gpu;
@@ -117,6 +118,20 @@ public sealed class GpuKernelLease
                 var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernels.Pow2ModOrderKernelScan);
                 var kernel = KernelUtil.GetKernel(loaded);
                 return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
+            });
+        }
+    }
+
+    public Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> SpecialMaxKernel
+    {
+        get
+        {
+            var accel = Accelerator;
+            return KernelContainer.InitOnce(ref _kernels!.SpecialMax, () =>
+            {
+                var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>(PrimeOrderGpuHeuristics.EvaluateSpecialMaxCandidatesKernel);
+                var kernel = KernelUtil.GetKernel(loaded);
+                return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>>();
             });
         }
     }
