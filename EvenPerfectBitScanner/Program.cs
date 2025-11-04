@@ -64,6 +64,7 @@ internal static class Program
 			GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
 			GpuContextPool.WarmUpPool(threadCount);
 			PrimeTester.WarmUpGpuKernels(gpuPrimeThreads);
+			GpuScratchBufferPool.WarmUp(gpuPrimeThreads << 4, 64, 1024);
 			Console.WriteLine("Starting up threads...");
 			_ = UnboundedTaskScheduler.Instance;
 			int blockSize = Math.Max(1, _cliArguments.BlockSize);

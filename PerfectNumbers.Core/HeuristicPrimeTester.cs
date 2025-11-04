@@ -243,6 +243,7 @@ public sealed class HeuristicPrimeTester
 		GpuPrimeWorkLimiter.Acquire();
 		var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(1);
 		var accelerator = gpu.Accelerator;
+		var stream = gpu.Stream;
 		var kernel = PrimeTester.PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.HeuristicTrialDivisionKernel;
 		var flagView1D = gpu.HeuristicFlag.View;
 		var flagView = flagView1D.AsContiguous();
@@ -260,8 +261,9 @@ public sealed class HeuristicPrimeTester
 				maxDivisorSquare,
 				HeuristicGpuDivisorTableKind.GroupA,
 				gpu.HeuristicGpuTables);
-		accelerator.Synchronize();
-		flagView1D.CopyToCPU(ref compositeFlag, 1);
+		stream.Synchronize();
+
+		flagView1D.CopyToCPU(stream, ref compositeFlag, 1);
 		compositeDetected = compositeFlag != 0;
 
 		if (!compositeDetected)

@@ -1,3 +1,4 @@
+using PerfectNumbers.Core.Gpu;
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
@@ -13,7 +14,7 @@ namespace PerfectNumbers.Core.Gpu;
 public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 {
     private readonly bool _useGpuOrder = useGpuOrder;
-    private readonly ConcurrentBag<GpuContextPool.GpuContextLease> _acceleratorPool = new();
+    private readonly ConcurrentBag<GpuContextLease> _acceleratorPool = new();
     private readonly ConcurrentDictionary<Accelerator, Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>> _pow2ModKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, ConcurrentBag<ResidueResources>> _resourcePools = new(AcceleratorReferenceComparer.Instance);
 
@@ -35,7 +36,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
         var stream = accelerator.CreateStream();
         var kernel = GetPow2ModKernel(accelerator);
 		var resources = RentResources(accelerator, GpuConstants.ScanBatchSize);
-		var gpuKernels = GpuKernelPool.GetKernels();
+		var gpuKernels = GpuKernelPool.GetKernels(accelerator);
 
         var orderBuffer = resources.OrderBuffer;
         ulong[] orderArray = resources.OrderArray;
@@ -69,7 +70,8 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
             kernel(stream, currentSize, exponent, twoPGpu, (GpuUInt128)kStart, last, 0UL,
                 kernelArgs, orderBuffer.View, smallCyclesView, primeViews.LastOne, primeViews.LastSeven, primeViews.LastOnePow2, primeViews.LastSevenPow2);
 
-            stream.Synchronize();
+			stream.Synchronize();
+			
             orderBuffer.View.CopyToCPU(ref ordersRef, currentSize);
             if (!Volatile.Read(ref isPrime))
             {
@@ -127,7 +129,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
                     loaded.Method);
             });
 
-    private GpuContextPool.GpuContextLease RentAccelerator()
+    private GpuContextLease RentAccelerator()
     {
         if (_acceleratorPool.TryTake(out var lease))
         {
@@ -137,11 +139,11 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
         return GpuContextPool.Rent();
     }
 
-    private void ReturnAccelerator(GpuContextPool.GpuContextLease lease) => _acceleratorPool.Add(lease);
+    private void ReturnAccelerator(GpuContextLease lease) => _acceleratorPool.Add(lease);
 
     private ResidueResources RentResources(Accelerator accelerator, int capacity)
     {
-        var bag = _resourcePools.GetOrAdd(accelerator, static _ => new ConcurrentBag<ResidueResources>());
+        var bag = _resourcePools.GetOrAdd(accelerator, static _ => []);
         while (bag.TryTake(out var resources))
         {
             if (resources.Capacity >= capacity)

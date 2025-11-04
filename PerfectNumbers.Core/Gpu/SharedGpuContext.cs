@@ -5,7 +5,7 @@ using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
 
-internal static class SharedGpuContext
+public static class SharedGpuContext
 {
     private static readonly Lazy<Context> s_context = new(() => ILGPU.Context.CreateDefault(), LazyThreadSafetyMode.ExecutionAndPublication);
     private static readonly Lazy<Device> s_device = new(() => s_context.Value.GetPreferredDevice(false), LazyThreadSafetyMode.ExecutionAndPublication);

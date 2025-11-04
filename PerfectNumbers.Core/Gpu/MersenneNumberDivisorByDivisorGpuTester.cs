@@ -1,3 +1,4 @@
+using PerfectNumbers.Core.Gpu;
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
@@ -25,7 +26,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
     private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>> _kernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentBag<BatchResources> _resourcePool = new();
-    private readonly ConcurrentBag<GpuContextPool.GpuContextLease> _acceleratorPool = new();
+    private readonly ConcurrentBag<GpuContextLease> _acceleratorPool = new();
     private readonly ConcurrentBag<DivisorScanSession> _sessionPool = new();
 
     private Action<Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> GetKernel(Accelerator accelerator) =>
@@ -476,7 +477,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     public sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
     {
         private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
-        private readonly GpuContextPool.GpuContextLease _lease;
+        private readonly GpuContextLease _lease;
         private readonly Accelerator _accelerator;
         private Action<Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> _kernel = null!;
         private MemoryBuffer1D<GpuDivisorPartialData, Stride1D.Dense> _divisorBuffer = null!;
@@ -650,7 +651,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         }
     }
 
-    private GpuContextPool.GpuContextLease RentAccelerator()
+    private GpuContextLease RentAccelerator()
     {
         if (_acceleratorPool.TryTake(out var lease))
         {
@@ -660,7 +661,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         return GpuContextPool.Rent();
     }
 
-    private void ReturnAccelerator(GpuContextPool.GpuContextLease lease) => _acceleratorPool.Add(lease);
+    private void ReturnAccelerator(GpuContextLease lease) => _acceleratorPool.Add(lease);
 
     private BatchResources RentBatchResources(Accelerator accelerator, int capacity)
     {
@@ -900,7 +901,3 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
     IMersenneNumberDivisorByDivisorTester.IDivisorScanSession IMersenneNumberDivisorByDivisorTester.CreateDivisorSession() => CreateDivisorSession();
 }
-
-
-
-

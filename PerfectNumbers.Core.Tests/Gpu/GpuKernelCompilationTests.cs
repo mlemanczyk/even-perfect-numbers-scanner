@@ -330,26 +330,26 @@ public class GpuKernelCompilationTests
 
     private static void CompileMersenneDivisorCyclesKernel(Accelerator accelerator)
     {
-        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(MersenneDivisorCyclesKernel);
+	        var kernel = accelerator.LoadAutoGroupedStreamKernel(MersenneDivisorCyclesKernel);
         _ = kernel;
     }
 
     private static void CompilePrimeTesterSmallPrimeKernel(Accelerator accelerator)
     {
-        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterSmallPrimeKernel);
+        var kernel = accelerator.LoadAutoGroupedStreamKernel(PrimeTesterSmallPrimeKernel);
         _ = kernel;
     }
 
     private static void CompilePrimeTesterSharesFactorKernel(Accelerator accelerator)
     {
-        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterSharesFactorKernel);
+        var kernel = accelerator.LoadAutoGroupedStreamKernel(PrimeTesterSharesFactorKernel);
         _ = kernel;
     }
 
     private static void CompileGpuKernelPoolKernels(Accelerator accelerator)
     {
         _ = accelerator;
-        var lease = GpuKernelPool.GetKernel(useGpuOrder: false);
+        var lease = GpuKernelPool.GetKernel();
         try
         {
             _ = lease.OrderKernel;
@@ -363,7 +363,7 @@ public class GpuKernelCompilationTests
             lease.Dispose();
         }
 
-        var orderLease = GpuKernelPool.GetKernel(useGpuOrder: true);
+        var orderLease = GpuKernelPool.GetKernel();
         try
         {
             _ = orderLease.OrderKernel;

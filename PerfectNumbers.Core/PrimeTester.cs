@@ -98,6 +98,7 @@ public sealed class PrimeTester
 		GpuPrimeWorkLimiter.Acquire();
 		var gpu = PrimeTesterGpuContextPool.Rent(1);
 		var accelerator = gpu.Accelerator;
+		var stream = gpu.Stream;
 		var kernel = PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.Kernel;
 
 		ulong value = n;
@@ -108,7 +109,7 @@ public sealed class PrimeTester
 		var inputView = input.View;
 		var outputView = output.View;
 
-		inputView.CopyFromCPU(ref value, 1);
+		inputView.CopyFromCPU(stream, ref value, 1);
 		kernel(
 						1,
 						inputView,
@@ -123,8 +124,8 @@ public sealed class PrimeTester
 						gpu.DevicePrimesPow2LastThree.View,
 						gpu.DevicePrimesPow2LastNine.View,
 						outputView);
-		accelerator.Synchronize();
-		outputView.CopyToCPU(ref flag, 1);
+		stream.Synchronize();
+		outputView.CopyToCPU(stream, ref flag, 1);
 
 		gpu.Dispose();
 		GpuPrimeWorkLimiter.Release();
@@ -163,6 +164,7 @@ public sealed class PrimeTester
 		GpuPrimeWorkLimiter.Acquire();
 		var gpu = PrimeTesterGpuContextPool.Rent(GpuBatchSize);
 		var accelerator = gpu.Accelerator;
+		var stream = gpu.Stream;
 		var kernel = PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.Kernel;
 		int totalLength = values.Length;
 		int batchSize = GpuBatchSize;
@@ -196,10 +198,11 @@ public sealed class PrimeTester
 					gpu.DevicePrimesPow2LastThree.View,
 					gpu.DevicePrimesPow2LastNine.View,
 					outputView);
-			accelerator.Synchronize();
+			stream.Synchronize();
+			
 			var resultSlice = results.Slice(pos, count);
 			ref byte resultRef = ref MemoryMarshal.GetReference(resultSlice);
-			outputView.CopyToCPU(ref resultRef, count);
+			outputView.CopyToCPU(stream, ref resultRef, count);
 
 			pos += count;
 		}
@@ -266,8 +269,9 @@ public sealed class PrimeTester
 					return;
 				}
 
-				KernelContainer kernels = GpuKernelPool.GetKernels();
-				GpuStaticTableInitializer.EnsureStaticTables(kernels, SharedGpuContext.Accelerator);
+				Accelerator accelerator = SharedGpuContext.Accelerator;
+				KernelContainer kernels = GpuKernelPool.GetKernels(accelerator);
+				GpuStaticTableInitializer.EnsureStaticTables(kernels, accelerator);
 
 				int toCreate = target - WarmedLeaseCount;
 				for (int i = 0; i < toCreate; i++)
@@ -275,7 +279,6 @@ public sealed class PrimeTester
 					Pool.Enqueue(new PrimeTesterGpuContextLease(minBufferCapacity));
 				}
 
-				kernels.Dispose();
 				WarmedLeaseCount = target;
 			}
 		}
@@ -379,6 +382,21 @@ public sealed class PrimeTester
 
 			internal readonly Context AcceleratorContext;
 			public readonly Accelerator Accelerator;
+			private AcceleratorStream? _stream; 
+			public AcceleratorStream Stream
+			{
+				get
+				{
+					if (_stream is { } stream)
+					{
+						return stream;
+					}
+
+					stream = Accelerator.CreateStream();
+					_stream = stream;
+					return stream;
+				}
+			}
 			
 			public static readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> Kernel = SharedGpuContext.Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel);
 
@@ -445,6 +463,7 @@ public sealed class PrimeTester
 				Input?.Dispose();
 				Output?.Dispose();
 				HeuristicFlag?.Dispose();
+
 				Input = Accelerator.Allocate1D<ulong>(minCapacity);
 				Output = Accelerator.Allocate1D<byte>(minCapacity);
 				HeuristicFlag = Accelerator.Allocate1D<int>(minCapacity);
@@ -464,6 +483,12 @@ public sealed class PrimeTester
 				}
 
 				_returned = true;
+				if (_stream is { } stream)
+				{
+					stream.Dispose();
+					_stream = null;
+				}
+				
 				Return(this);
 			}
 
@@ -734,6 +759,7 @@ public sealed class PrimeTester
 		// and divisor-cycle staging instead of allocating new device buffers per call.
 		var gpu = PrimeTesterGpuContextPool.Rent();
 		var accelerator = gpu.Accelerator;
+		var stream = gpu.Stream;
 		var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SharesFactorKernel);
 
 		int length = values.Length;
@@ -743,10 +769,10 @@ public sealed class PrimeTester
 		ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
 		ulong[] temp = pool.Rent(length);
 		values.CopyTo(temp);
-		inputBuffer.View.CopyFromCPU(ref temp[0], length);
+		inputBuffer.View.CopyFromCPU(stream, ref temp[0], length);
 		kernel(length, inputBuffer.View, resultBuffer.View);
-		accelerator.Synchronize();
-		resultBuffer.View.CopyToCPU(ref results[0], length);
+		stream.Synchronize();
+		resultBuffer.View.CopyToCPU(stream, ref results[0], length);
 		pool.Return(temp, clearArray: false);
 		resultBuffer.Dispose();
 		inputBuffer.Dispose();

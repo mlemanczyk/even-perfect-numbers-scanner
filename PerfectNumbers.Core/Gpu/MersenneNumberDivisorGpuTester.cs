@@ -38,19 +38,21 @@ public sealed class MersenneNumberDivisorGpuTester
     public bool IsDivisible(ulong exponent, in ReadOnlyGpuUInt128 divisor)
     {
         var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
+		var accelerator = gpu.Accelerator;
+		var stream = accelerator.CreateStream();
         var kernel = GetKernel(accelerator);
         var resultBuffer = _resultBuffers.GetOrAdd(accelerator, acc => acc.Allocate1D<byte>(1));
 		// There is no point in clearing this buffer. We always override item [0] and never use it beyond item [0]
         // resultBuffer.MemSetToZero();
         kernel(1, exponent, divisor, resultBuffer.View);
-        accelerator.Synchronize();
+        stream.Synchronize();
         Span<byte> result = stackalloc byte[1];
-        resultBuffer.View.CopyToCPU(ref result[0], 1);
+        resultBuffer.View.CopyToCPU(stream, ref result[0], 1);
         bool divisible = result[0] != 0;
         result[0] = 0;
-        resultBuffer.View.CopyFromCPU(ref result[0], 1);
-        accelerator.Synchronize();
+        resultBuffer.View.CopyFromCPU(stream, ref result[0], 1);
+		stream.Synchronize();
+		stream.Dispose();
         gpu.Dispose();
         return divisible;
     }

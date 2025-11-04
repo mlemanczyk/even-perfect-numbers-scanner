@@ -226,9 +226,10 @@ public sealed class DivisorCycleCache
     private void ComputeCyclesGpuCore(ReadOnlySpan<ulong> divisors, Span<ulong> destination)
     {
         int length = divisors.Length;
-        var gpuLease = GpuKernelPool.GetKernel(useGpuOrder: true);
+        var gpuLease = GpuKernelPool.GetKernel();
 
-        Accelerator accelerator = gpuLease.Accelerator;
+		Accelerator accelerator = gpuLease.Accelerator;
+		var stream = gpuLease.Stream;
         var kernel = _gpuKernelCache.GetOrAdd(accelerator, LoadKernel);
 
         using MemoryBuffer1D<ulong, Stride1D.Dense> divisorBuffer = accelerator.Allocate1D<ulong>(length);
@@ -258,7 +259,7 @@ public sealed class DivisorCycleCache
             : new Span<byte>(rentedStatus = ArrayPool<byte>.Shared.Rent(length), 0, length);
 
         ref ulong divisorRef = ref MemoryMarshal.GetReference(divisors);
-        divisorBuffer.View.CopyFromCPU(ref divisorRef, length);
+        divisorBuffer.View.CopyFromCPU(stream, ref divisorRef, length);
 
         for (int i = 0; i < length; i++)
         {
@@ -275,18 +276,18 @@ public sealed class DivisorCycleCache
             statusSpan[i] = ByteZero;
         }
 
-        powBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(powSpan), length);
-        orderBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(orderSpan), length);
-        resultBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(resultSpan), length);
-        statusBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(statusSpan), length);
+        powBuffer.View.CopyFromCPU(stream, ref MemoryMarshal.GetReference(powSpan), length);
+        orderBuffer.View.CopyFromCPU(stream, ref MemoryMarshal.GetReference(orderSpan), length);
+        resultBuffer.View.CopyFromCPU(stream, ref MemoryMarshal.GetReference(resultSpan), length);
+        statusBuffer.View.CopyFromCPU(stream, ref MemoryMarshal.GetReference(statusSpan), length);
 
         int pending;
         do
         {
             kernel(length, _divisorCyclesBatchSize, divisorBuffer.View, powBuffer.View, orderBuffer.View, resultBuffer.View, statusBuffer.View);
-            accelerator.Synchronize();
+            stream.Synchronize();
 
-            statusBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(statusSpan), length);
+            statusBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(statusSpan), length);
             pending = 0;
             for (int i = 0; i < length; i++)
             {
@@ -298,7 +299,7 @@ public sealed class DivisorCycleCache
         }
         while (pending > 0);
 
-        resultBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(resultSpan), length);
+        resultBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(resultSpan), length);
         resultSpan.CopyTo(destination);
         if (rentedPow is not null)
         {

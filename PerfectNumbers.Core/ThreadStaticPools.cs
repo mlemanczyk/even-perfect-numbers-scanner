@@ -180,6 +180,20 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
+        private static ArrayPool<(ulong, ulong)>? _ulongUlongTupleArrayPool;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static (ulong, ulong)[] RentUlongUlongArray(int capacityHint)
+		{
+			_ulongUlongTupleArrayPool ??= ArrayPool<(ulong, ulong)>.Create();
+			ArrayPool<(ulong, ulong)>? pool = _ulongUlongTupleArrayPool;			
+			return pool.Rent(capacityHint);
+        }
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static void Return((ulong, ulong)[] array) => _ulongUlongTupleArrayPool!.Return(array, clearArray: false);
+
+		[ThreadStatic]
         private static List<List<PrimeOrderCalculator.PendingEntry>>? _primeOrderPendingEntryListPool;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

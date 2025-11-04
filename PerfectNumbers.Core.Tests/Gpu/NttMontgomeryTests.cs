@@ -33,7 +33,7 @@ public class NttMontgomeryTests
         NttGpuMath.Square(cpu, modulus, primitiveRoot);
 
         // Device execution
-        GpuContextPool.GpuContextLease context = GpuContextPool.Rent();
+        GpuContextLease context = GpuContextPool.Rent();
         try
         {
             var accelerator = context.Accelerator;

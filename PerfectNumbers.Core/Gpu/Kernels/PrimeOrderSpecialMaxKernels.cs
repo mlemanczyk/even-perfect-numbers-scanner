@@ -1,6 +1,5 @@
 using ILGPU;
 using ILGPU.Runtime;
-using PerfectNumbers.Core;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -13,7 +12,7 @@ internal static partial class PrimeOrderGpuHeuristics
         int factorCount,
         MontgomeryDivisorData divisor,
         ArrayView1D<ulong, Stride1D.Dense> candidates,
-        ArrayView1D<ushort, Stride1D.Dense> resultOut)
+        ArrayView1D<ulong, Stride1D.Dense> resultOut)
     {
         if (index != 0)
         {
@@ -62,7 +61,7 @@ internal static partial class PrimeOrderGpuHeuristics
         var stepper = new ExponentRemainderStepperGpu(divisorPartial);
         if (stepper.InitializeIsUnityGpu(candidates[0]))
         {
-            resultOut[0] = 0;
+			Atomic.Exchange(ref resultOut[0], 0);
             return;
         }
 
@@ -70,11 +69,11 @@ internal static partial class PrimeOrderGpuHeuristics
         {
             if (stepper.ComputeNextIsUnityGpu(candidates[i]))
             {
-                resultOut[0] = 0;
+				Atomic.Exchange(ref resultOut[0], 0);
                 return;
             }
         }
 
-        resultOut[0] = 1;
+        Atomic.Exchange(ref resultOut[0], 1);
     }
 }

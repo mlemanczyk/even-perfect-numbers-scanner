@@ -456,7 +456,7 @@ public static partial class ULongExtensions
 		{
 			ulong result = 0UL;
 
-			GpuKernelLease lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+			GpuKernelLease lease = GpuKernelPool.GetKernel();
 
 			Accelerator accelerator = lease.Accelerator;
 			// Keep this commented out. It should never happen in production code.
@@ -479,7 +479,7 @@ public static partial class ULongExtensions
 			kernel(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
 			stream.Synchronize();
 
-			resultBuffer.View.CopyToCPU(ref result, 1);
+			resultBuffer.View.CopyToCPU(stream, ref result, 1);
 
 			resultBuffer.Dispose();
 			exponentBuffer.Dispose();

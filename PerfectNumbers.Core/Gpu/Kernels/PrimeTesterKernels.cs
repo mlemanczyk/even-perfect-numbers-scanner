@@ -18,19 +18,19 @@ internal static class PrimeTesterKernels
 {
     // GPU kernel: small-prime sieve only. Returns 1 if passes sieve (probable prime), 0 otherwise.
     public static void SmallPrimeSieveKernel(
-        Index1D index,
-        ArrayView<ulong> numbers,
-        ArrayView<uint> smallPrimes,
-        ArrayView<uint> smallPrimesLastOne,
-        ArrayView<uint> smallPrimesLastSeven,
-        ArrayView<uint> smallPrimesLastThree,
-        ArrayView<uint> smallPrimesLastNine,
-        ArrayView<ulong> smallPrimesPow2,
-        ArrayView<ulong> smallPrimesPow2LastOne,
-        ArrayView<ulong> smallPrimesPow2LastSeven,
-        ArrayView<ulong> smallPrimesPow2LastThree,
-        ArrayView<ulong> smallPrimesPow2LastNine,
-        ArrayView<byte> results)
+		Index1D index,
+		ArrayView<ulong> numbers,
+		ArrayView<uint> smallPrimes,
+		ArrayView<uint> smallPrimesLastOne,
+		ArrayView<uint> smallPrimesLastSeven,
+		ArrayView<uint> smallPrimesLastThree,
+		ArrayView<uint> smallPrimesLastNine,
+		ArrayView<ulong> smallPrimesPow2,
+		ArrayView<ulong> smallPrimesPow2LastOne,
+		ArrayView<ulong> smallPrimesPow2LastSeven,
+		ArrayView<ulong> smallPrimesPow2LastThree,
+		ArrayView<ulong> smallPrimesPow2LastNine,
+		ArrayView<byte> results)
     {
         ulong n = numbers[index];
         byte result = 1;

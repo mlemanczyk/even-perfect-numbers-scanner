@@ -198,7 +198,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
         try
         {
-            var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+            var lease = GpuKernelPool.GetKernel();
             Accelerator accelerator = lease.Accelerator;
             AcceleratorStream stream = lease.Stream;
 
@@ -364,7 +364,7 @@ internal static partial class PrimeOrderGpuHeuristics
     {
         order = 0UL;
 
-        var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+        var lease = GpuKernelPool.GetKernel();
         Accelerator accelerator = lease.Accelerator;
         AcceleratorStream stream = lease.Stream;
 
@@ -526,7 +526,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
     private static bool TryComputeOnGpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorData divisorData, Span<ulong> results)
     {
-        var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+        var lease = GpuKernelPool.GetKernel();
         Accelerator accelerator = lease.Accelerator;
         AcceleratorStream stream = lease.Stream;
         var kernel = GetPow2ModKernel(accelerator);
@@ -581,7 +581,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
         GpuUInt128[]? rentedExponents = null;
         GpuUInt128[]? rentedResults = null;
-        var lease = GpuKernelPool.GetKernel(useGpuOrder: true);
+        var lease = GpuKernelPool.GetKernel();
 
         try
         {

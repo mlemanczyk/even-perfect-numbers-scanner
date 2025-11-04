@@ -1,4 +1,3 @@
-using PerfectNumbers.Core;
 using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
@@ -23,7 +22,8 @@ public readonly struct ResidueAutomatonArgs
 	}
 }
 
-public sealed class KernelContainer
+
+public sealed class KernelContainer : IDisposable
 {
 	// Serializes first-time initialization of kernels/buffers per accelerator.
 	public Action<AcceleratorStream, Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>? Order;
@@ -38,42 +38,37 @@ public sealed class KernelContainer
 	public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
 		ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2ModOrder;
 	public Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>? SmallPrimeFactor;
-	public Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ushort, Stride1D.Dense>>? SpecialMax;
+	public Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>? SpecialMax;
 
 	// Optional device buffer with small divisor cycles (<= 4M). Index = divisor, value = cycle length.
 	public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallCycles;
-	public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimeFactorsPrimes;
-	public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimeFactorsSquares;
-	public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimeFactorPrimeSlots;
-	public MemoryBuffer1D<int, Stride1D.Dense>? SmallPrimeFactorExponentSlots;
-	public MemoryBuffer1D<int, Stride1D.Dense>? SmallPrimeFactorCountSlot;
-	public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimeFactorRemainingSlot;
-	public MemoryBuffer1D<ulong, Stride1D.Dense>? SpecialMaxFactors;
-	public MemoryBuffer1D<ulong, Stride1D.Dense>? SpecialMaxCandidates;
-	public MemoryBuffer1D<ushort, Stride1D.Dense>? SpecialMaxResult;
+
 	public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastOne;
-	public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimesPow2LastOne;
 	public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastSeven;
+	public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimesPow2LastOne;
 	public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimesPow2LastSeven;
 
-	public static T InitOnce<T>(ref T? slot, Func<T> factory) where T : class
+	public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimeFactorsPrimes;
+	public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimeFactorsSquares;
+
+	public void Dispose()
 	{
-		var current = Volatile.Read(ref slot);
-		if (current is not null)
-		{
-			return current;
-		}
+		// Order = null;
+		// Incremental = null;
+		// Pow2Mod = null;
+		// IncrementalOrder = null;
+		// Pow2ModOrder = null;
+		// SmallPrimeFactor = null;
+		// SpecialMax = null;
 
-		current = Volatile.Read(ref slot);
-		if (current is null)
-		{
-			current = factory();
-			Volatile.Write(ref slot, current);
-		}
-		return current;
+		// SmallCycles?.Dispose();
+		// SmallPrimesLastOne?.Dispose();
+		// SmallPrimesLastSeven?.Dispose();
+		// SmallPrimesPow2LastOne?.Dispose();
+		// SmallPrimesPow2LastSeven?.Dispose();
+		// SmallPrimeFactorsPrimes?.Dispose();
+		// SmallPrimeFactorsSquares?.Dispose();
 	}
-
-	public void Dispose() => GpuKernelPool.Return(this);
 }
 
 public readonly struct ResiduePrimeViews(
@@ -101,49 +96,30 @@ public readonly struct SmallPrimeFactorTables(
 	public ArrayView1D<ulong, Stride1D.Dense> SquaresView => Squares.View;
 }
 
-public readonly struct SmallPrimeFactorScratch(
-		MemoryBuffer1D<ulong, Stride1D.Dense> primeSlots,
-		MemoryBuffer1D<int, Stride1D.Dense> exponentSlots,
-		MemoryBuffer1D<int, Stride1D.Dense> countSlot,
-		MemoryBuffer1D<ulong, Stride1D.Dense> remainingSlot)
-{
-	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> PrimeSlots = primeSlots;
-	public readonly MemoryBuffer1D<int, Stride1D.Dense> ExponentSlots = exponentSlots;
-	public readonly MemoryBuffer1D<int, Stride1D.Dense> CountSlot = countSlot;
-	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> RemainingSlot = remainingSlot;
-
-	public void Clear()
-	{
-		PrimeSlots.MemSetToZero();
-		ExponentSlots.MemSetToZero();
-		CountSlot.MemSetToZero();
-		RemainingSlot.MemSetToZero();
-	}
-}
-
-public readonly struct SpecialMaxScratch(
-	MemoryBuffer1D<ulong, Stride1D.Dense> factorValues,
-	MemoryBuffer1D<ulong, Stride1D.Dense> candidateValues,
-	MemoryBuffer1D<ushort, Stride1D.Dense> resultSlot)
-{
-	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> FactorValues = factorValues;
-	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> CandidateValues = candidateValues;
-	public readonly MemoryBuffer1D<ushort, Stride1D.Dense> ResultSlot = resultSlot;
-
-	public ArrayView1D<ulong, Stride1D.Dense> FactorsView => FactorValues.View;
-	public ArrayView1D<ulong, Stride1D.Dense> CandidatesView => CandidateValues.View;
-	public ArrayView1D<ushort, Stride1D.Dense> ResultView => ResultSlot.View;
-}
-
 public class GpuKernelPool
 {
-	private static readonly ConcurrentQueue<KernelContainer> KernelCache = new(); // TODO: Replace this concurrent map with a simple accelerator-indexed lookup once kernel launchers are prewarmed during startup so we can drop the thread-safe wrapper entirely.
+	private static readonly ConcurrentDictionary<Accelerator, KernelContainer> _kernels = new();
 
-	public static KernelContainer GetKernels() => KernelCache.TryDequeue(out var container)
-		? container
-		: new KernelContainer();
+	public static T InitOnce<T>(ref T? target, Func<T> valueFactory) where T : class
+	{
+		if (target is { } value)
+		{
+			return value;
+		}
 
-	public static void Return(KernelContainer container) => KernelCache.Enqueue(container);
+		var newValue = valueFactory();
+		return Interlocked.CompareExchange(ref target, newValue, null) ?? newValue;
+	}
+
+	internal static KernelContainer GetKernels(Accelerator accelerator)
+	{
+		return _kernels.GetOrAdd(accelerator, static (accelerator) =>
+		{
+			var kernels = new KernelContainer();
+			PreloadStaticTables(kernels, accelerator);
+			return kernels;
+		});
+	}
 
 	internal static void PreloadStaticTables(KernelContainer kernels, Accelerator accelerator)
 	{
@@ -215,10 +191,10 @@ public class GpuKernelPool
 			return new SmallPrimeFactorTables(primeBuffer, squareBuffer, (int)primeBuffer.Length);
 		}
 
-		if (kernels.SmallPrimeFactorsPrimes is { } existingPrimes && kernels.SmallPrimeFactorsSquares is { } existingSquares)
-		{
-			return new SmallPrimeFactorTables(existingPrimes, existingSquares, (int)existingPrimes.Length);
-		}
+		// if (kernels.SmallPrimeFactorsPrimes is { } existingPrimes && kernels.SmallPrimeFactorsSquares is { } existingSquares)
+		// {
+		// 	return new SmallPrimeFactorTables(existingPrimes, existingSquares, (int)existingPrimes.Length);
+		// }
 
 		var hostPrimes = PrimesGenerator.SmallPrimes;
 		var hostSquares = PrimesGenerator.SmallPrimesPow2;
@@ -234,74 +210,15 @@ public class GpuKernelPool
 		return new SmallPrimeFactorTables(devicePrimes, deviceSquares, hostPrimes.Length);
 	}
 
-	public static SmallPrimeFactorScratch EnsureSmallPrimeFactorScratch(KernelContainer kernels, Accelerator accelerator, int slotCount)
-	{
-		MemoryBuffer1D<ulong, Stride1D.Dense>? primeSlots = kernels.SmallPrimeFactorPrimeSlots;
-		if (primeSlots is null || primeSlots.Length < slotCount)
-		{
-			primeSlots?.Dispose();
-			primeSlots = accelerator.Allocate1D<ulong>(slotCount);
-			kernels.SmallPrimeFactorPrimeSlots = primeSlots;
-		}
 
-		MemoryBuffer1D<int, Stride1D.Dense>? exponentSlots = kernels.SmallPrimeFactorExponentSlots;
-		if (exponentSlots is null || exponentSlots.Length < slotCount)
-		{
-			exponentSlots?.Dispose();
-			exponentSlots = accelerator.Allocate1D<int>(slotCount);
-			kernels.SmallPrimeFactorExponentSlots = exponentSlots;
-		}
 
-		MemoryBuffer1D<int, Stride1D.Dense>? countSlot = kernels.SmallPrimeFactorCountSlot;
-		if (countSlot is null)
-		{
-			countSlot = accelerator.Allocate1D<int>(1);
-			kernels.SmallPrimeFactorCountSlot = countSlot;
-		}
 
-		MemoryBuffer1D<ulong, Stride1D.Dense>? remainingSlot = kernels.SmallPrimeFactorRemainingSlot;
-		if (remainingSlot is null)
-		{
-			remainingSlot = accelerator.Allocate1D<ulong>(1);
-			kernels.SmallPrimeFactorRemainingSlot = remainingSlot;
-		}
 
-		return new SmallPrimeFactorScratch(primeSlots!, exponentSlots!, countSlot!, remainingSlot!);
-	}
-
-	public static SpecialMaxScratch EnsureSpecialMaxScratch(KernelContainer kernels, Accelerator accelerator, int factorCapacity)
-	{
-		MemoryBuffer1D<ulong, Stride1D.Dense>? factorValues = kernels.SpecialMaxFactors;
-		if (factorValues is null || factorValues.Length < factorCapacity)
-		{
-			factorValues?.Dispose();
-			factorValues = accelerator.Allocate1D<ulong>(factorCapacity);
-			kernels.SpecialMaxFactors = factorValues;
-		}
-
-		MemoryBuffer1D<ulong, Stride1D.Dense>? candidateValues = kernels.SpecialMaxCandidates;
-		if (candidateValues is null || candidateValues.Length < factorCapacity)
-		{
-			candidateValues?.Dispose();
-			candidateValues = accelerator.Allocate1D<ulong>(factorCapacity);
-			kernels.SpecialMaxCandidates = candidateValues;
-		}
-
-		MemoryBuffer1D<ushort, Stride1D.Dense>? resultSlot = kernels.SpecialMaxResult;
-		if (resultSlot is null)
-		{
-			resultSlot = accelerator.Allocate1D<ushort>(1);
-			kernels.SpecialMaxResult = resultSlot;
-		}
-
-		return new SpecialMaxScratch(factorValues!, candidateValues!, resultSlot!);
-	}
-
-	public static GpuKernelLease GetKernel(bool useGpuOrder)
+	public static GpuKernelLease GetKernel()
 	{
 		GpuPrimeWorkLimiter.Acquire();
 		var gpu = Rent();
-		var kernels = GetKernels();
+		var kernels = GetKernels(gpu.Accelerator);
 		return GpuKernelLease.Rent(gpu, kernels);
 	}
 
@@ -311,12 +228,10 @@ public class GpuKernelPool
 	/// <param name="action">Action to run with (Accelerator, Stream).</param>
 	public static void Run(Action<Accelerator, AcceleratorStream> action)
 	{
-		var lease = GetKernel(useGpuOrder: true);
+		var lease = GetKernel();
 		var accelerator = lease.Accelerator;
-		var stream = accelerator.CreateStream();
+		var stream = lease.Stream;
 		action(accelerator, stream);
-		stream.Dispose();
 		lease.Dispose();
-
 	}
 }

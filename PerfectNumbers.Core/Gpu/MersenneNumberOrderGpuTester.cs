@@ -9,7 +9,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 
 	public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
-		var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder);
+		var gpuLease = GpuKernelPool.GetKernel();
 		var accelerator = gpuLease.Accelerator;
 		var stream = gpuLease.Stream;
 		int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy and avoids TDR

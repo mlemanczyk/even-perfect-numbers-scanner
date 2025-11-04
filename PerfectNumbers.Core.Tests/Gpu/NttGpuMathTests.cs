@@ -150,7 +150,7 @@ public class NttGpuMathTests
         var modulus = new GpuUInt128(0UL, 17UL);
         var primitiveRoot = new GpuUInt128(0UL, 3UL);
 
-        GpuContextPool.GpuContextLease gpu = GpuContextPool.Rent();
+        GpuContextLease gpu = GpuContextPool.Rent();
         try
         {
             var accelerator = gpu.Accelerator;
@@ -345,7 +345,7 @@ public class NttGpuMathTests
         values[1] = new GpuUInt128(0UL, 2UL);
         var modulus = new GpuUInt128(0UL, 17UL);
         var primitiveRoot = new GpuUInt128(0UL, 3UL);
-        GpuContextPool.GpuContextLease gpu = GpuContextPool.Rent();
+        GpuContextLease gpu = GpuContextPool.Rent();
         try
         {
             var buffer = gpu.Accelerator.Allocate1D<GpuUInt128>(values.Length);
