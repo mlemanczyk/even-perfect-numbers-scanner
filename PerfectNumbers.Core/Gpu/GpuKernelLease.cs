@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using ILGPU;
+using ILGPU.Algorithms;
 using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
@@ -19,7 +20,7 @@ public sealed class GpuKernelLease
 		Kernels = kernels;
 	}
 
-    internal static GpuKernelLease Rent(GpuContextLease gpu, KernelContainer kernels)
+    internal static GpuKernelLease Rent(GpuContextLease gpu, AcceleratorStream stream, KernelContainer kernels)
     {
         if (!Pool.TryDequeue(out var lease))
         {
@@ -28,7 +29,7 @@ public sealed class GpuKernelLease
 
         lease._gpu = gpu;
 		lease.Kernels = kernels;
-		lease.Stream = gpu.Accelerator.CreateStream();
+		lease.Stream = stream;
         return lease;
     }
 
@@ -66,7 +67,7 @@ public sealed class GpuKernelLease
     {
         get
         {
-            var accel = Accelerator;
+            var accel = Accelerator; // avoid capturing 'this' in lambda
             return GpuKernelPool.InitOnce(ref Kernels!.Incremental, () =>
             {
                 var loaded = accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>>(IncrementalKernels.IncrementalKernelScan);

@@ -7,6 +7,7 @@ using System.Text;
 using System.Runtime.InteropServices;
 using PerfectNumbers.Core.Gpu;
 using ILGPU;
+using ILGPU.Algorithms;
 using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core;
@@ -806,10 +807,12 @@ public class MersenneDivisorCycles
 		var lease = GpuKernelPool.GetKernel();
 		var accelerator = lease.Accelerator;
 		var stream = lease.Stream;
-		var kernel = accelerator.LoadAutoGroupedStreamKernel<
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<
 				Index1D,
 				ArrayView1D<ulong, Stride1D.Dense>,
 				ArrayView1D<ulong, Stride1D.Dense>>(DivisorCycleKernels.GpuDivisorCycleKernel);
+		var kernel = KernelUtil.GetKernel(loaded);
+		var launcher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
 
 
 		using Stream outputStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, BufferSize10M, useAsync: true);
@@ -860,14 +863,15 @@ public class MersenneDivisorCycles
 			var bufferDiv = accelerator.Allocate1D(validDivisors);
 			var bufferCycle = accelerator.Allocate1D<ulong>(idx);
 
-			kernel(
+			launcher(
+					stream,
 					idx,
 					bufferDiv.View,
 					bufferCycle.View);
 
+			bufferCycle.View.CopyToCPU(stream, ref outCycles[0], idx);
 			stream.Synchronize();
 
-			bufferCycle.View.CopyToCPU(stream, ref outCycles[0], idx);
 			bufferCycle.Dispose();
 			bufferDiv.Dispose();
 
@@ -893,7 +897,6 @@ public class MersenneDivisorCycles
 		pool.Return(divisors, clearArray: false);
 		pool.Return(outCycles, clearArray: false);
 
-		stream.Dispose();
 		lease.Dispose();
 	}
 

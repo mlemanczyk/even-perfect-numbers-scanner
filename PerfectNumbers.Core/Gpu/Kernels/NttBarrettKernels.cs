@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using ILGPU;
+using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -32,7 +33,7 @@ internal static class NttBarrettKernels
     }
 
     // Barrett-based squaring: v = v^2 mod n for 128-bit n
-    public static void SquareBarrett128Kernel(Index1D index, ArrayView<GpuUInt128> data, ulong modHigh, ulong modLow, ulong muHigh, ulong muLow)
+    public static void SquareBarrett128Kernel(Index1D index, AcceleratorStream stream, ArrayView<GpuUInt128> data, ulong modHigh, ulong modLow, ulong muHigh, ulong muLow)
     {
         var v = data[index];
         Mul128Full(v.High, v.Low, v.High, v.Low, out var z3, out var z2, out var z1, out var z0);

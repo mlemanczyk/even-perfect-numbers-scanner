@@ -44,11 +44,6 @@ public sealed class ScratchBuffer
 			SmallPrimeFactorPrimeSlots = _accelerator.Allocate1D<ulong>(newSize);
 			SmallPrimeFactorExponentSlots = _accelerator.Allocate1D<int>(newSize);
 		}
-		// else
-		// {
-		// 	SmallPrimeFactorPrimeSlots.MemSetToZero();
-		// 	SmallPrimeFactorExponentSlots.MemSetToZero();
-		// }
 	}
 
 	public void ResizeSpecialMaxFactors(int newSize)
@@ -61,11 +56,6 @@ public sealed class ScratchBuffer
 			SpecialMaxFactors = _accelerator.Allocate1D<ulong>(newSize);
 			SpecialMaxCandidates = _accelerator.Allocate1D<ulong>(newSize);
 		}
-		// else
-		// {
-		// 	SpecialMaxFactors.MemSetToZero();
-		// 	SpecialMaxCandidates.MemSetToZero();
-		// }
 	}
 }
 

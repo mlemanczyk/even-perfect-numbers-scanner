@@ -459,6 +459,7 @@ public static partial class ULongExtensions
 			GpuKernelLease lease = GpuKernelPool.GetKernel();
 
 			Accelerator accelerator = lease.Accelerator;
+			AcceleratorStream stream = lease.Stream;
 			// Keep this commented out. It should never happen in production code.
 			// if (accelerator.AcceleratorType == AcceleratorType.CPU)
 			// {
@@ -470,16 +471,14 @@ public static partial class ULongExtensions
 			var exponentBuffer = accelerator.Allocate1D<ulong>(1);
 			var resultBuffer = accelerator.Allocate1D<ulong>(1);
 
-			exponentBuffer.View.CopyFromCPU(ref exponent, 1);
+			exponentBuffer.View.CopyFromCPU(stream, ref exponent, 1);
 			// We don't need to worry about any left-overs here.
-			// resultBuffer.MemSetToZero();
+			// resultBuffer.MemSetToZero(stream);
 
 			var kernel = useKeepKernel ? kernelGroup.KeepMontgomery : kernelGroup.ConvertToStandard;
-			AcceleratorStream stream = lease.Stream;
 			kernel(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
-			stream.Synchronize();
-
 			resultBuffer.View.CopyToCPU(stream, ref result, 1);
+			stream.Synchronize();
 
 			resultBuffer.Dispose();
 			exponentBuffer.Dispose();

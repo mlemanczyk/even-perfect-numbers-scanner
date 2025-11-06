@@ -305,7 +305,7 @@ internal static class LucasLehmerKernels
         states[idx] = s;
     }
 
-    public static void Kernel(Index1D index, ulong exponent, GpuUInt128 modulus, ArrayView<GpuUInt128> state)
+    public static void Kernel(Index1D _, ulong exponent, GpuUInt128 modulus, ArrayView<GpuUInt128> state)
     {
         // Lucas–Lehmer iteration in the field GF(2^p-1).
         // For p < 128, use a Mersenne-specific squaring + reduction to avoid

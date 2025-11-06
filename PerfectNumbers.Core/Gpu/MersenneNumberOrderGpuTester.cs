@@ -30,13 +30,13 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 		int currentSize;
 		int found = 0;
 
-		var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(gpuLease.Kernels, accelerator);
+		var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(gpuLease.Kernels, accelerator, stream);
 		while (kStart <= maxK && Volatile.Read(ref isPrime))
 		{
 			remaining = maxK - kStart + 1UL;
 			currentSize = remaining > (UInt128)batchSize ? batchSize : (int)remaining;
 			// This clear is required because the result may not always be set. Remove it after the kernels are modified to always set the result.
-			foundBuffer.MemSetToZero();
+			foundBuffer.MemSetToZero(stream);
 			// Precompute residue automaton bases for this batch
 			UInt128 q0 = twoP * kStart + 1UL;
 			// TODO: Replace these modulo recomputations with the divisor-cycle stepping deltas captured in
@@ -49,8 +49,8 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 			kernel(stream, currentSize, exponent, (GpuUInt128)twoP, (GpuUInt128)kStart, last, divMul,
 							kernelArgs, foundBuffer.View, smallCyclesView);
 
+			foundBuffer.View.CopyToCPU(stream, ref found, 1);
 			stream.Synchronize();
-			foundBuffer.View.CopyToCPU(ref found, 1);
 			if (found != 0)
 			{
 				Volatile.Write(ref isPrime, false);

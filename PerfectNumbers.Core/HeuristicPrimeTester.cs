@@ -253,17 +253,19 @@ public sealed class HeuristicPrimeTester
 
 		int groupALength = HeuristicPrimeSieves.GroupADivisors.Length;
 
-		flagView1D.CopyFromCPU(ref compositeFlag, 1);
+		flagView1D.CopyFromCPU(stream, ref compositeFlag, 1);
 		kernel(
+				stream,
 				groupALength,
 				flagView,
 				n,
 				maxDivisorSquare,
 				HeuristicGpuDivisorTableKind.GroupA,
 				gpu.HeuristicGpuTables);
-		stream.Synchronize();
 
 		flagView1D.CopyToCPU(stream, ref compositeFlag, 1);
+		stream.Synchronize();
+
 		compositeDetected = compositeFlag != 0;
 
 		if (!compositeDetected)
@@ -288,16 +290,17 @@ public sealed class HeuristicPrimeTester
 				int divisorLength = GetGroupBDivisors(ending).Length;
 
 				compositeFlag = 0;
-				flagView1D.CopyFromCPU(ref compositeFlag, 1);
+				flagView1D.CopyFromCPU(stream, ref compositeFlag, 1);
 				kernel(
+                    stream,
 						divisorLength,
 						flagView,
 						n,
 						maxDivisorSquare,
 						tableKind,
 						gpu.HeuristicGpuTables);
-				accelerator.Synchronize();
-				flagView1D.CopyToCPU(ref compositeFlag, 1);
+				flagView1D.CopyToCPU(stream, ref compositeFlag, 1);
+				stream.Synchronize();
 				compositeDetected = compositeFlag != 0;
 			}
 		}

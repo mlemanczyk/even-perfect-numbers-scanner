@@ -102,7 +102,6 @@ public static class GpuContextPool
 
 	internal static void Return(PooledContext ctx)
 	{
-		// ctx.Accelerator.Synchronize();
 		GpuPool.Enqueue(ctx);
 	}
 }

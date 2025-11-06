@@ -18,9 +18,9 @@ internal enum GpuPow2ModStatus
 
 internal static partial class PrimeOrderGpuHeuristics
 {
-    internal static void PreloadStaticTables(Accelerator accelerator)
+    internal static void PreloadStaticTables(Accelerator accelerator, AcceleratorStream stream)
     {
-        _ = GetSmallPrimeDeviceCache(accelerator);
+        _ = GetSmallPrimeDeviceCache(accelerator, stream);
     }
 
     private static readonly ConcurrentDictionary<ulong, byte> OverflowedPrimes = new();
@@ -106,16 +106,16 @@ internal static partial class PrimeOrderGpuHeuristics
         s_capability = PrimeOrderGpuCapability.Default;
     }
 
-    private static SmallPrimeDeviceCache GetSmallPrimeDeviceCache(Accelerator accelerator)
+    private static SmallPrimeDeviceCache GetSmallPrimeDeviceCache(Accelerator accelerator, AcceleratorStream stream)
     {
-        return SmallPrimeDeviceCaches.GetOrAdd(accelerator, static acc =>
+        return SmallPrimeDeviceCaches.GetOrAdd(accelerator, acc =>
         {
             uint[] primes = PrimesGenerator.SmallPrimes;
             ulong[] squares = PrimesGenerator.SmallPrimesPow2;
             var primeBuffer = acc.Allocate1D<uint>(primes.Length);
-            primeBuffer.View.CopyFromCPU(primes);
+            primeBuffer.View.CopyFromCPU(stream, primes);
             var squareBuffer = acc.Allocate1D<ulong>(squares.Length);
-            squareBuffer.View.CopyFromCPU(squares);
+            squareBuffer.View.CopyFromCPU(stream, squares);
             return new SmallPrimeDeviceCache
             {
                 Primes = primeBuffer,
@@ -203,7 +203,7 @@ internal static partial class PrimeOrderGpuHeuristics
             AcceleratorStream stream = lease.Stream;
 
             var kernel = GetPartialFactorKernel(accelerator);
-            SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
+            SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator, stream);
 
             // TODO: We should create / reallocate these buffer only once or if the new required length is bigger than capacity.
             var factorBuffer = accelerator.Allocate1D<ulong>(primeTargets.Length);
@@ -213,11 +213,11 @@ internal static partial class PrimeOrderGpuHeuristics
             var fullyFactoredBuffer = accelerator.Allocate1D<byte>(1);
 
             // TODO: There is no need to clear these buffers because the kernel will always assign values within the required bounds.
-			// factorBuffer.MemSetToZero();
-            // exponentBuffer.MemSetToZero();
-            // countBuffer.MemSetToZero();
-            // remainingBuffer.MemSetToZero();
-            // fullyFactoredBuffer.MemSetToZero();
+			// factorBuffer.MemSetToZero(stream);
+            // exponentBuffer.MemSetToZero(stream);
+            // countBuffer.MemSetToZero(stream);
+            // remainingBuffer.MemSetToZero(stream);
+            // fullyFactoredBuffer.MemSetToZero(stream);
 
             kernel(
                 stream,
@@ -234,17 +234,18 @@ internal static partial class PrimeOrderGpuHeuristics
                 remainingBuffer.View,
                 fullyFactoredBuffer.View);
 
-            stream.Synchronize();
 
-            countBuffer.View.CopyToCPU(ref factorCount, 1);
-            factorCount = Math.Min(factorCount, primeTargets.Length);
-            factorBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(primeTargets), primeTargets.Length);
-            exponentBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(exponentTargets), exponentTargets.Length);
-            remainingBuffer.View.CopyToCPU(ref remaining, 1);
+            countBuffer.View.CopyToCPU(stream, ref factorCount, 1);
+            factorBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(primeTargets), primeTargets.Length);
+            exponentBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(exponentTargets), exponentTargets.Length);
+            remainingBuffer.View.CopyToCPU(stream, ref remaining, 1);
 
             byte fullyFactoredFlag = 0;
-            fullyFactoredBuffer.View.CopyToCPU(ref fullyFactoredFlag, 1);
-            fullyFactored = fullyFactoredFlag != 0;
+            fullyFactoredBuffer.View.CopyToCPU(stream, ref fullyFactoredFlag, 1);
+			stream.Synchronize();
+
+			fullyFactored = fullyFactoredFlag != 0;
+            factorCount = Math.Min(factorCount, primeTargets.Length);
 
             // TODO: These buffers shouldn't be disposed but rather reused accross call with the assigned accelerator.
             factorBuffer.Dispose();
@@ -369,7 +370,7 @@ internal static partial class PrimeOrderGpuHeuristics
         AcceleratorStream stream = lease.Stream;
 
         var kernel = GetOrderKernel(accelerator);
-            SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator);
+            SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator, stream);
 
 		// TODO: These buffers should be created reallocated once and assigned to an accelerator. Callers should use their own
 		// thread static cache to prevent other threads from using taking accelerators with pre-allocated buffers if they don't
@@ -386,16 +387,16 @@ internal static partial class PrimeOrderGpuHeuristics
         var statusBuffer = accelerator.Allocate1D<byte>(1);
 
 		// TODO: Remove the cleaning after the order kernel is modified to always set the result.
-		phiFactorBuffer.MemSetToZero();
-        phiExponentBuffer.MemSetToZero();
-        workFactorBuffer.MemSetToZero();
-        workExponentBuffer.MemSetToZero();
-        candidateBuffer.MemSetToZero();
-        stackIndexBuffer.MemSetToZero();
-        stackExponentBuffer.MemSetToZero();
-        stackProductBuffer.MemSetToZero();
-        resultBuffer.MemSetToZero();
-        statusBuffer.MemSetToZero();
+		phiFactorBuffer.MemSetToZero(stream);
+        phiExponentBuffer.MemSetToZero(stream);
+        workFactorBuffer.MemSetToZero(stream);
+        workExponentBuffer.MemSetToZero(stream);
+        candidateBuffer.MemSetToZero(stream);
+        stackIndexBuffer.MemSetToZero(stream);
+        stackExponentBuffer.MemSetToZero(stream);
+        stackProductBuffer.MemSetToZero(stream);
+        resultBuffer.MemSetToZero(stream);
+        statusBuffer.MemSetToZero(stream);
 
         uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
         byte hasPrevious = previousOrder.HasValue ? (byte)1 : (byte)0;
@@ -425,10 +426,11 @@ internal static partial class PrimeOrderGpuHeuristics
             cache.Count,
             buffers);
 
-        stream.Synchronize();
 
         byte status = 0;
-        statusBuffer.View.CopyToCPU(ref status, 1);
+        statusBuffer.View.CopyToCPU(stream, ref status, 1);
+        resultBuffer.View.CopyToCPU(stream, ref order, 1);
+        stream.Synchronize();
 
         PrimeOrderKernelStatus kernelStatus = (PrimeOrderKernelStatus)status;
         if (kernelStatus == PrimeOrderKernelStatus.Fallback)
@@ -444,8 +446,6 @@ internal static partial class PrimeOrderGpuHeuristics
             lease.Dispose();
             throw new InvalidOperationException("GPU Pollard Rho stack overflow; increase HeuristicStackCapacity.");
         }
-
-        resultBuffer.View.CopyToCPU(ref order, 1);
 
         if (kernelStatus == PrimeOrderKernelStatus.FactoringFailure)
         {
@@ -536,15 +536,19 @@ internal static partial class PrimeOrderGpuHeuristics
         var exponentBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
         var remainderBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
 
-        exponentBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(exponents), exponents.Length);
+        exponentBuffer.View.CopyFromCPU(stream, ref MemoryMarshal.GetReference(exponents), exponents.Length);
 
 		// Pow2Mod kernel always assigns the required output elements so we don't need to worry about clearing these.
-		// remainderBuffer.MemSetToZero();
+		// remainderBuffer.MemSetToZero(stream);
 
 		try
 		{
 			kernel(stream, exponents.Length, exponentBuffer.View, divisorData, remainderBuffer.View);
+            remainderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(results), exponents.Length);
 			stream.Synchronize();
+            exponentBuffer.Dispose();
+            remainderBuffer.Dispose();
+            lease.Dispose();
 		}
 		catch (Exception)
 		{
@@ -555,10 +559,6 @@ internal static partial class PrimeOrderGpuHeuristics
 			throw;
 		}
 
-        remainderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(results), exponents.Length);
-        exponentBuffer.Dispose();
-        remainderBuffer.Dispose();
-        lease.Dispose();
         return true;
     }
 
@@ -603,20 +603,20 @@ internal static partial class PrimeOrderGpuHeuristics
                 exponentSpan[i] = (GpuUInt128)exponents[i];
             }
 
-            exponentBuffer.View.CopyFromCPU(ref MemoryMarshal.GetReference(exponentSpan), length);
+            exponentBuffer.View.CopyFromCPU(stream, ref MemoryMarshal.GetReference(exponentSpan), length);
 			// Pow2ModWide kernel always assigns the required output elements so we don't need to worry about clearing these.
-            // remainderBuffer.MemSetToZero();
+            // remainderBuffer.MemSetToZero(stream);
 
             GpuUInt128 modulus = (GpuUInt128)prime;
             kernel(stream, length, exponentBuffer.View, modulus, remainderBuffer.View);
 
-            stream.Synchronize();
 
             Span<GpuUInt128> resultSpan = length <= WideStackThreshold
                 ? stackalloc GpuUInt128[length]
                 : new Span<GpuUInt128>(rentedResults = ArrayPool<GpuUInt128>.Shared.Rent(length), 0, length);
 
-            remainderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(resultSpan), length);
+            remainderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(resultSpan), length);
+            stream.Synchronize();
 
             for (int i = 0; i < length; i++)
             {

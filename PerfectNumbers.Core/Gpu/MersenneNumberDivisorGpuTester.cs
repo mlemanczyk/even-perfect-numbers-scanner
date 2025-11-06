@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using ILGPU;
+using ILGPU.Algorithms;
 using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
@@ -9,11 +10,16 @@ namespace PerfectNumbers.Core.Gpu;
 /// </summary>
 public sealed class MersenneNumberDivisorGpuTester
 {
-	private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>>> _kernelCache = new();
+	private readonly ConcurrentDictionary<Accelerator, Action<AcceleratorStream, Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>>> _kernelCache = new();
 	private readonly ConcurrentDictionary<Accelerator, MemoryBuffer1D<byte, Stride1D.Dense>> _resultBuffers = new();
 
-	private Action<Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
-			_kernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>>(DivisorKernels.Kernel));
+	private Action<AcceleratorStream, Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
+			_kernelCache.GetOrAdd(accelerator, acc =>
+            {
+                var loaded = acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>>(DivisorKernels.Kernel);
+                var kernel = KernelUtil.GetKernel(loaded);
+                return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>>>();
+            });
 
         public static void BuildDivisorCandidates()
         {
@@ -43,15 +49,12 @@ public sealed class MersenneNumberDivisorGpuTester
         var kernel = GetKernel(accelerator);
         var resultBuffer = _resultBuffers.GetOrAdd(accelerator, acc => acc.Allocate1D<byte>(1));
 		// There is no point in clearing this buffer. We always override item [0] and never use it beyond item [0]
-        // resultBuffer.MemSetToZero();
-        kernel(1, exponent, divisor, resultBuffer.View);
-        stream.Synchronize();
+        // resultBuffer.MemSetToZero(stream);
+        kernel(stream, 1, exponent, divisor, resultBuffer.View);
         Span<byte> result = stackalloc byte[1];
         resultBuffer.View.CopyToCPU(stream, ref result[0], 1);
+        stream.Synchronize();
         bool divisible = result[0] != 0;
-        result[0] = 0;
-        resultBuffer.View.CopyFromCPU(stream, ref result[0], 1);
-		stream.Synchronize();
 		stream.Dispose();
         gpu.Dispose();
         return divisible;
