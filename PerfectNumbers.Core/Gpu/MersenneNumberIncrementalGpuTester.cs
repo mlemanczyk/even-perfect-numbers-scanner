@@ -39,9 +39,10 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
         }
 
         var orderBuffer = accelerator.Allocate1D<ulong>(batchSize);
-        // Avoid giant stack allocations that can trigger StackOverflow when batchSize is large.
-        // Rent a reusable array from the shared pool instead.
-        ulong[] orderArray = ArrayPool<ulong>.Shared.Rent(batchSize);
+		// Avoid giant stack allocations that can trigger StackOverflow when batchSize is large.
+		// Rent a reusable array from the shared pool instead.
+		ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
+		ulong[] orderArray = ulongPool.Rent(batchSize);
         UInt128 remaining;
         int currentSize;
         int i;
@@ -120,7 +121,7 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
             kStart += (UInt128)currentSize;
         }
 
-        ArrayPool<ulong>.Shared.Return(orderArray);
+        ulongPool.Return(orderArray);
 		orderBuffer.Dispose();
         gpuLease.Dispose();
     }

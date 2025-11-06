@@ -101,7 +101,8 @@ public sealed class MersenneNumberTester(
 			return;
 		}
 
-		UInt128[] qsBuffer = ArrayPool<UInt128>.Shared.Rent((int)limit);
+		ArrayPool<UInt128> uInt128Pool = ThreadStaticPools.UInt128Pool;
+		UInt128[] qsBuffer = uInt128Pool.Rent((int)limit);
 		int idx = 0;
 		UInt128 k2 = 1UL;
 		UInt128 q2;
@@ -140,7 +141,7 @@ public sealed class MersenneNumberTester(
 
 		if (idx == 0)
 		{
-			ArrayPool<UInt128>.Shared.Return(qsBuffer);
+			ThreadStaticPools.UInt128Pool.Return(qsBuffer);
 			return;
 		}
 
@@ -156,20 +157,21 @@ public sealed class MersenneNumberTester(
 		int batchSize = GpuConstants.ScanBatchSize;
 		ulong divMul = (ulong)((((UInt128)1 << 64) - 1UL) / exponent) + 1UL;
 		int offset = 0;
+		var gpuUInt128Pool = ThreadStaticPools.GpuUInt128Pool;
 		while (offset < idx)
 		{
 			int count = Math.Min(batchSize, idx - offset);
-			var qBuffer = accelerator.Allocate1D<PerfectNumbers.Core.Gpu.GpuUInt128>(count);
+			var qBuffer = accelerator.Allocate1D<GpuUInt128>(count);
 			var orderBuffer = accelerator.Allocate1D<ulong>(count);
 			// Convert to device-friendly GpuUInt128 on the fly
-			var tmp = System.Buffers.ArrayPool<PerfectNumbers.Core.Gpu.GpuUInt128>.Shared.Rent(count);
+			var tmp = gpuUInt128Pool.Rent(count);
 			for (int i = 0; i < count; i++)
 			{
-				tmp[i] = (PerfectNumbers.Core.Gpu.GpuUInt128)qs[offset + i];
+				tmp[i] = (GpuUInt128)qs[offset + i];
 			}
 			// Copy only the populated elements to the device buffer to avoid overrun on pooled arrays.
 			qBuffer.View.CopyFromCPU(stream, ref tmp[0], count);
-			System.Buffers.ArrayPool<PerfectNumbers.Core.Gpu.GpuUInt128>.Shared.Return(tmp);
+			gpuUInt128Pool.Return(tmp);
 			orderKernel(stream, count, exponent, divMul, qBuffer.View, orderBuffer.View);
 			stream.Synchronize();
 
@@ -195,7 +197,7 @@ public sealed class MersenneNumberTester(
 		}
 
 		gpuLease.Dispose();
-		ArrayPool<UInt128>.Shared.Return(qs);
+		uInt128Pool.Return(qs);
 	}
 
 	public bool IsMersennePrime(ulong exponent)

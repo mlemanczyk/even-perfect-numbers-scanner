@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Numerics;
 using UInt128 = System.UInt128;
 using ILGPU;
+using System.Buffers;
 
 namespace PerfectNumbers.Core;
 
@@ -75,6 +76,7 @@ public static class MersennePrimeFactorTester
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static UInt128 OrderOf2ModPrime(UInt128 q, CancellationToken ct)
     {
+		
         lock (_orderCache)
         {
             // TODO: Replace this lock with the lock-free order cache once the divisor-cycle snapshot exposes
@@ -85,6 +87,8 @@ public static class MersennePrimeFactorTester
                 return cached;
             }
         }
+
+		ArrayPool<UInt128> uInt128Pool = ThreadStaticPools.UInt128Pool;
 
         UInt128 phi = q - 1;
         UInt128[] factors = phi <= ulong.MaxValue
@@ -101,28 +105,32 @@ public static class MersennePrimeFactorTester
             prime = factors[i];
             if (ct.IsCancellationRequested)
             {
+                uInt128Pool.Return(factors);
                 return 0;
             }
 
-            // TODO: Swap this `%`/`/` loop for the Math.DivRem-based reducer highlighted in the
-            // order benchmarks so we avoid repeated 128-bit division while trimming the order.
-            while (order % prime == 0)
-            {
-                if (ct.IsCancellationRequested)
-                {
-                    return 0;
-                }
+			// TODO: Swap this `%`/`/` loop for the Math.DivRem-based reducer highlighted in the
+			// order benchmarks so we avoid repeated 128-bit division while trimming the order.
+			while (order % prime == 0)
+			{
+				if (ct.IsCancellationRequested)
+				{
+					uInt128Pool.Return(factors);
+					return 0;
+				}
 
-                candidate = order / prime;
-                if (ModPowWithCancellation(UInt128Numbers.Two, candidate, q, ct) == UInt128.One)
-                {
-                    order = candidate;
-                }
-                else
-                {
-                    break;
-                }
-            }
+				candidate = order / prime;
+				if (ModPowWithCancellation(UInt128Numbers.Two, candidate, q, ct) == UInt128.One)
+				{
+					order = candidate;
+				}
+				else
+				{
+					break;
+				}
+			}
+
+            uInt128Pool.Return(factors);
         }
 
         // TODO: Integrate divisor-cycle data here so repeated order refinement uses cached cycle
@@ -136,6 +144,7 @@ public static class MersennePrimeFactorTester
             }
         }
 
+		uInt128Pool.Return(factors);
         return order;
     }
 
@@ -327,9 +336,7 @@ public static class MersennePrimeFactorTester
             queue.Enqueue(m / d);
         }
 
-        var result = new UInt128[dict.Count]; // TODO: Rent this array from ArrayPool<UInt128> so
-                                              // wide-factorization batches stop allocating fresh
-                                              // buffers per candidate.
+		var result = ThreadStaticPools.UInt128Pool.Rent(dict.Count);
         int index = 0;
         foreach (var key in dict.Keys)
         {

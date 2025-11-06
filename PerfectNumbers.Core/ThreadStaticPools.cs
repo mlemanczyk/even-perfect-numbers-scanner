@@ -3,11 +3,24 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Cpu;
 using PerfectNumbers.Core.Gpu;
+using PeterO.Numbers;
 
 namespace PerfectNumbers.Core
 {
     public readonly struct ThreadStaticPools
     {
+        [ThreadStatic]
+        private static ArrayPool<EInteger>? _eintegerPool;
+
+        public static ArrayPool<EInteger> EIntegerPool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _eintegerPool ??= ArrayPool<EInteger>.Create();
+            }
+        }
+
         [ThreadStatic]
         private static ArrayPool<FactorEntry>? _factorEntryPool;
 
@@ -33,6 +46,18 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
+        private static ArrayPool<GpuUInt128>? _gpuUInt128Pool;
+
+        public static ArrayPool<GpuUInt128> GpuUInt128Pool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _gpuUInt128Pool ??= ArrayPool<GpuUInt128>.Create();
+            }
+        }
+
+        [ThreadStatic]
         private static MersenneCpuDivisorScanSession? _mersenneCpuDivisorSession;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -53,6 +78,18 @@ namespace PerfectNumbers.Core
         internal static void ReturnMersenneCpuDivisorSession(MersenneCpuDivisorScanSession session)
         {
             _mersenneCpuDivisorSession = session;
+        }
+
+        [ThreadStatic]
+        private static ArrayPool<UInt128>? _uint128Pool;
+
+        public static ArrayPool<UInt128> UInt128Pool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _uint128Pool ??= ArrayPool<UInt128>.Create();
+            }
         }
 
         [ThreadStatic]

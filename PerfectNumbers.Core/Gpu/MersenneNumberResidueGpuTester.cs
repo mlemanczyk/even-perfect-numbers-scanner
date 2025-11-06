@@ -172,7 +172,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
         {
             Capacity = Math.Max(1, capacity);
             OrderBuffer = accelerator.Allocate1D<ulong>(Capacity);
-            OrderArray = ArrayPool<ulong>.Shared.Rent(Capacity);
+            OrderArray = ThreadStaticPools.UlongPool.Rent(Capacity);
         }
 
         internal MemoryBuffer1D<ulong, Stride1D.Dense> OrderBuffer { get; }
@@ -184,7 +184,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
         public void Dispose()
         {
             OrderBuffer.Dispose();
-            ArrayPool<ulong>.Shared.Return(OrderArray, clearArray: false);
+            ThreadStaticPools.UlongPool.Return(OrderArray, clearArray: false);
         }
     }
 

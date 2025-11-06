@@ -115,7 +115,7 @@ public static class NttGpuMath
             // Precompute stage twiddle factors (forward and inverse) and upload to GPU.
             Bits = (int)Math.Log2(length);
             int twiddleCount = length - 1;
-            var pool = ArrayPool<GpuUInt128>.Shared;
+            var pool = ThreadStaticPools.GpuUInt128Pool;
             var forward = pool.Rent(twiddleCount);
             var inverse = pool.Rent(twiddleCount);
             StageOffsets = new int[Bits];
@@ -507,7 +507,7 @@ public static class NttGpuMath
         var gpu = GpuContextPool.Rent();
         var accelerator = gpu.Accelerator;
         var kernel = GetBitReverseKernel(accelerator);
-        var pool = ArrayPool<GpuUInt128>.Shared;
+        var pool = ThreadStaticPools.GpuUInt128Pool;
         var array = pool.Rent(n);
         values.CopyTo(array);
         var buffer = accelerator.Allocate1D<GpuUInt128>(n);
@@ -572,7 +572,7 @@ public static class NttGpuMath
         var accelerator = gpu.Accelerator;
         var stream = accelerator.CreateStream();
         var kernel = GetForwardKernel(accelerator);
-        var pool = ArrayPool<GpuUInt128>.Shared;
+        var pool = ThreadStaticPools.GpuUInt128Pool;
         var inputArray = pool.Rent(n);
         var outputArray = pool.Rent(n);
         values.CopyTo(inputArray);
@@ -671,7 +671,7 @@ public static class NttGpuMath
         var accelerator = gpu.Accelerator;
         var stream = accelerator.CreateStream();
         var kernel = GetInverseKernel(accelerator);
-        var pool = ArrayPool<GpuUInt128>.Shared;
+        var pool = ThreadStaticPools.GpuUInt128Pool;
         var inputArray = pool.Rent(n);
         var outputArray = pool.Rent(n);
         values.CopyTo(inputArray);
@@ -857,7 +857,7 @@ public static class NttGpuMath
             n <<= 1;
         }
 
-        var pool = ArrayPool<GpuUInt128>.Shared;
+        var pool = ThreadStaticPools.GpuUInt128Pool;
         var aBuffer = pool.Rent(n);
         var bBuffer = pool.Rent(n);
         var a = aBuffer.AsSpan(0, n);
@@ -894,7 +894,7 @@ public static class NttGpuMath
             n <<= 1;
         }
 
-        var pool = ArrayPool<GpuUInt128>.Shared;
+        var pool = ThreadStaticPools.GpuUInt128Pool;
         var aBuffer = pool.Rent(n);
         var bBuffer = pool.Rent(n);
         var a = aBuffer.AsSpan(0, n);
@@ -943,7 +943,7 @@ public static class NttGpuMath
         var accelerator = gpu.Accelerator;
         var stream = accelerator.CreateStream();
         var kernel = GetMulKernel(accelerator);
-        var pool = ArrayPool<GpuUInt128>.Shared;
+        var pool = ThreadStaticPools.GpuUInt128Pool;
         var leftArray = pool.Rent(left.Length);
         var rightArray = pool.Rent(right.Length);
         left.CopyTo(leftArray);

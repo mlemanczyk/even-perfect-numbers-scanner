@@ -138,11 +138,13 @@ public class MersenneNumberLucasLehmerGpuTester
         var kernel = GetBatchKernel(accelerator);
 
         var expBuffer = accelerator.Allocate1D<ulong>(count);
-        ulong[] expArray = ArrayPool<ulong>.Shared.Rent(count);
+		ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
+		ulong[] expArray = ulongPool.Rent(count);
         exponents.CopyTo(expArray);
         expBuffer.View.CopyFromCPU(stream, ref expArray[0], count);
 
-        GpuUInt128[] modulusArray = ArrayPool<GpuUInt128>.Shared.Rent(count);
+		ArrayPool<GpuUInt128> gpuUInt128Pool = ThreadStaticPools.GpuUInt128Pool;
+		GpuUInt128[] modulusArray = gpuUInt128Pool.Rent(count);
         for (int i = 0; i < count; i++)
         {
             // TODO: Replace this per-exponent shift with a small shared table (one entry per supported exponent < 128)
@@ -161,8 +163,8 @@ public class MersenneNumberLucasLehmerGpuTester
         stateBuffer.Dispose();
         modBuffer.Dispose();
         expBuffer.Dispose();
-        ArrayPool<GpuUInt128>.Shared.Return(modulusArray);
-        ArrayPool<ulong>.Shared.Return(expArray);
+        gpuUInt128Pool.Return(modulusArray);
+        ulongPool.Return(expArray);
         stream.Dispose();
         gpu.Dispose();
     }
@@ -175,13 +177,14 @@ public class MersenneNumberLucasLehmerGpuTester
             throw new ArgumentException("Result span too small", nameof(results));
         }
 
-        GpuUInt128[] buffer = ArrayPool<GpuUInt128>.Shared.Rent(count);
+		ArrayPool<GpuUInt128> gpuUInt128Pool = ThreadStaticPools.GpuUInt128Pool;
+		GpuUInt128[] buffer = gpuUInt128Pool.Rent(count);
         ComputeResidues(exponents, buffer.AsSpan(0, count));
         for (int i = 0; i < count; i++)
         {
             results[i] = buffer[i].IsZero;
         }
-        ArrayPool<GpuUInt128>.Shared.Return(buffer);
+        gpuUInt128Pool.Return(buffer);
     }
 
     private bool IsMersennePrimeNtt(ulong exponent, GpuUInt128 nttMod, GpuUInt128 primitiveRoot, bool runOnGpu)

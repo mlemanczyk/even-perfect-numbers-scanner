@@ -50,12 +50,12 @@ namespace PerfectNumbers.Core
             FactorEntry[]? source = Factors;
             if (source is null || Count == 0)
             {
-                FactorEntry[] local = ArrayPool<FactorEntry>.Shared.Rent(1);
+                FactorEntry[] local = ThreadStaticPools.FactorEntryPool.Rent(1);
                 local[0] = new FactorEntry(prime, 1, true);
                 return Rent(local, 1UL, true, 1, false);
             }
 
-            FactorEntry[] extended = ArrayPool<FactorEntry>.Shared.Rent(Count + 1);
+            FactorEntry[] extended = ThreadStaticPools.FactorEntryPool.Rent(Count + 1);
             Array.Copy(source, 0, extended, 0, Count);
             extended[Count] = new FactorEntry(prime, 1, true);
             Span<FactorEntry> span = extended.AsSpan(0, Count + 1);

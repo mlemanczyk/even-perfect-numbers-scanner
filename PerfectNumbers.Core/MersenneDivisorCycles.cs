@@ -797,7 +797,7 @@ public class MersenneDivisorCycles
 		ulong start = 3UL;
 		var locker = new object();
 
-		var pool = ArrayPool<ulong>.Shared;
+		var pool = ThreadStaticPools.UlongPool;
 		ulong batchSizeUL = (ulong)batchSize, d, end;
 		int count = (int)Math.Min(batchSizeUL, maxDivisor), i, idx;
 		ulong[] divisors, outCycles, validDivisors;

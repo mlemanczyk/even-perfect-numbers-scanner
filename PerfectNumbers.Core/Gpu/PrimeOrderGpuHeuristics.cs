@@ -582,6 +582,7 @@ internal static partial class PrimeOrderGpuHeuristics
         GpuUInt128[]? rentedExponents = null;
         GpuUInt128[]? rentedResults = null;
         var lease = GpuKernelPool.GetKernel();
+		ArrayPool<GpuUInt128> gpuUInt128Pool = ThreadStaticPools.GpuUInt128Pool;
 
         try
         {
@@ -594,9 +595,9 @@ internal static partial class PrimeOrderGpuHeuristics
             var exponentBuffer = accelerator.Allocate1D<GpuUInt128>(length);
             var remainderBuffer = accelerator.Allocate1D<GpuUInt128>(length);
 
-            Span<GpuUInt128> exponentSpan = length <= WideStackThreshold
+			Span<GpuUInt128> exponentSpan = length <= WideStackThreshold
                 ? stackalloc GpuUInt128[length]
-                : new Span<GpuUInt128>(rentedExponents = ArrayPool<GpuUInt128>.Shared.Rent(length), 0, length);
+                : new Span<GpuUInt128>(rentedExponents = gpuUInt128Pool.Rent(length), 0, length);
 
             for (int i = 0; i < length; i++)
             {
@@ -613,7 +614,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
             Span<GpuUInt128> resultSpan = length <= WideStackThreshold
                 ? stackalloc GpuUInt128[length]
-                : new Span<GpuUInt128>(rentedResults = ArrayPool<GpuUInt128>.Shared.Rent(length), 0, length);
+                : new Span<GpuUInt128>(rentedResults = gpuUInt128Pool.Rent(length), 0, length);
 
             remainderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(resultSpan), length);
             stream.Synchronize();
@@ -636,12 +637,8 @@ internal static partial class PrimeOrderGpuHeuristics
         {
             if (rentedExponents is not null)
             {
-                ArrayPool<GpuUInt128>.Shared.Return(rentedExponents, clearArray: false);
-            }
-
-            if (rentedResults is not null)
-            {
-                ArrayPool<GpuUInt128>.Shared.Return(rentedResults, clearArray: false);
+                gpuUInt128Pool.Return(rentedExponents, clearArray: false);
+                gpuUInt128Pool.Return(rentedResults!, clearArray: false);
             }
 
             lease.Dispose();
