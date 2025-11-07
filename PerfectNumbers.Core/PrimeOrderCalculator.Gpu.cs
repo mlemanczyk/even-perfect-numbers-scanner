@@ -19,14 +19,14 @@ internal static partial class PrimeOrderCalculator
 		Span<int> exponentBuffer = exponentBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
 		remaining = value;
 
-		var lease = GpuKernelPool.GetKernel();
+		var lease = GpuKernelPool.Rent();
 		Accelerator accelerator = lease.Accelerator;
 		var stream = lease.Stream;
 		KernelContainer kernels = lease.Kernels;
 
 		ScratchBuffer scratch = GpuScratchBufferPool.Rent(accelerator, GpuSmallPrimeFactorSlots, 0);
 
-		SmallPrimeFactorTables tables = GpuKernelPool.EnsureSmallPrimeFactorTables(kernels, accelerator, stream);
+		SmallPrimeFactorViews tables = GpuKernelPool.EnsureSmallPrimeFactorTables(kernels, accelerator, stream);
 
 		if (kernels.SmallPrimeFactorsPrimes is null) throw new NullReferenceException($"{nameof(kernels.SmallPrimeFactorsPrimes)} is null");
 		if (kernels.SmallPrimeFactorsSquares is null) throw new NullReferenceException($"{nameof(kernels.SmallPrimeFactorsSquares)} is null");
@@ -100,7 +100,7 @@ internal static partial class PrimeOrderCalculator
 			factorSpan[i] = factors[i].Value;
 		}
 
-		GpuKernelLease lease = GpuKernelPool.GetKernel();
+		GpuKernelLease lease = GpuKernelPool.Rent();
 		Accelerator accelerator = lease.Accelerator;
 
 		var stream = lease.Stream;

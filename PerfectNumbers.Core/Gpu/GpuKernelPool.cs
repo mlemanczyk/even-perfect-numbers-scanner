@@ -83,7 +83,7 @@ public readonly struct ResiduePrimeViews(
 	public readonly ArrayView1D<ulong, Stride1D.Dense> LastSevenPow2 = lastSevenPow2;
 }
 
-public readonly struct SmallPrimeFactorTables(
+public readonly struct SmallPrimeFactorViews(
 	MemoryBuffer1D<uint, Stride1D.Dense> primes,
 	MemoryBuffer1D<ulong, Stride1D.Dense> squares,
 	int count)
@@ -184,17 +184,12 @@ public class GpuKernelPool
 		return new ResiduePrimeViews(deviceLastOne.View, deviceLastSeven.View, deviceLastOnePow2.View, deviceLastSevenPow2.View);
 	}
 
-	public static SmallPrimeFactorTables EnsureSmallPrimeFactorTables(KernelContainer kernels, Accelerator accelerator, AcceleratorStream stream)
+	public static SmallPrimeFactorViews EnsureSmallPrimeFactorTables(KernelContainer kernels, Accelerator accelerator, AcceleratorStream stream)
 	{
 		if (kernels.SmallPrimeFactorsPrimes is { } primeBuffer && kernels.SmallPrimeFactorsSquares is { } squareBuffer)
 		{
-			return new SmallPrimeFactorTables(primeBuffer, squareBuffer, (int)primeBuffer.Length);
+			return new SmallPrimeFactorViews(primeBuffer, squareBuffer, (int)primeBuffer.Length);
 		}
-
-		// if (kernels.SmallPrimeFactorsPrimes is { } existingPrimes && kernels.SmallPrimeFactorsSquares is { } existingSquares)
-		// {
-		// 	return new SmallPrimeFactorTables(existingPrimes, existingSquares, (int)existingPrimes.Length);
-		// }
 
 		var hostPrimes = PrimesGenerator.SmallPrimes;
 		var hostSquares = PrimesGenerator.SmallPrimesPow2;
@@ -207,17 +202,13 @@ public class GpuKernelPool
 		kernels.SmallPrimeFactorsPrimes = devicePrimes;
 		kernels.SmallPrimeFactorsSquares = deviceSquares;
 
-		return new SmallPrimeFactorTables(devicePrimes, deviceSquares, hostPrimes.Length);
+		return new SmallPrimeFactorViews(devicePrimes, deviceSquares, hostPrimes.Length);
 	}
 
-
-
-
-
-	public static GpuKernelLease GetKernel()
+	public static GpuKernelLease Rent()
 	{
 		GpuPrimeWorkLimiter.Acquire();
-		var gpu = Rent();
+		var gpu = GpuContextPool.Rent();
 		var stream = gpu.Accelerator.CreateStream();
 		var kernels = GetKernels(gpu.Accelerator, stream);
 		return GpuKernelLease.Rent(gpu, stream, kernels);
@@ -229,7 +220,7 @@ public class GpuKernelPool
 	/// <param name="action">Action to run with (Accelerator, Stream).</param>
 	public static void Run(Action<Accelerator, AcceleratorStream> action)
 	{
-		var lease = GetKernel();
+		var lease = Rent();
 		var accelerator = lease.Accelerator;
 		var stream = lease.Stream;
 		action(accelerator, stream);

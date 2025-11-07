@@ -349,7 +349,7 @@ public class GpuKernelCompilationTests
     private static void CompileGpuKernelPoolKernels(Accelerator accelerator)
     {
         _ = accelerator;
-        var lease = GpuKernelPool.GetKernel();
+        var lease = GpuKernelPool.Rent();
         try
         {
             _ = lease.OrderKernel;
@@ -363,7 +363,7 @@ public class GpuKernelCompilationTests
             lease.Dispose();
         }
 
-        var orderLease = GpuKernelPool.GetKernel();
+        var orderLease = GpuKernelPool.Rent();
         try
         {
             _ = orderLease.OrderKernel;

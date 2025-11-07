@@ -440,7 +440,7 @@ public static partial class ULongExtensions
 
 	private static class Pow2MontgomeryGpuExecutor
 	{
-		private static readonly ConcurrentDictionary<Accelerator, Pow2MontgomeryKernelGroup> KernelCache = new();
+		private static readonly Pow2MontgomeryKernelGroup Kernel = Pow2MontgomeryKernelGroup.Create(SharedGpuContext.Accelerator);
 
 		public static ulong ExecuteKeep(ulong exponent, in MontgomeryDivisorData divisor)
 		{
@@ -452,24 +452,25 @@ public static partial class ULongExtensions
 			return Execute(exponent, divisor, useKeepKernel: false);
 		}
 
+		[ThreadStatic]
+		private static MemoryBuffer1D<ulong, Stride1D.Dense>? _exponentBuffer;
+		[ThreadStatic]
+		private static MemoryBuffer1D<ulong, Stride1D.Dense>? _resultBuffer;
+
 		private static ulong Execute(ulong exponent, in MontgomeryDivisorData divisor, bool useKeepKernel)
 		{
 			ulong result = 0UL;
 
-			GpuKernelLease lease = GpuKernelPool.GetKernel();
+			GpuKernelLease lease = GpuKernelPool.Rent();
 
 			Accelerator accelerator = lease.Accelerator;
 			AcceleratorStream stream = lease.Stream;
-			// Keep this commented out. It should never happen in production code.
-			// if (accelerator.AcceleratorType == AcceleratorType.CPU)
-			// {
-			//         return 0UL;
-			// }
+			var kernelGroup = Kernel;
 
-			var kernelGroup = KernelCache.GetOrAdd(accelerator, static accel => Pow2MontgomeryKernelGroup.Create(accel));
+			EnsureCapacity();
 
-			var exponentBuffer = accelerator.Allocate1D<ulong>(1);
-			var resultBuffer = accelerator.Allocate1D<ulong>(1);
+			MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer = _exponentBuffer!;
+			MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = _resultBuffer!;
 
 			exponentBuffer.View.CopyFromCPU(stream, ref exponent, 1);
 			// We don't need to worry about any left-overs here.
@@ -483,17 +484,17 @@ public static partial class ULongExtensions
 			resultBuffer.Dispose();
 			exponentBuffer.Dispose();
 			lease.Dispose();
-			// Keep this commented. We don't want to catch any exceptions. All should crash the scanner.
-			// catch (AcceleratorException)
-			// {
-			//         return 0UL;
-			// }
-			// catch (NotSupportedException)
-			// {
-			//         return 0UL;
-			// }
-			// Intentionally avoid exception handling here; any accelerator failure should crash the scanner.
 			return result;
+		}
+
+		private static void EnsureCapacity()
+		{
+			if (_exponentBuffer == null)
+			{
+				Accelerator accelerator = SharedGpuContext.Accelerator;
+				_exponentBuffer = accelerator.Allocate1D<ulong>(1);
+				_resultBuffer = accelerator.Allocate1D<ulong>(1);
+			}
 		}
 
 		private sealed class Pow2MontgomeryKernelGroup

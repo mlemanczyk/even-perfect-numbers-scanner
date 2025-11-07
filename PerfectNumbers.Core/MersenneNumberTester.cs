@@ -147,7 +147,7 @@ public sealed class MersenneNumberTester(
 
 		UInt128[] qs = qsBuffer;
 
-		var gpuLease = GpuKernelPool.GetKernel();
+		var gpuLease = GpuKernelPool.Rent();
 		var accelerator = gpuLease.Accelerator;
 		var stream = gpuLease.Stream;
 		var orderKernel = gpuLease.OrderKernel!;
