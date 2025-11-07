@@ -16,7 +16,7 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
     {
         throw new NotImplementedException($"GPU incremental scanning requires the device cycle heuristics implementation (kernel: {_kernelType}, GPU order: {_useGpuOrder}).");
 
-        var gpuLease = GpuKernelPool.Rent();
+        GpuPrimeWorkLimiter.Acquire();
         var accelerator = SharedGpuContext.Accelerator;
         var stream = accelerator.CreateStream();
         int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy
@@ -24,8 +24,9 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
         ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
         byte last = lastDigit == LastDigit.Seven ? (byte)1 : (byte)0; // ILGPU kernels do not support bool parameters
 
-        var pow2Kernel = GpuKernelLease.Pow2ModKernel;
-        var incKernel = GpuKernelLease.IncrementalKernel;
+		KernelContainer kernels = GpuKernelPool.Kernels;
+		var pow2Kernel = kernels.Pow2Mod!;
+        var incKernel = kernels.Incremental!;
         ulong step10 = (exponent.Mod10() << 1).Mod10();
         ulong step8 = ((exponent & 7UL) << 1) & 7UL;
         ulong step3 = ((exponent % 3UL) << 1) % 3UL;
@@ -124,6 +125,6 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
 		stream.Dispose();
         ulongPool.Return(orderArray);
 		orderBuffer.Dispose();
-        gpuLease.Dispose();
+        GpuPrimeWorkLimiter.Release();
     }
 }

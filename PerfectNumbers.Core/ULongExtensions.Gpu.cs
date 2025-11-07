@@ -461,7 +461,7 @@ public static partial class ULongExtensions
 		{
 			ulong result = 0UL;
 
-			GpuKernelLease lease = GpuKernelPool.Rent();
+			GpuPrimeWorkLimiter.Acquire();
 
 			Accelerator accelerator = SharedGpuContext.Accelerator;
 			AcceleratorStream stream = accelerator.CreateStream();
@@ -484,7 +484,7 @@ public static partial class ULongExtensions
 			stream.Dispose();
 			resultBuffer.Dispose();
 			exponentBuffer.Dispose();
-			lease.Dispose();
+			GpuPrimeWorkLimiter.Release();
 			return result;
 		}
 

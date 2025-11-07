@@ -95,7 +95,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         ulong processedCount;
         ulong lastProcessed;
 
-        var gpuLease = GpuKernelPool.Rent();
+        GpuPrimeWorkLimiter.Acquire();
         var accelerator = SharedGpuContext.Accelerator;
         var stream = accelerator.CreateStream();
 
@@ -129,7 +129,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		stream.Dispose();
         ReturnBatchResources(resources);
 		// Monitor.Exit(gpuLease.ExecutionLock);
-		gpuLease.Dispose();
+		GpuPrimeWorkLimiter.Release();
 		
         if (composite)
         {
@@ -485,7 +485,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
     public sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
     {
         private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
-        private readonly GpuKernelLease _lease;
         private readonly Accelerator _accelerator;
         private readonly AcceleratorStream _stream;
         private Action<AcceleratorStream, Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> _kernel = null!;
@@ -502,7 +501,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         internal DivisorScanSession(MersenneNumberDivisorByDivisorGpuTester owner)
         {
             _owner = owner;
-            _lease = GpuKernelPool.Rent();
+            GpuPrimeWorkLimiter.Acquire();
 			Accelerator accelerator = SharedGpuContext.Accelerator;
             _accelerator = accelerator;
             _stream = accelerator.CreateStream();

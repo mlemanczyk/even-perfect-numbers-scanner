@@ -22,7 +22,6 @@ public class GpuKernelPool
 	{
 		var kernels = new KernelContainer();
 		var stream = SharedGpuContext.Accelerator.CreateStream();
-		PreloadStaticTables(kernels, stream);
 
 		InitOnce(ref kernels.Order, () =>
 		{
@@ -88,6 +87,8 @@ public class GpuKernelPool
 			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
 		});
 			
+		PreloadStaticTables(kernels, stream);
+
 		stream.Synchronize();
 		stream.Dispose();
 		return kernels;
@@ -201,25 +202,18 @@ public class GpuKernelPool
 		return new SmallPrimeFactorViews(devicePrimes, deviceSquares);
 	}
 
-	public static GpuKernelLease Rent()
-	{
-		GpuPrimeWorkLimiter.Acquire();
-		var stream = SharedGpuContext.Accelerator.CreateStream();
-		return GpuKernelLease.Rent();
-	}
-
 	/// <summary>
 	/// Runs a GPU action with an acquired accelerator and stream.
 	/// </summary>
 	/// <param name="action">Action to run with (Accelerator, Stream).</param>
 	public static void Run(Action<Accelerator, AcceleratorStream> action)
 	{
-		var lease = Rent();
+		GpuPrimeWorkLimiter.Acquire();
 		var accelerator = SharedGpuContext.Accelerator;
 		var stream = accelerator.CreateStream();
 		action(accelerator, stream);
 		stream.Synchronize();
 		stream.Dispose();
-		lease.Dispose();
+		GpuPrimeWorkLimiter.Release();
 	}
 }

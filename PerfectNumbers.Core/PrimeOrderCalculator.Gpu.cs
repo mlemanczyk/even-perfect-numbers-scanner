@@ -19,7 +19,7 @@ internal static partial class PrimeOrderCalculator
 		Span<int> exponentBuffer = exponentBufferArray.AsSpan(0, GpuSmallPrimeFactorSlots);
 		remaining = value;
 
-		var lease = GpuKernelPool.Rent();
+		GpuPrimeWorkLimiter.Acquire();
 		Accelerator accelerator = SharedGpuContext.Accelerator;
 		var stream = accelerator.CreateStream();
 		KernelContainer kernels = GpuKernelPool.Kernels;
@@ -31,7 +31,7 @@ internal static partial class PrimeOrderCalculator
 		if (kernels.SmallPrimeFactorsPrimes is null) throw new NullReferenceException($"{nameof(kernels.SmallPrimeFactorsPrimes)} is null");
 		if (kernels.SmallPrimeFactorsSquares is null) throw new NullReferenceException($"{nameof(kernels.SmallPrimeFactorsSquares)} is null");
 
-		var kernel = GpuKernelLease.SmallPrimeFactorKernel;
+		var kernel = GpuKernelPool.Kernels.SmallPrimeFactor!;
 
 		ArrayView1D<int, Stride1D.Dense> smallPrimeFactorCountSlotView = scratch.SmallPrimeFactorCountSlot.View;
 		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorRemainingSlotView = scratch.SmallPrimeFactorRemainingSlot.View;
@@ -78,7 +78,7 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		GpuScratchBufferPool.Return(scratch);
-		lease.Dispose();
+		GpuPrimeWorkLimiter.Release();
 		return true;
 	}
 
@@ -101,7 +101,7 @@ internal static partial class PrimeOrderCalculator
 			factorSpan[i] = factors[i].Value;
 		}
 
-		GpuKernelLease lease = GpuKernelPool.Rent();
+		GpuPrimeWorkLimiter.Acquire();
 		Accelerator accelerator = SharedGpuContext.Accelerator;
 
 		var stream = accelerator.CreateStream();
@@ -111,7 +111,7 @@ internal static partial class PrimeOrderCalculator
 		ArrayView1D<ulong, Stride1D.Dense> specialMaxFactorsView = scratch.SpecialMaxFactors.View;
 		specialMaxFactorsView.SubView(0, factorCount).CopyFromCPU(stream, ref MemoryMarshal.GetReference(factorSpan), factorCount);
 
-		var kernel = GpuKernelLease.SpecialMaxKernel;
+		var kernel = GpuKernelPool.Kernels.SpecialMax!;
 
 		ArrayView1D<ulong, Stride1D.Dense> specialMaxResultView = scratch.SpecialMaxResult.View;
 
@@ -134,7 +134,7 @@ internal static partial class PrimeOrderCalculator
 		// stream.Synchronize();
 		// return result != 0;
 		GpuScratchBufferPool.Return(scratch);
-		lease.Dispose();
+		GpuPrimeWorkLimiter.Release();
 		return result[0] != 0;
 	}
 }
