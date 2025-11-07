@@ -464,7 +464,7 @@ public static partial class ULongExtensions
 			GpuKernelLease lease = GpuKernelPool.Rent();
 
 			Accelerator accelerator = SharedGpuContext.Accelerator;
-			AcceleratorStream stream = lease.Stream;
+			AcceleratorStream stream = accelerator.CreateStream();
 			var kernelGroup = Kernel;
 
 			EnsureCapacity();
@@ -480,7 +480,8 @@ public static partial class ULongExtensions
 			kernel(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
 			resultBuffer.View.CopyToCPU(stream, ref result, 1);
 			stream.Synchronize();
-
+			
+			stream.Dispose();
 			resultBuffer.Dispose();
 			exponentBuffer.Dispose();
 			lease.Dispose();

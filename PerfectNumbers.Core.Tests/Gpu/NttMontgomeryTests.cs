@@ -33,8 +33,7 @@ public class NttMontgomeryTests
 		NttGpuMath.Square(cpu, modulus, primitiveRoot);
 
 		// Device execution
-		GpuContextLease context = GpuContextPool.Rent();
-		var accelerator = context.Accelerator;
+		var accelerator = SharedGpuContext.Accelerator;
 		var stream = accelerator.CreateStream();
 		using var buffer = accelerator.Allocate1D<GpuUInt128>(gpu.Length);
 		buffer.View.CopyFromCPU(stream, ref gpu[0], gpu.Length);
@@ -48,7 +47,6 @@ public class NttMontgomeryTests
 		}
 
 		stream.Dispose();
-		context.Dispose();
 	}
 
 	[Fact]

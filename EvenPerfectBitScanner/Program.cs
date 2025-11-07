@@ -62,7 +62,6 @@ internal static class Program
 			UnboundedTaskScheduler.ConfigureThreadCount(threadCount);
 			PrimeTester.GpuBatchSize = gpuPrimeBatch;
 			GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
-			GpuContextPool.WarmUpPool(threadCount);
 			PrimeTester.WarmUpGpuKernels(gpuPrimeThreads);
 			GpuScratchBufferPool.WarmUp(gpuPrimeThreads << 4, 64, 1024);
 			Console.WriteLine("Starting up threads...");

@@ -21,8 +21,8 @@ internal static partial class PrimeOrderCalculator
 
 		var lease = GpuKernelPool.Rent();
 		Accelerator accelerator = SharedGpuContext.Accelerator;
-		var stream = lease.Stream;
-		KernelContainer kernels = lease.Kernels;
+		var stream = accelerator.CreateStream();
+		KernelContainer kernels = GpuKernelPool.Kernels;
 
 		ScratchBuffer scratch = GpuScratchBufferPool.Rent(accelerator, GpuSmallPrimeFactorSlots, 0);
 
@@ -31,7 +31,7 @@ internal static partial class PrimeOrderCalculator
 		if (kernels.SmallPrimeFactorsPrimes is null) throw new NullReferenceException($"{nameof(kernels.SmallPrimeFactorsPrimes)} is null");
 		if (kernels.SmallPrimeFactorsSquares is null) throw new NullReferenceException($"{nameof(kernels.SmallPrimeFactorsSquares)} is null");
 
-		var kernel = lease.SmallPrimeFactorKernel;
+		var kernel = GpuKernelLease.SmallPrimeFactorKernel;
 
 		ArrayView1D<int, Stride1D.Dense> smallPrimeFactorCountSlotView = scratch.SmallPrimeFactorCountSlot.View;
 		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorRemainingSlotView = scratch.SmallPrimeFactorRemainingSlot.View;
@@ -68,6 +68,7 @@ internal static partial class PrimeOrderCalculator
 
 		smallPrimeFactorRemainingSlotView.CopyToCPU(stream, ref remaining, 1);
 		stream.Synchronize();
+		stream.Dispose();
 
 		for (int i = 0; i < factorCount; i++)
 		{
@@ -103,14 +104,14 @@ internal static partial class PrimeOrderCalculator
 		GpuKernelLease lease = GpuKernelPool.Rent();
 		Accelerator accelerator = SharedGpuContext.Accelerator;
 
-		var stream = lease.Stream;
+		var stream = accelerator.CreateStream();
 
 		ScratchBuffer scratch = GpuScratchBufferPool.Rent(accelerator, 0, factorCount);
 
 		ArrayView1D<ulong, Stride1D.Dense> specialMaxFactorsView = scratch.SpecialMaxFactors.View;
 		specialMaxFactorsView.SubView(0, factorCount).CopyFromCPU(stream, ref MemoryMarshal.GetReference(factorSpan), factorCount);
 
-		var kernel = lease.SpecialMaxKernel;
+		var kernel = GpuKernelLease.SpecialMaxKernel;
 
 		ArrayView1D<ulong, Stride1D.Dense> specialMaxResultView = scratch.SpecialMaxResult.View;
 
@@ -128,6 +129,7 @@ internal static partial class PrimeOrderCalculator
 		// specialMaxResultView.CopyToCPU(stream, ref result, 1);
 		specialMaxResultView.CopyToCPU(stream, in result);
 		stream.Synchronize();
+		stream.Dispose();
 
 		// stream.Synchronize();
 		// return result != 0;

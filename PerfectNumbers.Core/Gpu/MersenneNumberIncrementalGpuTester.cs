@@ -18,14 +18,14 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
 
         var gpuLease = GpuKernelPool.Rent();
         var accelerator = SharedGpuContext.Accelerator;
-        var stream = gpuLease.Stream;
+        var stream = accelerator.CreateStream();
         int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy
         UInt128 kStart = 1UL;
         ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
         byte last = lastDigit == LastDigit.Seven ? (byte)1 : (byte)0; // ILGPU kernels do not support bool parameters
 
-        var pow2Kernel = gpuLease.Pow2ModKernel;
-        var incKernel = gpuLease.IncrementalKernel;
+        var pow2Kernel = GpuKernelLease.Pow2ModKernel;
+        var incKernel = GpuKernelLease.IncrementalKernel;
         ulong step10 = (exponent.Mod10() << 1).Mod10();
         ulong step8 = ((exponent & 7UL) << 1) & 7UL;
         ulong step3 = ((exponent % 3UL) << 1) % 3UL;
@@ -121,6 +121,7 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
             kStart += (UInt128)currentSize;
         }
 
+		stream.Dispose();
         ulongPool.Return(orderArray);
 		orderBuffer.Dispose();
         gpuLease.Dispose();

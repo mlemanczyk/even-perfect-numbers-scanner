@@ -270,7 +270,7 @@ public sealed class DivisorCycleCache
 		var gpuLease = GpuKernelPool.Rent();
 
 		Accelerator accelerator = SharedGpuContext.Accelerator;
-		var stream = gpuLease.Stream;
+		var stream = accelerator.CreateStream();
 		var kernel = _gpuKernel;
 		EnsureCapacity(length);
 
@@ -338,6 +338,7 @@ public sealed class DivisorCycleCache
 
 		resultBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(resultSpan), length);
 		stream.Synchronize();
+		stream.Dispose();
 
 		resultSpan.CopyTo(destination);
 		if (rentedPow is not null)

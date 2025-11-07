@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
 
@@ -24,6 +23,71 @@ public class GpuKernelPool
 		var kernels = new KernelContainer();
 		var stream = SharedGpuContext.Accelerator.CreateStream();
 		PreloadStaticTables(kernels, stream);
+
+		InitOnce(ref kernels.Order, () =>
+		{
+			var loaded = SharedGpuContext.Accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>(OrderKernels.OrderKernelScan);
+
+			var kernel = KernelUtil.GetKernel(loaded);
+
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>>();
+		});
+
+		InitOnce(ref kernels.Pow2Mod, () =>
+		{
+			var loaded = SharedGpuContext.Accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernels.Pow2ModKernelScan);
+
+			var kernel = KernelUtil.GetKernel(loaded);
+
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		});
+
+		InitOnce(ref kernels.Incremental, () =>
+		{
+			var loaded = SharedGpuContext.Accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>>(IncrementalKernels.IncrementalKernelScan);
+
+			var kernel = KernelUtil.GetKernel(loaded);
+
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		});
+
+		InitOnce(ref kernels.IncrementalOrder, () =>
+		{
+			var loaded = SharedGpuContext.Accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>(IncrementalKernels.IncrementalOrderKernelScan);
+
+			var kernel = KernelUtil.GetKernel(loaded);
+
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, 
+			ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		});
+
+		InitOnce(ref kernels.Pow2ModOrder, () =>
+		{
+			var loaded = SharedGpuContext.Accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernels.Pow2ModOrderKernelScan);
+
+			var kernel = KernelUtil.GetKernel(loaded);
+
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		});
+
+		InitOnce(ref kernels.SpecialMax, () =>
+		{
+			var loaded = SharedGpuContext.Accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderGpuHeuristics.EvaluateSpecialMaxCandidatesKernel);
+
+			var kernel = KernelUtil.GetKernel(loaded);
+
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		});
+		
+		InitOnce(ref kernels.SmallPrimeFactor, () =>
+		{
+			var loaded = SharedGpuContext.Accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(SmallPrimeFactorKernels.SmallPrimeFactorKernelScan);
+
+			var kernel = KernelUtil.GetKernel(loaded);
+			
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		});
+			
 		stream.Synchronize();
 		stream.Dispose();
 		return kernels;
@@ -141,7 +205,7 @@ public class GpuKernelPool
 	{
 		GpuPrimeWorkLimiter.Acquire();
 		var stream = SharedGpuContext.Accelerator.CreateStream();
-		return GpuKernelLease.Rent(stream, Kernels);
+		return GpuKernelLease.Rent();
 	}
 
 	/// <summary>
@@ -152,8 +216,10 @@ public class GpuKernelPool
 	{
 		var lease = Rent();
 		var accelerator = SharedGpuContext.Accelerator;
-		var stream = lease.Stream;
+		var stream = accelerator.CreateStream();
 		action(accelerator, stream);
+		stream.Synchronize();
+		stream.Dispose();
 		lease.Dispose();
 	}
 }

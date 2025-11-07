@@ -352,11 +352,11 @@ public class GpuKernelCompilationTests
         var lease = GpuKernelPool.Rent();
         try
         {
-            _ = lease.OrderKernel;
-            _ = lease.IncrementalKernel;
-            _ = lease.Pow2ModKernel;
-            _ = lease.IncrementalOrderKernel;
-            _ = lease.Pow2ModOrderKernel;
+            _ = GpuKernelLease.OrderKernel;
+            _ = GpuKernelLease.IncrementalKernel;
+            _ = GpuKernelLease.Pow2ModKernel;
+            _ = GpuKernelLease.IncrementalOrderKernel;
+            _ = GpuKernelLease.Pow2ModOrderKernel;
         }
         finally
         {
@@ -366,11 +366,11 @@ public class GpuKernelCompilationTests
         var orderLease = GpuKernelPool.Rent();
         try
         {
-            _ = orderLease.OrderKernel;
-            _ = orderLease.IncrementalKernel;
-            _ = orderLease.Pow2ModKernel;
-            _ = orderLease.IncrementalOrderKernel;
-            _ = orderLease.Pow2ModOrderKernel;
+            _ = GpuKernelLease.OrderKernel;
+            _ = GpuKernelLease.IncrementalKernel;
+            _ = GpuKernelLease.Pow2ModKernel;
+            _ = GpuKernelLease.IncrementalOrderKernel;
+            _ = GpuKernelLease.Pow2ModOrderKernel;
         }
         finally
         {

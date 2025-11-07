@@ -55,7 +55,6 @@ public class MersenneNumberOrderGpuTesterTests
             ulong[]? backupSmall = originalSmall is null ? null : (ulong[])originalSmall.Clone();
 
             cycles.LoadFrom(tempPath);
-            GpuContextPool.DisposeAll();
 
             try
             {
@@ -75,7 +74,6 @@ public class MersenneNumberOrderGpuTesterTests
             {
                 tableField.SetValue(cycles, originalTable);
                 smallCyclesField.SetValue(cycles, backupSmall);
-                GpuContextPool.DisposeAll();
             }
         }
         finally

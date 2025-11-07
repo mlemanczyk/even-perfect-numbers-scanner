@@ -150,39 +150,31 @@ public class NttGpuMathTests
 		var modulus = new GpuUInt128(0UL, 17UL);
 		var primitiveRoot = new GpuUInt128(0UL, 3UL);
 
-		GpuContextLease gpu = GpuContextPool.Rent();
-		try
+		var accelerator = SharedGpuContext.Accelerator;
+		var stream = accelerator.CreateStream();
+
+		var method = typeof(NttGpuMath).GetMethod("GetSquareCache", BindingFlags.NonPublic | BindingFlags.Static);
+		method.Should().NotBeNull();
+		var cache = method!.Invoke(null, new object[] { accelerator, 8, modulus, primitiveRoot })!;
+		var cacheType = cache.GetType();
+
+		var twiddlesMont = (MemoryBuffer1D<GpuUInt128, Stride1D.Dense>)cacheType.GetProperty("TwiddlesMont")!.GetValue(cache)!;
+		var twiddlesInvMont = (MemoryBuffer1D<GpuUInt128, Stride1D.Dense>)cacheType.GetProperty("TwiddlesInvMont")!.GetValue(cache)!;
+		var r2 = (ulong)cacheType.GetProperty("MontR2Mod64")!.GetValue(cache)!;
+		var mod = (ulong)cacheType.GetProperty("ModulusLow")!.GetValue(cache)!;
+
+		int count = 7; // length 8 -> 7 twiddles
+		var forward = new GpuUInt128[count];
+		var inverse = new GpuUInt128[count];
+		twiddlesMont.CopyToCPU(stream, forward);
+		twiddlesInvMont.CopyToCPU(stream, inverse);
+		stream.Synchronize();
+		stream.Dispose();
+
+		for (int i = 0; i < count; i++)
 		{
-			var accelerator = gpu.Accelerator;
-			var stream = accelerator.CreateStream();
-
-			var method = typeof(NttGpuMath).GetMethod("GetSquareCache", BindingFlags.NonPublic | BindingFlags.Static);
-			method.Should().NotBeNull();
-			var cache = method!.Invoke(null, new object[] { accelerator, 8, modulus, primitiveRoot })!;
-			var cacheType = cache.GetType();
-
-			var twiddlesMont = (MemoryBuffer1D<GpuUInt128, Stride1D.Dense>)cacheType.GetProperty("TwiddlesMont")!.GetValue(cache)!;
-			var twiddlesInvMont = (MemoryBuffer1D<GpuUInt128, Stride1D.Dense>)cacheType.GetProperty("TwiddlesInvMont")!.GetValue(cache)!;
-			var r2 = (ulong)cacheType.GetProperty("MontR2Mod64")!.GetValue(cache)!;
-			var mod = (ulong)cacheType.GetProperty("ModulusLow")!.GetValue(cache)!;
-
-			int count = 7; // length 8 -> 7 twiddles
-			var forward = new GpuUInt128[count];
-			var inverse = new GpuUInt128[count];
-			twiddlesMont.CopyToCPU(stream, forward);
-			twiddlesInvMont.CopyToCPU(stream, inverse);
-			stream.Synchronize();
-			stream.Dispose();
-
-			for (int i = 0; i < count; i++)
-			{
-				ulong prod = (ulong)((((BigInteger)forward[i].Low) * inverse[i].Low) % mod);
-				prod.Should().Be(r2);
-			}
-		}
-		finally
-		{
-			gpu.Dispose();
+			ulong prod = (ulong)((((BigInteger)forward[i].Low) * inverse[i].Low) % mod);
+			prod.Should().Be(r2);
 		}
 	}
 
@@ -348,23 +340,20 @@ public class NttGpuMathTests
 		values[1] = new GpuUInt128(0UL, 2UL);
 		var modulus = new GpuUInt128(0UL, 17UL);
 		var primitiveRoot = new GpuUInt128(0UL, 3UL);
-		GpuContextLease gpu = GpuContextPool.Rent();
-		var stream = gpu.Accelerator.CreateStream();
-		var buffer = gpu.Accelerator.Allocate1D<GpuUInt128>(values.Length);
+		Accelerator accelerator = SharedGpuContext.Accelerator;
+		var stream = accelerator.CreateStream();
+		var buffer = accelerator.Allocate1D<GpuUInt128>(values.Length);
 		buffer.View.CopyFromCPU(stream, ref values[0], values.Length);
-		NttGpuMath.SquareDevice(gpu.Accelerator, stream, buffer.View, modulus, primitiveRoot);
+		NttGpuMath.SquareDevice(accelerator, stream, buffer.View, modulus, primitiveRoot);
 		stream.Synchronize();
-		buffer.Dispose();
 		stream.Dispose();
-		gpu.Dispose();
+		buffer.Dispose();
 
 		// Verify that the square cache now holds entries for the accelerator.
 		var field = typeof(NttGpuMath).GetField("SquareCache", BindingFlags.NonPublic | BindingFlags.Static)!;
 		var cacheObj = field.GetValue(null)!;
 		int count = (int)cacheObj.GetType().GetProperty("Count")!.GetValue(cacheObj)!;
 		count.Should().BeGreaterThan(0);
-
-		GpuContextPool.DisposeAll();
 
 		count = (int)cacheObj.GetType().GetProperty("Count")!.GetValue(cacheObj)!;
 		count.Should().Be(0);

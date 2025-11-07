@@ -11,7 +11,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 	{
 		var gpuLease = GpuKernelPool.Rent();
 		var accelerator = SharedGpuContext.Accelerator;
-		var stream = gpuLease.Stream;
+		var stream = accelerator.CreateStream();
 		int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy and avoids TDR
 		UInt128 kStart = UInt128.One;
 		ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
@@ -19,8 +19,8 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 
 		var kernel = _kernelType switch
 		{
-			GpuKernelType.Pow2Mod => gpuLease.Pow2ModOrderKernel,
-			_ => gpuLease.IncrementalOrderKernel,
+			GpuKernelType.Pow2Mod => GpuKernelLease.Pow2ModOrderKernel,
+			_ => GpuKernelLease.IncrementalOrderKernel,
 		};
 
 		var foundBuffer = accelerator.Allocate1D<int>(1); // TODO: Replace this allocation with the pooled device buffer from GpuOrderKernelBenchmarks so repeated scans reuse the pinned staging memory instead of allocating per run.
@@ -60,6 +60,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 			kStart += (UInt128)currentSize;
 		}
 
+		stream.Dispose();
 		foundBuffer.Dispose();
 		gpuLease.Dispose();
 	}
