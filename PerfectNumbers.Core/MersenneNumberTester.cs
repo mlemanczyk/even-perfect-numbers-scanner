@@ -147,10 +147,10 @@ public sealed class MersenneNumberTester(
 
 		UInt128[] qs = qsBuffer;
 
-		var gpuLease = GpuKernelPool.Rent();
+		GpuPrimeWorkLimiter.Acquire();
 		var accelerator = SharedGpuContext.Accelerator;
 		var stream = accelerator.CreateStream();
-		var orderKernel = GpuKernelLease.OrderKernel!;
+		var orderKernel = GpuKernelPool.Kernels.Order!;
 
 		// Guard long-running kernels by chunking the warm-up across batches.
 		// Reuse the same ScanBatchSize knob used for scanning.
@@ -197,7 +197,7 @@ public sealed class MersenneNumberTester(
 		}
 
 		stream.Dispose();
-		gpuLease.Dispose();
+		GpuPrimeWorkLimiter.Release();
 		uInt128Pool.Return(qs);
 	}
 

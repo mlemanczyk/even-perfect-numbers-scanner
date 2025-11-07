@@ -201,25 +201,18 @@ public class GpuKernelPool
 		return new SmallPrimeFactorViews(devicePrimes, deviceSquares);
 	}
 
-	public static GpuKernelLease Rent()
-	{
-		GpuPrimeWorkLimiter.Acquire();
-		var stream = SharedGpuContext.Accelerator.CreateStream();
-		return GpuKernelLease.Rent();
-	}
-
 	/// <summary>
 	/// Runs a GPU action with an acquired accelerator and stream.
 	/// </summary>
 	/// <param name="action">Action to run with (Accelerator, Stream).</param>
 	public static void Run(Action<Accelerator, AcceleratorStream> action)
 	{
-		var lease = Rent();
+		GpuPrimeWorkLimiter.Acquire();
 		var accelerator = SharedGpuContext.Accelerator;
 		var stream = accelerator.CreateStream();
 		action(accelerator, stream);
 		stream.Synchronize();
 		stream.Dispose();
-		lease.Dispose();
+		GpuPrimeWorkLimiter.Release();
 	}
 }

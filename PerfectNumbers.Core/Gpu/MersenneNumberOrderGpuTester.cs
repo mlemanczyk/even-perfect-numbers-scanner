@@ -9,7 +9,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 
 	public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
-		var gpuLease = GpuKernelPool.Rent();
+		GpuPrimeWorkLimiter.Acquire();
 		var accelerator = SharedGpuContext.Accelerator;
 		var stream = accelerator.CreateStream();
 		int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy and avoids TDR
@@ -17,10 +17,11 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 		ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
 		byte last = lastDigit == LastDigit.Seven ? (byte)1 : (byte)0; // ILGPU kernels do not support bool parameters
 
+		KernelContainer kernels = GpuKernelPool.Kernels;
 		var kernel = _kernelType switch
 		{
-			GpuKernelType.Pow2Mod => GpuKernelLease.Pow2ModOrderKernel,
-			_ => GpuKernelLease.IncrementalOrderKernel,
+			GpuKernelType.Pow2Mod => kernels.Pow2ModOrder!,
+			_ => kernels.IncrementalOrder!,
 		};
 
 		var foundBuffer = accelerator.Allocate1D<int>(1); // TODO: Replace this allocation with the pooled device buffer from GpuOrderKernelBenchmarks so repeated scans reuse the pinned staging memory instead of allocating per run.
@@ -46,8 +47,10 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 			var kernelArgs = new ResidueAutomatonArgs(q0m10, step10, q0m8, step8, q0m3, step3, q0m5, step5);
 
 			// Ensure device has small cycles table for early rejections in order kernels
-			kernel(stream, currentSize, exponent, (GpuUInt128)twoP, (GpuUInt128)kStart, last, divMul,
-							kernelArgs, foundBuffer.View, smallCyclesView);
+			kernel(
+				stream, currentSize, exponent, (GpuUInt128)twoP, (GpuUInt128)kStart,
+				last, divMul, kernelArgs, foundBuffer.View, smallCyclesView
+			);
 
 			foundBuffer.View.CopyToCPU(stream, ref found, 1);
 			stream.Synchronize();
@@ -62,6 +65,6 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 
 		stream.Dispose();
 		foundBuffer.Dispose();
-		gpuLease.Dispose();
+		GpuPrimeWorkLimiter.Release();
 	}
 }

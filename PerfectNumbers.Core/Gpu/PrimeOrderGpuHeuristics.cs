@@ -2,10 +2,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
-using System.Numerics;
-using PerfectNumbers.Core;
 using System.Runtime.InteropServices;
-using System.Runtime.CompilerServices;
 using ILGPU.Runtime.OpenCL;
 namespace PerfectNumbers.Core.Gpu;
 
@@ -198,7 +195,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
         try
         {
-            var lease = GpuKernelPool.Rent();
+            GpuPrimeWorkLimiter.Acquire();
             Accelerator accelerator = SharedGpuContext.Accelerator;
             AcceleratorStream stream = accelerator.CreateStream();
 
@@ -254,7 +251,7 @@ internal static partial class PrimeOrderGpuHeuristics
             countBuffer.Dispose();
             remainingBuffer.Dispose();
 			fullyFactoredBuffer.Dispose();
-            lease.Dispose();
+            GpuPrimeWorkLimiter.Release();
             return true;
         }
         catch (CLException ex)
@@ -366,7 +363,7 @@ internal static partial class PrimeOrderGpuHeuristics
     {
         order = 0UL;
 
-        var lease = GpuKernelPool.Rent();
+        GpuPrimeWorkLimiter.Acquire();
         Accelerator accelerator = SharedGpuContext.Accelerator;
         AcceleratorStream stream = accelerator.CreateStream();
 
@@ -444,7 +441,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		stackProductBuffer.Dispose();
 		resultBuffer.Dispose();
 		statusBuffer.Dispose();
-		lease.Dispose();
+		GpuPrimeWorkLimiter.Release();
 
         PrimeOrderKernelStatus kernelStatus = (PrimeOrderKernelStatus)status;
         if (kernelStatus == PrimeOrderKernelStatus.Fallback)
@@ -519,7 +516,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
     private static bool TryComputeOnGpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorData divisorData, Span<ulong> results)
     {
-        var lease = GpuKernelPool.Rent();
+        GpuPrimeWorkLimiter.Acquire();
         Accelerator accelerator = SharedGpuContext.Accelerator;
         AcceleratorStream? stream = accelerator.CreateStream();
         var kernel = GetPow2ModKernel(accelerator);
@@ -544,7 +541,7 @@ internal static partial class PrimeOrderGpuHeuristics
 			stream = null;
             exponentBuffer.Dispose();
             remainderBuffer.Dispose();
-            lease.Dispose();
+            GpuPrimeWorkLimiter.Release();
 		}
 		catch (Exception)
 		{
@@ -552,7 +549,7 @@ internal static partial class PrimeOrderGpuHeuristics
 			stream?.Dispose();
 			exponentBuffer.Dispose();
 			remainderBuffer.Dispose();
-			lease.Dispose();
+			GpuPrimeWorkLimiter.Release();
 			throw;
 		}
 
@@ -578,7 +575,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
         GpuUInt128[]? rentedExponents = null;
         GpuUInt128[]? rentedResults = null;
-        var lease = GpuKernelPool.Rent();
+        GpuPrimeWorkLimiter.Acquire();
 		ArrayPool<GpuUInt128> gpuUInt128Pool = ThreadStaticPools.GpuUInt128Pool;
 
         try
@@ -639,7 +636,7 @@ internal static partial class PrimeOrderGpuHeuristics
                 gpuUInt128Pool.Return(rentedResults!, clearArray: false);
             }
 
-			lease.Dispose();
+			GpuPrimeWorkLimiter.Release();
         }
     }
 

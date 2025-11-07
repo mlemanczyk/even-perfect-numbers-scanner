@@ -267,7 +267,7 @@ public sealed class DivisorCycleCache
 	private void ComputeCyclesGpuCore(ReadOnlySpan<ulong> divisors, Span<ulong> destination)
 	{
 		int length = divisors.Length;
-		var gpuLease = GpuKernelPool.Rent();
+		GpuPrimeWorkLimiter.Acquire();
 
 		Accelerator accelerator = SharedGpuContext.Accelerator;
 		var stream = accelerator.CreateStream();
@@ -349,7 +349,7 @@ public sealed class DivisorCycleCache
 			ThreadStaticPools.BytePool.Return(rentedStatus!, clearArray: false);
 		}
 
-		gpuLease.Dispose();
+		GpuPrimeWorkLimiter.Release();
 	}
 
 	private static Action<AcceleratorStream, Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> LoadKernel(Accelerator accelerator)

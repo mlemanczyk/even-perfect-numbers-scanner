@@ -804,7 +804,7 @@ public class MersenneDivisorCycles
 
 		divisors = pool.Rent(count);
 		outCycles = pool.Rent(count);
-		var lease = GpuKernelPool.Rent();
+		GpuPrimeWorkLimiter.Acquire();
 		var accelerator = SharedGpuContext.Accelerator;
 		var stream = accelerator.CreateStream();
 		var loaded = accelerator.LoadAutoGroupedStreamKernel<
@@ -898,7 +898,7 @@ public class MersenneDivisorCycles
 		pool.Return(divisors, clearArray: false);
 		pool.Return(outCycles, clearArray: false);
 
-		lease.Dispose();
+		GpuPrimeWorkLimiter.Release();
 	}
 
 
