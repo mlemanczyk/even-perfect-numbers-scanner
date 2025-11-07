@@ -1,13 +1,12 @@
 using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
-using static PerfectNumbers.Core.Gpu.GpuContextPool;
 
 namespace PerfectNumbers.Core.Gpu;
 
 public class GpuKernelPool
 {
-	private static readonly ConcurrentDictionary<Accelerator, KernelContainer> _kernels = new();
+	public static readonly KernelContainer Kernels = CreateKernels();
 
 	public static T InitOnce<T>(ref T? target, Func<T> valueFactory) where T : class
 	{
@@ -20,26 +19,35 @@ public class GpuKernelPool
 		return Interlocked.CompareExchange(ref target, newValue, null) ?? newValue;
 	}
 
-	internal static KernelContainer GetKernels(Accelerator accelerator, AcceleratorStream stream)
+	private static KernelContainer CreateKernels()
 	{
-		return _kernels.GetOrAdd(accelerator, (accelerator) =>
-		{
-			var kernels = new KernelContainer();
-			PreloadStaticTables(kernels, accelerator, stream);
-			return kernels;
-		});
+		var kernels = new KernelContainer();
+		var stream = SharedGpuContext.Accelerator.CreateStream();
+		PreloadStaticTables(kernels, stream);
+		stream.Synchronize();
+		stream.Dispose();
+		return kernels;
 	}
 
-	internal static void PreloadStaticTables(KernelContainer kernels, Accelerator accelerator, AcceleratorStream stream)
+	private static KernelContainer CreateKernels(AcceleratorStream stream)
 	{
-		EnsureSmallCyclesOnDevice(kernels, accelerator, stream);
-		EnsureSmallPrimesOnDevice(kernels, accelerator, stream);
-		EnsureSmallPrimeFactorTables(kernels, accelerator, stream);
+		KernelContainer kernels = new();
+		PreloadStaticTables(kernels, stream);
+		return Kernels;
 	}
+
+	internal static void PreloadStaticTables(KernelContainer kernels, AcceleratorStream stream)
+	{
+		_ = EnsureSmallCyclesOnDevice(kernels, stream);
+		_ = EnsureSmallPrimesOnDevice(kernels, stream);
+		_ = EnsureSmallPrimeFactorTables(kernels, stream);
+	}
+
+	public static ArrayView1D<ulong, Stride1D.Dense> GetSmallCyclesOnDevice() => Kernels.SmallCycles!;
 
 	// Ensures the small cycles table is uploaded to the device for the given accelerator.
 	// Returns the ArrayView to pass into kernels (when kernels are extended to accept it).
-	public static ArrayView1D<ulong, Stride1D.Dense> EnsureSmallCyclesOnDevice(KernelContainer kernels, Accelerator accelerator, AcceleratorStream stream)
+	private static ArrayView1D<ulong, Stride1D.Dense> EnsureSmallCyclesOnDevice(KernelContainer kernels, AcceleratorStream stream)
 	{
 		if (kernels.SmallCycles is { } buffer)
 		{
@@ -47,13 +55,20 @@ public class GpuKernelPool
 		}
 
 		var host = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot(); // TODO: Preload this device buffer during startup and keep it immutable so we can delete the lock above in favor of the preloaded snapshot.
-		var device = accelerator.Allocate1D<ulong>(host.Length);
+		var device = SharedGpuContext.Accelerator.Allocate1D<ulong>(host.Length);
 		device.View.CopyFromCPU(stream, host);
 		kernels.SmallCycles = device;
 		return device.View;
 	}
 
-	public static ResiduePrimeViews EnsureSmallPrimesOnDevice(KernelContainer kernels, Accelerator accelerator, AcceleratorStream stream)
+	public static ResiduePrimeViews GetSmallPrimesOnDevice() => new(
+		Kernels.SmallPrimesLastOne!,
+		Kernels.SmallPrimesLastSeven!,
+		Kernels.SmallPrimesPow2LastOne!,
+		Kernels.SmallPrimesPow2LastSeven!
+	);
+
+	private static ResiduePrimeViews EnsureSmallPrimesOnDevice(KernelContainer kernels, AcceleratorStream stream)
 	{
 		if (kernels.SmallPrimesLastOne is { } lastOne &&
 			kernels.SmallPrimesLastSeven is { } lastSeven &&
@@ -71,6 +86,7 @@ public class GpuKernelPool
 			return new ResiduePrimeViews(existingLastOne.View, existingLastSeven.View, existingLastOnePow2.View, existingLastSevenPow2.View);
 		}
 
+		Accelerator accelerator = SharedGpuContext.Accelerator;
 		var hostLastOne = PrimesGenerator.SmallPrimesLastOne;
 		var hostLastSeven = PrimesGenerator.SmallPrimesLastSeven;
 		var hostLastOnePow2 = PrimesGenerator.SmallPrimesPow2LastOne;
@@ -93,34 +109,39 @@ public class GpuKernelPool
 		return new ResiduePrimeViews(deviceLastOne.View, deviceLastSeven.View, deviceLastOnePow2.View, deviceLastSevenPow2.View);
 	}
 
-	public static SmallPrimeFactorViews EnsureSmallPrimeFactorTables(KernelContainer kernels, Accelerator accelerator, AcceleratorStream stream)
+	public static SmallPrimeFactorViews GetSmallPrimeFactorTables() => new(
+		Kernels.SmallPrimeFactorsPrimes!,
+		Kernels.SmallPrimeFactorsSquares!
+	);
+	
+	private static SmallPrimeFactorViews EnsureSmallPrimeFactorTables(KernelContainer kernels, AcceleratorStream stream)
 	{
 		if (kernels.SmallPrimeFactorsPrimes is { } primeBuffer && kernels.SmallPrimeFactorsSquares is { } squareBuffer)
 		{
-			return new SmallPrimeFactorViews(primeBuffer, squareBuffer, (int)primeBuffer.Length);
+			return new SmallPrimeFactorViews(primeBuffer, squareBuffer);
 		}
 
+		Accelerator accelerator = SharedGpuContext.Accelerator;
 		var hostPrimes = PrimesGenerator.SmallPrimes;
 		var hostSquares = PrimesGenerator.SmallPrimesPow2;
 
-		var devicePrimes = accelerator.Allocate1D<uint>(hostPrimes.Length);
+		int length = hostPrimes.Length;
+		var devicePrimes = accelerator.Allocate1D<uint>(length);
 		devicePrimes.View.CopyFromCPU(stream, hostPrimes);
-		var deviceSquares = accelerator.Allocate1D<ulong>(hostSquares.Length);
+		var deviceSquares = accelerator.Allocate1D<ulong>(length);
 		deviceSquares.View.CopyFromCPU(stream, hostSquares);
 
 		kernels.SmallPrimeFactorsPrimes = devicePrimes;
 		kernels.SmallPrimeFactorsSquares = deviceSquares;
 
-		return new SmallPrimeFactorViews(devicePrimes, deviceSquares, hostPrimes.Length);
+		return new SmallPrimeFactorViews(devicePrimes, deviceSquares);
 	}
 
 	public static GpuKernelLease Rent()
 	{
 		GpuPrimeWorkLimiter.Acquire();
-		var gpu = GpuContextPool.Rent();
-		var stream = gpu.Accelerator.CreateStream();
-		var kernels = GetKernels(gpu.Accelerator, stream);
-		return GpuKernelLease.Rent(gpu, stream, kernels);
+		var stream = SharedGpuContext.Accelerator.CreateStream();
+		return GpuKernelLease.Rent(stream, Kernels);
 	}
 
 	/// <summary>
@@ -130,7 +151,7 @@ public class GpuKernelPool
 	public static void Run(Action<Accelerator, AcceleratorStream> action)
 	{
 		var lease = Rent();
-		var accelerator = lease.Accelerator;
+		var accelerator = SharedGpuContext.Accelerator;
 		var stream = lease.Stream;
 		action(accelerator, stream);
 		lease.Dispose();

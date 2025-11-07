@@ -10,7 +10,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 	public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
 		var gpuLease = GpuKernelPool.Rent();
-		var accelerator = gpuLease.Accelerator;
+		var accelerator = SharedGpuContext.Accelerator;
 		var stream = gpuLease.Stream;
 		int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy and avoids TDR
 		UInt128 kStart = UInt128.One;
@@ -30,7 +30,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 		int currentSize;
 		int found = 0;
 
-		var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(gpuLease.Kernels, accelerator, stream);
+		var smallCyclesView = GpuKernelPool.GetSmallCyclesOnDevice();
 		while (kStart <= maxK && Volatile.Read(ref isPrime))
 		{
 			remaining = maxK - kStart + 1UL;

@@ -805,7 +805,7 @@ public class MersenneDivisorCycles
 		divisors = pool.Rent(count);
 		outCycles = pool.Rent(count);
 		var lease = GpuKernelPool.Rent();
-		var accelerator = lease.Accelerator;
+		var accelerator = SharedGpuContext.Accelerator;
 		var stream = lease.Stream;
 		var loaded = accelerator.LoadAutoGroupedStreamKernel<
 				Index1D,

@@ -97,8 +97,7 @@ public class MersenneNumberLucasLehmerGpuTester
         }
         else
         {
-            var gpu = GpuContextPool.Rent();
-            var accelerator = gpu.Accelerator;
+            var accelerator = SharedGpuContext.Accelerator;
             var stream = accelerator.CreateStream();
             var kernel = GetKernel(accelerator);
             var modulus = new GpuUInt128(((UInt128)1 << (int)exponent) - 1UL); // TODO: Cache these Mersenne moduli per exponent so LL GPU runs skip rebuilding them every launch.
@@ -109,7 +108,6 @@ public class MersenneNumberLucasLehmerGpuTester
             result = buffer.GetAsArray1D()[0].IsZero;
             buffer.Dispose();
             stream.Dispose();
-            gpu.Dispose();
         }
 
 		GpuPrimeWorkLimiter.Release();
@@ -132,8 +130,7 @@ public class MersenneNumberLucasLehmerGpuTester
             }
         }
 
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
+        var accelerator = SharedGpuContext.Accelerator;
         var stream = accelerator.CreateStream();
         var kernel = GetBatchKernel(accelerator);
 
@@ -166,7 +163,6 @@ public class MersenneNumberLucasLehmerGpuTester
         gpuUInt128Pool.Return(modulusArray);
         ulongPool.Return(expArray);
         stream.Dispose();
-        gpu.Dispose();
     }
 
     public void IsMersennePrimeBatch(ReadOnlySpan<ulong> exponents, Span<bool> results)
@@ -189,10 +185,10 @@ public class MersenneNumberLucasLehmerGpuTester
 
     private bool IsMersennePrimeNtt(ulong exponent, GpuUInt128 nttMod, GpuUInt128 primitiveRoot, bool runOnGpu)
     {
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
+        var accelerator = SharedGpuContext.Accelerator;
         var stream = accelerator.CreateStream();
-        var addKernel = GetAddSmallKernel(accelerator);
+
+		var addKernel = GetAddSmallKernel(accelerator);
         var subKernel = GetSubSmallKernel(accelerator);
         var reduceKernel = GetReduceKernel(accelerator);
         var zeroKernel = GetIsZeroKernel(accelerator);
@@ -240,7 +236,6 @@ public class MersenneNumberLucasLehmerGpuTester
         resultBuffer.Dispose();
         stateBuffer.Dispose();
         stream.Dispose();
-        gpu.Dispose();
         return isPrime;
     }
 

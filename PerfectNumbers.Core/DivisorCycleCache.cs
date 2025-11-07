@@ -269,7 +269,7 @@ public sealed class DivisorCycleCache
 		int length = divisors.Length;
 		var gpuLease = GpuKernelPool.Rent();
 
-		Accelerator accelerator = gpuLease.Accelerator;
+		Accelerator accelerator = SharedGpuContext.Accelerator;
 		var stream = gpuLease.Stream;
 		var kernel = _gpuKernel;
 		EnsureCapacity(length);

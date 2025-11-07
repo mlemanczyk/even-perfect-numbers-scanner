@@ -96,7 +96,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         ulong lastProcessed;
 
         var gpuLease = GpuKernelPool.Rent();
-        var accelerator = gpuLease.Accelerator;
+        var accelerator = SharedGpuContext.Accelerator;
         var stream = gpuLease.Stream;
 
         // Monitor.Enter(gpuLease.ExecutionLock);
@@ -502,7 +502,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         {
             _owner = owner;
             _lease = GpuKernelPool.Rent();
-            _accelerator = _lease.Accelerator;
+            _accelerator = SharedGpuContext.Accelerator;
             _stream = _lease.Stream;
             _capacity = Math.Max(1, owner._gpuBatchSize);
         }

@@ -199,7 +199,7 @@ internal static partial class PrimeOrderGpuHeuristics
         try
         {
             var lease = GpuKernelPool.Rent();
-            Accelerator accelerator = lease.Accelerator;
+            Accelerator accelerator = SharedGpuContext.Accelerator;
             AcceleratorStream stream = lease.Stream;
 
             var kernel = GetPartialFactorKernel(accelerator);
@@ -366,7 +366,7 @@ internal static partial class PrimeOrderGpuHeuristics
         order = 0UL;
 
         var lease = GpuKernelPool.Rent();
-        Accelerator accelerator = lease.Accelerator;
+        Accelerator accelerator = SharedGpuContext.Accelerator;
         AcceleratorStream stream = lease.Stream;
 
         var kernel = GetOrderKernel(accelerator);
@@ -527,7 +527,7 @@ internal static partial class PrimeOrderGpuHeuristics
     private static bool TryComputeOnGpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorData divisorData, Span<ulong> results)
     {
         var lease = GpuKernelPool.Rent();
-        Accelerator accelerator = lease.Accelerator;
+        Accelerator accelerator = SharedGpuContext.Accelerator;
         AcceleratorStream stream = lease.Stream;
         var kernel = GetPow2ModKernel(accelerator);
 		// TODO: These buffers should be allocated once per accelerator and only reallocated when the new length exceeds capacity.
@@ -586,7 +586,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
         try
         {
-            Accelerator accelerator = lease.Accelerator;
+            Accelerator accelerator = SharedGpuContext.Accelerator;
             AcceleratorStream stream = lease.Stream;
             var kernel = GetPow2ModWideKernel(accelerator);
 			// TODO: These buffers should be allocated once per accelerator and only reallocated when the new length exceeds capacity.

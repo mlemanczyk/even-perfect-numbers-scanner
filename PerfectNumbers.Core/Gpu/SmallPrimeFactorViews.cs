@@ -6,12 +6,11 @@ namespace PerfectNumbers.Core.Gpu;
 
 public readonly struct SmallPrimeFactorViews(
 	MemoryBuffer1D<uint, Stride1D.Dense> primes,
-	MemoryBuffer1D<ulong, Stride1D.Dense> squares,
-	int count)
+	MemoryBuffer1D<ulong, Stride1D.Dense> squares)
 {
 	public readonly MemoryBuffer1D<uint, Stride1D.Dense> Primes = primes;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> Squares = squares;
-	public readonly int Count = count;
+	public readonly int Count = (int)primes.Length;
 
 	public ArrayView1D<uint, Stride1D.Dense> PrimesView
 	{

@@ -504,8 +504,7 @@ public static class NttGpuMath
     {
         int n = values.Length;
         int bits = (int)Math.Log2(n);
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
+        var accelerator = SharedGpuContext.Accelerator;
         var kernel = GetBitReverseKernel(accelerator);
         var pool = ThreadStaticPools.GpuUInt128Pool;
         var array = pool.Rent(n);
@@ -520,7 +519,6 @@ public static class NttGpuMath
         pool.Return(array, clearArray: true);
         buffer.Dispose();
         stream.Dispose();
-        gpu.Dispose();
 
     }
 
@@ -568,8 +566,7 @@ public static class NttGpuMath
     private static void ForwardGpuReference(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = (int)values.Length;
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
+        var accelerator = SharedGpuContext.Accelerator;
         var stream = accelerator.CreateStream();
         var kernel = GetForwardKernel(accelerator);
         var pool = ThreadStaticPools.GpuUInt128Pool;
@@ -592,8 +589,6 @@ public static class NttGpuMath
         outputBuffer.Dispose();
         inputBuffer.Dispose();
         stream.Dispose();
-        gpu.Dispose();
-
     }
 
     public static void Inverse(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
@@ -667,8 +662,7 @@ public static class NttGpuMath
     private static void InverseGpuReference(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = values.Length;
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
+        var accelerator = SharedGpuContext.Accelerator;
         var stream = accelerator.CreateStream();
         var kernel = GetInverseKernel(accelerator);
         var pool = ThreadStaticPools.GpuUInt128Pool;
@@ -710,15 +704,12 @@ public static class NttGpuMath
         outputBuffer.Dispose();
         inputBuffer.Dispose();
         stream.Dispose();
-        gpu.Dispose();
-
     }
 
     private static void ForwardGpuStaged(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = values.Length;
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
+        var accelerator = SharedGpuContext.Accelerator;
         var stream = accelerator.CreateStream();
         var buffer = accelerator.Allocate1D<GpuUInt128>(n);
         buffer.View.CopyFromCPU(stream, ref values[0], n);
@@ -728,15 +719,12 @@ public static class NttGpuMath
 		stream.Synchronize();
         stream.Dispose();
         buffer.Dispose();
-        gpu.Dispose();
-
     }
 
     private static void InverseGpuStaged(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = values.Length;
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
+        var accelerator = SharedGpuContext.Accelerator;
         var stream = accelerator.CreateStream();
         var buffer = accelerator.Allocate1D<GpuUInt128>(n);
         buffer.View.CopyFromCPU(stream, ref values[0], n);
@@ -746,8 +734,6 @@ public static class NttGpuMath
 		stream.Synchronize();
         stream.Dispose();
         buffer.Dispose();
-        gpu.Dispose();
-
     }
 
     private static void ForwardDevice(Accelerator accelerator, AcceleratorStream stream, ArrayView<GpuUInt128> data, int length, GpuUInt128 modulus, SquareCacheEntry cache)
@@ -939,8 +925,7 @@ public static class NttGpuMath
 
     public static void PointwiseMultiply(Span<GpuUInt128> left, Span<GpuUInt128> right, GpuUInt128 modulus)
     {
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
+        var accelerator = SharedGpuContext.Accelerator;
         var stream = accelerator.CreateStream();
         var kernel = GetMulKernel(accelerator);
         var pool = ThreadStaticPools.GpuUInt128Pool;
@@ -963,8 +948,6 @@ public static class NttGpuMath
         rightBuffer.Dispose();
         leftBuffer.Dispose();
         stream.Dispose();
-        gpu.Dispose();
-
     }
 
     private static ulong[] GenerateSmallPrimes(int limit)

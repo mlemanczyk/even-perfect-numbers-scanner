@@ -14,7 +14,6 @@ namespace PerfectNumbers.Core.Gpu;
 public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 {
     private readonly bool _useGpuOrder = useGpuOrder;
-    private readonly ConcurrentBag<GpuContextLease> _acceleratorPool = new();
     private readonly ConcurrentDictionary<Accelerator, Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>> _pow2ModKernelCache = new(AcceleratorReferenceComparer.Instance);
     private readonly ConcurrentDictionary<Accelerator, ConcurrentBag<ResidueResources>> _resourcePools = new(AcceleratorReferenceComparer.Instance);
 
@@ -28,15 +27,14 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
     public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
     {
         GpuPrimeWorkLimiter.Acquire();
-        var gpuLease = RentAccelerator();
-        var accelerator = gpuLease.Accelerator;
+        var accelerator = SharedGpuContext.Accelerator;
 
         // Monitor.Enter(gpuLease.ExecutionLock);
 
         var stream = accelerator.CreateStream();
         var kernel = GetPow2ModKernel(accelerator);
 		var resources = RentResources(accelerator, GpuConstants.ScanBatchSize);
-		var gpuKernels = GpuKernelPool.GetKernels(accelerator, stream);
+		var gpuKernels = GpuKernelPool.Kernels;
 
         var orderBuffer = resources.OrderBuffer;
         ulong[] orderArray = resources.OrderArray;
@@ -44,8 +42,8 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 
         // Ensure device has small cycles and primes tables for in-kernel lookup
 		// TODO: Pass-in the stream down the path
-        var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(gpuKernels, accelerator, stream);
-        ResiduePrimeViews primeViews = GpuKernelPool.EnsureSmallPrimesOnDevice(gpuKernels, accelerator, stream);
+        var smallCyclesView = GpuKernelPool.GetSmallCyclesOnDevice();
+        ResiduePrimeViews primeViews = GpuKernelPool.GetSmallPrimesOnDevice();
 
         UInt128 kStart = 1UL;
         UInt128 limit = maxK + UInt128.One;
@@ -114,7 +112,6 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
         stream.Dispose();
 		// Monitor.Exit(gpuLease.ExecutionLock);
 		gpuKernels.Dispose();
-		ReturnAccelerator(gpuLease);
 		GpuPrimeWorkLimiter.Release();
     }
 
@@ -129,18 +126,6 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
                     loaded.Target,
                     loaded.Method);
             });
-
-    private GpuContextLease RentAccelerator()
-    {
-        if (_acceleratorPool.TryTake(out var lease))
-        {
-            return lease;
-        }
-
-        return GpuContextPool.Rent();
-    }
-
-    private void ReturnAccelerator(GpuContextLease lease) => _acceleratorPool.Add(lease);
 
     private ResidueResources RentResources(Accelerator accelerator, int capacity)
     {

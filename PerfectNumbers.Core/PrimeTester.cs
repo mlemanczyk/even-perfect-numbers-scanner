@@ -273,7 +273,7 @@ public sealed class PrimeTester
 
 				Accelerator accelerator = SharedGpuContext.Accelerator;
 				AcceleratorStream stream = accelerator.CreateStream();
-				KernelContainer kernels = GpuKernelPool.GetKernels(accelerator, stream);
+				KernelContainer kernels = GpuKernelPool.Kernels;
 
 				GpuStaticTableInitializer.EnsureStaticTables(kernels, accelerator, stream);
 
@@ -433,7 +433,7 @@ public sealed class PrimeTester
 				AcceleratorContext = SharedGpuContext.Context;
 				Accelerator = SharedGpuContext.Accelerator;
 				AcceleratorStream stream = SharedGpuContext.Accelerator.CreateStream();
-				var kernels = GpuKernelPool.GetKernels(Accelerator, stream);
+				var kernels = GpuKernelPool.Kernels;
 				GpuStaticTableInitializer.EnsureStaticTables(kernels, Accelerator, stream);
 
 				_sharedTables = RentSharedTables(Accelerator, stream);

@@ -463,7 +463,7 @@ public static partial class ULongExtensions
 
 			GpuKernelLease lease = GpuKernelPool.Rent();
 
-			Accelerator accelerator = lease.Accelerator;
+			Accelerator accelerator = SharedGpuContext.Accelerator;
 			AcceleratorStream stream = lease.Stream;
 			var kernelGroup = Kernel;
 
