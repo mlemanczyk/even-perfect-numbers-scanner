@@ -1,25 +1,15 @@
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using ILGPU;
 using ILGPU.Runtime;
-using PerfectNumbers.Core;
 
 namespace PerfectNumbers.Core.Gpu;
 
 internal static class GpuStaticTableInitializer
 {
-    private static readonly ConcurrentDictionary<Accelerator, byte> Initialized = new(AcceleratorReferenceComparer.Instance);
-
-    internal static void EnsureStaticTables(KernelContainer kernels, Accelerator accelerator, AcceleratorStream stream)
-    {
-        Initialized.GetOrAdd(accelerator, acc =>
-        {
-            PrimeTester.PrimeTesterGpuContextPool.EnsureStaticTables(kernels, acc, stream);
-            GpuKernelPool.PreloadStaticTables(kernels, stream);
-            PrimeOrderGpuHeuristics.PreloadStaticTables( acc, stream);
-            return 0;
-        });
+    internal static void EnsureStaticTables(Accelerator accelerator, KernelContainer kernels, AcceleratorStream stream)
+	{
+		// PrimeTester.PrimeTesterGpuContextPool.EnsureStaticTables(accelerator);
+		GpuKernelPool.PreloadStaticTables(accelerator, kernels, stream);
+		// PrimeOrderGpuHeuristics.PreloadStaticTables(accelerator, stream);
     }
 
     private sealed class AcceleratorReferenceComparer : IEqualityComparer<Accelerator>

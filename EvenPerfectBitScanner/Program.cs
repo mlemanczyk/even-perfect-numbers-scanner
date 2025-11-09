@@ -58,12 +58,14 @@ internal static class Program
 			bool startPrimeProvided = _cliArguments.StartPrimeProvided;
 			int threadCount = Math.Max(1, _cliArguments.ThreadCount);
 			int gpuPrimeBatch = Math.Max(1, _cliArguments.GpuPrimeBatch);
+			// int gpuPrimeThreads = SharedGpuContext.Device.MaxNumThreads;
 			int gpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads);
 			UnboundedTaskScheduler.ConfigureThreadCount(threadCount);
 			PrimeTester.GpuBatchSize = gpuPrimeBatch;
 			GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
-			PrimeTester.WarmUpGpuKernels(gpuPrimeThreads);
-			GpuScratchBufferPool.WarmUp(gpuPrimeThreads << 4, 64, 1024);
+			PrimeTester.WarmUpGpuKernels(1024);
+			// PrimeTester.WarmUpGpuKernels(gpuPrimeThreads >> 4);
+			GpuScratchBufferPool.WarmUp(gpuPrimeThreads >> 4, 64, 128);
 			Console.WriteLine("Starting up threads...");
 			_ = UnboundedTaskScheduler.Instance;
 			int blockSize = Math.Max(1, _cliArguments.BlockSize);

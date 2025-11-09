@@ -30,7 +30,7 @@ internal static class NttMontgomeryKernels
         data[i2] = new GpuUInt128(0UL, diff);
     }
 
-    public static void ToMont64Kernel(Index1D index, AcceleratorStream stream, ArrayView<GpuUInt128> data, ulong modulus, ulong nPrime, ulong r2)
+    public static void ToMont64Kernel(Index1D index, ArrayView<GpuUInt128> data, ulong modulus, ulong nPrime, ulong r2)
     {
         ulong a = data[index].Low;
         ulong v = MontMul64(a, r2, modulus, nPrime);

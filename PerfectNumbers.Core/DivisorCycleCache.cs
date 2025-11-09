@@ -15,8 +15,8 @@ public sealed class DivisorCycleCache
 	private const byte ByteZero = 0;
 	private const byte ByteOne = 1;
 	private const int StackBufferThreshold = 128;
-
-	private readonly Action<AcceleratorStream, Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> _gpuKernel = LoadKernel(SharedGpuContext.Accelerator);
+	private readonly Accelerator _accelerator;
+	private readonly Action<AcceleratorStream, Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> _gpuKernel;
 	private volatile ulong[] _snapshot;
 	private volatile bool _useGpuGeneration = true;
 	private readonly int _divisorCyclesBatchSize;
@@ -40,6 +40,8 @@ public sealed class DivisorCycleCache
 	private DivisorCycleCache(int divisorCyclesBatchSize)
 	{
 		_divisorCyclesBatchSize = Math.Max(1, divisorCyclesBatchSize);
+		_accelerator = SharedGpuContext.Device.CreateAccelerator(SharedGpuContext.Context);
+		_gpuKernel = LoadKernel(_accelerator);
 		_snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
 	}
 
@@ -241,7 +243,7 @@ public sealed class DivisorCycleCache
 	[ThreadStatic]
 	private static MemoryBuffer1D<byte, Stride1D.Dense>? statusBuffer;
 
-	private static void EnsureCapacity(int requiredCapacity)
+	private void EnsureCapacity(int requiredCapacity)
 	{
 		if (requiredCapacity <= (divisorBuffer?.Length ?? 0))
 		{
@@ -257,11 +259,15 @@ public sealed class DivisorCycleCache
 			statusBuffer!.Dispose();			
 		}
 
-		divisorBuffer = SharedGpuContext.Accelerator.Allocate1D<ulong>(requiredCapacity);
-		powBuffer = SharedGpuContext.Accelerator.Allocate1D<ulong>(requiredCapacity);
-		orderBuffer = SharedGpuContext.Accelerator.Allocate1D<ulong>(requiredCapacity);
-		resultBuffer = SharedGpuContext.Accelerator.Allocate1D<ulong>(requiredCapacity);
-		statusBuffer = SharedGpuContext.Accelerator.Allocate1D<byte>(requiredCapacity);
+		Accelerator accelerator = _accelerator;
+		// lock(accelerator)
+		{
+			divisorBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+			powBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+			orderBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+			resultBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+			statusBuffer = accelerator.Allocate1D<byte>(requiredCapacity);			
+		}
 	}
 
 	private void ComputeCyclesGpuCore(ReadOnlySpan<ulong> divisors, Span<ulong> destination)
@@ -269,7 +275,7 @@ public sealed class DivisorCycleCache
 		int length = divisors.Length;
 		GpuPrimeWorkLimiter.Acquire();
 
-		Accelerator accelerator = SharedGpuContext.Accelerator;
+		Accelerator accelerator = _accelerator;
 		var stream = accelerator.CreateStream();
 		var kernel = _gpuKernel;
 		EnsureCapacity(length);

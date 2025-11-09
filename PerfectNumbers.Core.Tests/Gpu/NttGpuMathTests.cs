@@ -150,7 +150,7 @@ public class NttGpuMathTests
 		var modulus = new GpuUInt128(0UL, 17UL);
 		var primitiveRoot = new GpuUInt128(0UL, 3UL);
 
-		var accelerator = SharedGpuContext.Accelerator;
+		var accelerator = SharedGpuContext.CreateAccelerator();
 		var stream = accelerator.CreateStream();
 
 		var method = typeof(NttGpuMath).GetMethod("GetSquareCache", BindingFlags.NonPublic | BindingFlags.Static);
@@ -170,6 +170,7 @@ public class NttGpuMathTests
 		twiddlesInvMont.CopyToCPU(stream, inverse);
 		stream.Synchronize();
 		stream.Dispose();
+		accelerator.Dispose();
 
 		for (int i = 0; i < count; i++)
 		{
@@ -340,7 +341,7 @@ public class NttGpuMathTests
 		values[1] = new GpuUInt128(0UL, 2UL);
 		var modulus = new GpuUInt128(0UL, 17UL);
 		var primitiveRoot = new GpuUInt128(0UL, 3UL);
-		Accelerator accelerator = SharedGpuContext.Accelerator;
+		Accelerator accelerator = SharedGpuContext.CreateAccelerator();
 		var stream = accelerator.CreateStream();
 		var buffer = accelerator.Allocate1D<GpuUInt128>(values.Length);
 		buffer.View.CopyFromCPU(stream, ref values[0], values.Length);
@@ -348,6 +349,7 @@ public class NttGpuMathTests
 		stream.Synchronize();
 		stream.Dispose();
 		buffer.Dispose();
+		accelerator.Dispose();
 
 		// Verify that the square cache now holds entries for the accelerator.
 		var field = typeof(NttGpuMath).GetField("SquareCache", BindingFlags.NonPublic | BindingFlags.Static)!;

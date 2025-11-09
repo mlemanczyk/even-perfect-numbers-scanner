@@ -33,7 +33,7 @@ public sealed class MersenneNumberTester(
 	private readonly bool _useGpuLucas = useGpuLucas;
 	private readonly bool _useGpuScan = useGpuScan;     // device for pow2mod/incremental scanning
 	private readonly bool _useGpuOrder = useGpuOrder;   // device for order computations
-	private static readonly ConcurrentDictionary<UInt128, ulong> OrderCache = new();
+	private static readonly ConcurrentDictionary<UInt128, ulong> _orderCache = [];
 	// TODO: Swap this ConcurrentDictionary for the pooled dictionary variant highlighted in
 	// Pow2MontgomeryModBenchmarks once order warmups reuse deterministic divisor-cycle snapshots; the pooled approach removed
 	// the locking overhead when scanning p >= 138M in those benchmarks.
@@ -89,13 +89,13 @@ public sealed class MersenneNumberTester(
 					}
 				}
 
-				if (!shouldCheck || !cacheEnabled || (cacheEnabled && OrderCache.ContainsKey(q)))
+				if (!shouldCheck || !cacheEnabled || (cacheEnabled && _orderCache.ContainsKey(q)))
 				{
 					continue;
 				}
 
 				ulong ord = q.CalculateOrder();
-				OrderCache[q] = ord;
+				_orderCache[q] = ord;
 			}
 
 			return;
@@ -131,7 +131,7 @@ public sealed class MersenneNumberTester(
 				}
 			}
 
-			if (!shouldCheck2 || (cacheEnabled && OrderCache.ContainsKey(q2)))
+			if (!shouldCheck2 || (cacheEnabled && _orderCache.ContainsKey(q2)))
 			{
 				continue;
 			}
@@ -148,9 +148,9 @@ public sealed class MersenneNumberTester(
 		UInt128[] qs = qsBuffer;
 
 		GpuPrimeWorkLimiter.Acquire();
-		var accelerator = SharedGpuContext.Accelerator;
+		var accelerator = AcceleratorPool.Shared.Rent();
 		var stream = accelerator.CreateStream();
-		var orderKernel = GpuKernelPool.Kernels.Order!;
+		var orderKernel = GpuKernelPool.GetOrAddKernels(accelerator, stream).Order!;
 
 		// Guard long-running kernels by chunking the warm-up across batches.
 		// Reuse the same ScanBatchSize knob used for scanning.
@@ -158,11 +158,18 @@ public sealed class MersenneNumberTester(
 		ulong divMul = (ulong)((((UInt128)1 << 64) - 1UL) / exponent) + 1UL;
 		int offset = 0;
 		var gpuUInt128Pool = ThreadStaticPools.GpuUInt128Pool;
+		MemoryBuffer1D<GpuUInt128, Stride1D.Dense>? qBuffer;
+		MemoryBuffer1D<ulong, Stride1D.Dense>? orderBuffer;
+		
 		while (offset < idx)
 		{
 			int count = Math.Min(batchSize, idx - offset);
-			var qBuffer = accelerator.Allocate1D<GpuUInt128>(count);
-			var orderBuffer = accelerator.Allocate1D<ulong>(count);
+			// lock (accelerator)
+			{
+				qBuffer = accelerator.Allocate1D<GpuUInt128>(count);
+				orderBuffer = accelerator.Allocate1D<ulong>(count);
+			}
+			
 			// Convert to device-friendly GpuUInt128 on the fly
 			var tmp = gpuUInt128Pool.Rent(count);
 			for (int i = 0; i < count; i++)
@@ -187,7 +194,7 @@ public sealed class MersenneNumberTester(
 
 				if (useOrderCache)
 				{
-					OrderCache[qs[offset + i]] = order;
+					_orderCache[qs[offset + i]] = order;
 				}
 			}
 

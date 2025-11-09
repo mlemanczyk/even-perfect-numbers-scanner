@@ -17,14 +17,14 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
         throw new NotImplementedException($"GPU incremental scanning requires the device cycle heuristics implementation (kernel: {_kernelType}, GPU order: {_useGpuOrder}).");
 
         GpuPrimeWorkLimiter.Acquire();
-        var accelerator = SharedGpuContext.Accelerator;
+        var accelerator = AcceleratorPool.Shared.Rent();
         var stream = accelerator.CreateStream();
         int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy
         UInt128 kStart = 1UL;
         ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
         byte last = lastDigit == LastDigit.Seven ? (byte)1 : (byte)0; // ILGPU kernels do not support bool parameters
 
-		KernelContainer kernels = GpuKernelPool.Kernels;
+		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
 		var pow2Kernel = kernels.Pow2Mod!;
         var incKernel = kernels.Incremental!;
         ulong step10 = (exponent.Mod10() << 1).Mod10();
@@ -32,11 +32,11 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
         ulong step3 = ((exponent % 3UL) << 1) % 3UL;
         ulong step5 = ((exponent % 5UL) << 1) % 5UL;
         GpuUInt128 twoPGpu = (GpuUInt128)twoP;
-        var smallCyclesView = GpuKernelPool.GetSmallCyclesOnDevice();
+        var smallCyclesView = GpuKernelPool.GetSmallCyclesOnDevice(kernels);
         ResiduePrimeViews primeViews = default;
         if (_kernelType == GpuKernelType.Pow2Mod)
         {
-            primeViews = GpuKernelPool.GetSmallPrimesOnDevice();
+            primeViews = GpuKernelPool.GetSmallPrimesOnDevice(kernels);
         }
 
         var orderBuffer = accelerator.Allocate1D<ulong>(batchSize);

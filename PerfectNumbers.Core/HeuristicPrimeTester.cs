@@ -244,7 +244,7 @@ public sealed class HeuristicPrimeTester
 		var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(1);
 		var accelerator = gpu.Accelerator;
 		var stream = gpu.Stream;
-		var kernel = PrimeTester.PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.HeuristicTrialDivisionKernel;
+		var kernel = PrimeTester.PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.GetHeuristicTrialDivisionKernel(accelerator);
 		var flagView1D = gpu.HeuristicFlag.View;
 		var flagView = flagView1D.AsContiguous();
 

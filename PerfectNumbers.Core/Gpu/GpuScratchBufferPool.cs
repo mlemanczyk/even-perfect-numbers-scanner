@@ -22,7 +22,7 @@ public sealed class ScratchBuffer
 		_accelerator = accelerator;
 
 		// lock (accelerator)
-		// {
+		{
 			SmallPrimeFactorPrimeSlots = accelerator.Allocate1D<ulong>(smallPrimeFactorSlotCount);
 			SmallPrimeFactorExponentSlots = accelerator.Allocate1D<int>(smallPrimeFactorSlotCount);
 			SmallPrimeFactorCountSlot = accelerator.Allocate1D<int>(1);
@@ -31,7 +31,7 @@ public sealed class ScratchBuffer
 			SpecialMaxFactors = accelerator.Allocate1D<ulong>(specialMaxFactorCapacity);
 			SpecialMaxCandidates = accelerator.Allocate1D<ulong>(specialMaxFactorCapacity);
 			SpecialMaxResult = accelerator.Allocate1D<ulong>(1);
-		// }
+		}
 	}
 
 	public void ResizeSmallPrimeFactorSlots(int newSize)
@@ -41,8 +41,11 @@ public sealed class ScratchBuffer
 			SmallPrimeFactorPrimeSlots.Dispose();
 			SmallPrimeFactorExponentSlots.Dispose();
 
-			SmallPrimeFactorPrimeSlots = _accelerator.Allocate1D<ulong>(newSize);
-			SmallPrimeFactorExponentSlots = _accelerator.Allocate1D<int>(newSize);
+			// lock(_accelerator)
+			{
+				SmallPrimeFactorPrimeSlots = _accelerator.Allocate1D<ulong>(newSize);
+				SmallPrimeFactorExponentSlots = _accelerator.Allocate1D<int>(newSize);				
+			}
 		}
 	}
 
@@ -53,8 +56,11 @@ public sealed class ScratchBuffer
 			SpecialMaxFactors.Dispose();
 			SpecialMaxCandidates.Dispose();
 
-			SpecialMaxFactors = _accelerator.Allocate1D<ulong>(newSize);
-			SpecialMaxCandidates = _accelerator.Allocate1D<ulong>(newSize);
+			// lock(_accelerator)
+			{
+				SpecialMaxFactors = _accelerator.Allocate1D<ulong>(newSize);
+				SpecialMaxCandidates = _accelerator.Allocate1D<ulong>(newSize);				
+			}
 		}
 	}
 }
@@ -63,6 +69,7 @@ public static class GpuScratchBufferPool
 {
 	[ThreadStatic]
 	private static Dictionary<Accelerator, Queue<ScratchBuffer>>? _pools;
+
 	// private static readonly ConcurrentDictionary<Accelerator, ConcurrentQueue<ScratchBuffer>> _pools = new();
 	private const int DefaultSmallPrimeFactorSlotCount = 64; // From PrimeOrderCalculator.Gpu.cs
 	private const int DefaultSpecialMaxFactorCapacity = 1024; // A reasonable default, will be resized if needed
@@ -89,13 +96,13 @@ public static class GpuScratchBufferPool
 		{
 			if (buffer.SmallPrimeFactorPrimeSlots.Length < smallPrimeFactorSlotCount || buffer.SpecialMaxFactors.Length < specialMaxFactorCapacity)
 			{
-				throw new InvalidOperationException();
+				// throw new InvalidOperationException();
 				// lock (accelerator)
-				// {
+				{
 					// Console.WriteLine($"Resizing GPU scratch buffer from pool ({buffer.SmallPrimeFactorPrimeSlots.Length} / {smallPrimeFactorSlotCount}), ({buffer.SpecialMaxFactors.Length}/{specialMaxFactorCapacity})");
-					// buffer.ResizeSmallPrimeFactorSlots(smallPrimeFactorSlotCount);
-					// buffer.ResizeSpecialMaxFactors(specialMaxFactorCapacity);
-				// }
+					buffer.ResizeSmallPrimeFactorSlots(smallPrimeFactorSlotCount);
+					buffer.ResizeSpecialMaxFactors(specialMaxFactorCapacity);
+				}
 			}
 			return buffer;
 		}
@@ -113,12 +120,12 @@ public static class GpuScratchBufferPool
 
 	public static void WarmUp(int count, int smallPrimeFactorSlots, int specialMaxFactorCapacity)
 	{
-		Accelerator accelerator = SharedGpuContext.Accelerator;
+		// Accelerator accelerator = SharedGpuContext.Accelerator;
 
-		for (int i = 0; i < count; i++)
-		{
-			var buffer = Rent(accelerator, smallPrimeFactorSlots, specialMaxFactorCapacity);
-			Return(buffer);
-		}
+		// for (int i = 0; i < count; i++)
+		// {
+		// 	var buffer = Rent(accelerator, smallPrimeFactorSlots, specialMaxFactorCapacity);
+		// 	Return(buffer);
+		// }
 	}
 }

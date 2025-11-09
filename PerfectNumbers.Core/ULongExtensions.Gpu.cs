@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
-using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 
@@ -315,25 +315,16 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Pow2MontgomeryModWindowedGpu(this ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
-	{
-		// We shouldn't hit it in production code. If we do, we're doing something wrong.
-		// ulong modulus = divisor.Modulus;
-		// if (exponent == 0UL)
-		// {
-		//      return divisor.MontgomeryOne;
-		// }
+	public static ulong Pow2MontgomeryModWindowedKeepGpu(this ulong exponent, in MontgomeryDivisorData divisor)
+		=> Pow2MontgomeryGpuCalculator.CalculateKeep(exponent, divisor);
 
-		// We barely ever hit it in production code. It's e.g. 772 calls out of billions
-		// if (exponent <= Pow2WindowFallbackThreshold)
-		// {
-		//      return Pow2MontgomeryModSingleBit(exponent, divisor);
-		// }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static ulong Pow2MontgomeryModWindowedConvertGpu(this ulong exponent, in MontgomeryDivisorData divisor)
+		=> Pow2MontgomeryGpuCalculator.CalculateConvert(exponent, divisor);
 
-		return keepMontgomery
-				? Pow2MontgomeryGpuExecutor.ExecuteKeep(exponent, divisor)
-				: Pow2MontgomeryGpuExecutor.ExecuteConvert(exponent, divisor);
-	}
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static ulong Pow2MontgomeryModWindowedConvertGpu(this ulong exponent, Pow2MontgomeryAccelerator gpu, in MontgomeryDivisorData divisor)
+		=> Pow2MontgomeryGpuCalculator.CalculateConvert(gpu, exponent, divisor);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void InitializeStandardOddPowers(ulong modulus, Span<ulong> oddPowers)
@@ -387,16 +378,7 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static int GetPortableBitLengthGpu(ulong value)
-	{
-		// Keep this commented out. It will never happen in production code.
-		// if (value == 0UL)
-		// {
-		//         return 0;
-		// }
-
-		return 64 - XMath.LeadingZeroCount(value);
-	}
+	private static int GetPortableBitLengthGpu(ulong value) => 64 - XMath.LeadingZeroCount(value);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static int GetWindowSizeGpu(int n)
@@ -429,102 +411,12 @@ public static partial class ULongExtensions
 	public static ulong Pow2MontgomeryModWithCycleGpu(this ulong exponent, ulong cycleLength, in MontgomeryDivisorData divisor)
 	{
 		ulong rotationCount = exponent % cycleLength;
-		return Pow2MontgomeryGpuExecutor.ExecuteConvert(rotationCount, divisor);
+		return Pow2MontgomeryGpuCalculator.CalculateConvert(rotationCount, divisor);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong Pow2MontgomeryModFromCycleRemainderGpu(this ulong reducedExponent, in MontgomeryDivisorData divisor)
 	{
-		return Pow2MontgomeryGpuExecutor.ExecuteConvert(reducedExponent, divisor);
-	}
-
-	private static class Pow2MontgomeryGpuExecutor
-	{
-		private static readonly Pow2MontgomeryKernelGroup Kernel = Pow2MontgomeryKernelGroup.Create(SharedGpuContext.Accelerator);
-
-		public static ulong ExecuteKeep(ulong exponent, in MontgomeryDivisorData divisor)
-		{
-			return Execute(exponent, divisor, useKeepKernel: true);
-		}
-
-		public static ulong ExecuteConvert(ulong exponent, in MontgomeryDivisorData divisor)
-		{
-			return Execute(exponent, divisor, useKeepKernel: false);
-		}
-
-		[ThreadStatic]
-		private static MemoryBuffer1D<ulong, Stride1D.Dense>? _exponentBuffer;
-		[ThreadStatic]
-		private static MemoryBuffer1D<ulong, Stride1D.Dense>? _resultBuffer;
-
-		private static ulong Execute(ulong exponent, in MontgomeryDivisorData divisor, bool useKeepKernel)
-		{
-			ulong result = 0UL;
-
-			GpuPrimeWorkLimiter.Acquire();
-
-			Accelerator accelerator = SharedGpuContext.Accelerator;
-			AcceleratorStream stream = accelerator.CreateStream();
-			var kernelGroup = Kernel;
-
-			EnsureCapacity();
-
-			MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer = _exponentBuffer!;
-			MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = _resultBuffer!;
-
-			exponentBuffer.View.CopyFromCPU(stream, ref exponent, 1);
-			// We don't need to worry about any left-overs here.
-			// resultBuffer.MemSetToZero(stream);
-
-			var kernel = useKeepKernel ? kernelGroup.KeepMontgomery : kernelGroup.ConvertToStandard;
-			kernel(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
-			resultBuffer.View.CopyToCPU(stream, ref result, 1);
-			stream.Synchronize();
-			
-			stream.Dispose();
-			resultBuffer.Dispose();
-			exponentBuffer.Dispose();
-			GpuPrimeWorkLimiter.Release();
-			return result;
-		}
-
-		private static void EnsureCapacity()
-		{
-			if (_exponentBuffer == null)
-			{
-				Accelerator accelerator = SharedGpuContext.Accelerator;
-				_exponentBuffer = accelerator.Allocate1D<ulong>(1);
-				_resultBuffer = accelerator.Allocate1D<ulong>(1);
-			}
-		}
-
-		private sealed class Pow2MontgomeryKernelGroup
-		{
-			internal Pow2MontgomeryKernelGroup(
-					Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> keepMontgomery,
-					Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> convertToStandard)
-			{
-				KeepMontgomery = keepMontgomery;
-				ConvertToStandard = convertToStandard;
-			}
-
-			internal Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> KeepMontgomery { get; }
-
-			internal Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> ConvertToStandard { get; }
-
-			internal static Pow2MontgomeryKernelGroup Create(Accelerator accelerator)
-			{
-				var keepKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelKeepMontgomery);
-				var keepLauncher = KernelUtil.GetKernel(keepKernel);
-				var keepDelegate = keepLauncher.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
-
-				var convertKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelConvertToStandard);
-				var convertLauncher = KernelUtil.GetKernel(convertKernel);
-				var convertDelegate = convertLauncher.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
-
-				return new Pow2MontgomeryKernelGroup(keepDelegate, convertDelegate);
-			}
-		}
-
+		return Pow2MontgomeryGpuCalculator.CalculateConvert(reducedExponent, divisor);
 	}
 }

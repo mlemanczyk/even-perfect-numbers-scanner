@@ -30,7 +30,7 @@ public class PrimeTesterBenchmarks
         _ = Prime.Numbers.IsPrime(_candidates[0]);
     }
 
-    [Benchmark]
+    // [Benchmark]
     public int HeuristicCpu()
     {
         HeuristicPrimeTester tester = _heuristicTester;
@@ -48,7 +48,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public int HeuristicGpu()
     {
         HeuristicPrimeTester tester = _heuristicTester;
@@ -66,7 +66,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public int HeuristicCombinedGpu()
     {
         ulong[] values = _candidates;
@@ -83,7 +83,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public int HeuristicCombinedCpu()
     {
         ulong[] values = _candidates;
@@ -134,7 +134,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public int OpenNumericPrimes()
     {
         ulong[] values = _candidates;

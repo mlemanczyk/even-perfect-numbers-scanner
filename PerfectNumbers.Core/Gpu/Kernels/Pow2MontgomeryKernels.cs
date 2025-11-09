@@ -1,8 +1,7 @@
 using ILGPU;
 using ILGPU.Runtime;
-using PerfectNumbers.Core;
 
-namespace PerfectNumbers.Core.Gpu;
+namespace PerfectNumbers.Core.Gpu.Kernels;
 
 internal static class Pow2MontgomeryKernels
 {

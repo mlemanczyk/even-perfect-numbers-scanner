@@ -1,5 +1,4 @@
-using System;
-using System.Threading;
+using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
 
@@ -7,14 +6,24 @@ namespace PerfectNumbers.Core.Gpu;
 
 public static class SharedGpuContext
 {
-	// TODO: Remove Lazy<T> in favor for better performance with nullable fields.
-    private static readonly Lazy<Context> s_context = new(() => ILGPU.Context.CreateDefault(), LazyThreadSafetyMode.ExecutionAndPublication);
-    private static readonly Lazy<Device> s_device = new(() => s_context.Value.GetPreferredDevice(false), LazyThreadSafetyMode.ExecutionAndPublication);
-    private static readonly Lazy<Accelerator> s_accelerator = new(() => s_device.Value.CreateAccelerator(s_context.Value), LazyThreadSafetyMode.ExecutionAndPublication);
+	public static readonly Context Context = Context.CreateDefault();
+	public static readonly Device Device = Context.GetPreferredDevice(false);
 
-	internal static Context Context => s_context.Value;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Accelerator CreateAccelerator() => Device.CreateAccelerator(Context);
+}
 
-    internal static Device Device => s_device.Value;
+public readonly struct GpuContext
+{
+	public readonly Context Context;
+	public readonly Device Device;
 
-    internal static Accelerator Accelerator => s_accelerator.Value;
+	public GpuContext()
+	{
+		var context = Context.CreateDefault();
+		Context = context;
+		Device = context.GetPreferredDevice(false);
+	}
+
+	public Accelerator CreateAccelerator() => Device.CreateAccelerator(Context);
 }

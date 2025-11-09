@@ -348,32 +348,40 @@ public class GpuKernelCompilationTests
 
     private static void CompileGpuKernelPoolKernels(Accelerator accelerator)
     {
-        _ = accelerator;
-        GpuPrimeWorkLimiter.Acquire();
+
+		GpuPrimeWorkLimiter.Acquire();
+		AcceleratorStream stream = accelerator.CreateStream();
         try
-        {
-            _ = GpuKernelPool.Kernels.Order;
-            _ = GpuKernelPool.Kernels.Incremental;
-            _ = GpuKernelPool.Kernels.Pow2Mod;
-            _ = GpuKernelPool.Kernels.IncrementalOrder;
-            _ = GpuKernelPool.Kernels.Pow2ModOrder;
+		{
+			var kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
+            _ = kernels.Order;
+            _ = kernels.Incremental;
+            _ = kernels.Pow2Mod;
+            _ = kernels.IncrementalOrder;
+			_ = kernels.Pow2ModOrder;
         }
         finally
-        {
+		{
+			stream.Synchronize();
+			stream.Dispose();
             GpuPrimeWorkLimiter.Release();
         }
 
-        GpuPrimeWorkLimiter.Acquire();
+		stream = accelerator.CreateStream();
+		GpuPrimeWorkLimiter.Acquire();
         try
         {
-            _ = GpuKernelPool.Kernels.Order;
-            _ = GpuKernelPool.Kernels.Incremental;
-            _ = GpuKernelPool.Kernels.Pow2Mod;
-            _ = GpuKernelPool.Kernels.IncrementalOrder;
-            _ = GpuKernelPool.Kernels.Pow2ModOrder;
+			var kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
+            _ = kernels.Order;
+            _ = kernels.Incremental;
+            _ = kernels.Pow2Mod;
+            _ = kernels.IncrementalOrder;
+            _ = kernels.Pow2ModOrder;
         }
         finally
         {
+			stream.Synchronize();
+			stream.Dispose();
             GpuPrimeWorkLimiter.Release();
         }
     }

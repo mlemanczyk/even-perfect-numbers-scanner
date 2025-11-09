@@ -101,7 +101,7 @@ public class Pow2ModBenchmarks
 
         for (int i = 0; i < SampleCount; i++)
         {
-            checksum ^= exponents[i].Pow2MontgomeryModWindowedGpu(divisors[i], keepMontgomery: false);
+            checksum ^= exponents[i].Pow2MontgomeryModWindowedConvertGpu(divisors[i]);
         }
 
         return checksum;

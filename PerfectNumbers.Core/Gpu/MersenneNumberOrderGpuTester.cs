@@ -10,28 +10,34 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 	public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
 		GpuPrimeWorkLimiter.Acquire();
-		var accelerator = SharedGpuContext.Accelerator;
+		// var accelerator = SharedGpuContext.Accelerator;
+		var accelerator = AcceleratorPool.Shared.Rent();
 		var stream = accelerator.CreateStream();
 		int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy and avoids TDR
 		UInt128 kStart = UInt128.One;
 		ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
 		byte last = lastDigit == LastDigit.Seven ? (byte)1 : (byte)0; // ILGPU kernels do not support bool parameters
 
-		KernelContainer kernels = GpuKernelPool.Kernels;
+		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
 		var kernel = _kernelType switch
 		{
 			GpuKernelType.Pow2Mod => kernels.Pow2ModOrder!,
 			_ => kernels.IncrementalOrder!,
 		};
 
-		var foundBuffer = accelerator.Allocate1D<int>(1); // TODO: Replace this allocation with the pooled device buffer from GpuOrderKernelBenchmarks so repeated scans reuse the pinned staging memory instead of allocating per run.
+		MemoryBuffer1D<int, ILGPU.Stride1D.Dense>? foundBuffer;
+		// lock (accelerator)
+		{
+			foundBuffer = accelerator.Allocate1D<int>(1); // TODO: Replace this allocation with the pooled device buffer from GpuOrderKernelBenchmarks so repeated scans reuse the pinned staging memory instead of allocating per run.
+
+		}
 		exponent.Mod10_8_5_3Steps(out ulong step10, out ulong step8, out ulong step5, out ulong step3);
 
 		UInt128 remaining;
 		int currentSize;
 		int found = 0;
 
-		var smallCyclesView = GpuKernelPool.GetSmallCyclesOnDevice();
+		var smallCyclesView = GpuKernelPool.GetSmallCyclesOnDevice(kernels);
 		while (kStart <= maxK && Volatile.Read(ref isPrime))
 		{
 			remaining = maxK - kStart + 1UL;

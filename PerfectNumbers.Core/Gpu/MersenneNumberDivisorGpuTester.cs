@@ -10,16 +10,29 @@ namespace PerfectNumbers.Core.Gpu;
 /// </summary>
 public sealed class MersenneNumberDivisorGpuTester
 {
-	private readonly ConcurrentDictionary<Accelerator, Action<AcceleratorStream, Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>>> _kernelCache = new();
-	private readonly ConcurrentDictionary<Accelerator, MemoryBuffer1D<byte, Stride1D.Dense>> _resultBuffers = new();
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Queue<MemoryBuffer1D<byte, Stride1D.Dense>>>? _resultBuffers;
 
-	private Action<AcceleratorStream, Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>> GetKernel(Accelerator accelerator) =>
-			_kernelCache.GetOrAdd(accelerator, acc =>
-			{
-				var loaded = acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>>(DivisorKernels.Kernel);
-				var kernel = KernelUtil.GetKernel(loaded);
-				return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>>>();
-			});
+	private static Queue<MemoryBuffer1D<byte, Stride1D.Dense>> GetQueue(Accelerator accelerator)
+	{
+		var pool = _resultBuffers ??= [];
+		if (!pool.TryGetValue(accelerator, out var bufferQueue))
+		{
+			bufferQueue = [];
+			pool[accelerator] = bufferQueue;
+		}
+
+		return bufferQueue;
+	}
+
+	private static Action<AcceleratorStream, Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>> GetDivisorKernel(Accelerator accelerator)
+	{
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>>(DivisorKernels.Kernel);
+
+		var kernel = KernelUtil.GetKernel(loaded);
+
+		return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ReadOnlyGpuUInt128, ArrayView<byte>>>();
+	}
 
 	public static void BuildDivisorCandidates()
 	{
@@ -43,18 +56,30 @@ public sealed class MersenneNumberDivisorGpuTester
 
 	public bool IsDivisible(ulong exponent, in ReadOnlyGpuUInt128 divisor)
 	{
-		var accelerator = SharedGpuContext.Accelerator;
+		// var accelerator = SharedGpuContext.CreateAccelerator();
+		var accelerator = AcceleratorPool.Shared.Rent();
 		var stream = accelerator.CreateStream();
-		var kernel = GetKernel(accelerator);
-		var resultBuffer = _resultBuffers.GetOrAdd(accelerator, acc => acc.Allocate1D<byte>(1));
+		Queue<MemoryBuffer1D<byte, Stride1D.Dense>> resultBuffers = GetQueue(accelerator);
+		if (!resultBuffers.TryDequeue(out var resultBuffer))
+		{
+			// lock(accelerator)
+			{
+				resultBuffer = accelerator.Allocate1D<byte>(1);
+			}
+		}
+
 		// There is no point in clearing this buffer. We always override item [0] and never use it beyond item [0]
 		// resultBuffer.MemSetToZero(stream);
-		kernel(stream, 1, exponent, divisor, resultBuffer.View);
-		Span<byte> result = stackalloc byte[1];
-		resultBuffer.View.CopyToCPU(stream, ref result[0], 1);
+		var divisorKernel = GetDivisorKernel(accelerator);
+		divisorKernel(stream, 1, exponent, divisor, resultBuffer.View);
+		byte result = 0;
+		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
-		bool divisible = result[0] != 0;
+		bool divisible = result != 0;
+		resultBuffers.Enqueue(resultBuffer);
 		stream.Dispose();
+		// AcceleratorPool.Shared.Return(accelerator);
+		// accelerator.Dispose();
 		return divisible;
 	}
 

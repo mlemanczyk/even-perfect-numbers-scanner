@@ -2,7 +2,6 @@ using Open.Numeric.Primes;
 using ILGPU.Runtime;
 using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Gpu;
-using System.Runtime.InteropServices;
 
 namespace PerfectNumbers.Core;
 
@@ -40,7 +39,6 @@ public sealed class HeuristicCombinedPrimeTester
 		CombinedDivisorsEnding7Squares = CombinedDivisorsEnding7OneAOneBSquares;
 		CombinedDivisorsEnding9Squares = CombinedDivisorsEnding9OneAOneBSquares;
 	}
-
 
 	public static void EnsureInitialized()
 	{
@@ -229,7 +227,7 @@ public sealed class HeuristicCombinedPrimeTester
 		var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(1);
 		var accelerator = gpu.Accelerator;
 		var stream = gpu.Stream;
-		var kernel = PrimeTester.PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.HeuristicTrialDivisionKernel;
+		var kernel = PrimeTester.PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.GetHeuristicTrialDivisionKernel(accelerator);
 		var flagView1D = gpu.HeuristicFlag.View;
 		var flagView = flagView1D.AsContiguous();
 
@@ -267,109 +265,97 @@ public sealed class HeuristicCombinedPrimeTester
 		return n;
 	}
 
-	private static ReadOnlySpan<ulong> GetCombinedDivisors(byte nMod10)
+	private static ReadOnlySpan<ulong> GetCombinedDivisors(byte nMod10) => nMod10 switch
 	{
-		return nMod10 switch
+		1 => CombinedDivisorsEnding1,
+		3 => CombinedDivisorsEnding3,
+		7 => CombinedDivisorsEnding7,
+		9 => CombinedDivisorsEnding9,
+		_ => throw new InvalidOperationException($"Unsupported combined divisor selector for digit {nMod10}."),
+	};
+
+	private static ReadOnlySpan<ulong> GetCombinedDivisorSquares(byte nMod10) => nMod10 switch
+	{
+		1 => CombinedDivisorsEnding1Squares,
+		3 => CombinedDivisorsEnding3Squares,
+		7 => CombinedDivisorsEnding7Squares,
+		9 => CombinedDivisorsEnding9Squares,
+		_ => throw new InvalidOperationException($"Unsupported combined divisor square selector for digit {nMod10}."),
+	};
+
+	internal static ReadOnlySpan<ulong> GetCombinedDivisors(byte nMod10, CombinedDivisorPattern pattern) => pattern switch
+	{
+		CombinedDivisorPattern.TwoAOneB => nMod10 switch
 		{
-			1 => CombinedDivisorsEnding1,
-			3 => CombinedDivisorsEnding3,
-			7 => CombinedDivisorsEnding7,
-			9 => CombinedDivisorsEnding9,
+			1 => CombinedDivisorsEnding1TwoAOneB,
+			3 => CombinedDivisorsEnding3TwoAOneB,
+			7 => CombinedDivisorsEnding7TwoAOneB,
+			9 => CombinedDivisorsEnding9TwoAOneB,
 			_ => throw new InvalidOperationException($"Unsupported combined divisor selector for digit {nMod10}."),
-		};
-	}
-
-	private static ReadOnlySpan<ulong> GetCombinedDivisorSquares(byte nMod10)
-	{
-		return nMod10 switch
+		},
+		CombinedDivisorPattern.OneAOneB => nMod10 switch
 		{
-			1 => CombinedDivisorsEnding1Squares,
-			3 => CombinedDivisorsEnding3Squares,
-			7 => CombinedDivisorsEnding7Squares,
-			9 => CombinedDivisorsEnding9Squares,
+			1 => CombinedDivisorsEnding1OneAOneB,
+			3 => CombinedDivisorsEnding3OneAOneB,
+			7 => CombinedDivisorsEnding7OneAOneB,
+			9 => CombinedDivisorsEnding9OneAOneB,
+			_ => throw new InvalidOperationException($"Unsupported combined divisor selector for digit {nMod10}."),
+		},
+		CombinedDivisorPattern.ThreeAOneB => nMod10 switch
+		{
+			1 => CombinedDivisorsEnding1ThreeAOneB,
+			3 => CombinedDivisorsEnding3ThreeAOneB,
+			7 => CombinedDivisorsEnding7ThreeAOneB,
+			9 => CombinedDivisorsEnding9ThreeAOneB,
+			_ => throw new InvalidOperationException($"Unsupported combined divisor selector for digit {nMod10}."),
+		},
+		CombinedDivisorPattern.ThreeATwoB => nMod10 switch
+		{
+			1 => CombinedDivisorsEnding1ThreeATwoB,
+			3 => CombinedDivisorsEnding3ThreeATwoB,
+			7 => CombinedDivisorsEnding7ThreeATwoB,
+			9 => CombinedDivisorsEnding9ThreeATwoB,
+			_ => throw new InvalidOperationException($"Unsupported combined divisor selector for digit {nMod10}."),
+		},
+		_ => throw new InvalidOperationException($"Unsupported combined divisor pattern: {pattern}."),
+	};
+
+	internal static ReadOnlySpan<ulong> GetCombinedDivisorSquares(byte nMod10, CombinedDivisorPattern pattern) => pattern switch
+	{
+		CombinedDivisorPattern.TwoAOneB => nMod10 switch
+		{
+			1 => CombinedDivisorsEnding1TwoAOneBSquares,
+			3 => CombinedDivisorsEnding3TwoAOneBSquares,
+			7 => CombinedDivisorsEnding7TwoAOneBSquares,
+			9 => CombinedDivisorsEnding9TwoAOneBSquares,
 			_ => throw new InvalidOperationException($"Unsupported combined divisor square selector for digit {nMod10}."),
-		};
-	}
-
-	internal static ReadOnlySpan<ulong> GetCombinedDivisors(byte nMod10, CombinedDivisorPattern pattern)
-	{
-		return pattern switch
+		},
+		CombinedDivisorPattern.OneAOneB => nMod10 switch
 		{
-			CombinedDivisorPattern.TwoAOneB => nMod10 switch
-			{
-				1 => CombinedDivisorsEnding1TwoAOneB,
-				3 => CombinedDivisorsEnding3TwoAOneB,
-				7 => CombinedDivisorsEnding7TwoAOneB,
-				9 => CombinedDivisorsEnding9TwoAOneB,
-				_ => throw new InvalidOperationException($"Unsupported combined divisor selector for digit {nMod10}."),
-			},
-			CombinedDivisorPattern.OneAOneB => nMod10 switch
-			{
-				1 => CombinedDivisorsEnding1OneAOneB,
-				3 => CombinedDivisorsEnding3OneAOneB,
-				7 => CombinedDivisorsEnding7OneAOneB,
-				9 => CombinedDivisorsEnding9OneAOneB,
-				_ => throw new InvalidOperationException($"Unsupported combined divisor selector for digit {nMod10}."),
-			},
-			CombinedDivisorPattern.ThreeAOneB => nMod10 switch
-			{
-				1 => CombinedDivisorsEnding1ThreeAOneB,
-				3 => CombinedDivisorsEnding3ThreeAOneB,
-				7 => CombinedDivisorsEnding7ThreeAOneB,
-				9 => CombinedDivisorsEnding9ThreeAOneB,
-				_ => throw new InvalidOperationException($"Unsupported combined divisor selector for digit {nMod10}."),
-			},
-			CombinedDivisorPattern.ThreeATwoB => nMod10 switch
-			{
-				1 => CombinedDivisorsEnding1ThreeATwoB,
-				3 => CombinedDivisorsEnding3ThreeATwoB,
-				7 => CombinedDivisorsEnding7ThreeATwoB,
-				9 => CombinedDivisorsEnding9ThreeATwoB,
-				_ => throw new InvalidOperationException($"Unsupported combined divisor selector for digit {nMod10}."),
-			},
-			_ => throw new InvalidOperationException($"Unsupported combined divisor pattern: {pattern}."),
-		};
-	}
-
-	internal static ReadOnlySpan<ulong> GetCombinedDivisorSquares(byte nMod10, CombinedDivisorPattern pattern)
-	{
-		return pattern switch
+			1 => CombinedDivisorsEnding1OneAOneBSquares,
+			3 => CombinedDivisorsEnding3OneAOneBSquares,
+			7 => CombinedDivisorsEnding7OneAOneBSquares,
+			9 => CombinedDivisorsEnding9OneAOneBSquares,
+			_ => throw new InvalidOperationException($"Unsupported combined divisor square selector for digit {nMod10}."),
+		},
+		CombinedDivisorPattern.ThreeAOneB => nMod10 switch
 		{
-			CombinedDivisorPattern.TwoAOneB => nMod10 switch
-			{
-				1 => CombinedDivisorsEnding1TwoAOneBSquares,
-				3 => CombinedDivisorsEnding3TwoAOneBSquares,
-				7 => CombinedDivisorsEnding7TwoAOneBSquares,
-				9 => CombinedDivisorsEnding9TwoAOneBSquares,
-				_ => throw new InvalidOperationException($"Unsupported combined divisor square selector for digit {nMod10}."),
-			},
-			CombinedDivisorPattern.OneAOneB => nMod10 switch
-			{
-				1 => CombinedDivisorsEnding1OneAOneBSquares,
-				3 => CombinedDivisorsEnding3OneAOneBSquares,
-				7 => CombinedDivisorsEnding7OneAOneBSquares,
-				9 => CombinedDivisorsEnding9OneAOneBSquares,
-				_ => throw new InvalidOperationException($"Unsupported combined divisor square selector for digit {nMod10}."),
-			},
-			CombinedDivisorPattern.ThreeAOneB => nMod10 switch
-			{
-				1 => CombinedDivisorsEnding1ThreeAOneBSquares,
-				3 => CombinedDivisorsEnding3ThreeAOneBSquares,
-				7 => CombinedDivisorsEnding7ThreeAOneBSquares,
-				9 => CombinedDivisorsEnding9ThreeAOneBSquares,
-				_ => throw new InvalidOperationException($"Unsupported combined divisor square selector for digit {nMod10}."),
-			},
-			CombinedDivisorPattern.ThreeATwoB => nMod10 switch
-			{
-				1 => CombinedDivisorsEnding1ThreeATwoBSquares,
-				3 => CombinedDivisorsEnding3ThreeATwoBSquares,
-				7 => CombinedDivisorsEnding7ThreeATwoBSquares,
-				9 => CombinedDivisorsEnding9ThreeATwoBSquares,
-				_ => throw new InvalidOperationException($"Unsupported combined divisor square selector for digit {nMod10}."),
-			},
-			_ => throw new InvalidOperationException($"Unsupported combined divisor pattern for squares: {pattern}."),
-		};
-	}
+			1 => CombinedDivisorsEnding1ThreeAOneBSquares,
+			3 => CombinedDivisorsEnding3ThreeAOneBSquares,
+			7 => CombinedDivisorsEnding7ThreeAOneBSquares,
+			9 => CombinedDivisorsEnding9ThreeAOneBSquares,
+			_ => throw new InvalidOperationException($"Unsupported combined divisor square selector for digit {nMod10}."),
+		},
+		CombinedDivisorPattern.ThreeATwoB => nMod10 switch
+		{
+			1 => CombinedDivisorsEnding1ThreeATwoBSquares,
+			3 => CombinedDivisorsEnding3ThreeATwoBSquares,
+			7 => CombinedDivisorsEnding7ThreeATwoBSquares,
+			9 => CombinedDivisorsEnding9ThreeATwoBSquares,
+			_ => throw new InvalidOperationException($"Unsupported combined divisor square selector for digit {nMod10}."),
+		},
+		_ => throw new InvalidOperationException($"Unsupported combined divisor pattern for squares: {pattern}."),
+	};
 
 	private static ulong[] BuildCombinedDivisors(byte nMod10, CombinedDivisorPattern pattern, out ulong[] squares)
 	{
@@ -442,8 +428,6 @@ public sealed class HeuristicCombinedPrimeTester
 		squares = resultSquares;
 		return result;
 	}
-
-
 
 	private static int GetGroupBStartIndex(ReadOnlySpan<uint> divisors)
 	{

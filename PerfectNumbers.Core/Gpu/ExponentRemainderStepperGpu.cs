@@ -24,17 +24,14 @@ internal struct ExponentRemainderStepperGpu
         _currentResidue = GpuUInt128.One;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool MatchesDivisor(in GpuDivisorPartialData divisor)
-    {
-        return _modulus == divisor.Modulus;
-    }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public readonly bool MatchesDivisor(in GpuDivisorPartialData divisor) => _modulus == divisor.Modulus;
 
-    /// <summary>
-    /// Clears the cached residue so the stepper can be reused for another divisor.
-    /// Callers must reinitialize the stepper before consuming any residues after a reset.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	/// <summary>
+	/// Clears the cached residue so the stepper can be reused for another divisor.
+	/// Callers must reinitialize the stepper before consuming any residues after a reset.
+	/// </summary>
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Reset()
     {
         PreviousExponent = 0UL;
