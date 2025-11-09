@@ -293,7 +293,7 @@ public static class MersenneNumberDivisorByDivisorTester
 				tasks[taskIndex++] = Task.Factory.StartNew(
 					() =>
 					{
-						startGate.Wait();
+						// startGate.Wait();
 						Console.WriteLine($"Task started for range {rangeStart}");
 
 						for (int index = rangeStart; index < rangeEnd; index++)

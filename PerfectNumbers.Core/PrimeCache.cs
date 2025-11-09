@@ -42,7 +42,8 @@ public sealed class PrimeCache
             index = ~index;
         }
 
-        EInteger[] primesArray = ArrayPool<EInteger>.Shared.Rent(_primes.Count);
+		ArrayPool<EInteger> eIntegerPool = ThreadStaticPools.EIntegerPool;
+		EInteger[] primesArray = eIntegerPool.Rent(_primes.Count);
         try
         {
             Span<EInteger> primes = new(primesArray);
@@ -64,7 +65,7 @@ public sealed class PrimeCache
         }
         finally
         {
-            ArrayPool<EInteger>.Shared.Return(primesArray);
+            eIntegerPool.Return(primesArray);
         }
     }
 

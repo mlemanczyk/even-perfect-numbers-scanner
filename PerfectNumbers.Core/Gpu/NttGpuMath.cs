@@ -27,27 +27,64 @@ public static class NttGpuMath
     // Global backend setting for GPU transforms. Used by ForwardGpu/InverseGpu.
     // TODO(NTT-OPT): Consider passing backend explicitly to avoid global state.
     public static NttBackend GpuTransformBackend { get; set; } = NttBackend.Reference;
-    // Controls modular reduction strategy inside staged NTT paths.
-    public static ModReductionMode ReductionMode { get; set; } = ModReductionMode.Auto;
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, GpuUInt128>> MulKernelCache = new(); // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128>> StageKernelCache = new(); // TODO: Same as above – materialize staged kernels during startup so we can drop ConcurrentDictionary usage entirely per the benchmark guidance.
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>> ScaleKernelCache = new(); // TODO: Promote to the static kernel table initialized alongside the GpuModularArithmeticBenchmarks fast path.
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong>> StageMontKernelCache = new(); // TODO: Inline the Montgomery kernels into the startup table instead of using a concurrent cache now that we no longer mutate state at runtime.
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>> StageBarrett128KernelCache = new(); // TODO: Same plan – reuse the precomputed kernels measured fastest in MontgomeryMultiplyBenchmarks rather than looking them up dynamically.
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, GpuUInt128, ulong, ulong, ulong, ulong>> ScaleBarrett128KernelCache = new(); // TODO: Collapse into the startup kernel array once Barrett128 constants are preloaded.
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>> SquareBarrett128KernelCache = new(); // TODO: Fold these kernels into the same startup table to avoid concurrent access overhead highlighted in GpuModularArithmeticBenchmarks.
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>> ToMont64KernelCache = new(); // TODO: Prebind and reuse the Montgomery conversions from MontgomeryMultiplyBenchmarks instead of storing them in a concurrent cache.
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong>> FromMont64KernelCache = new(); // TODO: As above – drop ConcurrentDictionary once startup prewarms every kernel.
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong>> SquareMont64KernelCache = new(); // TODO: Inline into the static kernel table established during initialization.
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>> ScaleMont64KernelCache = new(); // TODO: Move to the startup kernel table so Montgomery-scaled launches skip concurrent lookups.
+	// Controls modular reduction strategy inside staged NTT paths.
+	public static ModReductionMode ReductionMode { get; set; } = ModReductionMode.Auto;
 
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128>> ForwardKernelCache = new(); // TODO: Warm these forward kernels during initialization and store them in a plain array so the LucasLehmerGpuBenchmarks launch costs disappear.
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, GpuUInt128>>? _mulKernel; // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
+	
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream,Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128>>? _stageKernel; // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
 
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128, GpuUInt128>> InverseKernelCache = new(); // TODO: Same as above – replace with startup-prepared tables per LucasLehmerGpuBenchmarks guidance.
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>>? _scaleKernel; // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
+	
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong>>? _stageMontKernel; // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
 
-    private static readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, int>> BitReverseKernelCache = new(); // TODO: Precompute bit-reversal kernels during boot so we can remove the concurrent lookup overhead flagged in the benchmarks.
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>>? _stageBarrett128Kernel; // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
+	
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>>? _toMont64Kernel; // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
+	
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ulong, ulong>>? _fromMont64Kernel; // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
+	
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, GpuUInt128, ulong, ulong, ulong, ulong>>? _scaleBarrett128Kernel; // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
+	
+	[ThreadStatic]
+	private static readonly Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128>>? _squareMont64Kernel; // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
+	
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>>? _scaleMont64Kernel; // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
+	
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128>>? _forwardKernel; // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
+	
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128, GpuUInt128>>? _inverseKernel; // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
+	
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, int>>? _bitReverseKernel; // TODO: Replace this concurrent cache with the prewarmed accelerator-indexed tables from GpuModularArithmeticBenchmarks so kernel launches avoid dictionary lookups once the kernels are baked during startup.
 
-    private sealed class SquareCacheEntry
+	private static Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128> GetStageKernel(Accelerator accelerator)
+	{
+		var pool = _stageKernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
+		
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128>(NttButterflyKernels.StageKernel);
+		var kernel = KernelUtil.GetKernel(loaded);
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
+
+	private sealed class SquareCacheEntry
     {
         public MemoryBuffer1D<GpuUInt128, Stride1D.Dense> Buffer { get; }
         public GpuUInt128 Root { get; }
@@ -72,7 +109,7 @@ public static class NttGpuMath
         public ulong BarrettMuHigh { get; }
         public ulong BarrettMuLow { get; }
 
-        public SquareCacheEntry(Accelerator accelerator, int length, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
+        public SquareCacheEntry(Accelerator accelerator, AcceleratorStream stream, int length, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
         {
             Buffer = accelerator.Allocate1D<GpuUInt128>(length);
             Root = new GpuUInt128(primitiveRoot);
@@ -99,7 +136,7 @@ public static class NttGpuMath
             // Precompute stage twiddle factors (forward and inverse) and upload to GPU.
             Bits = (int)Math.Log2(length);
             int twiddleCount = length - 1;
-            var pool = ArrayPool<GpuUInt128>.Shared;
+            var pool = ThreadStaticPools.GpuUInt128Pool;
             var forward = pool.Rent(twiddleCount);
             var inverse = pool.Rent(twiddleCount);
             StageOffsets = new int[Bits];
@@ -136,9 +173,9 @@ public static class NttGpuMath
             }
 
             Twiddles = accelerator.Allocate1D<GpuUInt128>(twiddleCount);
-            Twiddles.View.CopyFromCPU(ref forward[0], twiddleCount);
+            Twiddles.View.CopyFromCPU(stream, ref forward[0], twiddleCount);
             TwiddlesInv = accelerator.Allocate1D<GpuUInt128>(twiddleCount);
-            TwiddlesInv.View.CopyFromCPU(ref inverse[0], twiddleCount);
+            TwiddlesInv.View.CopyFromCPU(stream, ref inverse[0], twiddleCount);
             
             // Prepare Montgomery constants for 64-bit moduli and twiddles in Montgomery domain.
             if (modulus.High == 0UL && (ReductionMode == ModReductionMode.Auto || ReductionMode == ModReductionMode.Mont64))
@@ -166,9 +203,9 @@ public static class NttGpuMath
                 }
 
                 TwiddlesMont = accelerator.Allocate1D<GpuUInt128>(twiddleCount);
-                TwiddlesMont.View.CopyFromCPU(ref forwardMont[0], twiddleCount);
+                TwiddlesMont.View.CopyFromCPU(stream, ref forwardMont[0], twiddleCount);
                 TwiddlesInvMont = accelerator.Allocate1D<GpuUInt128>(twiddleCount);
-                TwiddlesInvMont.View.CopyFromCPU(ref inverseMont[0], twiddleCount);
+				TwiddlesInvMont.View.CopyFromCPU(stream, ref inverseMont[0], twiddleCount);
 
                 pool.Return(forwardMont, clearArray: true);
                 pool.Return(inverseMont, clearArray: true);
@@ -250,7 +287,7 @@ public static class NttGpuMath
 
     private readonly record struct SquareCacheKey(int Length, GpuUInt128 Modulus, GpuUInt128 PrimitiveRoot);
 
-    private static readonly ConcurrentDictionary<Accelerator, ConcurrentDictionary<SquareCacheKey, SquareCacheEntry>> SquareCache = new();
+    private static readonly ConcurrentDictionary<SquareCacheKey, SquareCacheEntry> SquareCache = [];
 
     // TODO(NTT-OPT): Add a TwiddleCache for stage-wise Cooley–Tukey NTT.
     // Design:
@@ -258,11 +295,10 @@ public static class NttGpuMath
     // - Store one GPU buffer with all stage twiddles, or per-stage slices.
     // - Expose accessors to retrieve per-stage views used by butterfly kernels.
 
-    private static SquareCacheEntry GetSquareCache(Accelerator accelerator, int length, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
+    private static SquareCacheEntry GetSquareCache(Accelerator accelerator, AcceleratorStream stream, int length, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
-        var perAccel = SquareCache.GetOrAdd(accelerator, _ => new ConcurrentDictionary<SquareCacheKey, SquareCacheEntry>());
         var key = new SquareCacheKey(length, modulus, primitiveRoot);
-        return perAccel.GetOrAdd(key, _ => new SquareCacheEntry(accelerator, length, modulus, primitiveRoot));
+        return SquareCache.GetOrAdd(key, _ => new SquareCacheEntry(accelerator, stream, length, modulus, primitiveRoot));
     }
 
     private static readonly ulong[] SmallPrimes = GenerateSmallPrimes(1000);
@@ -330,105 +366,197 @@ public static class NttGpuMath
     {
         if (accelerator is null)
         {
-            foreach (var perAccel in SquareCache.Values)
+            foreach (var entry in SquareCache.Values)
             {
-                foreach (var entry in perAccel.Values)
-                {
-                    entry.Dispose();
-                }
+				entry.Dispose();
             }
 
             SquareCache.Clear();
-            MulKernelCache.Clear();
-            StageKernelCache.Clear();
-            ScaleKernelCache.Clear();
-            StageMontKernelCache.Clear();
-            StageBarrett128KernelCache.Clear();
-            ToMont64KernelCache.Clear();
-            FromMont64KernelCache.Clear();
-            SquareMont64KernelCache.Clear();
-            ScaleMont64KernelCache.Clear();
-            ForwardKernelCache.Clear();
-            InverseKernelCache.Clear();
             // TODO(NTT-OPT): Clear TwiddleCache once introduced.
             return;
         }
 
-        if (SquareCache.TryRemove(accelerator, out var cache))
-        {
-            foreach (var entry in cache.Values)
-            {
-                entry.Dispose();
-            }
-        }
+		var squareCache = SquareCache; 
+		foreach (var entry in squareCache.Values)
+		{
+			entry.Dispose();
+		}
 
-        MulKernelCache.TryRemove(accelerator, out _);
-        StageKernelCache.TryRemove(accelerator, out _);
-        ScaleKernelCache.TryRemove(accelerator, out _);
-        StageMontKernelCache.TryRemove(accelerator, out _);
-        StageBarrett128KernelCache.TryRemove(accelerator, out _);
-        ToMont64KernelCache.TryRemove(accelerator, out _);
-        FromMont64KernelCache.TryRemove(accelerator, out _);
-        SquareMont64KernelCache.TryRemove(accelerator, out _);
-        ScaleMont64KernelCache.TryRemove(accelerator, out _);
-        ForwardKernelCache.TryRemove(accelerator, out _);
-        InverseKernelCache.TryRemove(accelerator, out _);
         // TODO(NTT-OPT): Remove per-accelerator twiddle buffers once added.
     }
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, int> GetBitReverseKernel(Accelerator accelerator) =>
-        BitReverseKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int>(NttTransformKernels.BitReverseKernel));
+	private static Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, int> GetBitReverseKernel(Accelerator accelerator)
+	{
+		var pool = _bitReverseKernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, GpuUInt128> GetMulKernel(Accelerator accelerator) =>
-        MulKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, GpuUInt128>(NttPointwiseKernels.MulKernel));
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int>(NttTransformKernels.BitReverseKernel);
+		
+		var kernel = KernelUtil.GetKernel(loaded);
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128> GetStageKernel(Accelerator accelerator) =>
-        StageKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, GpuUInt128>(NttButterflyKernels.StageKernel));
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, int>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128> GetScaleKernel(Accelerator accelerator) =>
-        ScaleKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>(NttPointwiseKernels.ScaleKernel));
+	private static Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128> GetForwardKernel(Accelerator accelerator)
+	{
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128>(NttTransformKernels.ForwardKernel);
+		var kernel = KernelUtil.GetKernel(loaded);
+		return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128>>();
+	}
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong> GetStageMontKernel(Accelerator accelerator) =>
-        StageMontKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong>(NttMontgomeryKernels.StageMontKernel));
+	private static Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ulong, ulong> GetFromMont64Kernel(Accelerator accelerator)
+	{
+		var pool = _fromMont64Kernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong> GetStageBarrett128Kernel(Accelerator accelerator) =>
-        StageBarrett128KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>(NttBarrettKernels.StageBarrett128Kernel));
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong>(NttMontgomeryKernels.FromMont64Kernel);
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, GpuUInt128, ulong, ulong, ulong, ulong> GetScaleBarrett128Kernel(Accelerator accelerator) =>
-        ScaleBarrett128KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, GpuUInt128, ulong, ulong, ulong, ulong>(NttBarrettKernels.ScaleBarrett128Kernel));
+		var kernel = KernelUtil.GetKernel(loaded);
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong> GetSquareBarrett128Kernel(Accelerator accelerator) =>
-        SquareBarrett128KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>(NttBarrettKernels.SquareBarrett128Kernel));
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ulong, ulong>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong> GetToMont64Kernel(Accelerator accelerator) =>
-        ToMont64KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>(NttMontgomeryKernels.ToMont64Kernel));
+	private static Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128, GpuUInt128> GetInverseKernel(Accelerator accelerator)
+	{
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128, GpuUInt128>(NttTransformKernels.InverseKernel);
+		var kernel = KernelUtil.GetKernel(loaded);
+		return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128, GpuUInt128>>();
+	}
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong> GetFromMont64Kernel(Accelerator accelerator) =>
-        FromMont64KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong>(NttMontgomeryKernels.FromMont64Kernel));
+	private static Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, GpuUInt128> GetMulKernel(Accelerator accelerator)
+	{
+		var pool = _mulKernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong> GetSquareMont64Kernel(Accelerator accelerator) =>
-        SquareMont64KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong>(NttMontgomeryKernels.SquareMont64Kernel));
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, GpuUInt128>(NttPointwiseKernels.MulKernel);
+		
+		var kernel = KernelUtil.GetKernel(loaded);
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong> GetScaleMont64Kernel(Accelerator accelerator) =>
-        ScaleMont64KernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>(NttMontgomeryKernels.ScaleMont64Kernel));
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, GpuUInt128>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128> GetForwardKernel(Accelerator accelerator) =>
-        ForwardKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128>(NttTransformKernels.ForwardKernel));
+	private static Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128> GetScaleKernel(Accelerator accelerator)
+	{
+		var pool = _scaleKernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
 
-    // TODO(NTT-OPT): Introduce stage-wise Cooley–Tukey kernels and a
-    // per-(accelerator,length,modulus,root) twiddle cache. The plan:
-    // - Precompute twiddle factors for all stages once and cache on GPU.
-    // - Replace the current O(n^2) ForwardKernel with O(n log n) butterflies.
-    // - Provide accessors like GetStageKernel(...) and GetTwiddleBuffer(...).
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>(NttPointwiseKernels.ScaleKernel);
+		
+		var kernel = KernelUtil.GetKernel(loaded);
 
-    private static Action<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128, GpuUInt128> GetInverseKernel(Accelerator accelerator) =>
-        InverseKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>, int, GpuUInt128, GpuUInt128, GpuUInt128>(NttTransformKernels.InverseKernel));
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, GpuUInt128, GpuUInt128>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
 
-    // TODO(NTT-OPT): Mirror the forward stage-wise design for the inverse
-    // transform. Precompute inverse twiddles and a normalization factor
-    // (n^-1 mod m). Launch one short kernel per stage to avoid TDR.
+	private static Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, GpuUInt128, ulong, ulong, ulong, ulong> GetScaleBarrett128Kernel(Accelerator accelerator)
+	{
+		var pool = _scaleBarrett128Kernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
 
-    public static void BitReverse(Span<GpuUInt128> values)
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, GpuUInt128, ulong, ulong, ulong, ulong>(NttBarrettKernels.ScaleBarrett128Kernel);
+		
+		var kernel = KernelUtil.GetKernel(loaded);
+
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, GpuUInt128, ulong, ulong, ulong, ulong>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
+
+	private static Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong> GetScaleMont64Kernel(Accelerator accelerator)
+	{
+		var pool = _scaleMont64Kernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
+
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>(NttMontgomeryKernels.ScaleMont64Kernel);
+		
+		var kernel = KernelUtil.GetKernel(loaded);
+
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
+
+	private static Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong> GetStageBarrett128Kernel(Accelerator accelerator)
+	{
+		var pool = _stageBarrett128Kernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
+
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>(NttBarrettKernels.StageBarrett128Kernel);
+
+		var kernel = KernelUtil.GetKernel(loaded);
+		
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong, ulong, ulong>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
+
+	private static Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong> GetStageMontKernel(Accelerator accelerator)
+	{
+		var pool = _stageMontKernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
+
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong>(NttMontgomeryKernels.StageMontKernel);
+
+		var kernel = KernelUtil.GetKernel(loaded);
+
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, int, int, int, ArrayView<GpuUInt128>, ulong, ulong>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
+
+	private static Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong> GetToMont64Kernel(Accelerator accelerator)
+	{
+		var pool = _toMont64Kernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
+
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>(NttMontgomeryKernels.ToMont64Kernel);
+		
+		var kernel = KernelUtil.GetKernel(loaded);
+
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ulong, ulong, ulong>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
+
+	// TODO(NTT-OPT): Mirror the forward stage-wise design for the inverse
+	// transform. Precompute inverse twiddles and a normalization factor
+	// (n^-1 mod m). Launch one short kernel per stage to avoid TDR.
+
+	public static void BitReverse(Span<GpuUInt128> values)
     {
         int n = values.Length;
         int bits = (int)Math.Log2(n);
@@ -446,21 +574,21 @@ public static class NttGpuMath
     {
         int n = values.Length;
         int bits = (int)Math.Log2(n);
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
-        var kernel = GetBitReverseKernel(accelerator);
-        var pool = ArrayPool<GpuUInt128>.Shared;
+        var accelerator = AcceleratorPool.Shared.Rent();
+        var pool = ThreadStaticPools.GpuUInt128Pool;
         var array = pool.Rent(n);
         values.CopyTo(array);
         var buffer = accelerator.Allocate1D<GpuUInt128>(n);
-        buffer.View.CopyFromCPU(ref array[0], n);
-        kernel(n, buffer.View, bits);
-        accelerator.Synchronize();
-        buffer.View.CopyToCPU(ref array[0], n);
+        var stream = accelerator.CreateStream();
+		buffer.View.CopyFromCPU(stream, ref array[0], n);
+		var bitReverseKernel = GetBitReverseKernel(accelerator);
+        bitReverseKernel(stream, n, buffer.View, bits);
+        buffer.View.CopyToCPU(stream, ref array[0], n);
+        stream.Synchronize();
         array.AsSpan(0, n).CopyTo(values);
         pool.Return(array, clearArray: true);
         buffer.Dispose();
-        gpu.Dispose();
+        stream.Dispose();
 
     }
 
@@ -508,30 +636,29 @@ public static class NttGpuMath
     private static void ForwardGpuReference(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = (int)values.Length;
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
-        var kernel = GetForwardKernel(accelerator);
-        var pool = ArrayPool<GpuUInt128>.Shared;
+        var accelerator = AcceleratorPool.Shared.Rent();
+        var stream = accelerator.CreateStream();
+        var pool = ThreadStaticPools.GpuUInt128Pool;
         var inputArray = pool.Rent(n);
         var outputArray = pool.Rent(n);
         values.CopyTo(inputArray);
         var inputBuffer = accelerator.Allocate1D<GpuUInt128>(n);
         var outputBuffer = accelerator.Allocate1D<GpuUInt128>(n);
-        inputBuffer.View.CopyFromCPU(ref inputArray[0], n);
+        inputBuffer.View.CopyFromCPU(stream, ref inputArray[0], n);
         UInt128 modValue = modulus;
         UInt128 expBase = (modValue - 1UL) / (ulong)n;
         var root = new GpuUInt128(primitiveRoot);
-        root.ModPow((ulong)expBase, modulus);
-        kernel(n, inputBuffer.View, outputBuffer.View, n, modulus, root);
-        accelerator.Synchronize();
-        outputBuffer.View.CopyToCPU(ref outputArray[0], n);
+		root.ModPow((ulong)expBase, modulus);
+		var forwardKernel = GetForwardKernel(accelerator);
+        forwardKernel(stream, n, inputBuffer.View, outputBuffer.View, n, modulus, root);
+        outputBuffer.View.CopyToCPU(stream, ref outputArray[0], n);
+        stream.Synchronize();
         outputArray.AsSpan(0, n).CopyTo(values);
         pool.Return(inputArray, clearArray: true);
         pool.Return(outputArray, clearArray: true);
         outputBuffer.Dispose();
         inputBuffer.Dispose();
-        gpu.Dispose();
-
+        stream.Dispose();
     }
 
     public static void Inverse(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
@@ -605,16 +732,15 @@ public static class NttGpuMath
     private static void InverseGpuReference(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = values.Length;
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
-        var kernel = GetInverseKernel(accelerator);
-        var pool = ArrayPool<GpuUInt128>.Shared;
+        var accelerator = AcceleratorPool.Shared.Rent();
+        var stream = accelerator.CreateStream();
+        var pool = ThreadStaticPools.GpuUInt128Pool;
         var inputArray = pool.Rent(n);
         var outputArray = pool.Rent(n);
         values.CopyTo(inputArray);
         var inputBuffer = accelerator.Allocate1D<GpuUInt128>(n);
         var outputBuffer = accelerator.Allocate1D<GpuUInt128>(n);
-        inputBuffer.View.CopyFromCPU(ref inputArray[0], n);
+        inputBuffer.View.CopyFromCPU(stream, ref inputArray[0], n);
         UInt128 modValue = modulus;
         UInt128 expBase = (modValue - 1UL) / (ulong)n;
         var root = new GpuUInt128(primitiveRoot);
@@ -630,78 +756,76 @@ public static class NttGpuMath
         }
 
         var nInv = new GpuUInt128((UInt128)n);
-        if (modulus.High == 0UL)
-        {
-            nInv.ModInv(modulus.Low);
-        }
-        else
-        {
-            nInv.ModInv(modulus);
-        }
-        kernel(n, inputBuffer.View, outputBuffer.View, n, modulus, rootInv, nInv);
-        accelerator.Synchronize();
-        outputBuffer.View.CopyToCPU(ref outputArray[0], n);
+		if (modulus.High == 0UL)
+		{
+			nInv.ModInv(modulus.Low);
+		}
+		else
+		{
+			nInv.ModInv(modulus);
+		}
+
+		var inverseKernel = GetInverseKernel(accelerator);
+        inverseKernel(stream, n, inputBuffer.View, outputBuffer.View, n, modulus, rootInv, nInv);
+        outputBuffer.View.CopyToCPU(stream, ref outputArray[0], n);
+        stream.Synchronize();
         outputArray.AsSpan(0, n).CopyTo(values);
         pool.Return(inputArray, clearArray: true);
         pool.Return(outputArray, clearArray: true);
         outputBuffer.Dispose();
         inputBuffer.Dispose();
-        gpu.Dispose();
-
+        stream.Dispose();
     }
 
     private static void ForwardGpuStaged(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = values.Length;
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
+        var accelerator = AcceleratorPool.Shared.Rent();
+        var stream = accelerator.CreateStream();
         var buffer = accelerator.Allocate1D<GpuUInt128>(n);
-        buffer.View.CopyFromCPU(ref values[0], n);
-        var cache = GetSquareCache(accelerator, n, modulus, primitiveRoot);
-        ForwardDevice(accelerator, buffer.View, n, modulus, cache);
-        buffer.View.CopyToCPU(ref values[0], n);
+        buffer.View.CopyFromCPU(stream, ref values[0], n);
+        var cache = GetSquareCache(accelerator, stream, n, modulus, primitiveRoot);
+        ForwardDevice(accelerator, stream, buffer.View, n, modulus, cache);
+		buffer.View.CopyToCPU(stream, ref values[0], n);
+		stream.Synchronize();
+        stream.Dispose();
         buffer.Dispose();
-        gpu.Dispose();
-
     }
 
     private static void InverseGpuStaged(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = values.Length;
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
+        var accelerator = AcceleratorPool.Shared.Rent();
+        var stream = accelerator.CreateStream();
         var buffer = accelerator.Allocate1D<GpuUInt128>(n);
-        buffer.View.CopyFromCPU(ref values[0], n);
-        var cache = GetSquareCache(accelerator, n, modulus, primitiveRoot);
-        InverseDevice(accelerator, buffer.View, n, modulus, cache);
-        buffer.View.CopyToCPU(ref values[0], n);
+        buffer.View.CopyFromCPU(stream, ref values[0], n);
+        var cache = GetSquareCache(accelerator, stream, n, modulus, primitiveRoot);
+        InverseDevice(accelerator, stream, buffer.View, n, modulus, cache);
+        buffer.View.CopyToCPU(stream, ref values[0], n);
+		stream.Synchronize();
+        stream.Dispose();
         buffer.Dispose();
-        gpu.Dispose();
-
     }
 
-    private static void ForwardDevice(Accelerator accelerator, ArrayView<GpuUInt128> data, int length, GpuUInt128 modulus, SquareCacheEntry cache)
-    {
-        var bitKernel = GetBitReverseKernel(accelerator);
-        bitKernel(length, data, cache.Bits);
-        accelerator.Synchronize();
+    private static void ForwardDevice(Accelerator accelerator, AcceleratorStream stream, ArrayView<GpuUInt128> data, int length, GpuUInt128 modulus, SquareCacheEntry cache)
+	{
+		var bitReverseKernel = GetBitReverseKernel(accelerator);
+        bitReverseKernel(stream, length, data, cache.Bits);
 
         if (cache.UseMontgomery64)
-        {
-            var toMont = GetToMont64Kernel(accelerator);
-            toMont(length, data, cache.ModulusLow, cache.MontNPrime64, cache.MontR2Mod64);
-            accelerator.Synchronize();
+		{
+			var toMont64Kernel = GetToMont64Kernel(accelerator);
+            toMont64Kernel(stream, length, data, cache.ModulusLow, cache.MontNPrime64, cache.MontR2Mod64);
             var stageKernel = GetStageMontKernel(accelerator);
-            int butterflies = length >> 1;
-            for (int s = 0; s < cache.Bits; s++)
-            {
-                int len = 1 << (s + 1);
-                int half = len >> 1;
-                stageKernel(butterflies, data, len, half, cache.StageOffsets[s], cache.TwiddlesMont!.View, cache.ModulusLow, cache.MontNPrime64);
-                accelerator.Synchronize();
-            }
-            var fromMont = GetFromMont64Kernel(accelerator);
-            fromMont(length, data, cache.ModulusLow, cache.MontNPrime64);
+			int butterflies = length >> 1;
+			for (int s = 0; s < cache.Bits; s++)
+			{
+				int len = 1 << (s + 1);
+				int half = len >> 1;
+				stageKernel(stream, butterflies, data, len, half, cache.StageOffsets[s], cache.TwiddlesMont!.View, cache.ModulusLow, cache.MontNPrime64);
+			}
+			var fromMont64Kernel = GetFromMont64Kernel(accelerator);
+            fromMont64Kernel(stream, length, data, cache.ModulusLow, cache.MontNPrime64);
         }
         else if (cache.UseBarrett128)
         {
@@ -711,8 +835,7 @@ public static class NttGpuMath
             {
                 int len = 1 << (s + 1);
                 int half = len >> 1;
-                stageKernel(butterflies, data, len, half, cache.StageOffsets[s], cache.Twiddles.View, cache.ModulusHigh, cache.ModulusLow, cache.BarrettMuHigh, cache.BarrettMuLow);
-                accelerator.Synchronize();
+                stageKernel(stream, butterflies, data, len, half, cache.StageOffsets[s], cache.Twiddles.View, cache.ModulusHigh, cache.ModulusLow, cache.BarrettMuHigh, cache.BarrettMuLow);
             }
         }
         else
@@ -723,72 +846,67 @@ public static class NttGpuMath
             {
                 int len = 1 << (s + 1);
                 int half = len >> 1;
-                stageKernel(butterflies, data, len, half, cache.StageOffsets[s], cache.Twiddles.View, modulus);
-                accelerator.Synchronize();
+                stageKernel(stream, butterflies, data, len, half, cache.StageOffsets[s], cache.Twiddles.View, modulus);
             }
         }
 
-        accelerator.Synchronize();
+        stream.Synchronize();
     }
 
-    private static void InverseDevice(Accelerator accelerator, ArrayView<GpuUInt128> data, int length, GpuUInt128 modulus, SquareCacheEntry cache)
-    {
-        var bitKernel = GetBitReverseKernel(accelerator);
-        bitKernel(length, data, cache.Bits);
-        accelerator.Synchronize();
+    private static void InverseDevice(Accelerator accelerator, AcceleratorStream stream, ArrayView<GpuUInt128> data, int length, GpuUInt128 modulus, SquareCacheEntry cache)
+	{
+		var bitReverseKernel = GetBitReverseKernel(accelerator);
+        bitReverseKernel(stream, length, data, cache.Bits);
 
         if (cache.UseMontgomery64)
-        {
-            var toMont = GetToMont64Kernel(accelerator);
-            toMont(length, data, cache.ModulusLow, cache.MontNPrime64, cache.MontR2Mod64);
-            accelerator.Synchronize();
+		{
+			var toMont64Kernel = GetToMont64Kernel(accelerator);
+            toMont64Kernel(stream, length, data, cache.ModulusLow, cache.MontNPrime64, cache.MontR2Mod64);
             var stageKernel = GetStageMontKernel(accelerator);
             int butterflies = length >> 1;
-            for (int s = 0; s < cache.Bits; s++)
-            {
-                int len = 1 << (s + 1);
-                int half = len >> 1;
-                stageKernel(butterflies, data, len, half, cache.StageOffsets[s], cache.TwiddlesInvMont!.View, cache.ModulusLow, cache.MontNPrime64);
-                accelerator.Synchronize();
-            }
-            var scaleKernel = GetScaleMont64Kernel(accelerator);
-            scaleKernel(length, data, cache.ModulusLow, cache.MontNPrime64, cache.MontNInvR64);
-            accelerator.Synchronize();
-            var fromMont = GetFromMont64Kernel(accelerator);
-            fromMont(length, data, cache.ModulusLow, cache.MontNPrime64);
+			for (int s = 0; s < cache.Bits; s++)
+			{
+				int len = 1 << (s + 1);
+				int half = len >> 1;
+				stageKernel(stream, butterflies, data, len, half, cache.StageOffsets[s], cache.TwiddlesInvMont!.View, cache.ModulusLow, cache.MontNPrime64);
+			}
+
+			var scaleMont64Kernel = GetScaleMont64Kernel(accelerator);
+			scaleMont64Kernel(stream, length, data, cache.ModulusLow, cache.MontNPrime64, cache.MontNInvR64);
+
+			var fromMont64Kernel = GetFromMont64Kernel(accelerator);
+            fromMont64Kernel(stream, length, data, cache.ModulusLow, cache.MontNPrime64);
         }
         else if (cache.UseBarrett128)
         {
             var stageKernel = GetStageBarrett128Kernel(accelerator);
             int butterflies = length >> 1;
-            for (int s = 0; s < cache.Bits; s++)
-            {
-                int len = 1 << (s + 1);
-                int half = len >> 1;
-                stageKernel(butterflies, data, len, half, cache.StageOffsets[s], cache.TwiddlesInv.View, cache.ModulusHigh, cache.ModulusLow, cache.BarrettMuHigh, cache.BarrettMuLow);
-                accelerator.Synchronize();
-            }
-            var scaleKernel = GetScaleBarrett128Kernel(accelerator);
-            scaleKernel(length, data, cache.NInv, cache.ModulusHigh, cache.ModulusLow, cache.BarrettMuHigh, cache.BarrettMuLow);
-            accelerator.Synchronize();
+			for (int s = 0; s < cache.Bits; s++)
+			{
+				int len = 1 << (s + 1);
+				int half = len >> 1;
+				stageKernel(stream, butterflies, data, len, half, cache.StageOffsets[s], cache.TwiddlesInv.View, cache.ModulusHigh, cache.ModulusLow, cache.BarrettMuHigh, cache.BarrettMuLow);
+			}
+
+			var scaleBarrett128Kernel = GetScaleBarrett128Kernel(accelerator);
+            scaleBarrett128Kernel(stream, length, data, cache.NInv, cache.ModulusHigh, cache.ModulusLow, cache.BarrettMuHigh, cache.BarrettMuLow);
         }
         else
         {
             var stageKernel = GetStageKernel(accelerator);
             int butterflies = length >> 1;
-            for (int s = 0; s < cache.Bits; s++)
-            {
-                int len = 1 << (s + 1);
-                int half = len >> 1;
-                stageKernel(butterflies, data, len, half, cache.StageOffsets[s], cache.TwiddlesInv.View, modulus);
-                accelerator.Synchronize();
-            }
-            var scaleKernel = GetScaleKernel(accelerator);
-            scaleKernel(length, data, cache.NInv, modulus);
-            accelerator.Synchronize();
+			for (int s = 0; s < cache.Bits; s++)
+			{
+				int len = 1 << (s + 1);
+				int half = len >> 1;
+				stageKernel(stream, butterflies, data, len, half, cache.StageOffsets[s], cache.TwiddlesInv.View, modulus);
+			}
+
+			var scaleKernel = GetScaleKernel(accelerator);
+            scaleKernel(stream, length, data, cache.NInv, modulus);
         }
 
-        accelerator.Synchronize();
+        stream.Synchronize();
     }
 
     public static void Convolve(Span<GpuUInt128> left, Span<GpuUInt128> right, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
@@ -800,7 +918,7 @@ public static class NttGpuMath
             n <<= 1;
         }
 
-        var pool = ArrayPool<GpuUInt128>.Shared;
+        var pool = ThreadStaticPools.GpuUInt128Pool;
         var aBuffer = pool.Rent(n);
         var bBuffer = pool.Rent(n);
         var a = aBuffer.AsSpan(0, n);
@@ -837,7 +955,7 @@ public static class NttGpuMath
             n <<= 1;
         }
 
-        var pool = ArrayPool<GpuUInt128>.Shared;
+        var pool = ThreadStaticPools.GpuUInt128Pool;
         var aBuffer = pool.Rent(n);
         var bBuffer = pool.Rent(n);
         var a = aBuffer.AsSpan(0, n);
@@ -871,41 +989,40 @@ public static class NttGpuMath
     public static void SquareGpu(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot) =>
         ConvolveGpu(values, values, modulus, primitiveRoot);
 
-    public static void SquareDevice(Accelerator accelerator, ArrayView<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
+    public static void SquareDevice(Accelerator accelerator, AcceleratorStream stream, ArrayView<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
-        var cache = GetSquareCache(accelerator, (int)values.Length, modulus, primitiveRoot);
-        ForwardDevice(accelerator, values, (int)values.Length, modulus, cache);
-        var mul = GetMulKernel(accelerator);
-        mul((int)values.Length, values, values, modulus);
-        InverseDevice(accelerator, values, (int)values.Length, modulus, cache);
+        var cache = GetSquareCache(accelerator, stream, (int)values.Length, modulus, primitiveRoot);
+		ForwardDevice(accelerator, stream, values, (int)values.Length, modulus, cache);
+		var mulKernel = GetMulKernel(accelerator);
+        mulKernel(stream, (int)values.Length, values, values, modulus);
+        InverseDevice(accelerator, stream, values, (int)values.Length, modulus, cache);
     }
 
     public static void PointwiseMultiply(Span<GpuUInt128> left, Span<GpuUInt128> right, GpuUInt128 modulus)
     {
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
-        var kernel = GetMulKernel(accelerator);
-        var pool = ArrayPool<GpuUInt128>.Shared;
+        var accelerator = AcceleratorPool.Shared.Rent();
+        var stream = accelerator.CreateStream();
+        var pool = ThreadStaticPools.GpuUInt128Pool;
         var leftArray = pool.Rent(left.Length);
         var rightArray = pool.Rent(right.Length);
         left.CopyTo(leftArray);
         right.CopyTo(rightArray);
         var leftBuffer = accelerator.Allocate1D<GpuUInt128>(left.Length);
         var rightBuffer = accelerator.Allocate1D<GpuUInt128>(right.Length);
-        leftBuffer.View.CopyFromCPU(ref leftArray[0], left.Length);
-        rightBuffer.View.CopyFromCPU(ref rightArray[0], right.Length);
-        kernel(left.Length, leftBuffer.View, rightBuffer.View, modulus);
-        accelerator.Synchronize();
-        leftBuffer.View.CopyToCPU(ref leftArray[0], left.Length);
-        rightBuffer.View.CopyToCPU(ref rightArray[0], right.Length);
+        leftBuffer.View.CopyFromCPU(stream, ref leftArray[0], left.Length);
+		rightBuffer.View.CopyFromCPU(stream, ref rightArray[0], right.Length);
+		var mulKernel = GetMulKernel(accelerator);
+        mulKernel(stream, left.Length, leftBuffer.View, rightBuffer.View, modulus);
+        leftBuffer.View.CopyToCPU(stream, ref leftArray[0], left.Length);
+        rightBuffer.View.CopyToCPU(stream, ref rightArray[0], right.Length);
+        stream.Synchronize();
         leftArray.AsSpan(0, left.Length).CopyTo(left);
         rightArray.AsSpan(0, right.Length).CopyTo(right);
         pool.Return(leftArray, clearArray: true);
         pool.Return(rightArray, clearArray: true);
         rightBuffer.Dispose();
         leftBuffer.Dispose();
-        gpu.Dispose();
-
+        stream.Dispose();
     }
 
     private static ulong[] GenerateSmallPrimes(int limit)

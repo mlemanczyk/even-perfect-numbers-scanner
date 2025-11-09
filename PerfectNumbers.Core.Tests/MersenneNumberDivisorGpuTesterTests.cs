@@ -317,7 +317,6 @@ public class MersenneNumberDivisorGpuTesterTests
             tableField.SetValue(cycles, originalTable);
             smallCyclesField.SetValue(cycles, originalSmall);
             DivisorCycleCache.Shared.RefreshSnapshot();
-            GpuContextPool.DisposeAll();
         }
     }
 

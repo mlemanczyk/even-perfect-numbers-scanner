@@ -16,32 +16,34 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
     {
         throw new NotImplementedException($"GPU incremental scanning requires the device cycle heuristics implementation (kernel: {_kernelType}, GPU order: {_useGpuOrder}).");
 
-        var gpuLease = GpuKernelPool.GetKernel(_useGpuOrder);
-        var accelerator = gpuLease.Accelerator;
-        var stream = gpuLease.Stream;
+        GpuPrimeWorkLimiter.Acquire();
+        var accelerator = AcceleratorPool.Shared.Rent();
+        var stream = accelerator.CreateStream();
         int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy
         UInt128 kStart = 1UL;
         ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
         byte last = lastDigit == LastDigit.Seven ? (byte)1 : (byte)0; // ILGPU kernels do not support bool parameters
 
-        var pow2Kernel = gpuLease.Pow2ModKernel;
-        var incKernel = gpuLease.IncrementalKernel;
+		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
+		var pow2Kernel = kernels.Pow2Mod!;
+        var incKernel = kernels.Incremental!;
         ulong step10 = (exponent.Mod10() << 1).Mod10();
         ulong step8 = ((exponent & 7UL) << 1) & 7UL;
         ulong step3 = ((exponent % 3UL) << 1) % 3UL;
         ulong step5 = ((exponent % 5UL) << 1) % 5UL;
         GpuUInt128 twoPGpu = (GpuUInt128)twoP;
-        var smallCyclesView = GpuKernelPool.EnsureSmallCyclesOnDevice(accelerator);
+        var smallCyclesView = GpuKernelPool.GetSmallCyclesOnDevice(kernels);
         ResiduePrimeViews primeViews = default;
         if (_kernelType == GpuKernelType.Pow2Mod)
         {
-            primeViews = GpuKernelPool.EnsureSmallPrimesOnDevice(accelerator);
+            primeViews = GpuKernelPool.GetSmallPrimesOnDevice(kernels);
         }
 
         var orderBuffer = accelerator.Allocate1D<ulong>(batchSize);
-        // Avoid giant stack allocations that can trigger StackOverflow when batchSize is large.
-        // Rent a reusable array from the shared pool instead.
-        ulong[] orderArray = ArrayPool<ulong>.Shared.Rent(batchSize);
+		// Avoid giant stack allocations that can trigger StackOverflow when batchSize is large.
+		// Rent a reusable array from the shared pool instead.
+		ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
+		ulong[] orderArray = ulongPool.Rent(batchSize);
         UInt128 remaining;
         int currentSize;
         int i;
@@ -92,8 +94,8 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
                     smallCyclesView);
             }
 
+            orderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(orders), currentSize);
             stream.Synchronize();
-            orderBuffer.View.CopyToCPU(ref MemoryMarshal.GetReference(orders), currentSize);
             if (_kernelType == GpuKernelType.Pow2Mod)
             {
                 for (i = 0; i < currentSize; i++)
@@ -120,8 +122,9 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
             kStart += (UInt128)currentSize;
         }
 
-        ArrayPool<ulong>.Shared.Return(orderArray);
-        orderBuffer.Dispose();
-        gpuLease.Dispose();
+		stream.Dispose();
+        ulongPool.Return(orderArray);
+		orderBuffer.Dispose();
+        GpuPrimeWorkLimiter.Release();
     }
 }

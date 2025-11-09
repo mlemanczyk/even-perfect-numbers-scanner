@@ -1,303 +1,232 @@
-using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
-using static PerfectNumbers.Core.Gpu.GpuContextPool;
 
 namespace PerfectNumbers.Core.Gpu;
 
-public readonly struct ResidueAutomatonArgs
-{
-    public readonly ulong Q0M10;
-    public readonly ulong Step10;
-    public readonly ulong Q0M8;
-    public readonly ulong Step8;
-    public readonly ulong Q0M3;
-    public readonly ulong Step3;
-    public readonly ulong Q0M5;
-    public readonly ulong Step5;
-
-    public ResidueAutomatonArgs(ulong q0m10, ulong step10, ulong q0m8, ulong step8, ulong q0m3, ulong step3, ulong q0m5, ulong step5)
-    {
-        Q0M10 = q0m10; Step10 = step10; Q0M8 = q0m8; Step8 = step8; Q0M3 = q0m3; Step3 = step3; Q0M5 = q0m5; Step5 = step5;
-    }
-}
-
-public sealed class KernelContainer
-{
-    // Serializes first-time initialization of kernels/buffers per accelerator.
-    public Action<AcceleratorStream, Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>? Order;
-    public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
-    ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>>? Incremental;
-    public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
-        ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>,
-        ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>,
-        ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2Mod;
-    public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
-            ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>? IncrementalOrder;
-    public Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong,
-        ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2ModOrder;
-    public Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>? SmallPrimeFactor;
-
-    // Optional device buffer with small divisor cycles (<= 4M). Index = divisor, value = cycle length.
-    public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallCycles;
-    public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimeFactorsPrimes;
-    public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimeFactorsSquares;
-    public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimeFactorPrimeSlots;
-    public MemoryBuffer1D<int, Stride1D.Dense>? SmallPrimeFactorExponentSlots;
-    public MemoryBuffer1D<int, Stride1D.Dense>? SmallPrimeFactorCountSlot;
-    public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimeFactorRemainingSlot;
-    public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastOne;
-    public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimesPow2LastOne;
-    public MemoryBuffer1D<uint, Stride1D.Dense>? SmallPrimesLastSeven;
-    public MemoryBuffer1D<ulong, Stride1D.Dense>? SmallPrimesPow2LastSeven;
-
-    public static T InitOnce<T>(ref T? slot, Func<T> factory) where T : class
-    {
-        var current = Volatile.Read(ref slot);
-        if (current is not null)
-        {
-            return current;
-        }
-
-        current = Volatile.Read(ref slot);
-        if (current is null)
-        {
-            current = factory();
-            Volatile.Write(ref slot, current);
-        }
-        return current;
-    }
-}
-
-public readonly struct ResiduePrimeViews(
-    ArrayView1D<uint, Stride1D.Dense> lastOne,
-    ArrayView1D<uint, Stride1D.Dense> lastSeven,
-    ArrayView1D<ulong, Stride1D.Dense> lastOnePow2,
-    ArrayView1D<ulong, Stride1D.Dense> lastSevenPow2)
-{
-    public readonly ArrayView1D<uint, Stride1D.Dense> LastOne = lastOne;
-    public readonly ArrayView1D<uint, Stride1D.Dense> LastSeven = lastSeven;
-    public readonly ArrayView1D<ulong, Stride1D.Dense> LastOnePow2 = lastOnePow2;
-    public readonly ArrayView1D<ulong, Stride1D.Dense> LastSevenPow2 = lastSevenPow2;
-}
-
-public readonly struct SmallPrimeFactorTables
-{
-    public readonly MemoryBuffer1D<uint, Stride1D.Dense> Primes;
-    public readonly MemoryBuffer1D<ulong, Stride1D.Dense> Squares;
-    public readonly int Count;
-
-    public SmallPrimeFactorTables(
-        MemoryBuffer1D<uint, Stride1D.Dense> primes,
-        MemoryBuffer1D<ulong, Stride1D.Dense> squares,
-        int count)
-    {
-        Primes = primes;
-        Squares = squares;
-        Count = count;
-    }
-
-    public ArrayView1D<uint, Stride1D.Dense> PrimesView => Primes.View;
-    public ArrayView1D<ulong, Stride1D.Dense> SquaresView => Squares.View;
-}
-
-public readonly struct SmallPrimeFactorScratch
-{
-    public readonly MemoryBuffer1D<ulong, Stride1D.Dense> PrimeSlots;
-    public readonly MemoryBuffer1D<int, Stride1D.Dense> ExponentSlots;
-    public readonly MemoryBuffer1D<int, Stride1D.Dense> CountSlot;
-    public readonly MemoryBuffer1D<ulong, Stride1D.Dense> RemainingSlot;
-
-    public SmallPrimeFactorScratch(
-        MemoryBuffer1D<ulong, Stride1D.Dense> primeSlots,
-        MemoryBuffer1D<int, Stride1D.Dense> exponentSlots,
-        MemoryBuffer1D<int, Stride1D.Dense> countSlot,
-        MemoryBuffer1D<ulong, Stride1D.Dense> remainingSlot)
-    {
-        PrimeSlots = primeSlots;
-        ExponentSlots = exponentSlots;
-        CountSlot = countSlot;
-        RemainingSlot = remainingSlot;
-    }
-
-    public void Clear()
-    {
-        PrimeSlots.MemSetToZero();
-        ExponentSlots.MemSetToZero();
-        CountSlot.MemSetToZero();
-        RemainingSlot.MemSetToZero();
-    }
-}
-
 public class GpuKernelPool
 {
-    private static readonly ConcurrentDictionary<Accelerator, KernelContainer> KernelCache = new(); // TODO: Replace this concurrent map with a simple accelerator-indexed lookup once kernel launchers are prewarmed during startup so we can drop the thread-safe wrapper entirely.
+	[ThreadStatic]
+	private static Dictionary<Accelerator, KernelContainer>? _pool;
 
-    private static KernelContainer GetKernels(Accelerator accelerator)
-    {
-        return KernelCache.GetOrAdd(accelerator, _ => new KernelContainer());
-    }
+	public static T InitOnce<T>(ref T? target, Func<T> valueFactory) where T : class
+	{
+		if (target is { } value)
+		{
+			return value;
+		}
 
-    // Ensures the small cycles table is uploaded to the device for the given accelerator.
-    // Returns the ArrayView to pass into kernels (when kernels are extended to accept it).
-    public static ArrayView1D<ulong, Stride1D.Dense> EnsureSmallCyclesOnDevice(Accelerator accelerator)
-    {
-        var kernels = GetKernels(accelerator);
-        if (kernels.SmallCycles is { } buffer)
-        {
-            return buffer.View;
-        }
+		var newValue = valueFactory();
+		return Interlocked.CompareExchange(ref target, newValue, null) ?? newValue;
+	}
 
-        // Ensure single upload per accelerator even if multiple threads race here.
-        lock (kernels) // TODO: Remove this lock by pre-uploading the immutable small-cycle snapshot during initialization; once no mutation happens at runtime, the pool must expose a simple reference without synchronization.
-        {
-            if (kernels.SmallCycles is { } existing)
-            {
-                return existing.View;
-            }
+	internal static KernelContainer GetOrAddKernels(Accelerator accelerator, AcceleratorStream stream)
+	{
+		var pool = _pool ??= [];
+		if (pool.TryGetValue(accelerator, out var kernelContainer))
+		{
+			return kernelContainer;
+		}
 
-            var host = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot(); // TODO: Preload this device buffer during startup and keep it immutable so we can delete the lock above in favor of the preloaded snapshot.
-            var device = accelerator.Allocate1D<ulong>(host.Length);
-            device.View.CopyFromCPU(host);
-            kernels.SmallCycles = device;
-            return device.View;
-        }
-    }
+		var kernels = new KernelContainer();
 
-    public static ResiduePrimeViews EnsureSmallPrimesOnDevice(Accelerator accelerator)
-    {
-        var kernels = GetKernels(accelerator);
-        if (kernels.SmallPrimesLastOne is { } lastOne &&
-            kernels.SmallPrimesLastSeven is { } lastSeven &&
-            kernels.SmallPrimesPow2LastOne is { } lastOnePow2 &&
-            kernels.SmallPrimesPow2LastSeven is { } lastSevenPow2)
-        {
-            return new ResiduePrimeViews(lastOne.View, lastSeven.View, lastOnePow2.View, lastSevenPow2.View);
-        }
+		InitOnce(ref kernels.Order, () =>
+		{
+			var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>(OrderKernels.OrderKernelScan);
 
-        lock (kernels) // TODO: Inline these small-prime uploads into startup initialization alongside the small-cycle snapshot so we can drop runtime locking and keep the GPU pool free of synchronization.
-        {
-            if (kernels.SmallPrimesLastOne is { } existingLastOne &&
-                kernels.SmallPrimesLastSeven is { } existingLastSeven &&
-                kernels.SmallPrimesPow2LastOne is { } existingLastOnePow2 &&
-                kernels.SmallPrimesPow2LastSeven is { } existingLastSevenPow2)
-            {
-                return new ResiduePrimeViews(existingLastOne.View, existingLastSeven.View, existingLastOnePow2.View, existingLastSevenPow2.View);
-            }
+			var kernel = KernelUtil.GetKernel(loaded);
 
-            var hostLastOne = PrimesGenerator.SmallPrimesLastOne;
-            var hostLastSeven = PrimesGenerator.SmallPrimesLastSeven;
-            var hostLastOnePow2 = PrimesGenerator.SmallPrimesPow2LastOne;
-            var hostLastSevenPow2 = PrimesGenerator.SmallPrimesPow2LastSeven;
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ulong, ArrayView<GpuUInt128>, ArrayView<ulong>>>();
+		});
 
-            var deviceLastOne = accelerator.Allocate1D<uint>(hostLastOne.Length);
-            deviceLastOne.View.CopyFromCPU(hostLastOne);
-            var deviceLastSeven = accelerator.Allocate1D<uint>(hostLastSeven.Length);
-            deviceLastSeven.View.CopyFromCPU(hostLastSeven);
-            var deviceLastOnePow2 = accelerator.Allocate1D<ulong>(hostLastOnePow2.Length);
-            deviceLastOnePow2.View.CopyFromCPU(hostLastOnePow2);
-            var deviceLastSevenPow2 = accelerator.Allocate1D<ulong>(hostLastSevenPow2.Length);
-            deviceLastSevenPow2.View.CopyFromCPU(hostLastSevenPow2);
+		InitOnce(ref kernels.Pow2Mod, () =>
+		{
+			var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernels.Pow2ModKernelScan);
 
-            kernels.SmallPrimesLastOne = deviceLastOne;
-            kernels.SmallPrimesLastSeven = deviceLastSeven;
-            kernels.SmallPrimesPow2LastOne = deviceLastOnePow2;
-            kernels.SmallPrimesPow2LastSeven = deviceLastSevenPow2;
+			var kernel = KernelUtil.GetKernel(loaded);
 
-            return new ResiduePrimeViews(deviceLastOne.View, deviceLastSeven.View, deviceLastOnePow2.View, deviceLastSevenPow2.View);
-        }
-    }
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		});
 
-    public static SmallPrimeFactorTables EnsureSmallPrimeFactorTables(Accelerator accelerator)
-    {
-        var kernels = GetKernels(accelerator);
-        if (kernels.SmallPrimeFactorsPrimes is { } primeBuffer && kernels.SmallPrimeFactorsSquares is { } squareBuffer)
-        {
-            return new SmallPrimeFactorTables(primeBuffer, squareBuffer, (int)primeBuffer.Length);
-        }
+		InitOnce(ref kernels.Incremental, () =>
+		{
+			var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>>(IncrementalKernels.IncrementalKernelScan);
 
-        lock (kernels)
-        {
-            if (kernels.SmallPrimeFactorsPrimes is { } existingPrimes && kernels.SmallPrimeFactorsSquares is { } existingSquares)
-            {
-                return new SmallPrimeFactorTables(existingPrimes, existingSquares, (int)existingPrimes.Length);
-            }
+			var kernel = KernelUtil.GetKernel(loaded);
 
-            var hostPrimes = PrimesGenerator.SmallPrimes;
-            var hostSquares = PrimesGenerator.SmallPrimesPow2;
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ulong, ulong, ulong, ulong, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		});
 
-            var devicePrimes = accelerator.Allocate1D<uint>(hostPrimes.Length);
-            devicePrimes.View.CopyFromCPU(hostPrimes);
-            var deviceSquares = accelerator.Allocate1D<ulong>(hostSquares.Length);
-            deviceSquares.View.CopyFromCPU(hostSquares);
+		InitOnce(ref kernels.IncrementalOrder, () =>
+		{
+			var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>(IncrementalKernels.IncrementalOrderKernelScan);
 
-            kernels.SmallPrimeFactorsPrimes = devicePrimes;
-            kernels.SmallPrimeFactorsSquares = deviceSquares;
+			var kernel = KernelUtil.GetKernel(loaded);
 
-            return new SmallPrimeFactorTables(devicePrimes, deviceSquares, hostPrimes.Length);
-        }
-    }
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, 
+			ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		});
 
-    public static SmallPrimeFactorScratch EnsureSmallPrimeFactorScratch(Accelerator accelerator, int slotCount)
-    {
-        var kernels = GetKernels(accelerator);
-        lock (kernels)
-        {
-            MemoryBuffer1D<ulong, Stride1D.Dense>? primeSlots = kernels.SmallPrimeFactorPrimeSlots;
-            if (primeSlots is null || primeSlots.Length < slotCount)
-            {
-                primeSlots?.Dispose();
-                primeSlots = accelerator.Allocate1D<ulong>(slotCount);
-                kernels.SmallPrimeFactorPrimeSlots = primeSlots;
-            }
+		InitOnce(ref kernels.Pow2ModOrder, () =>
+		{
+			var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernels.Pow2ModOrderKernelScan);
 
-            MemoryBuffer1D<int, Stride1D.Dense>? exponentSlots = kernels.SmallPrimeFactorExponentSlots;
-            if (exponentSlots is null || exponentSlots.Length < slotCount)
-            {
-                exponentSlots?.Dispose();
-                exponentSlots = accelerator.Allocate1D<int>(slotCount);
-                kernels.SmallPrimeFactorExponentSlots = exponentSlots;
-            }
+			var kernel = KernelUtil.GetKernel(loaded);
 
-            MemoryBuffer1D<int, Stride1D.Dense>? countSlot = kernels.SmallPrimeFactorCountSlot;
-            if (countSlot is null)
-            {
-                countSlot = accelerator.Allocate1D<int>(1);
-                kernels.SmallPrimeFactorCountSlot = countSlot;
-            }
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		});
 
-            MemoryBuffer1D<ulong, Stride1D.Dense>? remainingSlot = kernels.SmallPrimeFactorRemainingSlot;
-            if (remainingSlot is null)
-            {
-                remainingSlot = accelerator.Allocate1D<ulong>(1);
-                kernels.SmallPrimeFactorRemainingSlot = remainingSlot;
-            }
+		InitOnce(ref kernels.SpecialMax, () =>
+		{
+			var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderGpuHeuristics.EvaluateSpecialMaxCandidatesKernel);
 
-            return new SmallPrimeFactorScratch(primeSlots!, exponentSlots!, countSlot!, remainingSlot!);
-        }
-    }
+			var kernel = KernelUtil.GetKernel(loaded);
 
-    public static GpuKernelLease GetKernel(bool useGpuOrder)
-    {
-        var limiter = GpuPrimeWorkLimiter.Acquire();
-        var gpu = Rent();
-        var accelerator = gpu.Accelerator;
-        var kernels = GetKernels(accelerator);
-        return GpuKernelLease.Rent(limiter, gpu, kernels);
-    }
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		});
+		
+		InitOnce(ref kernels.SmallPrimeFactor, () =>
+		{
+			var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(SmallPrimeFactorKernels.SmallPrimeFactorKernelScan);
 
-    /// <summary>
-    /// Runs a GPU action with an acquired accelerator and stream.
-    /// </summary>
-    /// <param name="action">Action to run with (Accelerator, Stream).</param>
-    public static void Run(Action<Accelerator, AcceleratorStream> action)
-    {
-        var lease = GetKernel(useGpuOrder: true);
-        var accelerator = lease.Accelerator;
-        var stream = accelerator.CreateStream();
-        action(accelerator, stream);
-        stream.Dispose();
-        lease.Dispose();
+			var kernel = KernelUtil.GetKernel(loaded);
+			
+			return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		});
+			
+		PreloadStaticTables(accelerator, kernels, stream);
 
-    }
+		pool[accelerator] = kernels;
+		return kernels;
+	}
+
+	internal static void PreloadStaticTables(Accelerator accelerator, KernelContainer kernels, AcceleratorStream stream)
+	{
+		EnsureSmallCyclesOnDevice(accelerator, kernels, stream);
+		EnsureSmallPrimesOnDevice(accelerator, kernels, stream);
+		EnsureSmallPrimeFactorTables(accelerator, kernels, stream);
+	}
+
+	public static ArrayView1D<ulong, Stride1D.Dense> GetSmallCyclesOnDevice(KernelContainer kernels) => kernels.SmallCycles!;
+
+	// Ensures the small cycles table is uploaded to the device for the given accelerator.
+	// Returns the ArrayView to pass into kernels (when kernels are extended to accept it).
+	private static void EnsureSmallCyclesOnDevice(Accelerator accelerator, KernelContainer kernels, AcceleratorStream stream)
+	{
+		if (kernels.SmallCycles is { })
+		{
+			return;
+		}
+
+		var host = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
+		MemoryBuffer1D<ulong, Stride1D.Dense>? device;
+
+		// lock (accelerator)
+		{
+			device = accelerator.Allocate1D<ulong>(host.Length);
+		}
+
+		device.View.CopyFromCPU(stream, host);
+		kernels.SmallCycles = device;
+	}
+
+	public static ResiduePrimeViews GetSmallPrimesOnDevice(KernelContainer kernels) => new(
+		kernels.SmallPrimesLastOne!,
+		kernels.SmallPrimesLastSeven!,
+		kernels.SmallPrimesPow2LastOne!,
+		kernels.SmallPrimesPow2LastSeven!
+	);
+
+	private static void EnsureSmallPrimesOnDevice(Accelerator accelerator, KernelContainer kernels, AcceleratorStream stream)
+	{
+		if (kernels.SmallPrimesLastOne is { } &&
+			kernels.SmallPrimesLastSeven is { } &&
+			kernels.SmallPrimesPow2LastOne is { } &&
+			kernels.SmallPrimesPow2LastSeven is { })
+		{
+			return;
+		}
+
+		if (kernels.SmallPrimesLastOne is { } &&
+			kernels.SmallPrimesLastSeven is { } &&
+			kernels.SmallPrimesPow2LastOne is { } &&
+			kernels.SmallPrimesPow2LastSeven is { })
+		{
+			return;
+		}
+
+		var hostLastOne = PrimesGenerator.SmallPrimesLastOne;
+		var hostLastSeven = PrimesGenerator.SmallPrimesLastSeven;
+		var hostLastOnePow2 = PrimesGenerator.SmallPrimesPow2LastOne;
+		var hostLastSevenPow2 = PrimesGenerator.SmallPrimesPow2LastSeven;
+
+		MemoryBuffer1D<uint, Stride1D.Dense>? deviceLastOne;
+		MemoryBuffer1D<uint, Stride1D.Dense>? deviceLastSeven;
+		MemoryBuffer1D<ulong, Stride1D.Dense>? deviceLastOnePow2;
+		MemoryBuffer1D<ulong, Stride1D.Dense>? deviceLastSevenPow2;
+
+		// lock (accelerator)
+		// {
+			deviceLastOne = accelerator.Allocate1D<uint>(hostLastOne.Length);
+			deviceLastSeven = accelerator.Allocate1D<uint>(hostLastSeven.Length);
+			deviceLastOnePow2 = accelerator.Allocate1D<ulong>(hostLastOnePow2.Length);
+			deviceLastSevenPow2 = accelerator.Allocate1D<ulong>(hostLastSevenPow2.Length);
+		// }
+		
+		deviceLastOne.View.CopyFromCPU(stream, hostLastOne);
+		deviceLastSeven.View.CopyFromCPU(stream, hostLastSeven);
+		deviceLastOnePow2.View.CopyFromCPU(stream, hostLastOnePow2);
+		deviceLastSevenPow2.View.CopyFromCPU(stream, hostLastSevenPow2);
+		kernels.SmallPrimesLastOne = deviceLastOne;
+		kernels.SmallPrimesLastSeven = deviceLastSeven;
+		kernels.SmallPrimesPow2LastOne = deviceLastOnePow2;
+		kernels.SmallPrimesPow2LastSeven = deviceLastSevenPow2;
+	}
+
+	public static SmallPrimeFactorViews GetSmallPrimeFactorTables(KernelContainer kernels) => new(
+		kernels.SmallPrimeFactorsPrimes!,
+		kernels.SmallPrimeFactorsSquares!
+	);
+	
+	private static void EnsureSmallPrimeFactorTables(Accelerator accelerator, KernelContainer kernels, AcceleratorStream stream)
+	{
+		if (kernels.SmallPrimeFactorsPrimes is { } && kernels.SmallPrimeFactorsSquares is { })
+		{
+			return;
+		}
+
+		var hostPrimes = PrimesGenerator.SmallPrimes;
+		var hostSquares = PrimesGenerator.SmallPrimesPow2;
+
+		int length = hostPrimes.Length;
+		MemoryBuffer1D<uint, Stride1D.Dense>? devicePrimes;
+		MemoryBuffer1D<ulong, Stride1D.Dense>? deviceSquares;
+
+		// lock (accelerator)
+		{
+			devicePrimes = accelerator.Allocate1D<uint>(length);
+			deviceSquares = accelerator.Allocate1D<ulong>(length);
+		}
+		
+		devicePrimes.View.CopyFromCPU(stream, hostPrimes);
+		deviceSquares.View.CopyFromCPU(stream, hostSquares);
+
+		kernels.SmallPrimeFactorsPrimes = devicePrimes;
+		kernels.SmallPrimeFactorsSquares = deviceSquares;
+	}
+
+	/// <summary>
+	/// Runs a GPU action with an acquired accelerator and stream.
+	/// </summary>
+	/// <param name="action">Action to run with (Accelerator, Stream).</param>
+	public static void Run(Action<Accelerator, AcceleratorStream> action)
+	{
+		GpuPrimeWorkLimiter.Acquire();
+		var accelerator = SharedGpuContext.CreateAccelerator();
+		var stream = accelerator.CreateStream();
+		action(accelerator, stream);
+		stream.Synchronize();
+		stream.Dispose();
+		accelerator.Dispose();
+		GpuPrimeWorkLimiter.Release();
+	}
 }

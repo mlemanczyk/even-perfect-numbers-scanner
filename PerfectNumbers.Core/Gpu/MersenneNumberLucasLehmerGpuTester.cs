@@ -8,32 +8,125 @@ namespace PerfectNumbers.Core.Gpu;
 
 public class MersenneNumberLucasLehmerGpuTester
 {
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, GpuUInt128, ArrayView<GpuUInt128>>> KernelCache = new();
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<GpuUInt128>>> AddSmallKernelCache = new();
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<GpuUInt128>>> SubSmallKernelCache = new();
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ulong, ArrayView<GpuUInt128>>> ReduceKernelCache = new();
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<GpuUInt128>, ArrayView<byte>>> IsZeroKernelCache = new();
-    private readonly ConcurrentDictionary<Accelerator, Action<Index1D, ArrayView<ulong>, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>>> BatchKernelCache = new();
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ulong, GpuUInt128, ArrayView<GpuUInt128>>>? _lucasLehmerKernel;
 
-    private Action<Index1D, ulong, GpuUInt128, ArrayView<GpuUInt128>> GetKernel(Accelerator accelerator)
-    {
-        return KernelCache.GetOrAdd(accelerator, accel => accel.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, ArrayView<GpuUInt128>>(LucasLehmerKernels.Kernel));
-    }
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ulong, ArrayView<GpuUInt128>>>? _addSmallKernel;
 
-    private Action<Index1D, ulong, ArrayView<GpuUInt128>> GetAddSmallKernel(Accelerator accelerator) =>
-        AddSmallKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<GpuUInt128>>(LucasLehmerKernels.AddSmallKernel));
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ulong, ArrayView<GpuUInt128>>>? _subSmallKernel;
+	
+	[ThreadStatic]
+	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ulong, ArrayView<GpuUInt128>>>? _reduceKernel;
 
-    private Action<Index1D, ulong, ArrayView<GpuUInt128>> GetSubSmallKernel(Accelerator accelerator) =>
-        SubSmallKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<GpuUInt128>>(LucasLehmerKernels.SubtractSmallKernel));
+	[ThreadStatic]
+    private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ArrayView<byte>>>? _isZeroKernel;
 
-    private Action<Index1D, ulong, ArrayView<GpuUInt128>> GetReduceKernel(Accelerator accelerator) =>
-        ReduceKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<GpuUInt128>>(LucasLehmerKernels.ReduceModMersenneKernel));
+	[ThreadStatic]
+    private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>>>? _lucasLehmerBatchKernel;
 
-    private Action<Index1D, ArrayView<GpuUInt128>, ArrayView<byte>> GetIsZeroKernel(Accelerator accelerator) =>
-        IsZeroKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<byte>>(LucasLehmerKernels.IsZeroKernel));
+    private static Action<AcceleratorStream, Index1D, ulong, GpuUInt128, ArrayView<GpuUInt128>> GetLucasLehmerKernel(Accelerator accelerator)
+	{
+		var pool = _lucasLehmerKernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
 
-    private Action<Index1D, ArrayView<ulong>, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>> GetBatchKernel(Accelerator accelerator) =>
-        BatchKernelCache.GetOrAdd(accelerator, acc => acc.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>>(LucasLehmerKernels.KernelBatch));
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, ArrayView<GpuUInt128>>(LucasLehmerKernels.Kernel);
+
+		var kernel = KernelUtil.GetKernel(loaded);
+
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, ArrayView<GpuUInt128>>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
+
+	private static Action<AcceleratorStream, Index1D, ulong, ArrayView<GpuUInt128>> GetAddSmallKernel(Accelerator accelerator)
+	{
+		var pool = _addSmallKernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
+
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<GpuUInt128>>(LucasLehmerKernels.AddSmallKernel);
+
+		var kernel = KernelUtil.GetKernel(loaded);
+
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView<GpuUInt128>>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
+
+	private static Action<AcceleratorStream, Index1D, ulong, ArrayView<GpuUInt128>> GetSubSmallKernel(Accelerator accelerator)
+	{
+		var pool = _subSmallKernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
+
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<GpuUInt128>>(LucasLehmerKernels.SubtractSmallKernel);
+
+		var kernel = KernelUtil.GetKernel(loaded);
+
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView<GpuUInt128>>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
+
+	private static Action<AcceleratorStream, Index1D, ulong, ArrayView<GpuUInt128>> GetReduceKernel(Accelerator accelerator)
+	{
+		var pool = _reduceKernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
+
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<GpuUInt128>>(LucasLehmerKernels.ReduceModMersenneKernel);
+
+		var kernel = KernelUtil.GetKernel(loaded);
+
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView<GpuUInt128>>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
+
+	private static Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ArrayView<byte>> GetIsZeroKernel(Accelerator accelerator)
+	{
+		var pool = _isZeroKernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
+
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuUInt128>, ArrayView<byte>>(LucasLehmerKernels.IsZeroKernel);
+
+		var kernel = KernelUtil.GetKernel(loaded);
+
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuUInt128>, ArrayView<byte>>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
+
+	private static Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>> GetLucasLehmerBatchKernel(Accelerator accelerator)
+	{
+		var pool = _lucasLehmerBatchKernel ??= [];
+		if (pool.TryGetValue(accelerator, out var cached))
+		{
+			return cached;
+		}
+		
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>>(LucasLehmerKernels.KernelBatch);
+
+		var kernel = KernelUtil.GetKernel(loaded);
+
+		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<GpuUInt128>, ArrayView<GpuUInt128>>>();
+		pool[accelerator] = cached;
+		return cached;
+	}
 
     // Configurable LL slice size to keep kernels short. Default 32.
     public int SliceSize = 32;
@@ -54,13 +147,13 @@ public class MersenneNumberLucasLehmerGpuTester
             return false;
         }
 
-        var limiter = GpuPrimeWorkLimiter.Acquire();
+        GpuPrimeWorkLimiter.Acquire();
         bool result;
         if (exponent >= 128UL)
         {
             if (!TryGetNttParameters(exponent, out var nttMod, out var primitiveRoot))
             {
-                limiter.Dispose();
+				GpuPrimeWorkLimiter.Release();
                 throw new NotSupportedException("NTT parameters for the given exponent are not available.");
             }
 
@@ -68,19 +161,20 @@ public class MersenneNumberLucasLehmerGpuTester
         }
         else
         {
-            var gpu = GpuContextPool.Rent();
-            var accelerator = gpu.Accelerator;
-            var kernel = GetKernel(accelerator);
+            var accelerator = AcceleratorPool.Shared.Rent();
+            var stream = accelerator.CreateStream();
             var modulus = new GpuUInt128(((UInt128)1 << (int)exponent) - 1UL); // TODO: Cache these Mersenne moduli per exponent so LL GPU runs skip rebuilding them every launch.
-            var buffer = accelerator.Allocate1D<GpuUInt128>(1);
-            kernel(1, exponent, modulus, buffer.View);
-            accelerator.Synchronize();
+			var buffer = accelerator.Allocate1D<GpuUInt128>(1);
+			var lucasLehmerKernel = GetLucasLehmerKernel(accelerator);
+            lucasLehmerKernel(stream, 1, exponent, modulus, buffer.View);
+			stream.Synchronize();
+			// TODO: Replace this with .CopyToCPU with pre-allocated buffer using stream. Synchronize on the stream after copy.
             result = buffer.GetAsArray1D()[0].IsZero;
             buffer.Dispose();
-            gpu.Dispose();
+            stream.Dispose();
         }
 
-        limiter.Dispose();
+		GpuPrimeWorkLimiter.Release();
         return result;
     }
 
@@ -100,16 +194,17 @@ public class MersenneNumberLucasLehmerGpuTester
             }
         }
 
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
-        var kernel = GetBatchKernel(accelerator);
+        var accelerator = AcceleratorPool.Shared.Rent();
+        var stream = accelerator.CreateStream();
 
         var expBuffer = accelerator.Allocate1D<ulong>(count);
-        ulong[] expArray = ArrayPool<ulong>.Shared.Rent(count);
+		ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
+		ulong[] expArray = ulongPool.Rent(count);
         exponents.CopyTo(expArray);
-        expBuffer.View.CopyFromCPU(ref expArray[0], count);
+        expBuffer.View.CopyFromCPU(stream, ref expArray[0], count);
 
-        GpuUInt128[] modulusArray = ArrayPool<GpuUInt128>.Shared.Rent(count);
+		ArrayPool<GpuUInt128> gpuUInt128Pool = ThreadStaticPools.GpuUInt128Pool;
+		GpuUInt128[] modulusArray = gpuUInt128Pool.Rent(count);
         for (int i = 0; i < count; i++)
         {
             // TODO: Replace this per-exponent shift with a small shared table (one entry per supported exponent < 128)
@@ -118,19 +213,20 @@ public class MersenneNumberLucasLehmerGpuTester
         }
 
         var modBuffer = accelerator.Allocate1D<GpuUInt128>(count);
-        modBuffer.View.CopyFromCPU(ref modulusArray[0], count);
+        modBuffer.View.CopyFromCPU(stream, ref modulusArray[0], count);
 
-        var stateBuffer = accelerator.Allocate1D<GpuUInt128>(count);
-        kernel(count, expBuffer.View, modBuffer.View, stateBuffer.View);
-        accelerator.Synchronize();
-        stateBuffer.View.CopyToCPU(ref residues[0], count);
+		var stateBuffer = accelerator.Allocate1D<GpuUInt128>(count);
+		var lucasLehmerBatchKernel = GetLucasLehmerBatchKernel(accelerator);
+        lucasLehmerBatchKernel(stream, count, expBuffer.View, modBuffer.View, stateBuffer.View);
+        stateBuffer.View.CopyToCPU(stream, ref residues[0], count);
+        stream.Synchronize();
 
         stateBuffer.Dispose();
         modBuffer.Dispose();
         expBuffer.Dispose();
-        ArrayPool<GpuUInt128>.Shared.Return(modulusArray);
-        ArrayPool<ulong>.Shared.Return(expArray);
-        gpu.Dispose();
+        gpuUInt128Pool.Return(modulusArray);
+        ulongPool.Return(expArray);
+        stream.Dispose();
     }
 
     public void IsMersennePrimeBatch(ReadOnlySpan<ulong> exponents, Span<bool> results)
@@ -141,23 +237,24 @@ public class MersenneNumberLucasLehmerGpuTester
             throw new ArgumentException("Result span too small", nameof(results));
         }
 
-        GpuUInt128[] buffer = ArrayPool<GpuUInt128>.Shared.Rent(count);
+		ArrayPool<GpuUInt128> gpuUInt128Pool = ThreadStaticPools.GpuUInt128Pool;
+		GpuUInt128[] buffer = gpuUInt128Pool.Rent(count);
         ComputeResidues(exponents, buffer.AsSpan(0, count));
         for (int i = 0; i < count; i++)
         {
             results[i] = buffer[i].IsZero;
         }
-        ArrayPool<GpuUInt128>.Shared.Return(buffer);
+        gpuUInt128Pool.Return(buffer);
     }
 
     private bool IsMersennePrimeNtt(ulong exponent, GpuUInt128 nttMod, GpuUInt128 primitiveRoot, bool runOnGpu)
     {
-        var gpu = GpuContextPool.Rent();
-        var accelerator = gpu.Accelerator;
-        var addKernel = GetAddSmallKernel(accelerator);
+        var accelerator = AcceleratorPool.Shared.Rent();
+        var stream = accelerator.CreateStream();
+
         var subKernel = GetSubSmallKernel(accelerator);
-        var reduceKernel = GetReduceKernel(accelerator);
-        var zeroKernel = GetIsZeroKernel(accelerator);
+		var reduceKernel = GetReduceKernel(accelerator);
+		var isZeroKernel = GetIsZeroKernel(accelerator);
 
         int limbCount = (int)((exponent + 127UL) / 128UL);
         int target = limbCount * 2;
@@ -167,8 +264,9 @@ public class MersenneNumberLucasLehmerGpuTester
             transformLength <<= 1;
         }
         var stateBuffer = accelerator.Allocate1D<GpuUInt128>(transformLength);
-        stateBuffer.MemSetToZero();
-        addKernel(1, 4UL, stateBuffer.View);
+		stateBuffer.MemSetToZero(stream);
+		var addSmallKernel = GetAddSmallKernel(accelerator);
+		addSmallKernel(stream, 1, 4UL, stateBuffer.View);
 
         // TODO(LL-SLICE): Slice Lucas–Lehmer iterations into short batches to
         // avoid long-running kernels and TDR. Example: process 8–64 iterations
@@ -183,27 +281,26 @@ public class MersenneNumberLucasLehmerGpuTester
             for (int s = 0; s < iter; s++)
             {
                 // Square in NTT domain with staged kernels (short runtime per kernel).
-                NttGpuMath.SquareDevice(accelerator, stateBuffer.View, nttMod, primitiveRoot);
-                subKernel(1, 2UL, stateBuffer.View);
-                reduceKernel(1, exponent, stateBuffer.View);
+                NttGpuMath.SquareDevice(accelerator, stream, stateBuffer.View, nttMod, primitiveRoot);
+                subKernel(stream, 1, 2UL, stateBuffer.View);
+                reduceKernel(stream, 1, exponent, stateBuffer.View);
             }
 
             // Synchronize between slices to yield to scheduler and avoid TDR.
-            accelerator.Synchronize();
             i += (ulong)iter;
         }
 
-        reduceKernel(1, exponent, stateBuffer.View);
-
-        var resultBuffer = accelerator.Allocate1D<byte>(1);
-        zeroKernel(1, stateBuffer.View, resultBuffer.View);
-        accelerator.Synchronize();
-        byte[] result = new byte[1];
-        resultBuffer.View.CopyToCPU(result);
+        reduceKernel(stream, 1, exponent, stateBuffer.View);
+		var resultBuffer = accelerator.Allocate1D<byte>(1);
+        isZeroKernel(stream, 1, stateBuffer.View, resultBuffer.View);
+        Span<byte> result = stackalloc byte[1];
+        resultBuffer.View.CopyToCPU(stream, result);
+		stream.Synchronize();
+		
         bool isPrime = result[0] != 0;
         resultBuffer.Dispose();
         stateBuffer.Dispose();
-        gpu.Dispose();
+        stream.Dispose();
         return isPrime;
     }
 
@@ -472,6 +569,4 @@ public class MersenneNumberLucasLehmerGpuTester
 
         return result;
     }
-
-
 }

@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Open.Numeric.Primes;
@@ -12,7 +9,6 @@ namespace EvenPerfectBitScanner.Benchmarks;
 [MemoryDiagnoser]
 public class PrimeTesterBenchmarks
 {
-    private static readonly HeuristicCombinedPrimeTester _heuristicCombinedTester = new();
     private static readonly HeuristicPrimeTester _heuristicTester = new();
     private ulong[] _candidates = [];
 
@@ -34,7 +30,7 @@ public class PrimeTesterBenchmarks
         _ = Prime.Numbers.IsPrime(_candidates[0]);
     }
 
-    [Benchmark(Baseline = true)]
+    // [Benchmark]
     public int HeuristicCpu()
     {
         HeuristicPrimeTester tester = _heuristicTester;
@@ -52,7 +48,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public int HeuristicGpu()
     {
         HeuristicPrimeTester tester = _heuristicTester;
@@ -70,7 +66,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public int HeuristicCombinedGpu()
     {
         ulong[] values = _candidates;
@@ -87,7 +83,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public int HeuristicCombinedCpu()
     {
         ulong[] values = _candidates;
@@ -104,18 +100,15 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-	private static readonly PrimeTester _nonHeuristicTester = new();
-
     [Benchmark]
     public int NonHeuristicGpu()
 	{
-		PrimeTester tester = _nonHeuristicTester;
         ulong[] values = _candidates;
         int primeCount = 0;
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (tester.IsPrimeGpu(values[i]))
+            if (PrimeTester.IsPrimeGpu(values[i]))
             {
                 primeCount++;
             }
@@ -124,7 +117,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    [Benchmark]
+    [Benchmark(Baseline = true)]
     public int NonHeuristicCpu()
     {
         ulong[] values = _candidates;
@@ -141,7 +134,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public int OpenNumericPrimes()
     {
         ulong[] values = _candidates;

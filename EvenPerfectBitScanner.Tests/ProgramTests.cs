@@ -102,13 +102,11 @@ public class ProgramTests
         var testerField = typeof(Program).GetField("_divisorTester", BindingFlags.NonPublic | BindingFlags.Static)!;
         var candidatesField = typeof(MersenneNumberDivisorGpuTester).GetField("_divisorCandidates", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
 
         testerField.SetValue(null, new MersenneNumberDivisorGpuTester());
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
         candidatesField.SetValue(null, new (ulong, uint)[] { (7UL, 3U), (23UL, 11U) });
-        forceCpuProp!.SetValue(null, true);
 
         try
         {
@@ -122,7 +120,6 @@ public class ProgramTests
             candidatesField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
-            forceCpuProp!.SetValue(null, false);
             ResetCliArguments();
         }
     }
@@ -135,13 +132,11 @@ public class ProgramTests
         var testerField = typeof(Program).GetField("_divisorTester", BindingFlags.NonPublic | BindingFlags.Static)!;
         var candidatesField = typeof(MersenneNumberDivisorGpuTester).GetField("_divisorCandidates", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
 
         testerField.SetValue(null, new MersenneNumberDivisorGpuTester());
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
         candidatesField.SetValue(null, Array.Empty<(ulong, uint)>());
-        forceCpuProp!.SetValue(null, true);
 
         try
         {
@@ -155,7 +150,6 @@ public class ProgramTests
             candidatesField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
-            forceCpuProp!.SetValue(null, false);
             ResetCliArguments();
         }
     }
@@ -168,12 +162,10 @@ public class ProgramTests
 
         var testerField = typeof(Program).GetField("_divisorTester", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
 
         testerField.SetValue(null, new MersenneNumberDivisorGpuTester());
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
-        forceCpuProp!.SetValue(null, true);
 
         try
         {
@@ -186,7 +178,6 @@ public class ProgramTests
             testerField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
-            forceCpuProp!.SetValue(null, false);
             ResetCliArguments();
         }
     }
@@ -199,12 +190,10 @@ public class ProgramTests
 
         var testerField = typeof(Program).GetField("_divisorTester", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
 
         testerField.SetValue(null, new MersenneNumberDivisorGpuTester());
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
-        forceCpuProp!.SetValue(null, false);
 
         try
         {
@@ -221,7 +210,6 @@ public class ProgramTests
             testerField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
-            forceCpuProp!.SetValue(null, false);
             ResetCliArguments();
         }
     }
@@ -233,12 +221,10 @@ public class ProgramTests
 
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
 
         mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(useIncremental: true, useResidue: true, maxK: 1_000UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
-        forceCpuProp!.SetValue(null, false);
 
         try
         {
@@ -255,7 +241,6 @@ public class ProgramTests
             mersenneField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
-            forceCpuProp!.SetValue(null, false);
             ResetCliArguments();
         }
     }
@@ -267,7 +252,6 @@ public class ProgramTests
 
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
 
         mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
             useIncremental: true,
@@ -275,7 +259,6 @@ public class ProgramTests
             maxK: 1_024UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
-        forceCpuProp!.SetValue(null, false);
 
         try
         {
@@ -292,7 +275,6 @@ public class ProgramTests
             mersenneField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
-            forceCpuProp!.SetValue(null, false);
             ResetCliArguments();
         }
     }
@@ -305,7 +287,6 @@ public class ProgramTests
 
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
 
         mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
             useIncremental: true,
@@ -313,7 +294,6 @@ public class ProgramTests
             maxK: 5_000_000UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
-        forceCpuProp!.SetValue(null, false);
 
         try
         {
@@ -330,7 +310,6 @@ public class ProgramTests
             mersenneField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
-            forceCpuProp!.SetValue(null, false);
             ResetCliArguments();
         }
     }
@@ -342,7 +321,6 @@ public class ProgramTests
 
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
 
         mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
             useIncremental: true,
@@ -350,7 +328,6 @@ public class ProgramTests
             maxK: 5_000_000UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
-        forceCpuProp!.SetValue(null, false);
 
         try
         {
@@ -367,7 +344,6 @@ public class ProgramTests
             mersenneField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
-            forceCpuProp!.SetValue(null, false);
             ResetCliArguments();
         }
     }
@@ -380,7 +356,6 @@ public class ProgramTests
 
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
 
         mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
             useIncremental: true,
@@ -390,7 +365,6 @@ public class ProgramTests
             maxK: 1_024UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, exponent, true), trackAllValues: true));
-        forceCpuProp!.SetValue(null, true);
 
         try
         {
@@ -402,7 +376,6 @@ public class ProgramTests
             mersenneField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
-            forceCpuProp!.SetValue(null, false);
             ResetCliArguments();
         }
     }
@@ -417,7 +390,6 @@ public class ProgramTests
 
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
 
         mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
             useIncremental: false,
@@ -428,7 +400,6 @@ public class ProgramTests
             maxK: configuration.ResidueMaxK), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, exponent, true), trackAllValues: true));
-        forceCpuProp!.SetValue(null, false);
 
         try
         {
@@ -440,9 +411,7 @@ public class ProgramTests
             mersenneField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
-            forceCpuProp!.SetValue(null, false);
             ResetCliArguments();
-            GpuContextPool.DisposeAll();
         }
     }
 
@@ -506,12 +475,10 @@ public class ProgramTests
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var compositeField = typeof(Program).GetField("_lastCompositeP", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var forceCpuProp = typeof(GpuContextPool).GetProperty("ForceCpu");
 
         mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(useIncremental: true, useResidue: false, maxK: 1_000UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
-        forceCpuProp!.SetValue(null, true);
 
         try
         {
@@ -532,7 +499,6 @@ public class ProgramTests
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
             compositeField.SetValue(null, false);
-            forceCpuProp!.SetValue(null, false);
             ResetCliArguments();
         }
     }

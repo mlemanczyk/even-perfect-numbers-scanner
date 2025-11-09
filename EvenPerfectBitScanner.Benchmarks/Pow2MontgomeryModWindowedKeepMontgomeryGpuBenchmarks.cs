@@ -34,7 +34,7 @@ public class Pow2MontgomeryModWindowedKeepMontgomeryGpuBenchmarks
         for (int i = 0; i < cases.Length; i++)
         {
             ref readonly Pow2MontgomeryModWindowedBenchmarkCase current = ref cases[i];
-            checksum ^= current.Exponent.Pow2MontgomeryModWindowedGpu(current.Divisor, keepMontgomery: false);
+            checksum ^= current.Exponent.Pow2MontgomeryModWindowedConvertGpu(current.Divisor);
         }
 
         return checksum;
@@ -52,7 +52,7 @@ public class Pow2MontgomeryModWindowedKeepMontgomeryGpuBenchmarks
         for (int i = 0; i < cases.Length; i++)
         {
             ref readonly Pow2MontgomeryModWindowedBenchmarkCase current = ref cases[i];
-            checksum ^= current.Exponent.Pow2MontgomeryModWindowedGpu(current.Divisor, keepMontgomery: true);
+            checksum ^= current.Exponent.Pow2MontgomeryModWindowedKeepGpu(current.Divisor);
         }
 
         return checksum;
