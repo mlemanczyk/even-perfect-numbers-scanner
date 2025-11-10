@@ -2,6 +2,7 @@ using Open.Numeric.Primes;
 using ILGPU.Runtime;
 using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Gpu;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 
@@ -77,10 +78,10 @@ public sealed class HeuristicCombinedPrimeTester
 	private static readonly ulong[] CombinedDivisorsEnding7ThreeATwoB;
 	private static readonly ulong[] CombinedDivisorsEnding9ThreeATwoB;
 
-	private static readonly ulong[] CombinedDivisorsEnding1;
-	private static readonly ulong[] CombinedDivisorsEnding3;
-	private static readonly ulong[] CombinedDivisorsEnding7;
-	private static readonly ulong[] CombinedDivisorsEnding9;
+	internal static readonly ulong[] CombinedDivisorsEnding1;
+	internal static readonly ulong[] CombinedDivisorsEnding3;
+	internal static readonly ulong[] CombinedDivisorsEnding7;
+	internal static readonly ulong[] CombinedDivisorsEnding9;
 
 	private static readonly ulong[] CombinedDivisorsEnding1TwoAOneBSquares;
 	private static readonly ulong[] CombinedDivisorsEnding3TwoAOneBSquares;
@@ -102,10 +103,10 @@ public sealed class HeuristicCombinedPrimeTester
 	private static readonly ulong[] CombinedDivisorsEnding7ThreeATwoBSquares;
 	private static readonly ulong[] CombinedDivisorsEnding9ThreeATwoBSquares;
 
-	private static readonly ulong[] CombinedDivisorsEnding1Squares;
-	private static readonly ulong[] CombinedDivisorsEnding3Squares;
-	private static readonly ulong[] CombinedDivisorsEnding7Squares;
-	private static readonly ulong[] CombinedDivisorsEnding9Squares;
+	internal static readonly ulong[] CombinedDivisorsEnding1Squares;
+	internal static readonly ulong[] CombinedDivisorsEnding3Squares;
+	internal static readonly ulong[] CombinedDivisorsEnding7Squares;
+	internal static readonly ulong[] CombinedDivisorsEnding9Squares;
 
 	private static readonly ulong[] HeuristicSmallCycleSnapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
 
@@ -223,11 +224,10 @@ public sealed class HeuristicCombinedPrimeTester
 
 	private static bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
-		GpuPrimeWorkLimiter.Acquire();
-		var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(1);
+		var gpu = HeuristicPrimeTesterAccelerator.Rent(1);
 		var accelerator = gpu.Accelerator;
 		var stream = gpu.Stream;
-		var kernel = PrimeTester.PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.GetHeuristicTrialDivisionKernel(accelerator);
+		var kernel = HeuristicPrimeTesterAccelerator.GetHeuristicTrialDivisionKernel(accelerator);
 		var flagView1D = gpu.HeuristicFlag.View;
 		var flagView = flagView1D.AsContiguous();
 
@@ -236,6 +236,10 @@ public sealed class HeuristicCombinedPrimeTester
 
 		int compositeFlag = 0;
 		flagView1D.CopyFromCPU(stream, ref compositeFlag, 1);
+		stream!.Synchronize();
+
+		GpuPrimeWorkLimiter.Acquire();
+
 		kernel(
 				stream,
 				divisorLength,
@@ -247,10 +251,10 @@ public sealed class HeuristicCombinedPrimeTester
 		flagView1D.CopyToCPU(stream, ref compositeFlag, 1);
 		stream.Synchronize();
 
-		compositeDetected = compositeFlag != 0;
-
-		gpu.Dispose();
 		GpuPrimeWorkLimiter.Release();
+
+		compositeDetected = compositeFlag != 0;
+		HeuristicPrimeTesterAccelerator.Return(gpu);
 		return compositeDetected;
 	}
 

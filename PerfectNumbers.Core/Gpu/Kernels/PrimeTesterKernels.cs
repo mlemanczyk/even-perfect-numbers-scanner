@@ -20,12 +20,10 @@ internal static class PrimeTesterKernels
     public static void SmallPrimeSieveKernel(
 		Index1D index,
 		ArrayView<ulong> numbers,
-		ArrayView<uint> smallPrimes,
 		ArrayView<uint> smallPrimesLastOne,
 		ArrayView<uint> smallPrimesLastSeven,
 		ArrayView<uint> smallPrimesLastThree,
 		ArrayView<uint> smallPrimesLastNine,
-		ArrayView<ulong> smallPrimesPow2,
 		ArrayView<ulong> smallPrimesPow2LastOne,
 		ArrayView<ulong> smallPrimesPow2LastSeven,
 		ArrayView<ulong> smallPrimesPow2LastThree,
@@ -35,8 +33,8 @@ internal static class PrimeTesterKernels
         ulong n = numbers[index];
         byte result = 1;
 
-        ArrayView<uint> primes = smallPrimes;
-        ArrayView<ulong> primeSquares = smallPrimesPow2;
+        ArrayView<uint> primes;
+        ArrayView<ulong> primeSquares;
         ulong lastDigit = n % 10UL;
         switch (lastDigit)
         {
@@ -55,7 +53,9 @@ internal static class PrimeTesterKernels
             case 9UL:
                 primes = smallPrimesLastNine;
                 primeSquares = smallPrimesPow2LastNine;
-                break;
+				break;
+			default:
+				return;
         }
 
         int length = (int)primes.Length;

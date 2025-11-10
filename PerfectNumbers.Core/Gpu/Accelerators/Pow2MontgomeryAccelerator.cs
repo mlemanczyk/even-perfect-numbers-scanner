@@ -44,8 +44,8 @@ public sealed class Pow2MontgomeryAccelerator
 	public readonly Accelerator Accelerator;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> Input;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> Output;
-	public MemoryBuffer1D<KeyValuePair<ulong, int>, Stride1D.Dense> ToTestOnDevice;
-	public Dictionary<ulong, int> ToTestOnHost = [];
+	public MemoryBuffer1D<KeyValuePair<ulong, int>, Stride1D.Dense> Pow2ModEntriesToTestOnDevice;
+	public Dictionary<ulong, int> Pow2ModEntriesToTestOnHost = [];
 	public AcceleratorStream? Stream;
 
 	public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> ConvertToStandardKernel;
@@ -55,11 +55,11 @@ public sealed class Pow2MontgomeryAccelerator
 
 	public void EnsureCapacity(int factorsCount)
 	{
-		if (factorsCount > ToTestOnDevice.Length)
+		if (factorsCount > Pow2ModEntriesToTestOnDevice.Length)
 		{
 			Accelerator accelerator = Accelerator;
-			ToTestOnDevice.Dispose();
-			ToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
+			Pow2ModEntriesToTestOnDevice.Dispose();
+			Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
 		}
 	}
 
@@ -70,7 +70,7 @@ public sealed class Pow2MontgomeryAccelerator
 
 		Input = accelerator.Allocate1D<ulong>(1);
 		Output = accelerator.Allocate1D<ulong>(1);
-		ToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
+		Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
 
 		var keepKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelKeepMontgomery);
 		var keepLauncher = KernelUtil.GetKernel(keepKernel);
@@ -91,7 +91,7 @@ public sealed class Pow2MontgomeryAccelerator
 		Input.Dispose();
 		Output.Dispose();
 		Stream?.Dispose();
-		ToTestOnDevice.Dispose();
+		Pow2ModEntriesToTestOnDevice.Dispose();
 		// Accelerator is shared with other threads
 		// Accelerator.Dispose();
 	}

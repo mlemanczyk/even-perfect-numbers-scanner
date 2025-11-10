@@ -150,7 +150,7 @@ public sealed class MersenneNumberTester(
 		GpuPrimeWorkLimiter.Acquire();
 		var accelerator = AcceleratorPool.Shared.Rent();
 		var stream = accelerator.CreateStream();
-		var orderKernel = GpuKernelPool.GetOrAddKernels(accelerator, stream).Order!;
+		var orderKernel = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.OrderKernelScan).Order!;
 
 		// Guard long-running kernels by chunking the warm-up across batches.
 		// Reuse the same ScanBatchSize knob used for scanning.

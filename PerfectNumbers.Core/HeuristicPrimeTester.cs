@@ -2,6 +2,7 @@ using Open.Numeric.Primes;
 using System.Runtime.CompilerServices;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 
@@ -241,10 +242,10 @@ public sealed class HeuristicPrimeTester
 	private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
 		GpuPrimeWorkLimiter.Acquire();
-		var gpu = PrimeTester.PrimeTesterGpuContextPool.Rent(1);
+		var gpu = HeuristicPrimeTesterAccelerator.Rent(1);
 		var accelerator = gpu.Accelerator;
 		var stream = gpu.Stream;
-		var kernel = PrimeTester.PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.GetHeuristicTrialDivisionKernel(accelerator);
+		var kernel = HeuristicPrimeTesterAccelerator.GetHeuristicTrialDivisionKernel(accelerator);
 		var flagView1D = gpu.HeuristicFlag.View;
 		var flagView = flagView1D.AsContiguous();
 
@@ -255,7 +256,7 @@ public sealed class HeuristicPrimeTester
 
 		flagView1D.CopyFromCPU(stream, ref compositeFlag, 1);
 		kernel(
-				stream,
+				stream!,
 				groupALength,
 				flagView,
 				n,
@@ -264,7 +265,7 @@ public sealed class HeuristicPrimeTester
 				gpu.HeuristicGpuTables);
 
 		flagView1D.CopyToCPU(stream, ref compositeFlag, 1);
-		stream.Synchronize();
+		stream!.Synchronize();
 
 		compositeDetected = compositeFlag != 0;
 

@@ -8,7 +8,7 @@ internal static class GpuStaticTableInitializer
     internal static void EnsureStaticTables(Accelerator accelerator, KernelContainer kernels, AcceleratorStream stream)
 	{
 		// PrimeTester.PrimeTesterGpuContextPool.EnsureStaticTables(accelerator);
-		GpuKernelPool.PreloadStaticTables(accelerator, kernels, stream);
+		GpuKernelPool.PreloadStaticTables(accelerator, kernels, stream, KernelType.None);
 		// PrimeOrderGpuHeuristics.PreloadStaticTables(accelerator, stream);
     }
 

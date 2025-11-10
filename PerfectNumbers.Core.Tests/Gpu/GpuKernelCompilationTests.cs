@@ -121,7 +121,7 @@ public class GpuKernelCompilationTests
     private static readonly Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> MersenneDivisorCyclesKernel =
         DivisorCycleKernels.GpuDivisorCycleKernel;
 
-    private static readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> PrimeTesterSmallPrimeKernel =
+    private static readonly Action<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> PrimeTesterSmallPrimeKernel =
         PrimeTesterKernels.SmallPrimeSieveKernel;
 
     private static readonly Action<Index1D, ArrayView<ulong>, ArrayView<byte>> PrimeTesterSharesFactorKernel =
@@ -346,43 +346,44 @@ public class GpuKernelCompilationTests
         _ = kernel;
     }
 
-    private static void CompileGpuKernelPoolKernels(Accelerator accelerator)
-    {
+	private static KernelType _kernelType = KernelType.Pow2ModKernelScan | KernelType.OrderKernelScan | KernelType.IncrementalKernelScan | KernelType.IncrementalOrderKernelScan | KernelType.Pow2ModOrderKernelScan | KernelType.EvaluateSpecialMaxCandidatesKernel | KernelType.SmallPrimeFactorKernelScan;
+	private static void CompileGpuKernelPoolKernels(Accelerator accelerator)
+	{
 
 		GpuPrimeWorkLimiter.Acquire();
 		AcceleratorStream stream = accelerator.CreateStream();
-        try
+		try
 		{
-			var kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
-            _ = kernels.Order;
-            _ = kernels.Incremental;
-            _ = kernels.Pow2Mod;
-            _ = kernels.IncrementalOrder;
+			var kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream, _kernelType);
+			_ = kernels.Order;
+			_ = kernels.Incremental;
+			_ = kernels.Pow2Mod;
+			_ = kernels.IncrementalOrder;
 			_ = kernels.Pow2ModOrder;
-        }
-        finally
+		}
+		finally
 		{
 			stream.Synchronize();
 			stream.Dispose();
-            GpuPrimeWorkLimiter.Release();
-        }
+			GpuPrimeWorkLimiter.Release();
+		}
 
 		stream = accelerator.CreateStream();
 		GpuPrimeWorkLimiter.Acquire();
-        try
-        {
-			var kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
-            _ = kernels.Order;
-            _ = kernels.Incremental;
-            _ = kernels.Pow2Mod;
-            _ = kernels.IncrementalOrder;
-            _ = kernels.Pow2ModOrder;
-        }
-        finally
-        {
+		try
+		{
+			var kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream, _kernelType);
+			_ = kernels.Order;
+			_ = kernels.Incremental;
+			_ = kernels.Pow2Mod;
+			_ = kernels.IncrementalOrder;
+			_ = kernels.Pow2ModOrder;
+		}
+		finally
+		{
 			stream.Synchronize();
 			stream.Dispose();
-            GpuPrimeWorkLimiter.Release();
-        }
-    }
+			GpuPrimeWorkLimiter.Release();
+		}
+	}
 }

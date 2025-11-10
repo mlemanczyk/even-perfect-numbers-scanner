@@ -15,8 +15,8 @@ public static class HeuristicPrimeSieves
     private static readonly ushort[] GroupBResiduesEnding7 = [17, 37, 47, 67, 97, 107, 127, 137, 157, 167, 187, 197];
     private static readonly ushort[] GroupBResiduesEnding9 = [19, 29, 59, 79, 89, 109, 139, 149, 169, 179, 199, 209];
 
-    private static readonly ulong[] GroupADivisorsStorage;
-    private static readonly ulong[] GroupADivisorSquaresStorage;
+    internal static readonly ulong[] GroupADivisorsStorage;
+    internal static readonly ulong[] GroupADivisorSquaresStorage;
 
     private static readonly ulong[] GroupBDivisorsEnding1Storage;
     private static readonly ulong[] GroupBDivisorSquaresEnding1Storage;

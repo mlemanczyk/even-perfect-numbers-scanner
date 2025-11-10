@@ -33,7 +33,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		var stream = accelerator.CreateStream();
 		var kernel = GetPow2ModKernel(accelerator);
 		var resources = RentResources(accelerator, GpuConstants.ScanBatchSize);
-		var gpuKernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
+		var gpuKernels = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.SmallCycles | KernelType.SmallPrimes);
 
 		var orderBuffer = resources.OrderBuffer;
 		ulong[] orderArray = resources.OrderArray;

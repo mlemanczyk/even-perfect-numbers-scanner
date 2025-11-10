@@ -17,7 +17,7 @@ internal static partial class PrimeOrderCalculator
 	private static ulong CalculateByFactorizationGpu(Pow2MontgomeryAccelerator gpu, ulong prime, in MontgomeryDivisorData divisorData)
 	{
 		ulong phi = prime - 1UL;
-		Dictionary<ulong, int> counts = gpu.ToTestOnHost;
+		Dictionary<ulong, int> counts = gpu.Pow2ModEntriesToTestOnHost;
 		counts.Clear();
 		
 		FactorCompletelyCpu(phi, counts);
@@ -39,7 +39,7 @@ internal static partial class PrimeOrderCalculator
 
 		AcceleratorStream stream = gpu.Stream!;
 		gpu.EnsureCapacity(entryCount);
-		gpu.ToTestOnDevice.View.CopyFromCPU(stream, entries);
+		gpu.Pow2ModEntriesToTestOnDevice.View.CopyFromCPU(stream, entries);
 
 		ulong order = phi;
 		var kernel = gpu.CheckFactorsKernel;
@@ -47,7 +47,7 @@ internal static partial class PrimeOrderCalculator
 
 		GpuPrimeWorkLimiter.Acquire();
 
-		kernel.Launch(stream, 1, entryCount, phi, gpu.ToTestOnDevice.View, divisorData, gpu.Output.View);
+		kernel.Launch(stream, 1, entryCount, phi, gpu.Pow2ModEntriesToTestOnDevice.View, divisorData, gpu.Output.View);
 		gpu.Output.View.CopyToCPU(stream, ref order, 1);
 		stream.Synchronize();
 
@@ -66,7 +66,7 @@ internal static partial class PrimeOrderCalculator
 		GpuPrimeWorkLimiter.Acquire();
 		Accelerator accelerator = AcceleratorPool.Shared.Rent();
 		var stream = accelerator.CreateStream();
-		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
+		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.SmallPrimeFactorKernelScan);
 
 		ScratchBuffer scratch = GpuScratchBufferPool.Rent(accelerator, GpuSmallPrimeFactorSlots, 0);
 
@@ -152,7 +152,7 @@ internal static partial class PrimeOrderCalculator
 		GpuPrimeWorkLimiter.Acquire();
 		Accelerator accelerator = AcceleratorPool.Shared.Rent();
 		var stream = accelerator.CreateStream();
-		var kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
+		var kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.EvaluateSpecialMaxCandidatesKernel);
 
 		ScratchBuffer scratch = GpuScratchBufferPool.Rent(accelerator, 0, factorCount);
 

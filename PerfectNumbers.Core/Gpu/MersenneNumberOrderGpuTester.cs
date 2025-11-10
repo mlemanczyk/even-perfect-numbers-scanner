@@ -18,7 +18,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 		ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
 		byte last = lastDigit == LastDigit.Seven ? (byte)1 : (byte)0; // ILGPU kernels do not support bool parameters
 
-		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
+		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.Pow2ModOrderKernelScan | KernelType.IncrementalOrderKernelScan);
 		var kernel = _kernelType switch
 		{
 			GpuKernelType.Pow2Mod => kernels.Pow2ModOrder!,
