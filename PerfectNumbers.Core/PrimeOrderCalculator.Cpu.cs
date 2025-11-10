@@ -64,7 +64,7 @@ internal static partial class PrimeOrderCalculator
 		ulong result;
 		if (phiFactors.Factors is null)
 		{
-			result = CalculateByFactorizationCpu(gpu, prime, divisorData);
+			result = CalculateByFactorizationGpu(gpu, prime, divisorData);
 			phiFactors.Dispose();
 			return result;
 		}
@@ -103,7 +103,7 @@ internal static partial class PrimeOrderCalculator
 		{
 			orderFactors?.Dispose();
 			GpuPrimeWorkLimiter.Release();
-			return CalculateByFactorizationCpu(gpu, prime, divisorData);
+			return CalculateByFactorizationGpu(gpu, prime, divisorData);
 		}
 
 		if (TryHeuristicFinishCpu(prime, candidateOrder, previousOrder, divisorData, config, phiFactors, orderFactors, out ulong order))
@@ -1658,17 +1658,17 @@ internal static partial class PrimeOrderCalculator
 	{
 		ulong phi = prime - 1UL;
 		Dictionary<ulong, int> counts = new(capacity: 8);
-		FactorCompletely(phi, counts);
+		FactorCompletelyCpu(phi, counts);
 		if (counts.Count == 0)
 		{
 			return phi;
 		}
 
-		List<KeyValuePair<ulong, int>> entries = [.. counts];
-		entries.Sort(static (a, b) => a.Key.CompareTo(b.Key));
+		KeyValuePair<ulong, int>[] entries = [.. counts];
+		Array.Sort(entries, static (a, b) => a.Key.CompareTo(b.Key));
 
 		ulong order = phi;
-		int entryCount = entries.Count;
+		int entryCount = entries.Length;
 
 		GpuPrimeWorkLimiter.Acquire();
 		for (int i = 0; i < entryCount; i++)
@@ -1677,12 +1677,14 @@ internal static partial class PrimeOrderCalculator
 			int exponent = entries[i].Value;
 			for (int iteration = 0; iteration < exponent; iteration++)
 			{
-				if ((order % primeFactor) != 0UL)
+				ulong remainder = order % primeFactor;
+				if (remainder != 0UL)
 				{
 					break;
 				}
 
-				ulong candidate = order / primeFactor;
+				ulong candidate = order - primeFactor * remainder;
+				// ulong candidate = order / primeFactor;
 
 				// if (candidate.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL)
 				if (candidate.Pow2MontgomeryModWindowedConvertGpu(gpu, divisorData) == 1UL)
@@ -1700,7 +1702,7 @@ internal static partial class PrimeOrderCalculator
 		return order;
 	}
 
-	private static void FactorCompletely(ulong value, Dictionary<ulong, int> counts)
+	private static void FactorCompletelyCpu(ulong value, Dictionary<ulong, int> counts)
 	{
 		FactorCompletely(value, counts, knownComposite: false);
 	}

@@ -8,7 +8,7 @@ namespace PerfectNumbers.Core.Gpu.Accelerators;
 public sealed class Pow2MontgomeryAccelerator
 {
 	#region Pool
-	
+
 	[ThreadStatic]
 	private static Queue<Pow2MontgomeryAccelerator>? _pool;
 
@@ -21,7 +21,11 @@ public sealed class Pow2MontgomeryAccelerator
 		if (!pool.TryDequeue(out var gpu))
 		{
 			Accelerator accelerator = _accelerators.Rent();
-			gpu = new(accelerator);
+			gpu = new(accelerator, PerfectNumberConstants.DefaultFactorsBuffer);
+		}
+		else
+		{
+			gpu.Stream = gpu.Accelerator.CreateStream();
 		}
 
 		return gpu;
@@ -40,17 +44,33 @@ public sealed class Pow2MontgomeryAccelerator
 	public readonly Accelerator Accelerator;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> Input;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> Output;
+	public MemoryBuffer1D<KeyValuePair<ulong, int>, Stride1D.Dense> ToTestOnDevice;
+	public Dictionary<ulong, int> ToTestOnHost = [];
 	public AcceleratorStream? Stream;
 
 	public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> ConvertToStandardKernel;
 	public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> KeepMontgomeryKernel;
 
-	public Pow2MontgomeryAccelerator(Accelerator accelerator)
+	public readonly Kernel CheckFactorsKernel;
+
+	public void EnsureCapacity(int factorsCount)
+	{
+		if (factorsCount > ToTestOnDevice.Length)
+		{
+			Accelerator accelerator = Accelerator;
+			ToTestOnDevice.Dispose();
+			ToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
+		}
+	}
+
+	public Pow2MontgomeryAccelerator(Accelerator accelerator, int factorsCount)
 	{
 		Accelerator = accelerator;
+		Stream = accelerator.CreateStream();
+
 		Input = accelerator.Allocate1D<ulong>(1);
 		Output = accelerator.Allocate1D<ulong>(1);
-		Stream = accelerator.CreateStream();
+		ToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
 
 		var keepKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelKeepMontgomery);
 		var keepLauncher = KernelUtil.GetKernel(keepKernel);
@@ -61,6 +81,9 @@ public sealed class Pow2MontgomeryAccelerator
 		var convertLauncher = KernelUtil.GetKernel(convertKernel);
 
 		ConvertToStandardKernel = convertLauncher.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
+
+		var checkFactorsKernel = accelerator.LoadStreamKernel<int, ulong, ArrayView1D<KeyValuePair<ulong, int>, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderGpuHeuristics.CheckFactorsKernel);
+		CheckFactorsKernel = KernelUtil.GetKernel(checkFactorsKernel);
 	}
 
 	public void Dispose()
@@ -68,6 +91,7 @@ public sealed class Pow2MontgomeryAccelerator
 		Input.Dispose();
 		Output.Dispose();
 		Stream?.Dispose();
+		ToTestOnDevice.Dispose();
 		// Accelerator is shared with other threads
 		// Accelerator.Dispose();
 	}

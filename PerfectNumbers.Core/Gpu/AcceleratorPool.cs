@@ -3,21 +3,21 @@ using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu
 {
-    public struct AcceleratorPool(int capacity)
+	public struct AcceleratorPool
 	{
-		internal readonly Accelerator[] Accelerators = [.. Enumerable.Range(1, capacity).Select(_ => {
-			return SharedGpuContext.CreateAccelerator();
-		})];
+		internal readonly Context Context;
+		internal readonly Device Device;
+		internal readonly Accelerator[] Accelerators;
 
 		private int _index;
 
 		public Accelerator Rent()
 		{
-			Atomic.CompareExchange(ref _index, capacity, 0);
+			Atomic.CompareExchange(ref _index, Capacity, 0);
 			var index = Atomic.Add(ref _index, 1);
-			if (index >= capacity)
+			if (index >= Capacity)
 			{
-				index -= capacity;
+				index -= Capacity;
 			}
 
 			return Accelerators[index];
@@ -29,5 +29,16 @@ namespace PerfectNumbers.Core.Gpu
 		}
 
 		public static readonly AcceleratorPool Shared = new(PerfectNumberConstants.RollingAccelerators);
+		private readonly int Capacity;
+
+		public AcceleratorPool(int capacity)
+		{
+			Capacity = capacity;
+			var context = Context.CreateDefault();
+			var device = context.GetPreferredDevice(false);
+			Context = context;
+			Device = device;
+			Accelerators = [.. Enumerable.Range(0, capacity).Select(_ => device.CreateAccelerator(context))];
+		}
 	}
 }

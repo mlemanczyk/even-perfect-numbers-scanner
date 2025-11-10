@@ -1,8 +1,10 @@
 using System.Runtime.InteropServices;
 using ILGPU;
 using ILGPU.Runtime;
-using ILGPU.Runtime.Cuda;
+using ILGPU.Util;
+using Open.Collections;
 using PerfectNumbers.Core.Gpu;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 
@@ -11,6 +13,47 @@ internal static partial class PrimeOrderCalculator
 	private static bool IsGpuPow2Allowed => s_pow2ModeInitialized && s_allowGpuPow2;
 
 	private const int GpuSmallPrimeFactorSlots = 64;
+
+	private static ulong CalculateByFactorizationGpu(Pow2MontgomeryAccelerator gpu, ulong prime, in MontgomeryDivisorData divisorData)
+	{
+		ulong phi = prime - 1UL;
+		Dictionary<ulong, int> counts = gpu.ToTestOnHost;
+		counts.Clear();
+		
+		FactorCompletelyCpu(phi, counts);
+		if (counts.Count == 0)
+		{
+			return phi;
+		}
+
+		int entryCount = counts.Count;
+		Span<KeyValuePair<ulong, int>> entries = stackalloc KeyValuePair<ulong, int>[entryCount];
+
+		int stored = 0;
+		foreach (var entry in counts)
+		{
+			entries[stored++] = entry;
+		}
+		
+		entries.Sort(entries, static (a, b) => a.Key.CompareTo(b.Key));
+
+		AcceleratorStream stream = gpu.Stream!;
+		gpu.EnsureCapacity(entryCount);
+		gpu.ToTestOnDevice.View.CopyFromCPU(stream, entries);
+
+		ulong order = phi;
+		var kernel = gpu.CheckFactorsKernel;
+		stream.Synchronize();
+
+		GpuPrimeWorkLimiter.Acquire();
+
+		kernel.Launch(stream, 1, entryCount, phi, gpu.ToTestOnDevice.View, divisorData, gpu.Output.View);
+		gpu.Output.View.CopyToCPU(stream, ref order, 1);
+		stream.Synchronize();
+
+		GpuPrimeWorkLimiter.Release();
+		return order;
+	}
 
 	private static bool TryPopulateSmallPrimeFactorsGpu(ulong value, uint limit, Dictionary<ulong, int> counts, out int factorCount, out ulong remaining)
 	{

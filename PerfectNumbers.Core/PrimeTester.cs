@@ -99,7 +99,7 @@ public sealed class PrimeTester
 		var gpu = PrimeTesterGpuContextPool.Rent(1);
 		var accelerator = gpu.Accelerator;
 		var stream = gpu.Stream;
-		var kernel = PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.GetKernel(accelerator);
+		var kernel = PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.GetSmallPrimeSieveKernel(accelerator);
 
 		ulong value = n;
 		// Span<byte> flag = stackalloc byte[1];
@@ -167,7 +167,7 @@ public sealed class PrimeTester
 		var gpu = PrimeTesterGpuContextPool.Rent(GpuBatchSize);
 		var accelerator = gpu.Accelerator;
 		var stream = gpu.Stream;
-		var kernel = PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.GetKernel(accelerator);
+		var kernel = PrimeTesterGpuContextPool.PrimeTesterGpuContextLease.GetSmallPrimeSieveKernel(accelerator);
 		int totalLength = values.Length;
 		int batchSize = GpuBatchSize;
 
@@ -324,11 +324,11 @@ public sealed class PrimeTester
 			}
 
 			[ThreadStatic]
-			public static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>? Kernel;
+			public static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>? SmallPrimeSieveKernel;
 
-			internal static Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> GetKernel(Accelerator accelerator)
+			internal static Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> GetSmallPrimeSieveKernel(Accelerator accelerator)
 			{
-				var pool = Kernel ??= [];
+				var pool = SmallPrimeSieveKernel ??= [];
 				if (pool.TryGetValue(accelerator, out var cached))
 				{
 					return cached;
