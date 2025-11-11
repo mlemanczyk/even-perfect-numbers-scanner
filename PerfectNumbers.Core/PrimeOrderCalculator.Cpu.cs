@@ -66,6 +66,7 @@ internal static partial class PrimeOrderCalculator
 		{
 			result = CalculateByFactorizationGpu(gpu, prime, divisorData);
 			phiFactors.Dispose();
+			Pow2MontgomeryAccelerator.Return(gpu);
 			return result;
 		}
 
