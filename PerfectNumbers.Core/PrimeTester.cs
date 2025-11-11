@@ -94,17 +94,17 @@ public sealed class PrimeTester
 	public static bool IsPrimeGpu(ulong n)
 	{
 		GpuPrimeWorkLimiter.Acquire();
-		var gpu = PrimeTesterByLastDigitAccelerator.Rent(1);
+		var gpu = Pow2MontgomeryAccelerator.Rent(1);
 		var accelerator = gpu.Accelerator;
-		var stream = gpu.Stream;
-		var kernel = PrimeTesterByLastDigitAccelerator.GetSmallPrimeSieveKernel(accelerator);
+		var stream = gpu.Stream!;
+		var kernel = gpu.SmallPrimeSieveKernel;
 
 		ulong value = n;
 		// Span<byte> flag = stackalloc byte[1];
 		byte flag = 0;
 
-		var input = gpu.Input;
-		var output = gpu.Output;
+		var input = gpu.PrimeTestInput;
+		var output = gpu.PrimeTestOutput;
 		var inputView = input.View;
 		var outputView = output.View;
 
@@ -131,6 +131,42 @@ public sealed class PrimeTester
 		return flag != 0;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool IsPrimeGpu(Pow2MontgomeryAccelerator gpu, ulong n)
+	{
+		var accelerator = gpu.Accelerator;
+		var stream = gpu.Stream!;
+		Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>? kernel = gpu.SmallPrimeSieveKernel;
+
+		ulong value = n;
+		// Span<byte> flag = stackalloc byte[1];
+		byte flag = 0;
+
+		var input = gpu.PrimeTestInput;
+		var output = gpu.PrimeTestOutput;
+		var inputView = input.View;
+		var outputView = output.View;
+
+		inputView.CopyFromCPU(stream, ref value, 1);
+		kernel(
+						stream,
+						1,
+						inputView,
+						gpu.DevicePrimesLastOne.View,
+						gpu.DevicePrimesLastSeven.View,
+						gpu.DevicePrimesLastThree.View,
+						gpu.DevicePrimesLastNine.View,
+						gpu.DevicePrimesPow2LastOne.View,
+						gpu.DevicePrimesPow2LastSeven.View,
+						gpu.DevicePrimesPow2LastThree.View,
+						gpu.DevicePrimesPow2LastNine.View,
+						outputView);
+		outputView.CopyToCPU(stream, ref flag, 1);
+		stream.Synchronize();
+
+		return flag != 0;
+	}
+
 	public static int GpuBatchSize { get; set; } = 262_144;
 
 	private static readonly object GpuWarmUpLock = new();
@@ -151,7 +187,7 @@ public sealed class PrimeTester
 				return;
 			}
 
-			PrimeTesterByLastDigitAccelerator.WarmUp();
+			Pow2MontgomeryAccelerator.WarmUp();
 			WarmedGpuLeaseCount = target;
 		}
 	}
@@ -160,15 +196,15 @@ public sealed class PrimeTester
 	public static void IsPrimeBatchGpu(ReadOnlySpan<ulong> values, Span<byte> results)
 	{
 		GpuPrimeWorkLimiter.Acquire();
-		var gpu = PrimeTesterByLastDigitAccelerator.Rent(GpuBatchSize);
+		var gpu = Pow2MontgomeryAccelerator.Rent(GpuBatchSize);
 		var accelerator = gpu.Accelerator;
-		var stream = gpu.Stream;
-		var kernel = PrimeTesterByLastDigitAccelerator.GetSmallPrimeSieveKernel(accelerator);
+		var stream = gpu.Stream!;
+		var kernel = gpu.SmallPrimeSieveKernel;
 		int totalLength = values.Length;
 		int batchSize = GpuBatchSize;
 
-		var input = gpu.Input;
-		var output = gpu.Output;
+		var input = gpu.PrimeTestInput;
+		var output = gpu.PrimeTestOutput;
 		var inputView = input.View;
 		var outputView = output.View;
 
@@ -211,12 +247,12 @@ public sealed class PrimeTester
 	// Expose cache clearing for accelerator disposal coordination
 	public static void ClearGpuCaches()
 	{
-		PrimeTesterByLastDigitAccelerator.Clear();
+		Pow2MontgomeryAccelerator.Clear();
 	}
 
 	internal static void DisposeGpuContexts()
 	{
-		PrimeTesterByLastDigitAccelerator.DisposeAll();
+		Pow2MontgomeryAccelerator.DisposeAll();
 		lock (GpuWarmUpLock)
 		{
 			WarmedGpuLeaseCount = 0;
@@ -241,9 +277,9 @@ public sealed class PrimeTester
 		// TODO: Route this batch helper through the shared GPU kernel pool from
 		// GpuUInt128BinaryGcdBenchmarks so we reuse cached kernels, pinned host buffers,
 		// and divisor-cycle staging instead of allocating new device buffers per call.
-		var gpu = PrimeTesterByLastDigitAccelerator.Rent();
+		var gpu = Pow2MontgomeryAccelerator.Rent(1);
 		var accelerator = gpu.Accelerator;
-		var stream = gpu.Stream;
+		var stream = gpu.Stream!;
 
 		int length = values.Length;
 		ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;

@@ -10,9 +10,8 @@ public static class Pow2MontgomeryGpuCalculator
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong CalculateKeep(ulong exponent, in MontgomeryDivisorData divisor)
 	{
-		GpuPrimeWorkLimiter.Acquire();
 
-		var gpu = Pow2MontgomeryAccelerator.Rent();
+		var gpu = Pow2MontgomeryAccelerator.Rent(1);
 		Accelerator? accelerator = gpu.Accelerator;
 		AcceleratorStream stream = gpu.Stream!;
 		MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer = gpu.Input;
@@ -23,23 +22,24 @@ public static class Pow2MontgomeryGpuCalculator
 		// resultBuffer.MemSetToZero(stream);
 
 		var kernel = gpu.KeepMontgomeryKernel;
+
+		GpuPrimeWorkLimiter.Acquire();
 		kernel(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
 
 		ulong result = 0UL;
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
+		GpuPrimeWorkLimiter.Release();
 
 		Pow2MontgomeryAccelerator.Return(gpu);
-		GpuPrimeWorkLimiter.Release();
 		return result;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong CalculateConvert(ulong exponent, in MontgomeryDivisorData divisor)
 	{
-		GpuPrimeWorkLimiter.Acquire();
 
-		var gpu = Pow2MontgomeryAccelerator.Rent();
+		var gpu = Pow2MontgomeryAccelerator.Rent(1);
 		AcceleratorStream stream = gpu.Stream!;
 		MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer = gpu.Input;
 		MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = gpu.Output;
@@ -49,14 +49,16 @@ public static class Pow2MontgomeryGpuCalculator
 		// resultBuffer.MemSetToZero(stream);
 
 		var kernel = gpu.ConvertToStandardKernel;
+
+		GpuPrimeWorkLimiter.Acquire();
 		kernel(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
 
 		ulong result = 0UL;
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
+		GpuPrimeWorkLimiter.Release();
 
 		Pow2MontgomeryAccelerator.Return(gpu);
-		GpuPrimeWorkLimiter.Release();
 		return result;
 	}
 

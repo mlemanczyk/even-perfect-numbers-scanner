@@ -4,7 +4,7 @@ using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
 
-internal readonly struct HeuristicGpuDivisorTables
+public readonly struct HeuristicGpuDivisorTables
 {
 	public readonly ArrayView1D<ulong, Stride1D.Dense> CombinedDivisorsEnding1;
 	public readonly ArrayView1D<ulong, Stride1D.Dense> CombinedDivisorsEnding3;

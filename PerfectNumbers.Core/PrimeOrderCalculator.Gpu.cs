@@ -38,7 +38,7 @@ internal static partial class PrimeOrderCalculator
 		entries.Sort(entries, static (a, b) => a.Key.CompareTo(b.Key));
 
 		AcceleratorStream stream = gpu.Stream!;
-		gpu.EnsureCapacity(entryCount);
+		gpu.EnsureCapacity(entryCount, 1);
 		gpu.Pow2ModEntriesToTestOnDevice.View.CopyFromCPU(stream, entries);
 
 		ulong order = phi;

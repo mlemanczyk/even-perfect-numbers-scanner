@@ -6,7 +6,7 @@ namespace PerfectNumbers.Core.Gpu.Accelerators;
 
 internal sealed class HeuristicGpuTables
 {
-	private static readonly ConcurrentDictionary<Accelerator, HeuristicGpuTables> _sharedTables = new(20_480, PerfectNumberConstants.RollingAccelerators);
+	private static readonly ConcurrentDictionary<Accelerator, HeuristicGpuTables> _sharedTables = new(20_480, 1);
 
 	internal static HeuristicGpuTables EnsureStaticTables(Accelerator accelerator, AcceleratorStream stream)
 		=> _sharedTables.GetOrAdd(accelerator, _ => new HeuristicGpuTables(accelerator, stream));

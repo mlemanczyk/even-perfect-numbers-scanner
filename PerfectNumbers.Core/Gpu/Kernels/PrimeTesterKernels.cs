@@ -5,7 +5,7 @@ using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
 
-internal enum HeuristicGpuDivisorTableKind : byte
+public enum HeuristicGpuDivisorTableKind : byte
 {
     GroupA = 0,
     GroupBEnding1 = 1,

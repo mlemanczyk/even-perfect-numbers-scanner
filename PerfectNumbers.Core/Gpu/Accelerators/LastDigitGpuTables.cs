@@ -6,7 +6,7 @@ namespace PerfectNumbers.Core.Gpu.Accelerators;
 
 internal sealed class LastDigitGpuTables
 {
-	private static readonly ConcurrentDictionary<Accelerator, LastDigitGpuTables> _sharedTables = new(20_480, PerfectNumberConstants.RollingAccelerators);
+	private static readonly ConcurrentDictionary<Accelerator, LastDigitGpuTables> _sharedTables = new(20_480, PerfectNumberConstants.RollingAccelerators * 2);
 
 	internal static LastDigitGpuTables EnsureStaticTables(Accelerator accelerator, AcceleratorStream stream)
 		=> _sharedTables.GetOrAdd(accelerator, _ => new LastDigitGpuTables(accelerator, stream));
