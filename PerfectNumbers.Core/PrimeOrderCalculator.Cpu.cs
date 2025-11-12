@@ -86,7 +86,7 @@ internal static partial class PrimeOrderCalculator
 		ulong phi,
 		PartialFactorResult phiFactors)
 	{
-		if (phiFactors.FullyFactored && TrySpecialMaxCpu(phi, prime, phiFactors, divisorData))
+		if (phiFactors.FullyFactored && TrySpecialMaxCpu(gpu, phi, prime, phiFactors, divisorData))
 		{
 			return phi;
 		}
@@ -119,7 +119,7 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	// private static ulong specialMaxHits;
-	private static bool TrySpecialMaxCpu(ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
+	private static bool TrySpecialMaxCpu(Pow2MontgomeryAccelerator gpu, ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
 	{
 		int length = factors.Count;
 		// The phi factorization on the scanner path always yields at least one entry for phi >= 2,
@@ -140,7 +140,7 @@ internal static partial class PrimeOrderCalculator
 
 		// Atomic.Add(ref specialMaxHits, 1);
 		// Console.WriteLine($"Special max GPU hit {specialMaxHits} ({length})");
-		return EvaluateSpecialMaxCandidatesGpu(stackBuffer, factorSpan, phi, prime, divisorData);
+		return EvaluateSpecialMaxCandidatesGpu(gpu, stackBuffer, factorSpan, phi, prime, divisorData);
 	}
 
 	private static bool EvaluateSpecialMaxCandidates(Span<ulong> buffer, ReadOnlySpan<FactorEntry> factors, ulong phi, ulong prime, in MontgomeryDivisorData divisorData)

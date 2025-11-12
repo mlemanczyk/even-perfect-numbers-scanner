@@ -94,20 +94,22 @@ public sealed class PrimeTester
 	public static bool IsPrimeGpu(ulong n)
 	{
 		var gpu = Pow2MontgomeryAccelerator.Rent(1);
-		var kernel = gpu.SmallPrimeSieveKernel!;
 
 		// Span<byte> flag = stackalloc byte[1];
 
+
 		var inputView = gpu.PrimeTestInput.View;
+		var outputView = gpu.OutputByte.View;
+		var kernel = gpu.SmallPrimeSieveKernel!;
 
 		GpuPrimeWorkLimiter.Acquire();
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(gpu.Accelerator);
 		// var stream = gpu.Stream!;
 		inputView.CopyFromCPU(stream, ref n, 1);
 
-		var outputView = gpu.OutputByte.View;
+		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>();
 
-		kernel.Launch(
+		kernelLauncher(
 						stream,
 						1,
 						inputView,
@@ -136,18 +138,15 @@ public sealed class PrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool IsPrimeGpu(Pow2MontgomeryAccelerator gpu, ulong n)
 	{
-		// var stream = gpu.Stream!;
 		var input = gpu.PrimeTestInput;
 		var inputView = input.View;
+		var output = gpu.OutputByte;
+		var outputView = output.View;
+		Kernel kernel = gpu.SmallPrimeSieveKernel!;
 
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(gpu.Accelerator);
 		inputView.CopyFromCPU(stream, ref n, 1);
 
-		// Span<byte> flag = stackalloc byte[1];
-		var output = gpu.OutputByte;
-		var outputView = output.View;
-
-		Kernel kernel = gpu.SmallPrimeSieveKernel!;
 		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>();
 		
 		kernelLauncher(
@@ -238,8 +237,7 @@ public sealed class PrimeTester
 					outputView);
 
 			var resultSlice = results.Slice(pos, count);
-			ref byte resultRef = ref MemoryMarshal.GetReference(resultSlice);
-			outputView.CopyToCPU(stream, ref resultRef, count);
+			outputView.CopyToCPU(stream, resultSlice);
 
 			pos += count;
 		}

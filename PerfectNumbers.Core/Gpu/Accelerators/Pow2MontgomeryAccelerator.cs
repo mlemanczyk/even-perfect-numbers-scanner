@@ -72,6 +72,8 @@ public sealed class Pow2MontgomeryAccelerator
 		{
 			Console.WriteLine($"Preparing accelerator {i}...");
 			var accelerator = accelerators[i];
+			AcceleratorStreamPool.WarmUp(accelerator);
+			// AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
 			AcceleratorStream stream = accelerator.CreateStream();
 			LastDigitGpuTables.EnsureStaticTables(accelerator, stream);
 			// SharedHeuristicGpuTables.EnsureStaticTables(accelerator, stream);
@@ -80,6 +82,8 @@ public sealed class Pow2MontgomeryAccelerator
 			// GpuStaticTableInitializer.EnsureStaticTables(accelerator, kernels, stream);
 			stream.Synchronize();
 			stream.Dispose();
+
+			// AcceleratorStreamPool.Return(stream);
 		}
 	}
 

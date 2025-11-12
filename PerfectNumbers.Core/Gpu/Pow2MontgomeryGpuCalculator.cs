@@ -27,6 +27,7 @@ public static class Pow2MontgomeryGpuCalculator
 		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
 
 		kernelLauncher(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
+		// kernel.Launch(stream, 1, 1, exponentBuffer.View, divisor, resultBuffer.View);
 
 		ulong result = 0UL;
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
@@ -83,6 +84,7 @@ public static class Pow2MontgomeryGpuCalculator
 		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
 
 		kernelLauncher(stream, 1,exponentBuffer.View, divisor, resultBuffer.View);
+		// kernel.Launch(stream, 1, 1,exponentBuffer.View, divisor, resultBuffer.View);
 
 		ulong result = 0UL;
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
