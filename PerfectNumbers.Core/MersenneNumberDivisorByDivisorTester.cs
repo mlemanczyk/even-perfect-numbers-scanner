@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 
@@ -302,10 +303,12 @@ public static class MersenneNumberDivisorByDivisorTester
 						}
 
 						Console.WriteLine($"Task finished for range {rangeStart}");
+						Pow2MontgomeryAccelerator.DisposeAll();
 					},
 					CancellationToken.None,
 					TaskCreationOptions.DenyChildAttach,
 					scheduler);
+
 			}
 
 			startGate.Set();

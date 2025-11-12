@@ -125,7 +125,8 @@ public sealed class PrimeTester
 		outputView.CopyToCPU(stream, ref flag, 1);
 		stream.Synchronize();
 
-		gpu.Dispose();
+		// gpu.Dispose();
+		Pow2MontgomeryAccelerator.Return(gpu);
 		GpuPrimeWorkLimiter.Release();
 
 		return flag != 0;
@@ -240,7 +241,8 @@ public sealed class PrimeTester
 		}
 
 		stream.Synchronize();
-		gpu.Dispose();
+		Pow2MontgomeryAccelerator.Return(gpu);
+		// gpu.Dispose();
 		GpuPrimeWorkLimiter.Release();
 	}
 
@@ -303,7 +305,8 @@ public sealed class PrimeTester
 		pool.Return(temp, clearArray: false);
 		resultBuffer.Dispose();
 		inputBuffer.Dispose();
-		gpu.Dispose();
+		Pow2MontgomeryAccelerator.Return(gpu);
+		// gpu.Dispose();
 	}
 
 	private static Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>> GetSharesFactorKernel(Accelerator accelerator)
