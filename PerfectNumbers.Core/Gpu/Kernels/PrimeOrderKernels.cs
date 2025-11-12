@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
+using PerfectNumbers.Core.Cpu;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -1410,5 +1411,4 @@ internal static partial class PrimeOrderGpuHeuristics
 		ulong directMask = (1UL << windowBitCount) - 1UL;
 		return exponent.Low & directMask;
 	}
-
 }

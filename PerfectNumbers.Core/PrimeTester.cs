@@ -93,23 +93,21 @@ public sealed class PrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool IsPrimeGpu(ulong n)
 	{
-		GpuPrimeWorkLimiter.Acquire();
 		var gpu = Pow2MontgomeryAccelerator.Rent(1);
-		var accelerator = gpu.Accelerator;
-		var stream = gpu.Stream!;
-		var kernel = gpu.SmallPrimeSieveKernel;
+		var kernel = gpu.SmallPrimeSieveKernel!;
 
-		ulong value = n;
 		// Span<byte> flag = stackalloc byte[1];
-		byte flag = 0;
 
-		var input = gpu.PrimeTestInput;
-		var output = gpu.PrimeTestOutput;
-		var inputView = input.View;
-		var outputView = output.View;
+		var inputView = gpu.PrimeTestInput.View;
 
-		inputView.CopyFromCPU(stream, ref value, 1);
-		kernel(
+		GpuPrimeWorkLimiter.Acquire();
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(gpu.Accelerator);
+		// var stream = gpu.Stream!;
+		inputView.CopyFromCPU(stream, ref n, 1);
+
+		var outputView = gpu.OutputByte.View;
+
+		kernel.Launch(
 						stream,
 						1,
 						inputView,
@@ -122,9 +120,12 @@ public sealed class PrimeTester
 						gpu.DevicePrimesPow2LastThree.View,
 						gpu.DevicePrimesPow2LastNine.View,
 						outputView);
+
+		byte flag = 0;
 		outputView.CopyToCPU(stream, ref flag, 1);
 		stream.Synchronize();
 
+		AcceleratorStreamPool.Return(stream);
 		// gpu.Dispose();
 		Pow2MontgomeryAccelerator.Return(gpu);
 		GpuPrimeWorkLimiter.Release();
@@ -135,21 +136,21 @@ public sealed class PrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool IsPrimeGpu(Pow2MontgomeryAccelerator gpu, ulong n)
 	{
-		var accelerator = gpu.Accelerator;
-		var stream = gpu.Stream!;
-		Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>? kernel = gpu.SmallPrimeSieveKernel;
-
-		ulong value = n;
-		// Span<byte> flag = stackalloc byte[1];
-		byte flag = 0;
-
+		// var stream = gpu.Stream!;
 		var input = gpu.PrimeTestInput;
-		var output = gpu.PrimeTestOutput;
 		var inputView = input.View;
+
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(gpu.Accelerator);
+		inputView.CopyFromCPU(stream, ref n, 1);
+
+		// Span<byte> flag = stackalloc byte[1];
+		var output = gpu.OutputByte;
 		var outputView = output.View;
 
-		inputView.CopyFromCPU(stream, ref value, 1);
-		kernel(
+		Kernel kernel = gpu.SmallPrimeSieveKernel!;
+		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>();
+		
+		kernelLauncher(
 						stream,
 						1,
 						inputView,
@@ -162,8 +163,11 @@ public sealed class PrimeTester
 						gpu.DevicePrimesPow2LastThree.View,
 						gpu.DevicePrimesPow2LastNine.View,
 						outputView);
+
+		byte flag = 0;
 		outputView.CopyToCPU(stream, ref flag, 1);
 		stream.Synchronize();
+		AcceleratorStreamPool.Return(stream);
 
 		return flag != 0;
 	}
@@ -199,27 +203,27 @@ public sealed class PrimeTester
 		GpuPrimeWorkLimiter.Acquire();
 		var gpu = Pow2MontgomeryAccelerator.Rent(GpuBatchSize);
 		var accelerator = gpu.Accelerator;
-		var stream = gpu.Stream!;
-		var kernel = gpu.SmallPrimeSieveKernel;
+		// var stream = gpu.Stream!;
+		var kernel = gpu.SmallPrimeSieveKernel!;
 		int totalLength = values.Length;
 		int batchSize = GpuBatchSize;
 
 		var input = gpu.PrimeTestInput;
-		var output = gpu.PrimeTestOutput;
+		var output = gpu.OutputByte;
 		var inputView = input.View;
 		var outputView = output.View;
 
 		int pos = 0;
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
 		while (pos < totalLength)
 		{
 			int remaining = totalLength - pos;
 			int count = remaining > batchSize ? batchSize : remaining;
 
 			var valueSlice = values.Slice(pos, count);
-			ref ulong valueRef = ref MemoryMarshal.GetReference(valueSlice);
-			inputView.CopyFromCPU(stream, ref valueRef, count);
+			inputView.CopyFromCPU(stream, valueSlice);
 
-			kernel(
+			kernel.Launch(
 					stream,
 					count,
 					inputView,
@@ -241,6 +245,7 @@ public sealed class PrimeTester
 		}
 
 		stream.Synchronize();
+		AcceleratorStreamPool.Return(stream);
 		Pow2MontgomeryAccelerator.Return(gpu);
 		// gpu.Dispose();
 		GpuPrimeWorkLimiter.Release();
@@ -281,7 +286,7 @@ public sealed class PrimeTester
 		// and divisor-cycle staging instead of allocating new device buffers per call.
 		var gpu = Pow2MontgomeryAccelerator.Rent(1);
 		var accelerator = gpu.Accelerator;
-		var stream = gpu.Stream!;
+		// var stream = gpu.Stream!;
 
 		int length = values.Length;
 		ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
@@ -297,11 +302,14 @@ public sealed class PrimeTester
 			resultBuffer = accelerator.Allocate1D<byte>(length);
 		}
 
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
 		inputBuffer.View.CopyFromCPU(stream, ref temp[0], length);
 		var kernel = GetSharesFactorKernel(accelerator);
 		kernel(stream, length, inputBuffer.View, resultBuffer.View);
 		resultBuffer.View.CopyToCPU(stream, in results);
 		stream.Synchronize();
+
+		AcceleratorStreamPool.Return(stream);
 		pool.Return(temp, clearArray: false);
 		resultBuffer.Dispose();
 		inputBuffer.Dispose();

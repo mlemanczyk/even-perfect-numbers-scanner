@@ -147,13 +147,11 @@ public class MersenneNumberLucasLehmerGpuTester
             return false;
         }
 
-        GpuPrimeWorkLimiter.Acquire();
         bool result;
         if (exponent >= 128UL)
         {
             if (!TryGetNttParameters(exponent, out var nttMod, out var primitiveRoot))
             {
-				GpuPrimeWorkLimiter.Release();
                 throw new NotSupportedException("NTT parameters for the given exponent are not available.");
             }
 
@@ -161,6 +159,7 @@ public class MersenneNumberLucasLehmerGpuTester
         }
         else
         {
+        	GpuPrimeWorkLimiter.Acquire();
             var accelerator = AcceleratorPool.Shared.Rent();
             var stream = accelerator.CreateStream();
             var modulus = new GpuUInt128(((UInt128)1 << (int)exponent) - 1UL); // TODO: Cache these Mersenne moduli per exponent so LL GPU runs skip rebuilding them every launch.

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ILGPU;
 using ILGPU.Runtime;
@@ -37,19 +39,21 @@ internal static partial class PrimeOrderCalculator
 		
 		entries.Sort(entries, static (a, b) => a.Key.CompareTo(b.Key));
 
-		AcceleratorStream stream = gpu.Stream!;
+		// AcceleratorStream stream = gpu.Stream!;
 		gpu.EnsureCapacity(entryCount, 1);
+
+		GpuPrimeWorkLimiter.Acquire();
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(gpu.Accelerator);
 		gpu.Pow2ModEntriesToTestOnDevice.View.CopyFromCPU(stream, entries);
 
 		ulong order = phi;
 		var kernel = gpu.CheckFactorsKernel;
 		stream.Synchronize();
 
-		GpuPrimeWorkLimiter.Acquire();
-
-		kernel.Launch(stream, 1, entryCount, phi, gpu.Pow2ModEntriesToTestOnDevice.View, divisorData, gpu.Output.View);
-		gpu.Output.View.CopyToCPU(stream, ref order, 1);
+		kernel.Launch(stream, 1, entryCount, phi, gpu.Pow2ModEntriesToTestOnDevice.View, divisorData, gpu.OutputUlong.View);
+		gpu.OutputUlong.View.CopyToCPU(stream, ref order, 1);
 		stream.Synchronize();
+		AcceleratorStreamPool.Return(stream);
 
 		GpuPrimeWorkLimiter.Release();
 		return order;
@@ -186,5 +190,34 @@ internal static partial class PrimeOrderCalculator
 		GpuPrimeWorkLimiter.Release();
 		return result != 0;
 	}
+
+	private static bool TryPollardRhoGpu(Pow2MontgomeryAccelerator gpu, ulong n, out ulong factor)
+	{
+		// var stream = gpu.Stream!;
+		Span<ulong> randomStateSpan = stackalloc ulong[1]; 
+		randomStateSpan[0] = ThreadStaticDeterministicRandomGpu.Exclusive.State;
+
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(gpu.Accelerator);
+		gpu.Input.View.CopyFromCPU(stream, randomStateSpan);
+
+		Span<byte> factoredSpan = stackalloc byte[1];
+		Span<ulong> factorSpan = stackalloc ulong[1];
+		var kernelLauncher = gpu.PollardRhoKernel.CreateLauncherDelegate<Action<AcceleratorStream, ulong, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+
+		kernelLauncher(stream, n, 1, gpu.Input.View, gpu.OutputByte.View, gpu.OutputUlong.View);
+
+		gpu.OutputByte.View.CopyToCPU(stream, factoredSpan);
+		gpu.OutputUlong.View.CopyToCPU(stream, factorSpan);
+		gpu.Input.View.CopyToCPU(stream, randomStateSpan);
+		stream.Synchronize();
+
+		AcceleratorStreamPool.Return(stream);
+		ThreadStaticDeterministicRandomGpu.Exclusive.SetState(randomStateSpan[0]);
+
+		bool factored = factoredSpan[0] != 0;
+		factor = factored ? factorSpan[0] : 0UL;
+		return factored;
+	}
+	
 }
 

@@ -1,6 +1,6 @@
-namespace PerfectNumbers.Core;
+namespace PerfectNumbers.Core.Cpu;
 
-internal static class DeterministicRandom
+internal static class DeterministicRandomCpu
 {
     [ThreadStatic]
     private static ulong s_threadState;

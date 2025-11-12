@@ -10,25 +10,28 @@ public static class Pow2MontgomeryGpuCalculator
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong CalculateKeep(ulong exponent, in MontgomeryDivisorData divisor)
 	{
+		GpuPrimeWorkLimiter.Acquire();
 
 		var gpu = Pow2MontgomeryAccelerator.Rent(1);
 		Accelerator? accelerator = gpu.Accelerator;
-		AcceleratorStream stream = gpu.Stream!;
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
+		// AcceleratorStream stream = gpu.Stream!;
 		MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer = gpu.Input;
-		MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = gpu.Output;
 
 		exponentBuffer.View.CopyFromCPU(stream, ref exponent, 1);
 		// We don't need to worry about any left-overs here.
 		// resultBuffer.MemSetToZero(stream);
 
+		MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = gpu.OutputUlong;
 		var kernel = gpu.KeepMontgomeryKernel;
+		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
 
-		GpuPrimeWorkLimiter.Acquire();
-		kernel(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
+		kernelLauncher(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
 
 		ulong result = 0UL;
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
+		AcceleratorStreamPool.Return(stream);
 		GpuPrimeWorkLimiter.Release();
 
 		Pow2MontgomeryAccelerator.Return(gpu);
@@ -38,24 +41,26 @@ public static class Pow2MontgomeryGpuCalculator
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong CalculateConvert(ulong exponent, in MontgomeryDivisorData divisor)
 	{
+		GpuPrimeWorkLimiter.Acquire();
 
 		var gpu = Pow2MontgomeryAccelerator.Rent(1);
-		AcceleratorStream stream = gpu.Stream!;
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(gpu.Accelerator);
+		// AcceleratorStream stream = gpu.Stream!;
 		MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer = gpu.Input;
-		MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = gpu.Output;
 
 		exponentBuffer.View.CopyFromCPU(stream, ref exponent, 1);
 		// We don't need to worry about any left-overs here.
 		// resultBuffer.MemSetToZero(stream);
 
+		MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = gpu.OutputUlong;
 		var kernel = gpu.ConvertToStandardKernel;
 
-		GpuPrimeWorkLimiter.Acquire();
-		kernel(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
+		kernel.Launch(stream, 1, 1, exponentBuffer.View, divisor, resultBuffer.View);
 
 		ulong result = 0UL;
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
+		AcceleratorStreamPool.Return(stream);
 		GpuPrimeWorkLimiter.Release();
 
 		Pow2MontgomeryAccelerator.Return(gpu);
@@ -65,20 +70,24 @@ public static class Pow2MontgomeryGpuCalculator
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong CalculateConvert(Pow2MontgomeryAccelerator gpu, ulong exponent, in MontgomeryDivisorData divisor)
 	{
-		AcceleratorStream stream = gpu.Stream!;
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(gpu.Accelerator);
+		// AcceleratorStream stream = gpu.Stream!;
 		MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer = gpu.Input;
-		MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = gpu.Output;
 
 		exponentBuffer.View.CopyFromCPU(stream, ref exponent, 1);
 		// We don't need to worry about any left-overs here.
 		// resultBuffer.MemSetToZero(stream);
 
+		MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = gpu.OutputUlong;
 		var kernel = gpu.ConvertToStandardKernel;
-		kernel(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
+		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
+
+		kernelLauncher(stream, 1,exponentBuffer.View, divisor, resultBuffer.View);
 
 		ulong result = 0UL;
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
+		AcceleratorStreamPool.Return(stream);
 
 		return result;
 	}

@@ -261,13 +261,13 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public override readonly int GetHashCode() => HashCode.Combine(High, Low);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Add(in ReadOnlyGpuUInt128 other) => AddInternal(other.High, other.Low);
+    public void Add(in ReadOnlyGpuUInt128 other) => Add(other.High, other.Low);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Add(GpuUInt128 other) => AddInternal(other.High, other.Low);
+    public void Add(GpuUInt128 other) => Add(other.High, other.Low);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AddInternal(ulong otherHigh, ulong otherLow)
+    public void Add(ulong otherHigh, ulong otherLow)
     {
         ulong originalLow = Low;
         // We're reusing originalLow for carry to avoid an extra local.
@@ -316,7 +316,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             return;
         }
 
-        AddInternal(valueHigh, valueLow);
+        Add(valueHigh, valueLow);
         if (CompareTo(in modulus) >= 0)
         {
             Sub(in modulus);
@@ -589,9 +589,6 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GpuUInt128 BinaryGcd(GpuUInt128 u, GpuUInt128 v)
     {
-        // TODO: Replace this scalar binary GCD with the branchless reduction from
-        // GpuUInt128BinaryGcdBenchmarks so CPU fallbacks stay aligned with the GPU kernel
-        // performance when resolving large divisor residues.
         if (u.IsZero)
         {
             return v;
@@ -602,26 +599,50 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
             return u;
         }
 
-        int shift = TrailingZeroCount(new GpuUInt128(u.High | v.High, u.Low | v.Low));
+        ulong combinedLow = u.Low | v.Low;
+        int shift;
+        if (combinedLow != 0UL)
+        {
+            shift = BitOperations.TrailingZeroCount(combinedLow);
+        }
+        else
+        {
+            ulong combinedHigh = u.High | v.High;
+            shift = 64 + BitOperations.TrailingZeroCount(combinedHigh);
+        }
+
         int zu = TrailingZeroCount(u);
         u >>= zu;
 
-        do
+        GpuUInt128 currentV = v;
+        while (true)
         {
-            int zv = TrailingZeroCount(v);
-            v >>= zv;
-            if (u > v)
+            int zv = TrailingZeroCount(currentV);
+            currentV >>= zv;
+
+            bool swap = u > currentV;
+            GpuUInt128 min = ConditionalSelect(u, currentV, swap);
+            GpuUInt128 max = ConditionalSelect(currentV, u, swap);
+            max.Sub(min);
+
+            if (max.IsZero)
             {
-                (u, v) = (v, u);
+                return min << shift;
             }
 
-            v -= u;
+            u = min;
+            currentV = max;
         }
-        while (!v.IsZero);
-
-        return u << shift;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static GpuUInt128 ConditionalSelect(in GpuUInt128 left, in GpuUInt128 right, bool useRight)
+    {
+        ulong mask = useRight ? ulong.MaxValue : 0UL;
+        return new GpuUInt128(
+            left.High ^ ((left.High ^ right.High) & mask),
+            left.Low ^ ((left.Low ^ right.Low) & mask));
+    }
 
     public void Sub(ulong value)
     {
@@ -1527,6 +1548,15 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         low = (lo & 0xFFFFFFFFUL) | (carry << 32);
         hi += (mid1 >> 32) + (mid2 >> 32) + (carry >> 32);
         high = hi;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Pow2()
+    {
+        ulong operand = Low;
+        Low = operand * operand;
+        ulong highProduct = operand * High;
+        High = highProduct + MulHigh(operand, operand);
     }
 
 }

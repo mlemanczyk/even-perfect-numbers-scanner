@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using PerfectNumbers.Core.Cpu;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
@@ -1162,7 +1163,8 @@ internal static partial class PrimeOrderCalculator
 						continue;
 					}
 
-					if (!TryPollardRho(composite, deadlineTimestamp, out ulong factor))
+					if (!TryPollardRhoGpu(gpu, composite, out ulong factor))
+					// if (!TryPollardRhoCpu(composite, deadlineTimestamp, out ulong factor))
 					{
 						pending.Add(new PendingEntry(composite, knownComposite: true));
 						continue;
@@ -1492,7 +1494,7 @@ internal static partial class PrimeOrderCalculator
 		return baseTicks + (remainder / 1000L);
 	}
 
-	private static bool TryPollardRho(ulong n, long deadlineTimestamp, out ulong factor)
+	private static bool TryPollardRhoCpu(ulong n, long deadlineTimestamp, out ulong factor)
 	{
 		factor = 0UL;
 		if ((n & 1UL) == 0UL)
@@ -1510,8 +1512,8 @@ internal static partial class PrimeOrderCalculator
 				return false;
 			}
 
-			ulong c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
-			ulong x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
+			ulong c = (DeterministicRandomCpu.NextUInt64() % (n - 1UL)) + 1UL;
+			ulong x = (DeterministicRandomCpu.NextUInt64() % (n - 2UL)) + 2UL;
 			ulong y = x;
 			ulong d = 1UL;
 
@@ -1523,9 +1525,9 @@ internal static partial class PrimeOrderCalculator
 					return false;
 				}
 
-				x = AdvancePolynomial(x, c, n);
-				y = AdvancePolynomial(y, c, n);
-				y = AdvancePolynomial(y, c, n);
+				x = AdvancePolynomialCpu(x, c, n);
+				y = AdvancePolynomialCpu(y, c, n);
+				y = AdvancePolynomialCpu(y, c, n);
 				ulong diff = x > y ? x - y : y - x;
 				d = BinaryGcd(diff, n);
 			}
@@ -1539,7 +1541,7 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static ulong AdvancePolynomial(ulong x, ulong c, ulong modulus)
+	private static ulong AdvancePolynomialCpu(ulong x, ulong c, ulong modulus)
 	{
 		UInt128 value = (UInt128)x * x + c;
 		return (ulong)(value % modulus);
@@ -1810,16 +1812,16 @@ internal static partial class PrimeOrderCalculator
 
 		while (true)
 		{
-			ulong c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
-			ulong x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
+			ulong c = (DeterministicRandomCpu.NextUInt64() % (n - 1UL)) + 1UL;
+			ulong x = (DeterministicRandomCpu.NextUInt64() % (n - 2UL)) + 2UL;
 			ulong y = x;
 			ulong d = 1UL;
 
 			while (d == 1UL)
 			{
-				x = AdvancePolynomial(x, c, n);
-				y = AdvancePolynomial(y, c, n);
-				y = AdvancePolynomial(y, c, n);
+				x = AdvancePolynomialCpu(x, c, n);
+				y = AdvancePolynomialCpu(y, c, n);
+				y = AdvancePolynomialCpu(y, c, n);
 				ulong diff = x > y ? x - y : y - x;
 				d = BinaryGcd(diff, n);
 			}

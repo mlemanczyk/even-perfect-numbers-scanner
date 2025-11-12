@@ -4,6 +4,7 @@ using System.Numerics;
 using UInt128 = System.UInt128;
 using ILGPU;
 using System.Buffers;
+using PerfectNumbers.Core.Cpu;
 
 namespace PerfectNumbers.Core;
 
@@ -362,8 +363,8 @@ public static class MersennePrimeFactorTester
                 return 0UL;
             }
 
-            c = (DeterministicRandom.NextUInt64() % (n - 1UL)) + 1UL;
-            x = (DeterministicRandom.NextUInt64() % (n - 2UL)) + 2UL;
+            c = (DeterministicRandomCpu.NextUInt64() % (n - 1UL)) + 1UL;
+            x = (DeterministicRandomCpu.NextUInt64() % (n - 2UL)) + 2UL;
             y = x;
             d = 1UL;
 
@@ -505,8 +506,8 @@ public static class MersennePrimeFactorTester
                 return 0;
             }
 
-            c = (DeterministicRandom.NextUInt128() % (n - 1)) + 1;
-            x = (DeterministicRandom.NextUInt128() % (n - 2)) + 2;
+            c = (DeterministicRandomCpu.NextUInt128() % (n - 1)) + 1;
+            x = (DeterministicRandomCpu.NextUInt128() % (n - 2)) + 2;
             y = x;
             d = 1;
 

@@ -12,7 +12,7 @@ public sealed class Pow2MontgomeryAccelerator
 	[ThreadStatic]
 	private static Queue<Pow2MontgomeryAccelerator>? _pool;
 
-	private static AcceleratorPool _accelerators = new(PerfectNumberConstants.RollingAccelerators << 1);
+	private static AcceleratorPool _accelerators = new(PerfectNumberConstants.RollingAccelerators);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Pow2MontgomeryAccelerator Rent(int primeTesterCapacity)
@@ -25,8 +25,8 @@ public sealed class Pow2MontgomeryAccelerator
 		}
 		else
 		{
-			gpu.Stream = gpu.Accelerator.CreateStream();
-			gpu.EnsureCapacity(PerfectNumberConstants.DefaultFactorsBuffer,primeTesterCapacity);
+			// gpu.Stream = gpu.Accelerator.CreateStream();
+			gpu.EnsureCapacity(PerfectNumberConstants.DefaultFactorsBuffer, primeTesterCapacity);
 		}
 
 		return gpu;
@@ -35,8 +35,8 @@ public sealed class Pow2MontgomeryAccelerator
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void Return(Pow2MontgomeryAccelerator gpu)
 	{
-		gpu.Stream!.Dispose();
-		gpu.Stream = null;
+		// gpu.Stream!.Dispose();
+		// gpu.Stream = null;
 		_pool!.Enqueue(gpu);
 	}
 
@@ -87,9 +87,9 @@ public sealed class Pow2MontgomeryAccelerator
 
 	public readonly Accelerator Accelerator;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> Input;
-	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> Output;
+	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> OutputUlong;
 	public MemoryBuffer1D<ulong, Stride1D.Dense> PrimeTestInput;
-	public MemoryBuffer1D<byte, Stride1D.Dense> PrimeTestOutput;
+	public MemoryBuffer1D<byte, Stride1D.Dense> OutputByte;
 	public MemoryBuffer1D<int, Stride1D.Dense> HeuristicFlag;
 	public MemoryBuffer1D<KeyValuePair<ulong, int>, Stride1D.Dense> Pow2ModEntriesToTestOnDevice;
 	public Dictionary<ulong, int> Pow2ModEntriesToTestOnHost = [];
@@ -101,14 +101,14 @@ public sealed class Pow2MontgomeryAccelerator
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastSeven;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastThree;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastNine;
-	public readonly Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> SmallPrimeSieveKernel;
+	public readonly Kernel SmallPrimeSieveKernel;
 
-	public AcceleratorStream? Stream;
-
-	public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> ConvertToStandardKernel;
-	public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> KeepMontgomeryKernel;
+	// public AcceleratorStream? Stream;
 
 	public readonly Kernel CheckFactorsKernel;
+	public readonly Kernel ConvertToStandardKernel;
+	public readonly Kernel KeepMontgomeryKernel;
+	public readonly Kernel PollardRhoKernel;
 
 	[ThreadStatic]
 	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>? SmallPrimeSieveKernelPool;
@@ -137,15 +137,14 @@ public sealed class Pow2MontgomeryAccelerator
 
 		if (primeTesterCapacity > PrimeTestInput.Length)
 		{
-
 			PrimeTestInput?.Dispose();
-			PrimeTestOutput?.Dispose();
+			OutputByte?.Dispose();
 			HeuristicFlag?.Dispose();
 
 			// lock (Accelerator)
 			{
 				PrimeTestInput = Accelerator.Allocate1D<ulong>(primeTesterCapacity);
-				PrimeTestOutput = Accelerator.Allocate1D<byte>(primeTesterCapacity);
+				OutputByte = Accelerator.Allocate1D<byte>(primeTesterCapacity);
 				HeuristicFlag = Accelerator.Allocate1D<int>(primeTesterCapacity);
 			}
 		}
@@ -154,14 +153,16 @@ public sealed class Pow2MontgomeryAccelerator
 	public Pow2MontgomeryAccelerator(Accelerator accelerator, int factorsCount, int primeTesterCapacity)
 	{
 		Accelerator = accelerator;
-		AcceleratorStream stream = accelerator.CreateStream();
-		Stream = stream;
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
+		// AcceleratorStream stream = accelerator.DefaultStream;
+		// AcceleratorStream stream = accelerator.CreateStream();
+		// Stream = stream;
 
 		Input = accelerator.Allocate1D<ulong>(1);
-		Output = accelerator.Allocate1D<ulong>(1);
+		OutputUlong = accelerator.Allocate1D<ulong>(1);
 		Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
 		PrimeTestInput = Accelerator.Allocate1D<ulong>(primeTesterCapacity);
-		PrimeTestOutput = Accelerator.Allocate1D<byte>(primeTesterCapacity);
+		OutputByte = Accelerator.Allocate1D<byte>(primeTesterCapacity);
 		HeuristicFlag = Accelerator.Allocate1D<int>(primeTesterCapacity);
 
 		var sharedTables = LastDigitGpuTables.EnsureStaticTables(accelerator, stream);
@@ -174,30 +175,30 @@ public sealed class Pow2MontgomeryAccelerator
 		DevicePrimesPow2LastThree = sharedTables.DevicePrimesPow2LastThree;
 		DevicePrimesPow2LastNine = sharedTables.DevicePrimesPow2LastNine;
 
-		var keepKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelKeepMontgomery);
-		var keepLauncher = KernelUtil.GetKernel(keepKernel);
-
-		KeepMontgomeryKernel = keepLauncher.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
-
-		var convertKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelConvertToStandard);
-		var convertLauncher = KernelUtil.GetKernel(convertKernel);
-
-		ConvertToStandardKernel = convertLauncher.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
-
 		var checkFactorsKernel = accelerator.LoadStreamKernel<int, ulong, ArrayView1D<KeyValuePair<ulong, int>, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderGpuHeuristics.CheckFactorsKernel);
 		CheckFactorsKernel = KernelUtil.GetKernel(checkFactorsKernel);
 
-		SmallPrimeSieveKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>();
+		var convertKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelConvertToStandard);
+		ConvertToStandardKernel = KernelUtil.GetKernel(convertKernel);
+
+		var keepKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelKeepMontgomery);
+		KeepMontgomeryKernel = KernelUtil.GetKernel(keepKernel);
+
+		SmallPrimeSieveKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel));
+
+		PollardRhoKernel = KernelUtil.GetKernel(accelerator.LoadStreamKernel<ulong, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.TryPollardRhoKernel));
+
+		AcceleratorStreamPool.Return(stream);
 	}
 
 	public void Dispose()
 	{
 		Input.Dispose();
-		Output.Dispose();
-		Stream?.Dispose();
+		OutputUlong.Dispose();
+		// Stream?.Dispose();
 		Pow2ModEntriesToTestOnDevice.Dispose();
 		PrimeTestInput?.Dispose();
-		PrimeTestOutput?.Dispose();
+		OutputByte?.Dispose();
 		HeuristicFlag?.Dispose();
 
 		// Stream is disposed upon return to the queue, so we don't need to dispose it here.
