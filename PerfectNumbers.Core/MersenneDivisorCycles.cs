@@ -804,7 +804,7 @@ public class MersenneDivisorCycles
 
 		divisors = pool.Rent(count);
 		outCycles = pool.Rent(count);
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		var accelerator = AcceleratorPool.Shared.Rent();
 		var stream = accelerator.CreateStream();
 
@@ -897,7 +897,7 @@ public class MersenneDivisorCycles
 		pool.Return(divisors, clearArray: false);
 		pool.Return(outCycles, clearArray: false);
 
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 	}
 
 	private static Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> GetDivisorCycleKernel(Accelerator accelerator)

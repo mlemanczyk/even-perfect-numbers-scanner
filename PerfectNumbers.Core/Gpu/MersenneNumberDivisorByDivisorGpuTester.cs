@@ -103,7 +103,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         ulong processedCount;
         ulong lastProcessed;
 
-        GpuPrimeWorkLimiter.Acquire();
+        // GpuPrimeWorkLimiter();
         var accelerator = AcceleratorPool.Shared.Rent();
         var stream = accelerator.CreateStream();
 
@@ -137,7 +137,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		stream.Dispose();
         ReturnBatchResources(resources);
 		// Monitor.Exit(gpuLease.ExecutionLock);
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 		
         if (composite)
         {
@@ -509,7 +509,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
         internal DivisorScanSession(MersenneNumberDivisorByDivisorGpuTester owner)
         {
             _owner = owner;
-            GpuPrimeWorkLimiter.Acquire();
+            // GpuPrimeWorkLimiter.Acquire();
 			Accelerator accelerator = AcceleratorPool.Shared.Rent();
             _accelerator = accelerator;
             _stream = accelerator.CreateStream();

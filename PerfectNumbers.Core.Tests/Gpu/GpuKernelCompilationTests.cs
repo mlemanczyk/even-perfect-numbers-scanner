@@ -365,7 +365,7 @@ public class GpuKernelCompilationTests
 		{
 			stream.Synchronize();
 			stream.Dispose();
-			GpuPrimeWorkLimiter.Release();
+			// GpuPrimeWorkLimiter.Release();
 		}
 
 		stream = accelerator.CreateStream();
@@ -383,7 +383,7 @@ public class GpuKernelCompilationTests
 		{
 			stream.Synchronize();
 			stream.Dispose();
-			GpuPrimeWorkLimiter.Release();
+			// GpuPrimeWorkLimiter.Release();
 		}
 	}
 }

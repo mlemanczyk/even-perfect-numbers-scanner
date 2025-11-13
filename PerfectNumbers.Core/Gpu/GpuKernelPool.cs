@@ -280,13 +280,13 @@ public class GpuKernelPool
 	/// <param name="action">Action to run with (Accelerator, Stream).</param>
 	public static void Run(Action<Accelerator, AcceleratorStream> action)
 	{
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		var accelerator = SharedGpuContext.CreateAccelerator();
 		var stream = accelerator.CreateStream();
 		action(accelerator, stream);
 		stream.Synchronize();
 		stream.Dispose();
 		accelerator.Dispose();
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 	}
 }

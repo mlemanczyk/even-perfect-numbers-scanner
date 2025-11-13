@@ -16,7 +16,7 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
     {
         throw new NotImplementedException($"GPU incremental scanning requires the device cycle heuristics implementation (kernel: {_kernelType}, GPU order: {_useGpuOrder}).");
 
-        GpuPrimeWorkLimiter.Acquire();
+        // GpuPrimeWorkLimiter.Acquire();
         var accelerator = AcceleratorPool.Shared.Rent();
         var stream = accelerator.CreateStream();
         int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy
@@ -125,6 +125,6 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
 		stream.Dispose();
         ulongPool.Return(orderArray);
 		orderBuffer.Dispose();
-        GpuPrimeWorkLimiter.Release();
+        // GpuPrimeWorkLimiter.Release();
     }
 }

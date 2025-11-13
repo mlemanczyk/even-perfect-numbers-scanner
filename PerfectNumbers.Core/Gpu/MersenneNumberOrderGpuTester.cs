@@ -9,7 +9,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 
 	public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		// var accelerator = SharedGpuContext.Accelerator;
 		var accelerator = AcceleratorPool.Shared.Rent();
 		var stream = accelerator.CreateStream();
@@ -71,6 +71,6 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 
 		stream.Dispose();
 		foundBuffer.Dispose();
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 	}
 }

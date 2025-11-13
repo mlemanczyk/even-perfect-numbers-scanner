@@ -225,7 +225,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
 		try
 		{
-			GpuPrimeWorkLimiter.Acquire();
+			// GpuPrimeWorkLimiter.Acquire();
 			Accelerator accelerator = AcceleratorPool.Shared.Rent();
 			AcceleratorStream stream = accelerator.CreateStream();
 
@@ -290,7 +290,7 @@ internal static partial class PrimeOrderGpuHeuristics
 			countBuffer.Dispose();
 			remainingBuffer.Dispose();
 			fullyFactoredBuffer.Dispose();
-			GpuPrimeWorkLimiter.Release();
+			// GpuPrimeWorkLimiter.Release();
 			return true;
 		}
 		catch (CLException ex)
@@ -402,7 +402,7 @@ internal static partial class PrimeOrderGpuHeuristics
 	{
 		order = 0UL;
 
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		Accelerator accelerator = AcceleratorPool.Shared.Rent();
 		AcceleratorStream stream = accelerator.CreateStream();
 
@@ -494,7 +494,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		stackProductBuffer.Dispose();
 		resultBuffer.Dispose();
 		statusBuffer.Dispose();
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 
 		PrimeOrderKernelStatus kernelStatus = (PrimeOrderKernelStatus)status;
 		if (kernelStatus == PrimeOrderKernelStatus.Fallback)
@@ -574,7 +574,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
 	private static bool TryComputeOnGpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorData divisorData, Span<ulong> results)
 	{
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		Accelerator accelerator = AcceleratorPool.Shared.Rent();
 		AcceleratorStream? stream = accelerator.CreateStream();
 		// TODO: These buffers should be allocated once per accelerator and only reallocated when the new length exceeds capacity.
@@ -604,7 +604,7 @@ internal static partial class PrimeOrderGpuHeuristics
 			stream = null;
 			exponentBuffer.Dispose();
 			remainderBuffer.Dispose();
-			GpuPrimeWorkLimiter.Release();
+			// GpuPrimeWorkLimiter.Release();
 		}
 		catch (Exception)
 		{
@@ -612,7 +612,7 @@ internal static partial class PrimeOrderGpuHeuristics
 			stream?.Dispose();
 			exponentBuffer.Dispose();
 			remainderBuffer.Dispose();
-			GpuPrimeWorkLimiter.Release();
+			// GpuPrimeWorkLimiter.Release();
 			throw;
 		}
 
@@ -638,7 +638,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
 		GpuUInt128[]? rentedExponents = null;
 		GpuUInt128[]? rentedResults = null;
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		ArrayPool<GpuUInt128> gpuUInt128Pool = ThreadStaticPools.GpuUInt128Pool;
 
 		try
@@ -704,7 +704,7 @@ internal static partial class PrimeOrderGpuHeuristics
 				gpuUInt128Pool.Return(rentedResults!, clearArray: false);
 			}
 
-			GpuPrimeWorkLimiter.Release();
+			// GpuPrimeWorkLimiter.Release();
 		}
 	}
 

@@ -159,7 +159,7 @@ public class MersenneNumberLucasLehmerGpuTester
         }
         else
         {
-        	GpuPrimeWorkLimiter.Acquire();
+        	// GpuPrimeWorkLimiter.Acquire();
             var accelerator = AcceleratorPool.Shared.Rent();
             var stream = accelerator.CreateStream();
             var modulus = new GpuUInt128(((UInt128)1 << (int)exponent) - 1UL); // TODO: Cache these Mersenne moduli per exponent so LL GPU runs skip rebuilding them every launch.
@@ -173,7 +173,7 @@ public class MersenneNumberLucasLehmerGpuTester
             stream.Dispose();
         }
 
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
         return result;
     }
 

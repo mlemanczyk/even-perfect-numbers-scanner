@@ -91,30 +91,30 @@ internal static partial class PrimeOrderCalculator
 			return phi;
 		}
 
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		ulong candidateOrder = InitializeStartingOrderCpu(gpu, prime, phi, divisorData);
 		candidateOrder = ExponentLoweringCpu(candidateOrder, prime, phiFactors, divisorData);
 
 		if (TryConfirmOrderCpu(gpu, prime, candidateOrder, divisorData, config, out PartialFactorResult? orderFactors))
 		{
-			GpuPrimeWorkLimiter.Release();
+			// GpuPrimeWorkLimiter.Release();
 			return candidateOrder;
 		}
 
 		if (config.Mode == PrimeOrderMode.Strict)
 		{
 			orderFactors?.Dispose();
-			GpuPrimeWorkLimiter.Release();
+			// GpuPrimeWorkLimiter.Release();
 			return CalculateByFactorizationGpu(gpu, prime, divisorData);
 		}
 
 		if (TryHeuristicFinishCpu(gpu, prime, candidateOrder, previousOrder, divisorData, config, phiFactors, orderFactors, out ulong order))
 		{
-			GpuPrimeWorkLimiter.Release();
+			// GpuPrimeWorkLimiter.Release();
 			return order;
 		}
 
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 		return candidateOrder;
 	}
 
@@ -1148,7 +1148,7 @@ internal static partial class PrimeOrderCalculator
 			bool pollardRhoDeadlineReached = Stopwatch.GetTimestamp() > deadlineTimestamp;
 			if (!pollardRhoDeadlineReached)
 			{
-				GpuPrimeWorkLimiter.Acquire();
+				// GpuPrimeWorkLimiter.Acquire();
 
 				while (compositeStack.Count > 0)
 				{
@@ -1200,7 +1200,7 @@ internal static partial class PrimeOrderCalculator
 					pollardRhoDeadlineReached = Stopwatch.GetTimestamp() > deadlineTimestamp;
 				}
 
-				GpuPrimeWorkLimiter.Release();
+				// GpuPrimeWorkLimiter.Release();
 			}
 
 			if (pollardRhoDeadlineReached)
@@ -1216,7 +1216,7 @@ internal static partial class PrimeOrderCalculator
 		bool cofactorContainsComposite = false;
 		int pendingCount = pending.Count;
 		int index = 0;
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		for (; index < pendingCount; index++)
 		{
 			PendingEntry entry = pending[index];
@@ -1280,7 +1280,7 @@ internal static partial class PrimeOrderCalculator
 			// cofactorIsPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(cofactor);
 		}
 
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 
 		// ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
 		bool temp;
@@ -1331,19 +1331,14 @@ internal static partial class PrimeOrderCalculator
 			// 	continue;
 			// }
 
-			// factorsArray[arrayIndex] = new FactorEntry(primeValue, exponentValue, true);
 			factorsArray[arrayIndex] = primeValue;
 			exponentsArray[arrayIndex] = exponentValue;
-			// cofactorIsPrimesArray[arrayIndex] = true;
 			arrayIndex++;
 		}
 
-		// Span<FactorEntry> arraySpan = factorsArray.AsSpan(0, arrayIndex);
-		// Span<ulong> arraySpan = factorsArray.AsSpan(0, arrayIndex);
-		// arraySpan.Sort(static (a, b) => a.CompareTo(b));
 		Array.Sort(factorsArray, exponentsArray, 0, arrayIndex);
 		temp = cofactor == 1UL;
-		// result = PartialFactorResult.Rent(factorsArray, exponentsArray, cofactorIsPrimesArray, cofactor, temp, arrayIndex, cofactorIsPrime);
+		
 		result = PartialFactorResult.Rent(factorsArray, exponentsArray, cofactor, temp, arrayIndex, cofactorIsPrime);
 
 	ReturnResult:
@@ -1716,7 +1711,7 @@ internal static partial class PrimeOrderCalculator
 		ulong order = phi;
 		int entryCount = entries.Length;
 
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		for (int i = 0; i < entryCount; i++)
 		{
 			ulong primeFactor = entries[i].Key;
@@ -1744,7 +1739,7 @@ internal static partial class PrimeOrderCalculator
 			}
 		}
 
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 		return order;
 	}
 

@@ -1,7 +1,6 @@
 using System.Buffers;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
@@ -93,15 +92,15 @@ public sealed class PrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool IsPrimeGpu(ulong n)
 	{
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		byte flag = 0;
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		var inputView = gpu.PrimeTestInput.View;
 		var outputView = gpu.OutputByte.View;
 		var kernel = gpu.SmallPrimeSieveKernel!;
 
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(gpu.Accelerator);
-		// var stream = gpu.Stream!;
 		inputView.CopyFromCPU(stream, ref n, 1);
 
 		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>();
@@ -120,13 +119,12 @@ public sealed class PrimeTester
 						gpu.DevicePrimesPow2LastNine.View,
 						outputView);
 
-		byte flag = 0;
 		outputView.CopyToCPU(stream, ref flag, 1);
 		stream.Synchronize();
 
 		AcceleratorStreamPool.Return(stream);
 		PrimeOrderCalculatorAccelerator.Return(gpu);
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 
 		return flag != 0;
 	}
@@ -134,6 +132,7 @@ public sealed class PrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n)
 	{
+		byte flag = 0;
 		var input = gpu.PrimeTestInput;
 		var inputView = input.View;
 		var output = gpu.OutputByte;
@@ -159,7 +158,6 @@ public sealed class PrimeTester
 						gpu.DevicePrimesPow2LastNine.View,
 						outputView);
 
-		byte flag = 0;
 		outputView.CopyToCPU(stream, ref flag, 1);
 		stream.Synchronize();
 		AcceleratorStreamPool.Return(stream);
@@ -195,7 +193,7 @@ public sealed class PrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void IsPrimeBatchGpu(ReadOnlySpan<ulong> values, Span<byte> results)
 	{
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(GpuBatchSize);
 		var accelerator = gpu.Accelerator;
 		var kernel = gpu.SmallPrimeSieveKernel!;
@@ -240,7 +238,7 @@ public sealed class PrimeTester
 		stream.Synchronize();
 		AcceleratorStreamPool.Return(stream);
 		PrimeOrderCalculatorAccelerator.Return(gpu);
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 	}
 
 	// Expose cache clearing for accelerator disposal coordination
@@ -276,31 +274,27 @@ public sealed class PrimeTester
 		// TODO: Route this batch helper through the shared GPU kernel pool from
 		// GpuUInt128BinaryGcdBenchmarks so we reuse cached kernels, pinned host buffers,
 		// and divisor-cycle staging instead of allocating new device buffers per call.
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		var accelerator = gpu.Accelerator;
+		// Check in benchmarks, which implementation was the fastest, is compatible with GPU,
+		// and implement it.
 
 		int length = values.Length;
 		ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
-		ulong[] temp = pool.Rent(length);
-		values.CopyTo(temp);
 
-		MemoryBuffer1D<ulong, Stride1D.Dense>? inputBuffer;
-		MemoryBuffer1D<byte, Stride1D.Dense>? resultBuffer;
-
-		inputBuffer = accelerator.Allocate1D<ulong>(length);
-		resultBuffer = accelerator.Allocate1D<byte>(length);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		var accelerator = gpu.Accelerator;
+		gpu.EnsureCapacity(0, length);
+		MemoryBuffer1D<ulong, Stride1D.Dense>? inputBuffer = gpu.PrimeTestInput;
+		MemoryBuffer1D<byte, Stride1D.Dense>? resultBuffer = gpu.OutputByte;
 
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
-		inputBuffer.View.CopyFromCPU(stream, ref temp[0], length);
+		inputBuffer.View.CopyFromCPU(stream, values);
+
 		var kernel = GetSharesFactorKernel(accelerator);
 		kernel(stream, length, inputBuffer.View, resultBuffer.View);
 		resultBuffer.View.CopyToCPU(stream, in results);
 		stream.Synchronize();
 
 		AcceleratorStreamPool.Return(stream);
-		pool.Return(temp, clearArray: false);
-		resultBuffer.Dispose();
-		inputBuffer.Dispose();
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 	}
 
@@ -323,6 +317,8 @@ public sealed class PrimeTester
 		// TODO: Swap this handwritten binary GCD for the optimized helper measured in
 		// GpuUInt128BinaryGcdBenchmarks so CPU callers share the faster subtract-less
 		// ladder once the common implementation is promoted into PerfectNumbers.Core.
+		// You have an example in the benchmarks and you already implemented it in
+		// GpuUInt128, iirc.
 		if (u == 0UL)
 		{
 			return v;

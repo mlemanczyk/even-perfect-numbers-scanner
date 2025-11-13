@@ -41,8 +41,9 @@ public sealed class DivisorCycleCache
 	private DivisorCycleCache(int divisorCyclesBatchSize)
 	{
 		_divisorCyclesBatchSize = Math.Max(1, divisorCyclesBatchSize);
-		_accelerator = SharedGpuContext.Device.CreateAccelerator(SharedGpuContext.Context);
-		_gpuKernel = LoadKernel(_accelerator);
+		var accelerator = AcceleratorPool.Shared.Rent();
+		_accelerator = accelerator;
+		_gpuKernel = LoadKernel(accelerator);
 		_snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
 	}
 
@@ -83,7 +84,6 @@ public sealed class DivisorCycleCache
 				throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
 			}
 
-			// ObserveCycleCacheDivisor(divisor);
 			return cached;
 		}
 
@@ -118,7 +118,6 @@ public sealed class DivisorCycleCache
 					throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
 				}
 
-				// ObserveCycleCacheDivisor(divisor);
 				cycles[i] = cached;
 			}
 			else
@@ -257,18 +256,15 @@ public sealed class DivisorCycleCache
 			powBuffer!.Dispose();
 			orderBuffer!.Dispose();
 			resultBuffer!.Dispose();
-			statusBuffer!.Dispose();			
+			statusBuffer!.Dispose();
 		}
 
 		Accelerator accelerator = _accelerator;
-		// lock(accelerator)
-		{
-			divisorBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
-			powBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
-			orderBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
-			resultBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
-			statusBuffer = accelerator.Allocate1D<byte>(requiredCapacity);			
-		}
+		divisorBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+		powBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+		orderBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+		resultBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+		statusBuffer = accelerator.Allocate1D<byte>(requiredCapacity);
 	}
 
 	private void ComputeCyclesGpuCore(ReadOnlySpan<ulong> divisors, Span<ulong> destination)
@@ -312,8 +308,10 @@ public sealed class DivisorCycleCache
 			statusSpan[i] = ByteZero;
 		}
 
-		GpuPrimeWorkLimiter.Acquire();
-		var stream = AcceleratorStreamPool.Rent(_accelerator);// accelerator.CreateStream();
+		// GpuPrimeWorkLimiter.Acquire();
+		int pending;
+		var kernel = _gpuKernel;
+		var stream = AcceleratorStreamPool.Rent(_accelerator);
 
 		divisorBuffer!.View.CopyFromCPU(stream, divisors);
 		powBuffer!.View.CopyFromCPU(stream, powSpan);
@@ -321,8 +319,6 @@ public sealed class DivisorCycleCache
 		resultBuffer!.View.CopyFromCPU(stream, resultSpan);
 		statusBuffer!.View.CopyFromCPU(stream, statusSpan);
 
-		int pending;
-		var kernel = _gpuKernel;
 		do
 		{
 			kernel(stream, length, _divisorCyclesBatchSize, divisorBuffer.View, powBuffer.View, orderBuffer.View, resultBuffer.View, statusBuffer.View);
@@ -341,7 +337,7 @@ public sealed class DivisorCycleCache
 		}
 		while (pending > 0);
 
-		resultBuffer.View.CopyToCPU(stream,resultSpan);
+		resultBuffer.View.CopyToCPU(stream, resultSpan);
 		stream.Synchronize();
 		AcceleratorStreamPool.Return(stream);
 
@@ -354,7 +350,7 @@ public sealed class DivisorCycleCache
 			ThreadStaticPools.BytePool.Return(rentedStatus!, clearArray: false);
 		}
 
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 	}
 
 	private static Action<AcceleratorStream, Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> LoadKernel(Accelerator accelerator)

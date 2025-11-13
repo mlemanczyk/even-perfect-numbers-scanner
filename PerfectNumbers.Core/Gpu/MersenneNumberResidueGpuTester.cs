@@ -25,7 +25,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 	// GPU residue variant: check 2^p % q == 1 for q = 2*p*k + 1.
 	public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		var accelerator = AcceleratorPool.Shared.Rent();
 
 		// Monitor.Enter(gpuLease.ExecutionLock);
@@ -110,7 +110,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		stream.Dispose();
 		// Monitor.Exit(gpuLease.ExecutionLock);
 		gpuKernels.Dispose();
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 	}
 
 	private static Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> GetPow2ModKernel(Accelerator accelerator)

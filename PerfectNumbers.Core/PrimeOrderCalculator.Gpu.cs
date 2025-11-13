@@ -39,7 +39,7 @@ internal static partial class PrimeOrderCalculator
 		var kernel = gpu.CheckFactorsKernel;
 		gpu.EnsureCapacity(entryCount, 1);
 
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(gpu.Accelerator);
 		gpu.Pow2ModEntriesToTestOnDevice.View.CopyFromCPU(stream, entries);
 
@@ -51,7 +51,7 @@ internal static partial class PrimeOrderCalculator
 		stream.Synchronize();
 		AcceleratorStreamPool.Return(stream);
 
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 		return order;
 	}
 
@@ -66,7 +66,7 @@ internal static partial class PrimeOrderCalculator
 		gpu.EnsureSmallPrimeFactorSlotsCapacity(GpuSmallPrimeFactorSlots);
 		var accelerator = gpu.Accelerator;
 
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		var stream = AcceleratorStreamPool.Rent(accelerator);
 		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.SmallPrimeFactorKernelScan);
 		SmallPrimeFactorViews tables = GpuKernelPool.GetSmallPrimeFactorTables(kernels);
@@ -113,7 +113,7 @@ internal static partial class PrimeOrderCalculator
 		stream.Synchronize();
 
 		AcceleratorStreamPool.Return(stream);
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 
 		for (int i = 0; i < factorCount; i++)
 		{
@@ -136,7 +136,7 @@ internal static partial class PrimeOrderCalculator
 		gpu.EnsureSpecialMaxFactorsCapacity(factorCount);
 
 		Accelerator accelerator = gpu.Accelerator;
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		var stream = AcceleratorStreamPool.Rent(accelerator);
 		var kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.EvaluateSpecialMaxCandidatesKernel);
 
@@ -162,7 +162,7 @@ internal static partial class PrimeOrderCalculator
 		stream.Synchronize();
 		
 		AcceleratorStreamPool.Return(stream);
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 		return result != 0;
 	}
 
@@ -171,11 +171,12 @@ internal static partial class PrimeOrderCalculator
 		Span<ulong> randomStateSpan = stackalloc ulong[1]; 
 		randomStateSpan[0] = ThreadStaticDeterministicRandomGpu.Exclusive.State;
 
+		Span<byte> factoredSpan = stackalloc byte[1];
+		Span<ulong> factorSpan = stackalloc ulong[1];
+		
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(gpu.Accelerator);
 		gpu.Input.View.CopyFromCPU(stream, randomStateSpan);
 
-		Span<byte> factoredSpan = stackalloc byte[1];
-		Span<ulong> factorSpan = stackalloc ulong[1];
 		var kernelLauncher = gpu.PollardRhoKernel.CreateLauncherDelegate<Action<AcceleratorStream, ulong, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
 
 		kernelLauncher(stream, n, 1, gpu.Input.View, gpu.OutputByte.View, gpu.OutputUlong.View);

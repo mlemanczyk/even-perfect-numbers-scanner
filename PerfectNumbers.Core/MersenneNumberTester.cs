@@ -147,7 +147,7 @@ public sealed class MersenneNumberTester(
 
 		UInt128[] qs = qsBuffer;
 
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		var accelerator = AcceleratorPool.Shared.Rent();
 		var stream = accelerator.CreateStream();
 		var orderKernel = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.OrderKernelScan).Order!;
@@ -164,11 +164,8 @@ public sealed class MersenneNumberTester(
 		while (offset < idx)
 		{
 			int count = Math.Min(batchSize, idx - offset);
-			// lock (accelerator)
-			{
-				qBuffer = accelerator.Allocate1D<GpuUInt128>(count);
-				orderBuffer = accelerator.Allocate1D<ulong>(count);
-			}
+			qBuffer = accelerator.Allocate1D<GpuUInt128>(count);
+			orderBuffer = accelerator.Allocate1D<ulong>(count);
 			
 			// Convert to device-friendly GpuUInt128 on the fly
 			var tmp = gpuUInt128Pool.Rent(count);
@@ -204,7 +201,7 @@ public sealed class MersenneNumberTester(
 		}
 
 		stream.Dispose();
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 		uInt128Pool.Return(qs);
 	}
 

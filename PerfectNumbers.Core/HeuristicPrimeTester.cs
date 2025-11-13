@@ -241,7 +241,7 @@ public sealed class HeuristicPrimeTester
 
 	private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
-		GpuPrimeWorkLimiter.Acquire();
+		// GpuPrimeWorkLimiter.Acquire();
 		var gpu = HeuristicPrimeTesterAccelerator.Rent(1);
 		var accelerator = gpu.Accelerator;
 		var stream = gpu.Stream;
@@ -307,7 +307,7 @@ public sealed class HeuristicPrimeTester
 		}
 
 		gpu.Dispose();
-		GpuPrimeWorkLimiter.Release();
+		// GpuPrimeWorkLimiter.Release();
 		return compositeDetected;
 	}
 
