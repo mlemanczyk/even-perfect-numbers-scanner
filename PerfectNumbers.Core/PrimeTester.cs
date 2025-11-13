@@ -93,10 +93,7 @@ public sealed class PrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool IsPrimeGpu(ulong n)
 	{
-		var gpu = Pow2MontgomeryAccelerator.Rent(1);
-
-		// Span<byte> flag = stackalloc byte[1];
-
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 
 		var inputView = gpu.PrimeTestInput.View;
 		var outputView = gpu.OutputByte.View;
@@ -128,15 +125,14 @@ public sealed class PrimeTester
 		stream.Synchronize();
 
 		AcceleratorStreamPool.Return(stream);
-		// gpu.Dispose();
-		Pow2MontgomeryAccelerator.Return(gpu);
+		PrimeOrderCalculatorAccelerator.Return(gpu);
 		GpuPrimeWorkLimiter.Release();
 
 		return flag != 0;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool IsPrimeGpu(Pow2MontgomeryAccelerator gpu, ulong n)
+	public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n)
 	{
 		var input = gpu.PrimeTestInput;
 		var inputView = input.View;
@@ -191,7 +187,7 @@ public sealed class PrimeTester
 				return;
 			}
 
-			Pow2MontgomeryAccelerator.WarmUp();
+			PrimeOrderCalculatorAccelerator.WarmUp();
 			WarmedGpuLeaseCount = target;
 		}
 	}
@@ -200,9 +196,8 @@ public sealed class PrimeTester
 	public static void IsPrimeBatchGpu(ReadOnlySpan<ulong> values, Span<byte> results)
 	{
 		GpuPrimeWorkLimiter.Acquire();
-		var gpu = Pow2MontgomeryAccelerator.Rent(GpuBatchSize);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(GpuBatchSize);
 		var accelerator = gpu.Accelerator;
-		// var stream = gpu.Stream!;
 		var kernel = gpu.SmallPrimeSieveKernel!;
 		int totalLength = values.Length;
 		int batchSize = GpuBatchSize;
@@ -244,20 +239,19 @@ public sealed class PrimeTester
 
 		stream.Synchronize();
 		AcceleratorStreamPool.Return(stream);
-		Pow2MontgomeryAccelerator.Return(gpu);
-		// gpu.Dispose();
+		PrimeOrderCalculatorAccelerator.Return(gpu);
 		GpuPrimeWorkLimiter.Release();
 	}
 
 	// Expose cache clearing for accelerator disposal coordination
 	public static void ClearGpuCaches()
 	{
-		Pow2MontgomeryAccelerator.Clear();
+		PrimeOrderCalculatorAccelerator.Clear();
 	}
 
 	internal static void DisposeGpuContexts()
 	{
-		Pow2MontgomeryAccelerator.DisposeAll();
+		PrimeOrderCalculatorAccelerator.DisposeAll();
 		lock (GpuWarmUpLock)
 		{
 			WarmedGpuLeaseCount = 0;
@@ -282,9 +276,8 @@ public sealed class PrimeTester
 		// TODO: Route this batch helper through the shared GPU kernel pool from
 		// GpuUInt128BinaryGcdBenchmarks so we reuse cached kernels, pinned host buffers,
 		// and divisor-cycle staging instead of allocating new device buffers per call.
-		var gpu = Pow2MontgomeryAccelerator.Rent(1);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		var accelerator = gpu.Accelerator;
-		// var stream = gpu.Stream!;
 
 		int length = values.Length;
 		ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
@@ -294,11 +287,8 @@ public sealed class PrimeTester
 		MemoryBuffer1D<ulong, Stride1D.Dense>? inputBuffer;
 		MemoryBuffer1D<byte, Stride1D.Dense>? resultBuffer;
 
-		// lock (accelerator)
-		{
-			inputBuffer = accelerator.Allocate1D<ulong>(length);
-			resultBuffer = accelerator.Allocate1D<byte>(length);
-		}
+		inputBuffer = accelerator.Allocate1D<ulong>(length);
+		resultBuffer = accelerator.Allocate1D<byte>(length);
 
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
 		inputBuffer.View.CopyFromCPU(stream, ref temp[0], length);
@@ -311,8 +301,7 @@ public sealed class PrimeTester
 		pool.Return(temp, clearArray: false);
 		resultBuffer.Dispose();
 		inputBuffer.Dispose();
-		Pow2MontgomeryAccelerator.Return(gpu);
-		// gpu.Dispose();
+		PrimeOrderCalculatorAccelerator.Return(gpu);
 	}
 
 	private static Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>> GetSharesFactorKernel(Accelerator accelerator)

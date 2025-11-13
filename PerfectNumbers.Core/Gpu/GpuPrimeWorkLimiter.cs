@@ -5,11 +5,11 @@ namespace PerfectNumbers.Core.Gpu;
 
 public static class GpuPrimeWorkLimiter
 {
-    private static SemaphoreSlim _semaphore = new(1, int.MaxValue);
-    private static int _currentLimit = 1;
+	private static SemaphoreSlim _semaphore = new(1, int.MaxValue);
+	private static int _currentLimit = 1;
 
-	public static void Acquire() => _semaphore.Wait();
-	public static void Release() => _semaphore.Release();
+	public static void Acquire() { } // => _semaphore.Wait();
+	public static void Release() { }// => _semaphore.Release();
 
 	public static void SetLimit(int value)
     {

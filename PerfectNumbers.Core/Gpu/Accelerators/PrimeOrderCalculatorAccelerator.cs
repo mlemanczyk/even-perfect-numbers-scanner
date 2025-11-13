@@ -5,27 +5,26 @@ using PerfectNumbers.Core.Gpu.Kernels;
 
 namespace PerfectNumbers.Core.Gpu.Accelerators;
 
-public sealed class Pow2MontgomeryAccelerator
+public sealed class PrimeOrderCalculatorAccelerator
 {
 	#region Pool
 
 	[ThreadStatic]
-	private static Queue<Pow2MontgomeryAccelerator>? _pool;
+	private static Queue<PrimeOrderCalculatorAccelerator>? _pool;
 
-	private static AcceleratorPool _accelerators = new(PerfectNumberConstants.RollingAccelerators);
+	private static readonly AcceleratorPool _accelerators = new(PerfectNumberConstants.RollingAccelerators);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Pow2MontgomeryAccelerator Rent(int primeTesterCapacity)
+	public static PrimeOrderCalculatorAccelerator Rent(int primeTesterCapacity)
 	{
 		var pool = _pool ??= [];
 		if (!pool.TryDequeue(out var gpu))
 		{
 			Accelerator accelerator = _accelerators.Rent();
-			gpu = new(accelerator, PerfectNumberConstants.DefaultFactorsBuffer, primeTesterCapacity);
+			gpu = new(accelerator, PerfectNumberConstants.DefaultFactorsBuffer, primeTesterCapacity, PerfectNumberConstants.DefaultSmallPrimeFactorSlotCount, PerfectNumberConstants.DefaultSpecialMaxFactorCapacity);
 		}
 		else
 		{
-			// gpu.Stream = gpu.Accelerator.CreateStream();
 			gpu.EnsureCapacity(PerfectNumberConstants.DefaultFactorsBuffer, primeTesterCapacity);
 		}
 
@@ -33,33 +32,28 @@ public sealed class Pow2MontgomeryAccelerator
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void Return(Pow2MontgomeryAccelerator gpu)
-	{
-		// gpu.Stream!.Dispose();
-		// gpu.Stream = null;
-		_pool!.Enqueue(gpu);
-	}
+	public static void Return(PrimeOrderCalculatorAccelerator gpu) => _pool!.Enqueue(gpu);
 
 	internal static void Clear()
 	{
-		Queue<Pow2MontgomeryAccelerator>? pool = _pool;
+		Queue<PrimeOrderCalculatorAccelerator>? pool = _pool;
 		if (pool != null)
 		{
-			while (pool.TryDequeue(out var lease))
+			while (pool.TryDequeue(out var gpu))
 			{
-				lease.Dispose();
+				gpu.Dispose();
 			}
 		}
 	}
 
 	internal static void DisposeAll()
 	{
-		Queue<Pow2MontgomeryAccelerator>? pool = _pool;
+		Queue<PrimeOrderCalculatorAccelerator>? pool = _pool;
 		if (pool != null)
 		{
-			while (pool.TryDequeue(out var lease))
+			while (pool.TryDequeue(out var gpu))
 			{
-				lease.Dispose();
+				gpu.Dispose();
 			}
 		}
 	}
@@ -73,17 +67,15 @@ public sealed class Pow2MontgomeryAccelerator
 			Console.WriteLine($"Preparing accelerator {i}...");
 			var accelerator = accelerators[i];
 			AcceleratorStreamPool.WarmUp(accelerator);
-			// AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
+			// Don't take this from the pool as quick uploads of data to the accelerator consumes much of GPU's memory and throws.
 			AcceleratorStream stream = accelerator.CreateStream();
-			LastDigitGpuTables.EnsureStaticTables(accelerator, stream);
+			LastDigitGpuTables.WarmUp(accelerator, stream);
 			// SharedHeuristicGpuTables.EnsureStaticTables(accelerator, stream);
 			// _ = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.None);
 			// KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
 			// GpuStaticTableInitializer.EnsureStaticTables(accelerator, kernels, stream);
 			stream.Synchronize();
 			stream.Dispose();
-
-			// AcceleratorStreamPool.Return(stream);
 		}
 	}
 
@@ -105,30 +97,19 @@ public sealed class Pow2MontgomeryAccelerator
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastSeven;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastThree;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastNine;
+	public readonly MemoryBuffer1D<int, Stride1D.Dense> SmallPrimeFactorCountSlot;
+	public MemoryBuffer1D<int, Stride1D.Dense> SmallPrimeFactorExponentSlots;
+	public MemoryBuffer1D<ulong, Stride1D.Dense> SmallPrimeFactorPrimeSlots;
+	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> SmallPrimeFactorRemainingSlot;
+	public MemoryBuffer1D<ulong, Stride1D.Dense> SpecialMaxCandidates;
+	public MemoryBuffer1D<ulong, Stride1D.Dense> SpecialMaxFactors;
+	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> SpecialMaxResult;
+
 	public readonly Kernel SmallPrimeSieveKernel;
-
-	// public AcceleratorStream? Stream;
-
 	public readonly Kernel CheckFactorsKernel;
 	public readonly Kernel ConvertToStandardKernel;
 	public readonly Kernel KeepMontgomeryKernel;
 	public readonly Kernel PollardRhoKernel;
-
-	[ThreadStatic]
-	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>? SmallPrimeSieveKernelPool;
-
-	internal static Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> GetSmallPrimeSieveKernel(Accelerator accelerator)
-	{
-		var pool = SmallPrimeSieveKernelPool ??= [];
-		if (pool.TryGetValue(accelerator, out var cached))
-		{
-			return cached;
-		}
-
-		cached = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>();
-		pool[accelerator] = cached;
-		return cached;
-	}
 
 	public void EnsureCapacity(int factorsCount, int primeTesterCapacity)
 	{
@@ -141,35 +122,62 @@ public sealed class Pow2MontgomeryAccelerator
 
 		if (primeTesterCapacity > PrimeTestInput.Length)
 		{
-			PrimeTestInput?.Dispose();
-			OutputByte?.Dispose();
-			HeuristicFlag?.Dispose();
+			PrimeTestInput.Dispose();
+			OutputByte.Dispose();
+			HeuristicFlag.Dispose();
 
-			// lock (Accelerator)
-			{
-				PrimeTestInput = Accelerator.Allocate1D<ulong>(primeTesterCapacity);
-				OutputByte = Accelerator.Allocate1D<byte>(primeTesterCapacity);
-				HeuristicFlag = Accelerator.Allocate1D<int>(primeTesterCapacity);
-			}
+			PrimeTestInput = Accelerator.Allocate1D<ulong>(primeTesterCapacity);
+			OutputByte = Accelerator.Allocate1D<byte>(primeTesterCapacity);
+			HeuristicFlag = Accelerator.Allocate1D<int>(primeTesterCapacity);
 		}
 	}
 
-	public Pow2MontgomeryAccelerator(Accelerator accelerator, int factorsCount, int primeTesterCapacity)
+	public void EnsureSmallPrimeFactorSlotsCapacity(int newSize)
+	{
+		// Console.WriteLine($"Resizing GPU scratch buffer from pool ({buffer.SmallPrimeFactorPrimeSlots.Length} / {smallPrimeFactorSlotCount}), ({buffer.SpecialMaxFactors.Length}/{specialMaxFactorCapacity})");
+		if (SmallPrimeFactorPrimeSlots.Length < newSize)
+		{
+			SmallPrimeFactorPrimeSlots.Dispose();
+			SmallPrimeFactorExponentSlots.Dispose();
+
+			var accelerator = Accelerator;
+			SmallPrimeFactorPrimeSlots = accelerator.Allocate1D<ulong>(newSize);
+			SmallPrimeFactorExponentSlots = accelerator.Allocate1D<int>(newSize);
+		}
+	}
+
+	public void EnsureSpecialMaxFactorsCapacity(int newSize)
+	{
+		if (SpecialMaxFactors.Length < newSize)
+		{
+			SpecialMaxFactors.Dispose();
+			SpecialMaxCandidates.Dispose();
+
+			var accelerator = Accelerator;
+			SpecialMaxFactors = accelerator.Allocate1D<ulong>(newSize);
+			SpecialMaxCandidates = accelerator.Allocate1D<ulong>(newSize);
+		}
+	}
+
+	public PrimeOrderCalculatorAccelerator(Accelerator accelerator, int factorsCount, int primeTesterCapacity, int smallPrimeFactorSlotCount, int specialMaxFactorCapacity)
 	{
 		Accelerator = accelerator;
-		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
-		// AcceleratorStream stream = accelerator.DefaultStream;
-		// AcceleratorStream stream = accelerator.CreateStream();
-		// Stream = stream;
-
 		Input = accelerator.Allocate1D<ulong>(1);
 		OutputUlong = accelerator.Allocate1D<ulong>(1);
 		Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
 		PrimeTestInput = Accelerator.Allocate1D<ulong>(primeTesterCapacity);
 		OutputByte = Accelerator.Allocate1D<byte>(primeTesterCapacity);
 		HeuristicFlag = Accelerator.Allocate1D<int>(primeTesterCapacity);
+		SmallPrimeFactorPrimeSlots = accelerator.Allocate1D<ulong>(smallPrimeFactorSlotCount);
+		SmallPrimeFactorExponentSlots = accelerator.Allocate1D<int>(smallPrimeFactorSlotCount);
+		SmallPrimeFactorCountSlot = accelerator.Allocate1D<int>(1);
+		SmallPrimeFactorRemainingSlot = accelerator.Allocate1D<ulong>(1);
 
-		var sharedTables = LastDigitGpuTables.EnsureStaticTables(accelerator, stream);
+		SpecialMaxFactors = accelerator.Allocate1D<ulong>(specialMaxFactorCapacity);
+		SpecialMaxCandidates = accelerator.Allocate1D<ulong>(specialMaxFactorCapacity);
+		SpecialMaxResult = accelerator.Allocate1D<ulong>(1);
+
+		var sharedTables = LastDigitGpuTables.EnsureStaticTables(accelerator);
 		DevicePrimesLastOne = sharedTables.DevicePrimesLastOne;
 		DevicePrimesLastSeven = sharedTables.DevicePrimesLastSeven;
 		DevicePrimesLastThree = sharedTables.DevicePrimesLastThree;
@@ -191,27 +199,27 @@ public sealed class Pow2MontgomeryAccelerator
 		SmallPrimeSieveKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel));
 
 		PollardRhoKernel = KernelUtil.GetKernel(accelerator.LoadStreamKernel<ulong, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.TryPollardRhoKernel));
-
-		AcceleratorStreamPool.Return(stream);
 	}
 
 	public void Dispose()
 	{
 		Input.Dispose();
 		OutputUlong.Dispose();
-		// Stream?.Dispose();
 		Pow2ModEntriesToTestOnDevice.Dispose();
-		PrimeTestInput?.Dispose();
-		OutputByte?.Dispose();
-		HeuristicFlag?.Dispose();
-
-		// Stream is disposed upon return to the queue, so we don't need to dispose it here.
-		// Stream.Dispose();
+		PrimeTestInput.Dispose();
+		OutputByte.Dispose();
+		HeuristicFlag.Dispose();
+		SmallPrimeFactorPrimeSlots.Dispose();
+		SmallPrimeFactorExponentSlots.Dispose();
+		SmallPrimeFactorCountSlot.Dispose();
+		SmallPrimeFactorRemainingSlot.Dispose();
+		SpecialMaxFactors.Dispose();
+		SpecialMaxCandidates.Dispose();
+		SpecialMaxResult.Dispose();
 
 		// These resources are shared between GPU leases
-		// ReleaseSharedTables(_sharedTables);
+		// Stream.Dispose();
 		// Accelerator.Dispose();
 		// Context.Dispose();
-		// Accelerator.Dispose();
 	}
 }

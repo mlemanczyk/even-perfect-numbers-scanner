@@ -323,7 +323,7 @@ public static partial class ULongExtensions
 		=> Pow2MontgomeryGpuCalculator.CalculateConvert(exponent, divisor);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Pow2MontgomeryModWindowedConvertGpu(this ulong exponent, Pow2MontgomeryAccelerator gpu, in MontgomeryDivisorData divisor)
+	public static ulong Pow2MontgomeryModWindowedConvertGpu(this ulong exponent, PrimeOrderCalculatorAccelerator gpu, in MontgomeryDivisorData divisor)
 		=> Pow2MontgomeryGpuCalculator.CalculateConvert(gpu, exponent, divisor);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

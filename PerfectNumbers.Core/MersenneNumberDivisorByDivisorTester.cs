@@ -304,8 +304,7 @@ public static class MersenneNumberDivisorByDivisorTester
 						}
 
 						Console.WriteLine($"Task finished for range {rangeStart}");
-						Pow2MontgomeryAccelerator.DisposeAll();
-						GpuScratchBufferPool.DisposeAll();
+						PrimeOrderCalculatorAccelerator.DisposeAll();
 					},
 					CancellationToken.None,
 					TaskCreationOptions.DenyChildAttach,

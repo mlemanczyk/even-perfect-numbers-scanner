@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
 
@@ -6,10 +6,13 @@ namespace PerfectNumbers.Core.Gpu.Accelerators;
 
 internal sealed class LastDigitGpuTables
 {
-	private static readonly ConcurrentDictionary<Accelerator, LastDigitGpuTables> _sharedTables = new(20_480, PerfectNumberConstants.RollingAccelerators * 2);
+	private static readonly Dictionary<Accelerator, LastDigitGpuTables> _sharedTables = new(PerfectNumberConstants.RollingAccelerators);
 
-	internal static LastDigitGpuTables EnsureStaticTables(Accelerator accelerator, AcceleratorStream stream)
-		=> _sharedTables.GetOrAdd(accelerator, _ => new LastDigitGpuTables(accelerator, stream));
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	internal static LastDigitGpuTables EnsureStaticTables(Accelerator accelerator) => _sharedTables[accelerator];
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	internal static void WarmUp(Accelerator accelerator, AcceleratorStream stream) => _sharedTables[accelerator] = new LastDigitGpuTables(accelerator, stream);
 
 	internal LastDigitGpuTables(Accelerator accelerator, AcceleratorStream stream)
 	{
@@ -21,18 +24,14 @@ internal sealed class LastDigitGpuTables
 		var primesPow2LastSeven = DivisorGenerator.SmallPrimesPow2LastSeven;
 		var primesPow2LastThree = DivisorGenerator.SmallPrimesPow2LastThree;
 		var primesPow2LastNine = DivisorGenerator.SmallPrimesPow2LastNine;
-
-		// lock (accelerator)
-		{
-			DevicePrimesLastOne = accelerator.Allocate1D(stream, primesLastOne);
-			DevicePrimesLastSeven = accelerator.Allocate1D(stream, primesLastSeven);
-			DevicePrimesLastThree = accelerator.Allocate1D(stream, primesLastThree);
-			DevicePrimesLastNine = accelerator.Allocate1D(stream, primesLastNine);
-			DevicePrimesPow2LastOne = accelerator.Allocate1D(stream, primesPow2LastOne);
-			DevicePrimesPow2LastSeven = accelerator.Allocate1D(stream, primesPow2LastSeven);
-			DevicePrimesPow2LastThree = accelerator.Allocate1D(stream, primesPow2LastThree);
-			DevicePrimesPow2LastNine = accelerator.Allocate1D(stream, primesPow2LastNine);
-		}
+		DevicePrimesLastOne = accelerator.Allocate1D(stream, primesLastOne);
+		DevicePrimesLastSeven = accelerator.Allocate1D(stream, primesLastSeven);
+		DevicePrimesLastThree = accelerator.Allocate1D(stream, primesLastThree);
+		DevicePrimesLastNine = accelerator.Allocate1D(stream, primesLastNine);
+		DevicePrimesPow2LastOne = accelerator.Allocate1D(stream, primesPow2LastOne);
+		DevicePrimesPow2LastSeven = accelerator.Allocate1D(stream, primesPow2LastSeven);
+		DevicePrimesPow2LastThree = accelerator.Allocate1D(stream, primesPow2LastThree);
+		DevicePrimesPow2LastNine = accelerator.Allocate1D(stream, primesPow2LastNine);
 	}
 
 	internal readonly MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne;

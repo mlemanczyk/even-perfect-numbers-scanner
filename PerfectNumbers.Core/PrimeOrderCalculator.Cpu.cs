@@ -53,10 +53,10 @@ internal static partial class PrimeOrderCalculator
 
 		ulong phi = prime - 1UL;
 
-		Pow2MontgomeryAccelerator gpu = Pow2MontgomeryAccelerator.Rent(1);
+		PrimeOrderCalculatorAccelerator gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		if (IsGpuHeuristicDevice && PrimeOrderGpuHeuristics.TryCalculateOrder(prime, previousOrder, config, divisorData, out ulong gpuOrder))
 		{
-			Pow2MontgomeryAccelerator.Return(gpu);
+			PrimeOrderCalculatorAccelerator.Return(gpu);
 			return gpuOrder;
 		}
 
@@ -67,18 +67,18 @@ internal static partial class PrimeOrderCalculator
 		{
 			result = CalculateByFactorizationGpu(gpu, prime, divisorData);
 			phiFactors.Dispose();
-			Pow2MontgomeryAccelerator.Return(gpu);
+			PrimeOrderCalculatorAccelerator.Return(gpu);
 			return result;
 		}
 
 		result = RunHeuristicPipelineCpu(gpu, prime, previousOrder, config, divisorData, phi, phiFactors);
 		phiFactors.Dispose();
-		Pow2MontgomeryAccelerator.Return(gpu);
+		PrimeOrderCalculatorAccelerator.Return(gpu);
 		return result;
 	}
 
 	private static ulong RunHeuristicPipelineCpu(
-		Pow2MontgomeryAccelerator gpu,
+		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong? previousOrder,
 		in PrimeOrderSearchConfig config,
@@ -119,7 +119,7 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	// private static ulong specialMaxHits;
-	private static bool TrySpecialMaxCpu(Pow2MontgomeryAccelerator gpu, ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
+	private static bool TrySpecialMaxCpu(PrimeOrderCalculatorAccelerator gpu, ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
 	{
 		int length = factors.Count;
 		// The phi factorization on the scanner path always yields at least one entry for phi >= 2,
@@ -129,7 +129,7 @@ internal static partial class PrimeOrderCalculator
 		//     return true;
 		// }
 
-		ReadOnlySpan<FactorEntry> factorSpan = new(factors.Factors, 0, length);
+		ReadOnlySpan<ulong> factorSpan = new(factors.Factors, 0, length);
 
 		Span<ulong> stackBuffer = stackalloc ulong[length];
 
@@ -138,18 +138,17 @@ internal static partial class PrimeOrderCalculator
 			return EvaluateSpecialMaxCandidates(stackBuffer, factorSpan, phi, prime, divisorData);
 		}
 
-		// Atomic.Add(ref specialMaxHits, 1);
-		// Console.WriteLine($"Special max GPU hit {specialMaxHits} ({length})");
-		return EvaluateSpecialMaxCandidatesGpu(gpu, stackBuffer, factorSpan, phi, prime, divisorData);
+		return EvaluateSpecialMaxCandidatesGpu(gpu, factorSpan, phi, prime, divisorData);
 	}
 
-	private static bool EvaluateSpecialMaxCandidates(Span<ulong> buffer, ReadOnlySpan<FactorEntry> factors, ulong phi, ulong prime, in MontgomeryDivisorData divisorData)
+	private static bool EvaluateSpecialMaxCandidates(Span<ulong> buffer, ReadOnlySpan<ulong> factors, ulong phi, ulong prime, in MontgomeryDivisorData divisorData)
 	{
 		int actual = 0;
 		int factorCount = factors.Length;
 		for (int i = 0; i < factorCount; i++)
 		{
-			ulong factor = factors[i].Value;
+			ulong factor = factors[i];
+
 			// The partial factor pipeline never feeds zero or oversized factors while scanning candidate orders.
 			// if (factor == 0UL || factor > phi)
 			// {
@@ -196,7 +195,7 @@ internal static partial class PrimeOrderCalculator
 		return true;
 	}
 
-	private static ulong InitializeStartingOrderCpu(Pow2MontgomeryAccelerator gpu, ulong prime, ulong phi, in MontgomeryDivisorData divisorData)
+	private static ulong InitializeStartingOrderCpu(PrimeOrderCalculatorAccelerator gpu, ulong prime, ulong phi, in MontgomeryDivisorData divisorData)
 	{
 		ulong order = phi;
 		if ((prime & 7UL) == 1UL || (prime & 7UL) == 7UL)
@@ -213,22 +212,29 @@ internal static partial class PrimeOrderCalculator
 
 	private static ulong ExponentLoweringCpu(ulong order, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
 	{
-		ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
+		ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
+		ArrayPool<int> intPool = ThreadStaticPools.IntPool;
 
-		ReadOnlySpan<FactorEntry> factorSpan = factors.Factors;
+		ReadOnlySpan<ulong> factorSpan = factors.Factors;
+		ReadOnlySpan<int> exponentsSpan = factors.Exponents;
+
 		int length = factors.Count;
-		FactorEntry[] tempArray = pool.Rent(length + 1);
+		ulong[] tempFactorsArray = ulongPool.Rent(length + 1);
+		int[] tempExponentsArray = intPool.Rent(length + 1);
 
-		Span<FactorEntry> buffer = tempArray;
-		factorSpan.CopyTo(buffer);
+		Span<ulong> ulongBuffer = tempFactorsArray;
+		factorSpan.CopyTo(ulongBuffer);
+		Span<int> intBuffer = tempExponentsArray;
+		exponentsSpan.CopyTo(intBuffer);
 
 		if (!factors.FullyFactored && factors.Cofactor > 1UL && factors.CofactorIsPrime)
 		{
-			buffer[length] = new FactorEntry(factors.Cofactor, 1, true);
+			ulongBuffer[length] = factors.Cofactor;
+			intBuffer[length] = 1;
 			length++;
 		}
 
-		buffer[..length].Sort(static (a, b) => a.Value.CompareTo(b.Value));
+		Array.Sort(tempFactorsArray, tempExponentsArray, 0, length);
 
 		ExponentRemainderStepperCpu stepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 
@@ -243,8 +249,8 @@ internal static partial class PrimeOrderCalculator
 
 		for (int i = 0; i < length; i++)
 		{
-			ulong primeFactor = buffer[i].Value;
-			int exponent = buffer[i].Exponent;
+			ulong primeFactor = ulongBuffer[i];
+			int exponent = intBuffer[i];
 			// Factor exponents produced by Pollard-Rho and trial division are always positive in the scanner flow.
 			// if (exponent <= 0)
 			// {
@@ -275,7 +281,7 @@ internal static partial class PrimeOrderCalculator
 			ThreadStaticPools.BoolPool.Return(heapEvaluationArray!);
 		}
 
-		pool.Return(tempArray, clearArray: false);
+		ulongPool.Return(tempFactorsArray, clearArray: false);
 		return order;
 	}
 
@@ -330,7 +336,7 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	private static bool TryConfirmOrderCpu(
-		Pow2MontgomeryAccelerator gpu,
+		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong order,
 		in MontgomeryDivisorData divisorData,
@@ -385,7 +391,9 @@ internal static partial class PrimeOrderCalculator
 		in MontgomeryDivisorData divisorData,
 		PartialFactorResult factorization)
 	{
-		ReadOnlySpan<FactorEntry> span = factorization.Factors!;
+		ReadOnlySpan<ulong> factorsSpan = factorization.Factors!;
+		ReadOnlySpan<int> exponentsSpan = factorization.Exponents!;
+
 		int length = factorization.Count;
 
 		const int StackExponentCapacity = 32;
@@ -399,8 +407,9 @@ internal static partial class PrimeOrderCalculator
 
 		for (int i = 0; i < length; i++)
 		{
-			ulong primeFactor = span[i].Value;
-			int exponent = span[i].Exponent;
+			ulong primeFactor = factorsSpan[i];
+			int exponent = exponentsSpan[i];
+
 			// Factor exponents emitted by TryConfirmCandidateCpu stay positive for production workloads.
 			// if (exponent <= 0)
 			// {
@@ -490,7 +499,7 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	private static bool TryHeuristicFinishCpu(
-		Pow2MontgomeryAccelerator gpu,
+		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong order,
 		ulong? previousOrder,
@@ -523,7 +532,6 @@ internal static partial class PrimeOrderCalculator
 					return false;
 				}
 
-				// if (!PrimeTester.IsPrimeCpu(orderFactors.Cofactor, CancellationToken.None))
 				if (!orderFactors.CofactorIsPrime)
 				{
 					return false;
@@ -536,12 +544,13 @@ internal static partial class PrimeOrderCalculator
 
 			int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks << 2;
 			List<ulong> candidates = ThreadStaticPools.RentUlongList(capacity);
-			FactorEntry[] factorArray = orderFactors.Factors!;
+			candidates.Clear();
+			ulong[] factorArray = orderFactors.Factors!;
+			int[] exponentsArray = orderFactors.Exponents!;
 			// DebugLog("Building candidates list");
-			BuildCandidates(order, factorArray, orderFactors.Count, candidates, capacity);
+			BuildCandidates(order, factorArray, exponentsArray, orderFactors.Count, candidates, capacity);
 			if (candidates.Count == 0)
 			{
-				candidates.Clear();
 				ThreadStaticPools.ReturnUlongList(candidates);
 				return false;
 			}
@@ -798,19 +807,21 @@ internal static partial class PrimeOrderCalculator
 		return 0;
 	}
 
-	private static void BuildCandidates(ulong order, FactorEntry[] factors, int count, List<ulong> candidates, int limit)
+	private static readonly Comparer<ulong> _comparer = Comparer<ulong>.Default;
+
+	private static void BuildCandidates(ulong order, ulong[] factors, int[] exponents, int count, List<ulong> candidates, int limit)
 	{
 		if (count == 0)
 		{
 			return;
 		}
 
-		Span<FactorEntry> buffer = factors.AsSpan(0, count);
-		buffer.Sort(static (a, b) => a.Value.CompareTo(b.Value));
-		BuildCandidatesRecursive(order, buffer, 0, 1UL, candidates, limit);
+		Array.Sort(factors, exponents, 0, count);
+		BuildCandidatesRecursive(order, factors, exponents, 0, 1UL, candidates, limit);
 	}
 
-	private static void BuildCandidatesRecursive(ulong order, in ReadOnlySpan<FactorEntry> factors, int index, ulong divisorProduct, List<ulong> candidates, int limit)
+	// private static void BuildCandidatesRecursive(ulong order, in ReadOnlySpan<FactorEntry> factors, int index, ulong divisorProduct, List<ulong> candidates, int limit)
+	private static void BuildCandidatesRecursive(ulong order, in ulong[] factors, in int[] exponents, int index, ulong divisorProduct, List<ulong> candidates, int limit)
 	{
 		if (candidates.Count >= limit)
 		{
@@ -833,11 +844,15 @@ internal static partial class PrimeOrderCalculator
 			return;
 		}
 
-		FactorEntry factor = factors[index];
-		int factorExponent = factor.Exponent;
-		ulong primeFactor = factor.Value;
+		// FactorEntry factor = factors[index];
+		// int factorExponent = factor.Exponent;
+		// ulong primeFactor = factor.Value;
+
+		ulong factor = factors[index];
+		int factorExponent = exponents[index];
+
 		ulong contribution = 1UL;
-		ulong contributionLimit = factorExponent == 0 ? 0UL : order / primeFactor;
+		ulong contributionLimit = factorExponent == 0 ? 0UL : order / factor;
 		for (int exponent = 0; exponent <= factorExponent; exponent++)
 		{
 			ulong nextDivisor = divisorProduct * contribution;
@@ -846,7 +861,7 @@ internal static partial class PrimeOrderCalculator
 				break;
 			}
 
-			BuildCandidatesRecursive(order, factors, index + 1, nextDivisor, candidates, limit);
+			BuildCandidatesRecursive(order, factors, exponents, index + 1, nextDivisor, candidates, limit);
 			if (candidates.Count >= limit)
 			{
 				return;
@@ -862,11 +877,11 @@ internal static partial class PrimeOrderCalculator
 				break;
 			}
 
-			contribution *= primeFactor;
+			contribution *= factor;
 		}
 	}
 
-	private static bool TryConfirmCandidateCpu(Pow2MontgomeryAccelerator gpu, ulong prime, ulong candidate, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config, ref int powUsed, int powBudget)
+	private static bool TryConfirmCandidateCpu(PrimeOrderCalculatorAccelerator gpu, ulong prime, ulong candidate, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config, ref int powUsed, int powBudget)
 	{
 		PartialFactorResult factorization = PartialFactor(gpu, candidate, config);
 		try
@@ -893,7 +908,9 @@ internal static partial class PrimeOrderCalculator
 				factorization = extended;
 			}
 
-			ReadOnlySpan<FactorEntry> span = factorization.Factors;
+			// ReadOnlySpan<FactorEntry> span = factorization.Factors;
+			ReadOnlySpan<ulong> factorsSpan = factorization.Factors;
+			ReadOnlySpan<int> exponentsSpan = factorization.Exponents;
 			int length = factorization.Count;
 
 			const int StackExponentCapacity = 32;
@@ -906,8 +923,11 @@ internal static partial class PrimeOrderCalculator
 
 			for (int i = 0; i < length; i++)
 			{
-				ulong primeFactor = span[i].Value;
-				int exponent = span[i].Exponent;
+				// ulong primeFactor = factorsSpan[i].Value;
+				// int exponent = factorsSpan[i].Exponent;
+				ulong primeFactor = factorsSpan[i];
+				int exponent = exponentsSpan[i];
+
 				// Factorization entries for candidate confirmation are always positive here.
 				// if (exponent <= 0)
 				// {
@@ -1036,7 +1056,7 @@ internal static partial class PrimeOrderCalculator
 
 	private static ulong _pow2GpuHits;
 	private static ulong _pow2CpuHits;
-	private static bool Pow2EqualsOneCpu(Pow2MontgomeryAccelerator gpu, ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
+	private static bool Pow2EqualsOneCpu(PrimeOrderCalculatorAccelerator gpu, ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
 	{
 		if (exponent <= (PerfectNumberConstants.MaxQForDivisorCycles) || prime <= (PerfectNumberConstants.MaxQForDivisorCycles))
 		{
@@ -1059,7 +1079,7 @@ internal static partial class PrimeOrderCalculator
 	// private static ulong _partialFactorPendingHits;
 	// private static ulong _partialFactorCofactorHits;
 
-	private static PartialFactorResult PartialFactor(Pow2MontgomeryAccelerator gpu, ulong value, in PrimeOrderSearchConfig config)
+	private static PartialFactorResult PartialFactor(PrimeOrderCalculatorAccelerator gpu, ulong value, in PrimeOrderSearchConfig config)
 	{
 		if (value <= 1UL)
 		{
@@ -1262,17 +1282,17 @@ internal static partial class PrimeOrderCalculator
 
 		GpuPrimeWorkLimiter.Release();
 
-		ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
+		// ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
 		bool temp;
 		if (factorCount == 0)
 		{
 			if (cofactor == value)
 			{
-				result = PartialFactorResult.Rent(null, cofactor, false, 0, cofactorIsPrime);
+				result = PartialFactorResult.Rent(cofactor, false, 0, cofactorIsPrime);
 				goto ReturnResult;
 			}
 
-			result = PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0, cofactorIsPrime);
+			result = PartialFactorResult.Rent(cofactor, cofactor == 1UL, 0, cofactorIsPrime);
 			goto ReturnResult;
 		}
 
@@ -1289,12 +1309,21 @@ internal static partial class PrimeOrderCalculator
 		// 	goto ReturnResult;
 		// }
 
-		FactorEntry[] array = pool.Rent(factorCount);
+		ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
+		ArrayPool<int> intPool = ThreadStaticPools.IntPool;
+		// ArrayPool<bool> boolPool = ThreadStaticPools.BoolPool;
+
+		// FactorEntry[] array = pool.Rent(factorCount);
+		ulong[] factorsArray = ulongPool.Rent(factorCount);
+		int[] exponentsArray = intPool.Rent(factorCount);
+		// bool[] cofactorIsPrimesArray = boolPool.Rent(factorCount);
+
 		int arrayIndex = 0;
 		for (int i = 0; i < factorCount; i++)
 		{
 			ulong primeValue = primeSlots[i];
 			int exponentValue = exponentSlots[i];
+
 			// This will never happen on the execution path from production code
 			// if (primeValue == 0UL || exponentValue == 0)
 			// {
@@ -1302,14 +1331,20 @@ internal static partial class PrimeOrderCalculator
 			// 	continue;
 			// }
 
-			array[arrayIndex] = new FactorEntry(primeValue, exponentValue, true);
+			// factorsArray[arrayIndex] = new FactorEntry(primeValue, exponentValue, true);
+			factorsArray[arrayIndex] = primeValue;
+			exponentsArray[arrayIndex] = exponentValue;
+			// cofactorIsPrimesArray[arrayIndex] = true;
 			arrayIndex++;
 		}
 
-		Span<FactorEntry> arraySpan = array.AsSpan(0, arrayIndex);
-		arraySpan.Sort(static (a, b) => a.Value.CompareTo(b.Value));
+		// Span<FactorEntry> arraySpan = factorsArray.AsSpan(0, arrayIndex);
+		// Span<ulong> arraySpan = factorsArray.AsSpan(0, arrayIndex);
+		// arraySpan.Sort(static (a, b) => a.CompareTo(b));
+		Array.Sort(factorsArray, exponentsArray, 0, arrayIndex);
 		temp = cofactor == 1UL;
-		result = PartialFactorResult.Rent(array, cofactor, temp, arrayIndex, cofactorIsPrime);
+		// result = PartialFactorResult.Rent(factorsArray, exponentsArray, cofactorIsPrimesArray, cofactor, temp, arrayIndex, cofactorIsPrime);
+		result = PartialFactorResult.Rent(factorsArray, exponentsArray, cofactor, temp, arrayIndex, cofactorIsPrime);
 
 	ReturnResult:
 		if (primeSlotArray is not null)
@@ -1665,7 +1700,7 @@ internal static partial class PrimeOrderCalculator
 		exponents = newExponentSpan;
 	}
 
-	private static ulong CalculateByFactorizationCpu(Pow2MontgomeryAccelerator gpu, ulong prime, in MontgomeryDivisorData divisorData)
+	private static ulong CalculateByFactorizationCpu(PrimeOrderCalculatorAccelerator gpu, ulong prime, in MontgomeryDivisorData divisorData)
 	{
 		ulong phi = prime - 1UL;
 		Dictionary<ulong, int> counts = new(capacity: 8);
