@@ -278,10 +278,10 @@ public sealed class PrimeTester
 		// and implement it.
 
 		int length = values.Length;
-		ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		var accelerator = gpu.Accelerator;
+		var kernel = gpu.SharesFactorKernel;
 		gpu.EnsureCapacity(0, length);
 		MemoryBuffer1D<ulong, Stride1D.Dense>? inputBuffer = gpu.PrimeTestInput;
 		MemoryBuffer1D<byte, Stride1D.Dense>? resultBuffer = gpu.OutputByte;
@@ -289,26 +289,12 @@ public sealed class PrimeTester
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
 		inputBuffer.View.CopyFromCPU(stream, values);
 
-		var kernel = GetSharesFactorKernel(accelerator);
-		kernel(stream, length, inputBuffer.View, resultBuffer.View);
+		kernel.Launch(stream, 1, length, inputBuffer.View, resultBuffer.View);
 		resultBuffer.View.CopyToCPU(stream, in results);
 		stream.Synchronize();
 
 		AcceleratorStreamPool.Return(stream);
 		PrimeOrderCalculatorAccelerator.Return(gpu);
-	}
-
-	private static Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>> GetSharesFactorKernel(Accelerator accelerator)
-	{
-		var pool = _kernel ?? [];
-		if (pool.TryGetValue(accelerator, out var cached))
-		{
-			return cached;
-		}
-
-		cached = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SharesFactorKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>>>();
-		pool[accelerator] = cached;
-		return cached;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

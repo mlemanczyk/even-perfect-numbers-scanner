@@ -104,22 +104,7 @@ internal sealed class HeuristicPrimeTesterAccelerator
 		return cached;
 	}
 
-	[ThreadStatic]
-	public static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>>? HeuristicTrialDivisionKernel;
-
-	internal static Action<AcceleratorStream, Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables> GetHeuristicTrialDivisionKernel(Accelerator accelerator)
-	{
-		var pool = HeuristicTrialDivisionKernel ??= [];
-		if (pool.TryGetValue(accelerator, out var cached))
-		{
-			return cached;
-		}
-
-		cached = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>(PrimeTesterKernels.HeuristicTrialDivisionKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>>();
-		pool[accelerator] = cached;
-		return cached;
-	}
-
+	public readonly Kernel HeuristicTrialDivisionKernel;
 
 	public MemoryBuffer1D<ulong, Stride1D.Dense> Input = null!;
 	public MemoryBuffer1D<byte, Stride1D.Dense> Output = null!;
@@ -152,17 +137,19 @@ internal sealed class HeuristicPrimeTesterAccelerator
 		Context = accelerator.Context;
 
 		Accelerator = accelerator;
-		AcceleratorStream stream = accelerator.CreateStream();
-		// var kernels = _kernels[index]; //GpuKernelPool.Kernels;
+		EnsureCapacity(minBufferCapacity);
+
+		HeuristicTrialDivisionKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>(PrimeTesterKernels.HeuristicTrialDivisionKernel));
+
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
+		
 		// GpuStaticTableInitializer.EnsureStaticTables(accelerator, kernels, stream);
 
 		_sharedTables = Accelerators.HeuristicGpuTables.EnsureStaticTables(accelerator, stream);
-		var heuristicDivisorTables = _sharedTables.CreateHeuristicDivisorTables();
-		_heuristicDivisorTables = heuristicDivisorTables;
+		_heuristicDivisorTables = _sharedTables.CreateHeuristicDivisorTables();
 
-		EnsureCapacity(minBufferCapacity);
 		stream.Synchronize();
-		stream.Dispose();
+		AcceleratorStreamPool.Return(stream); 
 	}
 
 	public void EnsureCapacity(int minCapacity)
@@ -172,16 +159,13 @@ internal sealed class HeuristicPrimeTesterAccelerator
 			return;
 		}
 
-		Input?.Dispose();
-		Output?.Dispose();
+		Input.Dispose();
+		Output.Dispose();
 		HeuristicFlag?.Dispose();
 
-		// lock (Accelerator)
-		{
-			Input = Accelerator.Allocate1D<ulong>(minCapacity);
-			Output = Accelerator.Allocate1D<byte>(minCapacity);
-			HeuristicFlag = Accelerator.Allocate1D<int>(minCapacity);
-		}
+		Input = Accelerator.Allocate1D<ulong>(minCapacity);
+		Output = Accelerator.Allocate1D<byte>(minCapacity);
+		HeuristicFlag = Accelerator.Allocate1D<int>(minCapacity);
 
 		BufferCapacity = minCapacity;
 	}

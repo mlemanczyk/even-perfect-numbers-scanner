@@ -243,9 +243,8 @@ public sealed class HeuristicPrimeTester
 	{
 		// GpuPrimeWorkLimiter.Acquire();
 		var gpu = HeuristicPrimeTesterAccelerator.Rent(1);
-		var accelerator = gpu.Accelerator;
 		var stream = gpu.Stream;
-		var kernel = HeuristicPrimeTesterAccelerator.GetHeuristicTrialDivisionKernel(accelerator);
+		var kernel = gpu.HeuristicTrialDivisionKernel;
 		var flagView1D = gpu.HeuristicFlag.View;
 		var flagView = flagView1D.AsContiguous();
 
@@ -255,8 +254,9 @@ public sealed class HeuristicPrimeTester
 		int groupALength = HeuristicPrimeSieves.GroupADivisors.Length;
 
 		flagView1D.CopyFromCPU(stream, ref compositeFlag, 1);
-		kernel(
+		kernel.Launch(
 				stream!,
+				1,
 				groupALength,
 				flagView,
 				n,
@@ -292,8 +292,9 @@ public sealed class HeuristicPrimeTester
 
 				compositeFlag = 0;
 				flagView1D.CopyFromCPU(stream, ref compositeFlag, 1);
-				kernel(
-                    stream,
+				kernel.Launch(
+					stream,
+						1,
 						divisorLength,
 						flagView,
 						n,

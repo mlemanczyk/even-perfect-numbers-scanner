@@ -228,7 +228,7 @@ public sealed class HeuristicCombinedPrimeTester
 		var gpu = HeuristicPrimeTesterAccelerator.Rent(1);
 		var accelerator = gpu.Accelerator;
 		var stream = gpu.Stream;
-		var kernel = HeuristicPrimeTesterAccelerator.HeuristicTrialDivisionKernel;
+		var kernel = gpu.HeuristicTrialDivisionKernel;
 		var flagView1D = gpu.HeuristicFlag.View;
 		var flagView = flagView1D.AsContiguous();
 
@@ -240,8 +240,9 @@ public sealed class HeuristicCombinedPrimeTester
 		stream!.Synchronize();
 
 
-		kernel(
+		kernel.Launch(
 				stream,
+				1,
 				divisorLength,
 				flagView,
 				n,

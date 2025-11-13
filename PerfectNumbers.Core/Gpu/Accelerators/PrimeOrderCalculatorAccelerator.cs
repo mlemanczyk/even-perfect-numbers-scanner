@@ -110,6 +110,8 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public readonly Kernel ConvertToStandardKernel;
 	public readonly Kernel KeepMontgomeryKernel;
 	public readonly Kernel PollardRhoKernel;
+	public Kernel SharesFactorKernel;
+
 
 	public void EnsureCapacity(int factorsCount, int primeTesterCapacity)
 	{
@@ -199,6 +201,8 @@ public sealed class PrimeOrderCalculatorAccelerator
 		SmallPrimeSieveKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel));
 
 		PollardRhoKernel = KernelUtil.GetKernel(accelerator.LoadStreamKernel<ulong, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.TryPollardRhoKernel));
+
+		SharesFactorKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SharesFactorKernel)); ;
 	}
 
 	public void Dispose()
