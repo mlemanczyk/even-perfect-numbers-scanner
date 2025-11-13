@@ -10,5 +10,6 @@
 		"primality",
 		"suff"
 	],
-	"geminicodeassist.project": "evenperfectbitscanner"
+	"geminicodeassist.project": "evenperfectbitscanner",
+	"todo-tree.tree.showCountsInTree": true
 }
