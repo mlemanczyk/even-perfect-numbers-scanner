@@ -28,7 +28,7 @@ namespace PerfectNumbers.Core.Gpu
 			// Intentionally left empty - there's nothing to do here. We're not really renting anything.
 		}
 
-		public static readonly AcceleratorPool Shared = new(1);
+		public static readonly AcceleratorPool Shared = new(PerfectNumberConstants.RollingAccelerators);
 		private readonly int Capacity;
 
 		public AcceleratorPool(int capacity)

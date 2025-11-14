@@ -13,15 +13,13 @@ public sealed class PrimeOrderCalculatorAccelerator
 	[ThreadStatic]
 	private static Queue<PrimeOrderCalculatorAccelerator>? _pool;
 
-	private static readonly AcceleratorPool _accelerators = new(PerfectNumberConstants.RollingAccelerators);
-
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static PrimeOrderCalculatorAccelerator Rent(int primeTesterCapacity)
 	{
 		var pool = _pool ??= [];
 		if (!pool.TryDequeue(out var gpu))
 		{
-			Accelerator accelerator = _accelerators.Rent();
+			Accelerator accelerator = AcceleratorPool.Shared.Rent();
 			gpu = new(accelerator, PerfectNumberConstants.DefaultFactorsBuffer, primeTesterCapacity, PerfectNumberConstants.DefaultSmallPrimeFactorSlotCount, PerfectNumberConstants.DefaultSpecialMaxFactorCapacity);
 		}
 		else
@@ -61,7 +59,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 
 	internal static void WarmUp()
 	{
-		Accelerator[]? accelerators = _accelerators.Accelerators;
+		Accelerator[] accelerators = AcceleratorPool.Shared.Accelerators;
 		int acceleratorCount = accelerators.Length;
 		for (var i = 0; i < acceleratorCount; i++)
 		{
