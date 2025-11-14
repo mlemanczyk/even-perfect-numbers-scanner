@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using ILGPU.Runtime;
-using Open.Collections;
 
 namespace PerfectNumbers.Core.Gpu.Accelerators;
 

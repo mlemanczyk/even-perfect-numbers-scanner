@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
+using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Kernels;
 
 namespace PerfectNumbers.Core.Gpu.Accelerators;
@@ -110,6 +111,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public readonly Kernel ConvertToStandardKernel;
 	public readonly Kernel KeepMontgomeryKernel;
 	public readonly Kernel PollardRhoKernel;
+	public readonly Kernel Pow2ModWideKernel;
 	public Kernel SharesFactorKernel;
 
 
@@ -180,6 +182,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		SpecialMaxResult = accelerator.Allocate1D<ulong>(1);
 
 		var sharedTables = LastDigitGpuTables.EnsureStaticTables(accelerator);
+
 		DevicePrimesLastOne = sharedTables.DevicePrimesLastOne;
 		DevicePrimesLastSeven = sharedTables.DevicePrimesLastSeven;
 		DevicePrimesLastThree = sharedTables.DevicePrimesLastThree;
@@ -202,7 +205,10 @@ public sealed class PrimeOrderCalculatorAccelerator
 
 		PollardRhoKernel = KernelUtil.GetKernel(accelerator.LoadStreamKernel<ulong, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.TryPollardRhoKernel));
 
-		SharesFactorKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SharesFactorKernel)); ;
+		Pow2ModWideKernel = KernelUtil.GetKernel(
+			accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>(PrimeOrderGpuHeuristics.Pow2ModKernelWide));
+
+		SharesFactorKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SharesFactorKernel));
 	}
 
 	public void Dispose()

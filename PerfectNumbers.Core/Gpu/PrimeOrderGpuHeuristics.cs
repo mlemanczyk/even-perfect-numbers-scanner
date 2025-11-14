@@ -1,9 +1,10 @@
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using ILGPU;
 using ILGPU.Runtime;
-using System.Runtime.InteropServices;
 using ILGPU.Runtime.OpenCL;
+using PerfectNumbers.Core.Gpu.Accelerators;
 namespace PerfectNumbers.Core.Gpu;
 
 internal enum GpuPow2ModStatus
@@ -25,9 +26,6 @@ internal static partial class PrimeOrderGpuHeuristics
 
 	[ThreadStatic]
 	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>? _pow2ModKernel;
-
-	[ThreadStatic]
-	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>>? _pow2ModWideKernel;
 
 	[ThreadStatic]
 	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>>? _partialFactorKernel;
@@ -89,7 +87,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		public int Count;
 	}
 
-	private const int WideStackThreshold = 8;
+	private const int WideStackThreshold = 12;
 	private static PrimeOrderGpuCapability s_capability = PrimeOrderGpuCapability.Default;
 
 	private const int Pow2WindowSizeBits = 8;
@@ -130,7 +128,7 @@ internal static partial class PrimeOrderGpuHeuristics
 			primeBuffer = accelerator.Allocate1D<uint>(primes.Length);
 			squareBuffer = accelerator.Allocate1D<ulong>(squares.Length);
 		}
-		
+
 		primeBuffer.View.CopyFromCPU(stream, primes);
 		squareBuffer.View.CopyFromCPU(stream, squares);
 		cached = new SmallPrimeDeviceCache
@@ -163,17 +161,16 @@ internal static partial class PrimeOrderGpuHeuristics
 	}
 
 	public static bool TryPartialFactor(
+		PrimeOrderCalculatorAccelerator gpu,
 		ulong value,
 		uint limit,
 		Span<ulong> primeTargets,
 		Span<int> exponentTargets,
 		out int factorCount,
-		out ulong remaining,
-		out bool fullyFactored)
+		out ulong remaining)
 	{
 		factorCount = 0;
 		remaining = value;
-		fullyFactored = false;
 
 		if (primeTargets.Length == 0 || exponentTargets.Length == 0)
 		{
@@ -184,13 +181,13 @@ internal static partial class PrimeOrderGpuHeuristics
 		exponentTargets.Clear();
 
 		if (!TryLaunchPartialFactorKernel(
+				gpu,
 				value,
 				limit,
 				primeTargets,
 				exponentTargets,
 				out int extracted,
-				out ulong leftover,
-				out bool kernelFullyFactored))
+				out ulong leftover))
 		{
 			return false;
 		}
@@ -200,28 +197,25 @@ internal static partial class PrimeOrderGpuHeuristics
 		{
 			factorCount = 0;
 			remaining = value;
-			fullyFactored = false;
 			return false;
 		}
 
 		factorCount = extracted;
 		remaining = leftover;
-		fullyFactored = kernelFullyFactored && leftover == 1UL;
 		return true;
 	}
 
 	private static bool TryLaunchPartialFactorKernel(
+		PrimeOrderCalculatorAccelerator gpu,
 		ulong value,
 		uint limit,
 		Span<ulong> primeTargets,
 		Span<int> exponentTargets,
 		out int factorCount,
-		out ulong remaining,
-		out bool fullyFactored)
+		out ulong remaining)
 	{
 		factorCount = 0;
 		remaining = value;
-		fullyFactored = false;
 
 		try
 		{
@@ -232,21 +226,13 @@ internal static partial class PrimeOrderGpuHeuristics
 			SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator, stream);
 
 			// TODO: We should create / reallocate these buffer only once or if the new required length is bigger than capacity.
-			MemoryBuffer1D<ulong, Stride1D.Dense>? factorBuffer;
-			MemoryBuffer1D<int, Stride1D.Dense>? exponentBuffer;
-			MemoryBuffer1D<int, Stride1D.Dense>? countBuffer;
-			MemoryBuffer1D<ulong, Stride1D.Dense>? remainingBuffer;
-			MemoryBuffer1D<byte, Stride1D.Dense>? fullyFactoredBuffer;
-			// lock(accelerator)
-			{
-				factorBuffer = accelerator.Allocate1D<ulong>(primeTargets.Length);
-				exponentBuffer = accelerator.Allocate1D<int>(exponentTargets.Length);
-				countBuffer = accelerator.Allocate1D<int>(1);
-				remainingBuffer = accelerator.Allocate1D<ulong>(1);
-				fullyFactoredBuffer = accelerator.Allocate1D<byte>(1);				
-			}
+			MemoryBuffer1D<ulong, Stride1D.Dense>? factorBuffer = accelerator.Allocate1D<ulong>(primeTargets.Length);
+			MemoryBuffer1D<int, Stride1D.Dense>? exponentBuffer = accelerator.Allocate1D<int>(exponentTargets.Length);
+			MemoryBuffer1D<int, Stride1D.Dense>? countBuffer = accelerator.Allocate1D<int>(1);
+			MemoryBuffer1D<ulong, Stride1D.Dense>? remainingBuffer = accelerator.Allocate1D<ulong>(1);
+			MemoryBuffer1D<byte, Stride1D.Dense>? fullyFactoredBuffer = accelerator.Allocate1D<byte>(1);
 
-			// TODO: There is no need to clear these buffers because the kernel will always assign values within the required bounds.
+			// There is no need to clear these buffers because the kernel will always assign values within the required bounds. Keep it commented out.
 			// factorBuffer.MemSetToZero(stream);
 			// exponentBuffer.MemSetToZero(stream);
 			// countBuffer.MemSetToZero(stream);
@@ -281,7 +267,6 @@ internal static partial class PrimeOrderGpuHeuristics
 			stream.Synchronize();
 			stream.Dispose();
 
-			fullyFactored = fullyFactoredFlag != 0;
 			factorCount = Math.Min(factorCount, primeTargets.Length);
 
 			// TODO: These buffers shouldn't be disposed but rather reused accross call with the assigned accelerator.
@@ -296,18 +281,12 @@ internal static partial class PrimeOrderGpuHeuristics
 		catch (CLException ex)
 		{
 			Console.WriteLine($"GPU ERROR ({ex.Error}): {ex.Message}");
-			factorCount = 0;
-			remaining = value;
-			fullyFactored = false;
-			return false;
+			throw;
 		}
 		catch (Exception ex) when (ex is AcceleratorException or InternalCompilerException or NotSupportedException or InvalidOperationException or AggregateException)
 		{
 			Console.WriteLine($"GPU ERROR: {ex.Message}");
-			factorCount = 0;
-			remaining = value;
-			fullyFactored = false;
-			return false;
+			throw;
 		}
 	}
 
@@ -404,8 +383,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
 		// GpuPrimeWorkLimiter.Acquire();
 		Accelerator accelerator = AcceleratorPool.Shared.Rent();
-		AcceleratorStream stream = accelerator.CreateStream();
-
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
 		SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator, stream);
 
 		// TODO: These buffers should be created reallocated once and assigned to an accelerator. Callers should use their own
@@ -433,7 +411,7 @@ internal static partial class PrimeOrderGpuHeuristics
 			stackExponentBuffer = accelerator.Allocate1D<int>(HeuristicStackCapacity);
 			stackProductBuffer = accelerator.Allocate1D<ulong>(HeuristicStackCapacity);
 			resultBuffer = accelerator.Allocate1D<ulong>(1);
-			statusBuffer = accelerator.Allocate1D<byte>(1);			
+			statusBuffer = accelerator.Allocate1D<byte>(1);
 		}
 
 		// TODO: Remove the cleaning after the order kernel is modified to always set the result.
@@ -568,8 +546,8 @@ internal static partial class PrimeOrderGpuHeuristics
 			}
 		}
 
-		bool computed = TryComputeOnGpuWide(exponents, prime, target);
-		return computed ? GpuPow2ModStatus.Success : GpuPow2ModStatus.Unavailable;
+		ComputeOnGpuWide(exponents, prime, target);
+		return GpuPow2ModStatus.Success;
 	}
 
 	private static bool TryComputeOnGpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorData divisorData, Span<ulong> results)
@@ -585,7 +563,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		// lock(accelerator)
 		{
 			exponentBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
-			remainderBuffer = accelerator.Allocate1D<ulong>(exponents.Length);			
+			remainderBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
 		}
 
 		exponentBuffer.View.CopyFromCPU(stream, ref MemoryMarshal.GetReference(exponents), exponents.Length);
@@ -628,83 +606,56 @@ internal static partial class PrimeOrderGpuHeuristics
 		}
 	}
 
-	private static bool TryComputeOnGpuWide(ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> results)
+	private static void ComputeOnGpuWide(ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> results)
 	{
 		int length = exponents.Length;
-		if (length == 0)
-		{
-			return true;
-		}
 
 		GpuUInt128[]? rentedExponents = null;
 		GpuUInt128[]? rentedResults = null;
-		// GpuPrimeWorkLimiter.Acquire();
 		ArrayPool<GpuUInt128> gpuUInt128Pool = ThreadStaticPools.GpuUInt128Pool;
+		PrimeOrderCalculatorAccelerator? gpu = null;
+		bool poolingRequired = length > WideStackThreshold;
+		Span<GpuUInt128> exponentSpan = poolingRequired
+			? stackalloc GpuUInt128[length]
+			: new Span<GpuUInt128>(rentedExponents = gpuUInt128Pool.Rent(length), 0, length);
+		Span<GpuUInt128> resultSpan = length <= WideStackThreshold
+			? stackalloc GpuUInt128[length]
+			: new Span<GpuUInt128>(rentedResults = gpuUInt128Pool.Rent(length), 0, length);
 
-		try
+
+		for (int i = 0; i < length; i++)
 		{
-			Accelerator accelerator = AcceleratorPool.Shared.Rent();
-			AcceleratorStream stream = accelerator.CreateStream();
-			// TODO: These buffers should be allocated once per accelerator and only reallocated when the new length exceeds capacity.
-			// Modify the callers to use their own pool of buffers per accelerator, so that other threads don't use the accelerators
-			// with out preallocated buffers. Share the pool with Pow2Mod kernel.
-			MemoryBuffer1D<GpuUInt128, Stride1D.Dense>? exponentBuffer;
-			MemoryBuffer1D<GpuUInt128, Stride1D.Dense>? remainderBuffer;
-			// lock(accelerator)
-			{
-				exponentBuffer = accelerator.Allocate1D<GpuUInt128>(length);
-				remainderBuffer = accelerator.Allocate1D<GpuUInt128>(length);				
-			}
-
-			Span<GpuUInt128> exponentSpan = length <= WideStackThreshold
-				? stackalloc GpuUInt128[length]
-				: new Span<GpuUInt128>(rentedExponents = gpuUInt128Pool.Rent(length), 0, length);
-
-			for (int i = 0; i < length; i++)
-			{
-				exponentSpan[i] = (GpuUInt128)exponents[i];
-			}
-
-			exponentBuffer.View.CopyFromCPU(stream, ref MemoryMarshal.GetReference(exponentSpan), length);
-			// Pow2ModWide kernel always assigns the required output elements so we don't need to worry about clearing these.
-			// remainderBuffer.MemSetToZero(stream);
-
-			GpuUInt128 modulus = (GpuUInt128)prime;
-			var pow2ModWideKernel = GetPow2ModWideKernel(accelerator);
-			pow2ModWideKernel(stream, length, exponentBuffer.View, modulus, remainderBuffer.View);
-
-
-			Span<GpuUInt128> resultSpan = length <= WideStackThreshold
-				? stackalloc GpuUInt128[length]
-				: new Span<GpuUInt128>(rentedResults = gpuUInt128Pool.Rent(length), 0, length);
-
-			remainderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(resultSpan), length);
-			stream.Synchronize();
-			stream.Dispose();
-
-			for (int i = 0; i < length; i++)
-			{
-				results[i] = (UInt128)resultSpan[i];
-			}
-
-			exponentBuffer.Dispose();
-			remainderBuffer.Dispose();
-			return true;
+			exponentSpan[i] = (GpuUInt128)exponents[i];
 		}
-		catch (Exception)
-		{
-			Console.WriteLine($"Exception when computing {prime} with exponents: {string.Join(", ", exponents.ToArray())}");
-			throw;
-		}
-		finally
-		{
-			if (rentedExponents is not null)
-			{
-				gpuUInt128Pool.Return(rentedExponents, clearArray: false);
-				gpuUInt128Pool.Return(rentedResults!, clearArray: false);
-			}
 
-			// GpuPrimeWorkLimiter.Release();
+		GpuUInt128 modulus = (GpuUInt128)prime;
+		gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		Accelerator accelerator = gpu.Accelerator;
+
+		MemoryBuffer1D<GpuUInt128, Stride1D.Dense> exponentBuffer = accelerator.Allocate1D<GpuUInt128>(length);
+		MemoryBuffer1D<GpuUInt128, Stride1D.Dense> remainderBuffer = accelerator.Allocate1D<GpuUInt128>(length);
+
+		AcceleratorStream? stream = AcceleratorStreamPool.Rent(accelerator);
+		exponentBuffer.View.CopyFromCPU(stream, exponentSpan);
+
+		gpu.Pow2ModWideKernel.Launch(stream, length, exponentBuffer.View, modulus, remainderBuffer.View);
+		remainderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(resultSpan), length);
+		stream.Synchronize();
+
+		AcceleratorStreamPool.Return(stream);
+		for (int i = 0; i < length; i++)
+		{
+			results[i] = (UInt128)resultSpan[i];
+		}
+
+		remainderBuffer.Dispose();
+		exponentBuffer.Dispose();
+		PrimeOrderCalculatorAccelerator.Return(gpu);
+
+		if (rentedExponents is not null)
+		{
+			gpuUInt128Pool.Return(rentedExponents, clearArray: false);
+			gpuUInt128Pool.Return(rentedResults!, clearArray: false);
 		}
 	}
 

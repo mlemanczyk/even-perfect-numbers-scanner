@@ -314,20 +314,28 @@ public static partial class ULongExtensions
 		int shift = BitOperations.TrailingZeroCount(a | b);
 		a >>= BitOperations.TrailingZeroCount(a);
 
-		do
+		while (true)
 		{
 			b >>= BitOperations.TrailingZeroCount(b);
 
-			if (a > b)
+			bool swap = a > b;
+			ulong min = Select(a, b, swap);
+			ulong max = Select(b, a, swap);
+			b = max - min;
+			a = min;
+
+			if (b == 0UL)
 			{
-				(a, b) = (b, a);
+				return a << shift;
 			}
-
-			b -= a;
 		}
-		while (b != 0UL);
+	}
 
-		return a << shift;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static ulong Select(ulong left, ulong right, bool useRight)
+	{
+		ulong mask = useRight ? ulong.MaxValue : 0UL;
+		return left ^ ((left ^ right) & mask);
 	}
 
 	// Benchmarks (Mod5ULongBenchmarks) show the direct `% 5` is still cheaper (~0.26 ns vs 0.43 ns), so keep the modulo until a faster lookup is proven.

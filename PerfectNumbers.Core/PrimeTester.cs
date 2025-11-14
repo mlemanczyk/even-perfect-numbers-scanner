@@ -289,7 +289,8 @@ public sealed class PrimeTester
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
 		inputBuffer.View.CopyFromCPU(stream, values);
 
-		kernel.Launch(stream, 1, length, inputBuffer.View, resultBuffer.View);
+		kernel.Launch(stream, length, inputBuffer.View, resultBuffer.View);
+
 		resultBuffer.View.CopyToCPU(stream, in results);
 		stream.Synchronize();
 

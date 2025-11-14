@@ -2,7 +2,6 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
-using PerfectNumbers.Core.Cpu;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -1205,23 +1204,6 @@ internal static partial class PrimeOrderGpuHeuristics
 	{
 		ulong exponent = exponents[index];
 		remainders[index] = ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponent);
-	}
-
-	private static Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>> GetPow2ModWideKernel(Accelerator accelerator)
-	{
-		var pool = _pow2ModWideKernel ??= [];
-		if (pool.TryGetValue(accelerator, out var cached))
-		{
-			return cached;
-		}
-
-		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>(Pow2ModKernelWide);
-
-		var kernel = KernelUtil.GetKernel(loaded);
-
-		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>>();
-		pool[accelerator] = cached;
-		return cached;
 	}
 
 	/// This kernel always sets the result of the corresponding element. Callers don't need to clear the output buffers.

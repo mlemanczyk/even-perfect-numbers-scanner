@@ -121,35 +121,37 @@ internal static class PrimeTesterKernels
 
     private static ulong BinaryGcdGpu(ulong u, ulong v)
     {
-        // TODO: Replace this inline GPU binary GCD with the kernel extracted from
-        // GpuUInt128BinaryGcdBenchmarks via GpuKernelPool so device callers reuse the
-        // fully unrolled ladder instead of this branchy fallback.
         bool uIsZero = u == 0UL;
         bool vIsZero = v == 0UL;
         bool eitherZero = uIsZero | vIsZero;
         ulong zeroResult = uIsZero ? v : u;
 
-        ulong combined = u | v | 1UL;
+        ulong combined = (u | v) | 1UL;
         int shift = XMath.TrailingZeroCount(combined);
+        ulong currentU = u >> XMath.TrailingZeroCount(u | 1UL);
+        ulong currentV = v >> XMath.TrailingZeroCount(v | 1UL);
 
-        ulong normalizedU = u >> XMath.TrailingZeroCount(u | 1UL);
-        ulong normalizedV = v >> XMath.TrailingZeroCount(v | 1UL);
-
-        ulong currentU = normalizedU;
-        ulong currentV = normalizedV;
-        bool loopCondition = currentV != 0UL;
-
-        while (loopCondition)
+        while (true)
         {
             currentV >>= XMath.TrailingZeroCount(currentV);
-            ulong minValue = XMath.Min(currentU, currentV);
-            ulong maxValue = XMath.Max(currentU, currentV);
-            currentU = minValue;
+            bool swap = currentU > currentV;
+            ulong minValue = ConditionalSelect(currentU, currentV, swap);
+            ulong maxValue = ConditionalSelect(currentV, currentU, swap);
             currentV = maxValue - minValue;
-            loopCondition = currentV != 0UL;
+            currentU = minValue;
+            if (currentV == 0UL)
+            {
+                ulong gcd = currentU << shift;
+                return eitherZero ? zeroResult : gcd;
+            }
         }
-
-        ulong gcd = currentU << shift;
-        return eitherZero ? zeroResult : gcd;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ConditionalSelect(ulong left, ulong right, bool useRight)
+    {
+        ulong mask = useRight ? ulong.MaxValue : 0UL;
+        return left ^ ((left ^ right) & mask);
+    }
+
 }

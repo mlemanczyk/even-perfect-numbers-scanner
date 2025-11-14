@@ -114,10 +114,6 @@ public class GpuKernelCompilationTests
         typeof(PrimeOrderGpuHeuristics).GetMethod("GetPow2ModKernel", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("PrimeOrderGpuHeuristics.GetPow2ModKernel not found.");
 
-    private static readonly MethodInfo PrimeOrderGetPow2ModWideKernelMethod =
-        typeof(PrimeOrderGpuHeuristics).GetMethod("GetPow2ModWideKernel", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("PrimeOrderGpuHeuristics.GetPow2ModWideKernel not found.");
-
     private static readonly Action<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> MersenneDivisorCyclesKernel =
         DivisorCycleKernels.GpuDivisorCycleKernel;
 
@@ -325,7 +321,8 @@ public class GpuKernelCompilationTests
 
     private static void CompilePrimeOrderPow2ModWideKernel(Accelerator accelerator)
     {
-        _ = PrimeOrderGetPow2ModWideKernelMethod.Invoke(null, new object[] { accelerator });
+        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>(PrimeOrderGpuHeuristics.Pow2ModKernelWide);
+        _ = kernel;
     }
 
     private static void CompileMersenneDivisorCyclesKernel(Accelerator accelerator)

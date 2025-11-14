@@ -1109,7 +1109,7 @@ internal static partial class PrimeOrderCalculator
 		bool gpuFactored = false;
 		if (IsGpuHeuristicDevice)
 		{
-			gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(value, limit, primeSlots, exponentSlots, out factorCount, out remaining, out _);
+			gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(gpu, value, limit, primeSlots, exponentSlots, out factorCount, out remaining);
 		}
 
 		List<PendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(2);
