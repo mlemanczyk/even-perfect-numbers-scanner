@@ -1,12 +1,13 @@
 using ILGPU;
 using ILGPU.Runtime;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core.Gpu;
 
 public class GpuKernelPool
 {
 	[ThreadStatic]
-	private static Dictionary<Accelerator, KernelContainer>? _pool;
+	private static KernelContainer[]? _pool;
 
 	public static T InitOnce<T>(ref T? target, Func<T> valueFactory) where T : class
 	{
@@ -19,14 +20,18 @@ public class GpuKernelPool
 		return Interlocked.CompareExchange(ref target, newValue, null) ?? newValue;
 	}
 
-	internal static KernelContainer GetOrAddKernels(Accelerator accelerator, AcceleratorStream stream, KernelType kernelType)
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
+
+	internal static KernelContainer GetOrAddKernels(int acceleratorIndex, AcceleratorStream stream, KernelType kernelType)
 	{
 		var pool = _pool ??= [];
-		if (!pool.TryGetValue(accelerator, out var kernels))
+		if (pool[acceleratorIndex] is not {} kernels)
 		{
-			kernels = new KernelContainer();			
+			kernels = new();
 		}
 
+		Accelerator accelerator = _accelerators[acceleratorIndex];
 		if (kernelType.HasFlag(KernelType.OrderKernelScan))
 		{
 			InitOrderKernelScan(accelerator, kernels);
@@ -64,7 +69,7 @@ public class GpuKernelPool
 
 		PreloadStaticTables(accelerator, kernels, stream, kernelType);
 
-		pool[accelerator] = kernels;
+		pool[acceleratorIndex] = kernels;
 		return kernels;
 
 		static void InitOrderKernelScan(Accelerator accelerator, KernelContainer kernels)
@@ -281,8 +286,9 @@ public class GpuKernelPool
 	public static void Run(Action<Accelerator, AcceleratorStream> action)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
-		var accelerator = SharedGpuContext.CreateAccelerator();
-		var stream = accelerator.CreateStream();
+		var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
+		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		action(accelerator, stream);
 		stream.Synchronize();
 		stream.Dispose();

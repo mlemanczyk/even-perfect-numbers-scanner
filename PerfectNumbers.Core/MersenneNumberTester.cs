@@ -6,6 +6,7 @@ using ILGPU.Runtime;
 using PerfectNumbers.Core.Cpu;
 using PerfectNumbers.Core.Gpu;
 using UInt128 = System.UInt128;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 
@@ -152,8 +153,8 @@ public sealed class MersenneNumberTester(
 		// GpuPrimeWorkLimiter.Acquire();
 		var acceleratorIndex = AcceleratorPool.Shared.Rent();
 		var accelerator = _accelerators[acceleratorIndex];
-		var stream = accelerator.CreateStream();
-		var orderKernel = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.OrderKernelScan).Order!;
+		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
+		var orderKernel = GpuKernelPool.GetOrAddKernels(acceleratorIndex, stream, KernelType.OrderKernelScan).Order!;
 
 		// Guard long-running kernels by chunking the warm-up across batches.
 		// Reuse the same ScanBatchSize knob used for scanning.
@@ -203,7 +204,7 @@ public sealed class MersenneNumberTester(
 			qBuffer.Dispose();
 		}
 
-		stream.Dispose();
+		AcceleratorStreamPool.Return(acceleratorIndex,stream);
 		// GpuPrimeWorkLimiter.Release();
 		uInt128Pool.Return(qs);
 	}

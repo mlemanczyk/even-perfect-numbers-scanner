@@ -15,24 +15,18 @@ internal sealed class HeuristicPrimeTesterAccelerator
 	{
 		Accelerator[]? accelerators = AcceleratorPool.Shared.Accelerators;
 		int acceleratorCount = accelerators.Length;
-		Span<AcceleratorStream> streams = new(new AcceleratorStream[acceleratorCount]);
 		for (var i = 0; i < acceleratorCount; i++)
 		{
 			Console.WriteLine($"Preparing heuristic accelerator {i}...");
 			var accelerator = accelerators[i];
 			AcceleratorStream stream = accelerator.CreateStream();
-			Accelerators.HeuristicGpuTables.EnsureStaticTables(accelerator, stream);
+			Accelerators.HeuristicGpuTables.EnsureStaticTables(i, stream);
 			// _ = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.None);
 			// KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
 			// GpuStaticTableInitializer.EnsureStaticTables(accelerator, kernels, stream);
-			streams[i] = stream;
-		}
-
-		for (var i = 0; i < acceleratorCount; i++)
-		{
-			AcceleratorStream stream = streams[i];
 			stream.Synchronize();
 			stream.Dispose();
+			accelerator.Synchronize();
 			Console.WriteLine($"Heuristic accelerator {i} is ready");
 		}
 	}
@@ -148,7 +142,7 @@ internal sealed class HeuristicPrimeTesterAccelerator
 		
 		// GpuStaticTableInitializer.EnsureStaticTables(accelerator, kernels, stream);
 
-		_sharedTables = Accelerators.HeuristicGpuTables.EnsureStaticTables(accelerator, stream);
+		_sharedTables = Accelerators.HeuristicGpuTables.EnsureStaticTables(acceleratorIndex, stream);
 		_heuristicDivisorTables = _sharedTables.CreateHeuristicDivisorTables();
 
 		stream.Synchronize();

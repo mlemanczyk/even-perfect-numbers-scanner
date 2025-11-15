@@ -70,7 +70,7 @@ internal static partial class PrimeOrderCalculator
 
 		// GpuPrimeWorkLimiter.Acquire();
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.SmallPrimeFactorKernelScan);
+		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(acceleratorIndex, stream, KernelType.SmallPrimeFactorKernelScan);
 		SmallPrimeFactorViews tables = GpuKernelPool.GetSmallPrimeFactorTables(kernels);
 
 		var kernel = kernels.SmallPrimeFactor!;
@@ -141,7 +141,7 @@ internal static partial class PrimeOrderCalculator
 		Accelerator accelerator = gpu.Accelerator;
 		// GpuPrimeWorkLimiter.Acquire();
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		var kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.EvaluateSpecialMaxCandidatesKernel);
+		var kernels = GpuKernelPool.GetOrAddKernels(acceleratorIndex, stream, KernelType.EvaluateSpecialMaxCandidatesKernel);
 
 		ArrayView1D<ulong, Stride1D.Dense> specialMaxFactorsView = gpu.SpecialMaxFactors.View;
 		specialMaxFactorsView.SubView(0, factorCount).CopyFromCPU(stream, ref MemoryMarshal.GetReference(factors), factorCount);

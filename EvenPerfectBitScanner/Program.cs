@@ -66,7 +66,6 @@ internal static class Program
 			Console.WriteLine("Warming up GPU kernels");
 			PrimeTester.WarmUpGpuKernels(1024);
 			// PrimeTester.WarmUpGpuKernels(gpuPrimeThreads >> 4);
-			Console.WriteLine("Warming up scratch buffers");
 			Console.WriteLine("Starting up threads...");
 			_ = UnboundedTaskScheduler.Instance;
 			int blockSize = Math.Max(1, _cliArguments.BlockSize);

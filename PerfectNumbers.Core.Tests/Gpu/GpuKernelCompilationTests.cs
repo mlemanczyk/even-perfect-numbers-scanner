@@ -3,6 +3,7 @@ using FluentAssertions;
 using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
+using PerfectNumbers.Core.Gpu.Accelerators;
 using Xunit;
 
 namespace PerfectNumbers.Core.Tests.Gpu;
@@ -348,10 +349,11 @@ public class GpuKernelCompilationTests
 	{
 
 		GpuPrimeWorkLimiter.Acquire();
-		AcceleratorStream stream = accelerator.CreateStream();
+		int acceleratorIndex = AcceleratorPool.Shared.Rent();
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		try
 		{
-			var kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream, _kernelType);
+			var kernels = GpuKernelPool.GetOrAddKernels(acceleratorIndex, stream, _kernelType);
 			_ = kernels.Order;
 			_ = kernels.Incremental;
 			_ = kernels.Pow2Mod;
@@ -361,15 +363,15 @@ public class GpuKernelCompilationTests
 		finally
 		{
 			stream.Synchronize();
-			stream.Dispose();
+			AcceleratorStreamPool.Return(acceleratorIndex, stream);
 			// GpuPrimeWorkLimiter.Release();
 		}
 
-		stream = accelerator.CreateStream();
+		stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		GpuPrimeWorkLimiter.Acquire();
 		try
 		{
-			var kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream, _kernelType);
+			var kernels = GpuKernelPool.GetOrAddKernels(acceleratorIndex, stream, _kernelType);
 			_ = kernels.Order;
 			_ = kernels.Incremental;
 			_ = kernels.Pow2Mod;
@@ -379,7 +381,7 @@ public class GpuKernelCompilationTests
 		finally
 		{
 			stream.Synchronize();
-			stream.Dispose();
+			AcceleratorStreamPool.Return(acceleratorIndex, stream);
 			// GpuPrimeWorkLimiter.Release();
 		}
 	}

@@ -27,7 +27,7 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
         ulong divMul = (ulong)((((UInt128)1 << 64) - UInt128.One) / exponent) + 1UL;
         byte last = lastDigit == LastDigit.Seven ? (byte)1 : (byte)0; // ILGPU kernels do not support bool parameters
 
-		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.Pow2ModKernelScan | KernelType.IncrementalKernelScan);
+		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(acceleratorIndex, stream, KernelType.Pow2ModKernelScan | KernelType.IncrementalKernelScan);
 		var pow2Kernel = kernels.Pow2Mod!;
         var incKernel = kernels.Incremental!;
         ulong step10 = (exponent.Mod10() << 1).Mod10();

@@ -25,16 +25,16 @@ internal static partial class PrimeOrderGpuHeuristics
 	private static readonly ConcurrentDictionary<UInt128, byte> OverflowedPrimesWide = new();
 
 	[ThreadStatic]
-	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>? _pow2ModKernel;
+	private static Kernel[]? _pow2ModKernel;
 
 	[ThreadStatic]
-	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>>? _partialFactorKernel;
+	private static Kernel[]? _partialFactorKernel;
 
 	[ThreadStatic]
-	private static Dictionary<Accelerator, OrderKernelLauncher>? _orderKernel;
+	private static Kernel[]? _orderKernel;
 
 	[ThreadStatic]
-	private static Dictionary<Accelerator, SmallPrimeDeviceCache>? _smallPrimeDeviceCache;
+	private static SmallPrimeDeviceCache[]? _smallPrimeDeviceCache;
 
 	public readonly struct OrderKernelConfig(ulong previousOrder, byte hasPreviousOrder, uint smallFactorLimit, int maxPowChecks, int mode)
 	{
@@ -69,17 +69,6 @@ internal static partial class PrimeOrderGpuHeuristics
 		public readonly ArrayView1D<byte, Stride1D.Dense> Status = status;
 	}
 
-	private delegate void OrderKernelLauncher(
-		AcceleratorStream stream,
-		Index1D extent,
-		ulong prime,
-		OrderKernelConfig config,
-		MontgomeryDivisorData divisor,
-		ArrayView1D<uint, Stride1D.Dense> primes,
-		ArrayView1D<ulong, Stride1D.Dense> squares,
-		int primeCount,
-		OrderKernelBuffers buffers);
-
 	private sealed class SmallPrimeDeviceCache
 	{
 		public MemoryBuffer1D<uint, Stride1D.Dense>? Primes;
@@ -111,10 +100,10 @@ internal static partial class PrimeOrderGpuHeuristics
 		s_capability = PrimeOrderGpuCapability.Default;
 	}
 
-	private static SmallPrimeDeviceCache GetSmallPrimeDeviceCache(Accelerator accelerator, AcceleratorStream stream)
+	private static SmallPrimeDeviceCache GetSmallPrimeDeviceCache(int acceleratorIndex, AcceleratorStream stream)
 	{
 		var pool = _smallPrimeDeviceCache ??= [];
-		if (pool.TryGetValue(accelerator, out var cached))
+		if (pool[acceleratorIndex] is {} cached)
 		{
 			return cached;
 		}
@@ -123,11 +112,10 @@ internal static partial class PrimeOrderGpuHeuristics
 		ulong[] squares = PrimesGenerator.SmallPrimesPow2;
 		MemoryBuffer1D<uint, Stride1D.Dense>? primeBuffer;
 		MemoryBuffer1D<ulong, Stride1D.Dense>? squareBuffer;
-		// lock (accelerator)
-		{
-			primeBuffer = accelerator.Allocate1D<uint>(primes.Length);
-			squareBuffer = accelerator.Allocate1D<ulong>(squares.Length);
-		}
+
+		var accelerator = _accelerators[acceleratorIndex];
+		primeBuffer = accelerator.Allocate1D<uint>(primes.Length);
+		squareBuffer = accelerator.Allocate1D<ulong>(squares.Length);
 
 		primeBuffer.View.CopyFromCPU(stream, primes);
 		squareBuffer.View.CopyFromCPU(stream, squares);
@@ -138,25 +126,23 @@ internal static partial class PrimeOrderGpuHeuristics
 			Count = primes.Length,
 		};
 
-		pool[accelerator] = cached;
+		pool[acceleratorIndex] = cached;
 		return cached;
 	}
 
-	private static Action<AcceleratorStream, Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> GetPartialFactorKernel(Accelerator accelerator)
+	private static Kernel GetPartialFactorKernel(int acceleratorIndex)
 	{
 		var pool = _partialFactorKernel ??= [];
-		if (pool.TryGetValue(accelerator, out var cached))
+		if (pool[acceleratorIndex] is {} cached)
 		{
 			return cached;
 		}
 
+		var accelerator = _accelerators[acceleratorIndex];
 		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>(PartialFactorKernel);
 
-		var kernel = KernelUtil.GetKernel(loaded);
-
-		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>>();
-
-		pool[accelerator] = cached;
+		cached = KernelUtil.GetKernel(loaded);
+		pool[acceleratorIndex] = cached;
 		return cached;
 	}
 
@@ -226,7 +212,7 @@ internal static partial class PrimeOrderGpuHeuristics
 			Accelerator accelerator = _accelerators[acceleratorIndex];
 			AcceleratorStream stream = accelerator.CreateStream();
 
-			SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator, stream);
+			SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(acceleratorIndex, stream);
 
 			// TODO: We should create / reallocate these buffer only once or if the new required length is bigger than capacity.
 			MemoryBuffer1D<ulong, Stride1D.Dense>? factorBuffer = accelerator.Allocate1D<ulong>(primeTargets.Length);
@@ -242,10 +228,11 @@ internal static partial class PrimeOrderGpuHeuristics
 			// remainingBuffer.MemSetToZero(stream);
 			// fullyFactoredBuffer.MemSetToZero(stream);
 
-			var partialFactorKernel = GetPartialFactorKernel(accelerator);
+			var partialFactorKernel = GetPartialFactorKernel(acceleratorIndex);
 
-			partialFactorKernel(
+			partialFactorKernel.Launch(
 				stream,
+				1,
 				1,
 				cache.Primes!.View,
 				cache.Squares!.View,
@@ -388,7 +375,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		int acceleratorIndex = AcceleratorPool.Shared.Rent();
 		Accelerator accelerator = _accelerators[acceleratorIndex];
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator, stream);
+		SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(acceleratorIndex, stream);
 
 		// TODO: These buffers should be created reallocated once and assigned to an accelerator. Callers should use their own
 		// thread static cache to prevent other threads from using taking accelerators with pre-allocated buffers if they don't
@@ -447,9 +434,10 @@ internal static partial class PrimeOrderGpuHeuristics
 			resultBuffer.View,
 			statusBuffer.View);
 
-		var orderKernel = GetOrderKernel(accelerator);
-		orderKernel(
+		var orderKernel = GetOrderKernel(acceleratorIndex);
+		orderKernel.Launch(
 			stream,
+			1,
 			1,
 			prime,
 			kernelConfig,
@@ -497,19 +485,20 @@ internal static partial class PrimeOrderGpuHeuristics
 		return order != 0UL;
 	}
 
-	private static OrderKernelLauncher GetOrderKernel(Accelerator accelerator)
+	private static Kernel GetOrderKernel(int acceleratorIndex)
 	{
 		var pool = _orderKernel ??= [];
-		if (pool.TryGetValue(accelerator, out var cached))
+		if (pool[acceleratorIndex] is {} cached)
 		{
 			return cached;
 		}
 
+		var accelerator = _accelerators[acceleratorIndex];
 		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, OrderKernelConfig, MontgomeryDivisorData, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, OrderKernelBuffers>(CalculateOrderKernel);
+
 		var kernel = KernelUtil.GetKernel(loaded);
-		cached = kernel.CreateLauncherDelegate<OrderKernelLauncher>();
-		pool[accelerator] = cached;
-		return cached;
+		pool[acceleratorIndex] = kernel;
+		return kernel;
 	}
 
 	private static GpuPow2ModStatus TryPow2ModBatchInternal(ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> remainders)
@@ -576,10 +565,10 @@ internal static partial class PrimeOrderGpuHeuristics
 		// Pow2Mod kernel always assigns the required output elements so we don't need to worry about clearing these.
 		// remainderBuffer.MemSetToZero(stream);
 
-		var pow2ModKernel = GetPow2ModKernel(accelerator);
+		var pow2ModKernel = GetPow2ModKernel(acceleratorIndex);
 		try
 		{
-			pow2ModKernel(stream, exponents.Length, exponentBuffer.View, divisorData, remainderBuffer.View);
+			pow2ModKernel.Launch(stream, 1, exponents.Length, exponentBuffer.View, divisorData, remainderBuffer.View);
 			remainderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(results), exponents.Length);
 			stream.Synchronize();
 
@@ -684,21 +673,19 @@ internal static partial class PrimeOrderGpuHeuristics
 		return ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisorData, exponent);
 	}
 
-	private static Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>> GetPow2ModKernel(Accelerator accelerator)
+	private static Kernel GetPow2ModKernel(int acceleratorIndex)
 	{
 		var pool = _pow2ModKernel ??= [];
-		if (pool.TryGetValue(accelerator, out var cached))
+		if (pool[acceleratorIndex] is {} cached)
 		{
 			return cached;
 		}
 
-		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernel);
+		var accelerator = _accelerators[acceleratorIndex];
+		var loaded = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernel));
 
-		var kernel = KernelUtil.GetKernel(loaded);
-
-		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
-		pool[accelerator] = cached;
-		return cached;
+		pool[acceleratorIndex] = loaded;
+		return loaded;
 	}
 
 	internal readonly record struct PrimeOrderGpuCapability(int ModulusBits, int ExponentBits)

@@ -9,6 +9,7 @@ using PerfectNumbers.Core.Gpu;
 using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 
@@ -789,7 +790,7 @@ public class MersenneDivisorCycles
 	}
 
 	[ThreadStatic]
-	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>? _divisorCycleKernel;
+	private static Kernel[]? _divisorCycleKernel;
 
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
 
@@ -809,7 +810,7 @@ public class MersenneDivisorCycles
 		// GpuPrimeWorkLimiter.Acquire();
 		var acceleratorIndex = AcceleratorPool.Shared.Rent();
 		var accelerator = _accelerators[acceleratorIndex];
-		var stream = accelerator.CreateStream();
+		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 
 		using Stream outputStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, BufferSize10M, useAsync: true);
 		if (nextPosition > 0L)
@@ -838,7 +839,7 @@ public class MersenneDivisorCycles
 			skipCount--;
 		}
 
-		var divisorCycleKernel = GetDivisorCycleKernel(accelerator);
+		var divisorCycleKernel = GetDivisorCycleKernel(acceleratorIndex);
 		while (start <= maxDivisor)
 		{
 			end = Math.Min(start + batchSizeUL - 1UL, maxDivisor);
@@ -865,8 +866,9 @@ public class MersenneDivisorCycles
 				bufferCycle = accelerator.Allocate1D<ulong>(idx);				
 			}
 
-			divisorCycleKernel(
+			divisorCycleKernel.Launch(
 					stream,
+					1,
 					idx,
 					bufferDiv.View,
 					bufferCycle.View);
@@ -896,31 +898,28 @@ public class MersenneDivisorCycles
 			start = end + 1UL;
 		}
 
-		stream.Dispose();
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 		pool.Return(divisors, clearArray: false);
 		pool.Return(outCycles, clearArray: false);
 
 		// GpuPrimeWorkLimiter.Release();
 	}
 
-	private static Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> GetDivisorCycleKernel(Accelerator accelerator)
+	private static Kernel GetDivisorCycleKernel(int acceleratorIndex)
 	{
 		var pool = _divisorCycleKernel ??= [];
-		if (pool.TryGetValue(accelerator, out var cached))
+		if (pool[acceleratorIndex] is {} cached)
 		{
 			return cached;
 		}
 
-		var loaded = accelerator.LoadAutoGroupedStreamKernel<
+		var loaded = KernelUtil.GetKernel(_accelerators[acceleratorIndex].LoadAutoGroupedStreamKernel<
 				Index1D,
 				ArrayView1D<ulong, Stride1D.Dense>,
-				ArrayView1D<ulong, Stride1D.Dense>>(DivisorCycleKernels.GpuDivisorCycleKernel);
+				ArrayView1D<ulong, Stride1D.Dense>>(DivisorCycleKernels.GpuDivisorCycleKernel));
 
-		var kernel = KernelUtil.GetKernel(loaded);
-
-		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
-		pool[accelerator] = cached;
-		return cached;
+		pool[acceleratorIndex] = loaded;
+		return loaded;
 	}
 
 	public static ulong CalculateCycleLengthGpu(ulong divisor) => DivisorCycleKernels.CalculateCycleLengthGpu(divisor);

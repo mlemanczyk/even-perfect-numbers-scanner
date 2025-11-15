@@ -269,9 +269,6 @@ public sealed class PrimeTester
 		return BinaryGcd(n, m) != 1UL;
 	}
 
-	[ThreadStatic]
-	private static readonly Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>>>? _kernel;
-
 	internal static void SharesFactorWithMaxExponentBatch(ReadOnlySpan<ulong> values, Span<byte> results)
 	{
 		// TODO: Route this batch helper through the shared GPU kernel pool from

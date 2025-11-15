@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
 
@@ -6,50 +5,65 @@ namespace PerfectNumbers.Core.Gpu.Accelerators;
 
 internal sealed class HeuristicGpuTables
 {
-	private static readonly ConcurrentDictionary<Accelerator, HeuristicGpuTables> _sharedTables = new(20_480, 1);
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
 
-	internal static HeuristicGpuTables EnsureStaticTables(Accelerator accelerator, AcceleratorStream stream)
-		=> _sharedTables.GetOrAdd(accelerator, _ => new HeuristicGpuTables(accelerator, stream));
+	private static readonly HeuristicGpuTables[] _sharedTables = new HeuristicGpuTables[PerfectNumberConstants.RollingAccelerators];
+
+	private static readonly SemaphoreSlim[] _locks = [..Enumerable.Range(1, PerfectNumberConstants.RollingAccelerators).Select(_ => new SemaphoreSlim(1))];
+
+	internal static HeuristicGpuTables EnsureStaticTables(int acceleratorIndex, AcceleratorStream stream)
+	{
+		var @lock = _locks[acceleratorIndex];
+		@lock.Wait();
+		if (_sharedTables[acceleratorIndex] is {} existing)
+		{
+			@lock.Release();
+			return existing;
+		}
+
+		var accelerator = _accelerators[acceleratorIndex];
+		existing = new(accelerator, stream);
+		_sharedTables[acceleratorIndex] = existing;
+		@lock.Release();
+		return existing;
+	}
 
 	internal HeuristicGpuTables(Accelerator accelerator, AcceleratorStream stream)
 	{
-		// lock (accelerator)
-		{
-			var heuristicGroupA = HeuristicPrimeSieves.GroupADivisorsStorage;
-			HeuristicGroupADivisors = CopySpanToDevice(accelerator, stream, heuristicGroupA);
+		var heuristicGroupA = HeuristicPrimeSieves.GroupADivisorsStorage;
+		HeuristicGroupADivisors = CopySpanToDevice(accelerator, stream, heuristicGroupA);
 
-			var heuristicGroupASquares = HeuristicPrimeSieves.GroupADivisorSquaresStorage;
-			HeuristicGroupADivisorSquares = CopySpanToDevice(accelerator, stream, heuristicGroupASquares);
+		var heuristicGroupASquares = HeuristicPrimeSieves.GroupADivisorSquaresStorage;
+		HeuristicGroupADivisorSquares = CopySpanToDevice(accelerator, stream, heuristicGroupASquares);
 
-			HeuristicGroupBDivisorsEnding1 = CopyUintSpanToDevice(accelerator, stream, DivisorGenerator.SmallPrimesLastOneWithoutLastThree);
-			HeuristicGroupBDivisorSquaresEnding1 = CopySpanToDevice(accelerator, stream, DivisorGenerator.SmallPrimesPow2LastOneWithoutLastThree);
+		HeuristicGroupBDivisorsEnding1 = CopyUintSpanToDevice(accelerator, stream, DivisorGenerator.SmallPrimesLastOneWithoutLastThree);
+		HeuristicGroupBDivisorSquaresEnding1 = CopySpanToDevice(accelerator, stream, DivisorGenerator.SmallPrimesPow2LastOneWithoutLastThree);
 
-			HeuristicGroupBDivisorsEnding7 = CopyUintSpanToDevice(accelerator, stream, DivisorGenerator.SmallPrimesLastSevenWithoutLastThree);
-			HeuristicGroupBDivisorSquaresEnding7 = CopySpanToDevice(accelerator, stream, DivisorGenerator.SmallPrimesPow2LastSevenWithoutLastThree);
+		HeuristicGroupBDivisorsEnding7 = CopyUintSpanToDevice(accelerator, stream, DivisorGenerator.SmallPrimesLastSevenWithoutLastThree);
+		HeuristicGroupBDivisorSquaresEnding7 = CopySpanToDevice(accelerator, stream, DivisorGenerator.SmallPrimesPow2LastSevenWithoutLastThree);
 
-			HeuristicGroupBDivisorsEnding9 = CopyUintSpanToDevice(accelerator, stream, DivisorGenerator.SmallPrimesLastNineWithoutLastThree);
-			HeuristicGroupBDivisorSquaresEnding9 = CopySpanToDevice(accelerator, stream, DivisorGenerator.SmallPrimesPow2LastNineWithoutLastThree);
+		HeuristicGroupBDivisorsEnding9 = CopyUintSpanToDevice(accelerator, stream, DivisorGenerator.SmallPrimesLastNineWithoutLastThree);
+		HeuristicGroupBDivisorSquaresEnding9 = CopySpanToDevice(accelerator, stream, DivisorGenerator.SmallPrimesPow2LastNineWithoutLastThree);
 
-			var combinedEnding1 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding1;
-			HeuristicCombinedDivisorsEnding1 = CopySpanToDevice(accelerator, stream, combinedEnding1);
-			var combinedSquaresEnding1 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding1Squares;
-			HeuristicCombinedDivisorSquaresEnding1 = CopySpanToDevice(accelerator, stream, combinedSquaresEnding1);
+		var combinedEnding1 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding1;
+		HeuristicCombinedDivisorsEnding1 = CopySpanToDevice(accelerator, stream, combinedEnding1);
+		var combinedSquaresEnding1 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding1Squares;
+		HeuristicCombinedDivisorSquaresEnding1 = CopySpanToDevice(accelerator, stream, combinedSquaresEnding1);
 
-			var combinedEnding3 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding3;
-			HeuristicCombinedDivisorsEnding3 = CopySpanToDevice(accelerator, stream, combinedEnding3);
-			var combinedSquaresEnding3 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding3Squares;
-			HeuristicCombinedDivisorSquaresEnding3 = CopySpanToDevice(accelerator, stream, combinedSquaresEnding3);
+		var combinedEnding3 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding3;
+		HeuristicCombinedDivisorsEnding3 = CopySpanToDevice(accelerator, stream, combinedEnding3);
+		var combinedSquaresEnding3 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding3Squares;
+		HeuristicCombinedDivisorSquaresEnding3 = CopySpanToDevice(accelerator, stream, combinedSquaresEnding3);
 
-			var combinedEnding7 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding7;
-			HeuristicCombinedDivisorsEnding7 = CopySpanToDevice(accelerator, stream, combinedEnding7);
-			var combinedSquaresEnding7 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding7Squares;
-			HeuristicCombinedDivisorSquaresEnding7 = CopySpanToDevice(accelerator, stream, combinedSquaresEnding7);
+		var combinedEnding7 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding7;
+		HeuristicCombinedDivisorsEnding7 = CopySpanToDevice(accelerator, stream, combinedEnding7);
+		var combinedSquaresEnding7 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding7Squares;
+		HeuristicCombinedDivisorSquaresEnding7 = CopySpanToDevice(accelerator, stream, combinedSquaresEnding7);
 
-			var combinedEnding9 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding9;
-			HeuristicCombinedDivisorsEnding9 = CopySpanToDevice(accelerator, stream, combinedEnding9);
-			var combinedSquaresEnding9 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding9Squares;
-			HeuristicCombinedDivisorSquaresEnding9 = CopySpanToDevice(accelerator, stream, combinedSquaresEnding9);
-		}
+		var combinedEnding9 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding9;
+		HeuristicCombinedDivisorsEnding9 = CopySpanToDevice(accelerator, stream, combinedEnding9);
+		var combinedSquaresEnding9 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding9Squares;
+		HeuristicCombinedDivisorSquaresEnding9 = CopySpanToDevice(accelerator, stream, combinedSquaresEnding9);
 	}
 
 	internal readonly MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupADivisors;
@@ -90,10 +104,7 @@ internal sealed class HeuristicGpuTables
 	private static MemoryBuffer1D<ulong, Stride1D.Dense> CopySpanToDevice(Accelerator accelerator, AcceleratorStream stream, in ulong[] span)
 	{
 		MemoryBuffer1D<ulong, Stride1D.Dense>? buffer;
-		// lock (accelerator)
-		{
-			buffer = accelerator.Allocate1D(stream, span);
-		}
+		buffer = accelerator.Allocate1D(stream, span);
 
 		return buffer;
 	}
@@ -101,10 +112,7 @@ internal sealed class HeuristicGpuTables
 	private static MemoryBuffer1D<ulong, Stride1D.Dense> CopyUintSpanToDevice(Accelerator accelerator, AcceleratorStream stream, ReadOnlySpan<uint> span)
 	{
 		MemoryBuffer1D<ulong, Stride1D.Dense>? buffer;
-		// lock (accelerator)
-		{
-			buffer = accelerator.Allocate1D<ulong>(span.Length);
-		}
+		buffer = accelerator.Allocate1D<ulong>(span.Length);
 
 		if (!span.IsEmpty)
 		{
