@@ -5,38 +5,38 @@ namespace PerfectNumbers.Core.Gpu.Accelerators;
 
 public static class AcceleratorStreamPool
 {
-	private static readonly Dictionary<Accelerator, ConcurrentQueue<AcceleratorStream>> _streams = new(PerfectNumberConstants .RollingAccelerators << 1);
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+	private static readonly SemaphoreSlim[] _locks = new SemaphoreSlim[PerfectNumberConstants.RollingAccelerators];
+	private static readonly ConcurrentQueue<AcceleratorStream>[] _streams = new ConcurrentQueue<AcceleratorStream> [PerfectNumberConstants.RollingAccelerators];
 
-	private static SemaphoreSlim CreateLock() => new(PerfectNumberConstants.ThreadsByStream);
+	private static SemaphoreSlim CreateLock() => new(PerfectNumberConstants.ThreadsByAccelerator);
 
-	private static readonly Dictionary<Accelerator, SemaphoreSlim> _locks = new(PerfectNumberConstants.RollingAccelerators << 1);
 
 	// private static int _rented;
 
-	public static AcceleratorStream Rent(Accelerator accelerator)
+	public static AcceleratorStream Rent(int acceleratorIndex)
 	{
-		var streamLock = _locks[accelerator];
-		var queue = _streams[accelerator];
+		var streamLock = _locks[acceleratorIndex];
+		var queue = _streams[acceleratorIndex];
 
 		streamLock.Wait();
 
 		return queue.TryDequeue(out var stream)
 			? stream
-			: accelerator.CreateStream();
+			: _accelerators[acceleratorIndex].CreateStream();
 	}
 
-	public static void Return(AcceleratorStream stream)
+	public static void Return(int acceleratorIndex, AcceleratorStream stream)
 	{
-		Accelerator accelerator = stream.Accelerator;
-		var streamLock = _locks[accelerator];
-		var queue = _streams[accelerator];
+		var streamLock = _locks[acceleratorIndex];
+		var queue = _streams[acceleratorIndex];
 		queue.Enqueue(stream);
 		streamLock.Release();
 	}
 
-	public static void WarmUp(Accelerator accelerator)
+	public static void WarmUp(int acceleratorIndex)
 	{
-		_streams.Add(accelerator, new());
-		_ = _locks.TryAdd(accelerator, CreateLock());
+		_streams[acceleratorIndex] = new();
+		_locks[acceleratorIndex] = CreateLock();
 	}
 }

@@ -49,6 +49,8 @@ public sealed class MersenneNumberTester(
 	// TODO: Ensure Program passes useResidue correctly and that residue-vs-incremental-vs-LL selection respects CLI flags.
 	// Also consider injecting a shared cycles cache (MersenneDivisorCycles.Shared) to both CPU and GPU testers.
 
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
 	public void WarmUpOrders(ulong exponent, ulong limit = 5_000_000UL)
 	{
 		bool cacheEnabled = useOrderCache;
@@ -148,7 +150,8 @@ public sealed class MersenneNumberTester(
 		UInt128[] qs = qsBuffer;
 
 		// GpuPrimeWorkLimiter.Acquire();
-		var accelerator = AcceleratorPool.Shared.Rent();
+		var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
 		var stream = accelerator.CreateStream();
 		var orderKernel = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.OrderKernelScan).Order!;
 

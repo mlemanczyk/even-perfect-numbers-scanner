@@ -6,13 +6,14 @@ namespace PerfectNumbers.Core.Gpu.Accelerators;
 
 internal sealed class LastDigitGpuTables
 {
-	private static readonly Dictionary<Accelerator, LastDigitGpuTables> _sharedTables = new(PerfectNumberConstants.RollingAccelerators);
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+	private static readonly LastDigitGpuTables[] _sharedTables = new LastDigitGpuTables[PerfectNumberConstants.RollingAccelerators];
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static LastDigitGpuTables EnsureStaticTables(Accelerator accelerator) => _sharedTables[accelerator];
+	internal static LastDigitGpuTables EnsureStaticTables(int acceleratorIndex) => _sharedTables[acceleratorIndex];
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static void WarmUp(Accelerator accelerator, AcceleratorStream stream) => _sharedTables[accelerator] = new LastDigitGpuTables(accelerator, stream);
+	internal static void WarmUp(int acceleratorIndex, AcceleratorStream stream) => _sharedTables[acceleratorIndex] = new LastDigitGpuTables(_accelerators[acceleratorIndex], stream);
 
 	internal LastDigitGpuTables(Accelerator accelerator, AcceleratorStream stream)
 	{

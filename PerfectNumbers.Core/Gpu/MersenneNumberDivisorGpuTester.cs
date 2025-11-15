@@ -54,10 +54,13 @@ public sealed class MersenneNumberDivisorGpuTester
 		_divisorCandidates = count == 0 ? [] : list[..count];
 	}
 
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
 	public bool IsDivisible(ulong exponent, in ReadOnlyGpuUInt128 divisor)
 	{
 		// var accelerator = SharedGpuContext.CreateAccelerator();
-		var accelerator = AcceleratorPool.Shared.Rent();
+		var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
 		var stream = accelerator.CreateStream();
 		Queue<MemoryBuffer1D<byte, Stride1D.Dense>> resultBuffers = GetQueue(accelerator);
 		if (!resultBuffers.TryDequeue(out var resultBuffer))

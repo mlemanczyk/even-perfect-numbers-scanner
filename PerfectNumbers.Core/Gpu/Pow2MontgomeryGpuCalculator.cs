@@ -14,12 +14,13 @@ public static class Pow2MontgomeryGpuCalculator
 
 		ulong result = 0UL;
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		int acceleratorIndex = gpu.AcceleratorIndex;
 		Accelerator? accelerator = gpu.Accelerator;
 		MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer = gpu.Input;
 		MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = gpu.OutputUlong;
 		var kernel = gpu.KeepMontgomeryKernel;
 
-		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 
 		exponentBuffer.View.CopyFromCPU(stream, ref exponent, 1);
 		// We don't need to worry about any left-overs here.
@@ -31,7 +32,7 @@ public static class Pow2MontgomeryGpuCalculator
 
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
-		AcceleratorStreamPool.Return(stream);
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 		// GpuPrimeWorkLimiter.Release();
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
@@ -48,7 +49,8 @@ public static class Pow2MontgomeryGpuCalculator
 		MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer = gpu.Input;
 		MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = gpu.OutputUlong;
 
-		AcceleratorStream stream = AcceleratorStreamPool.Rent(gpu.Accelerator);
+		int acceleratorIndex = gpu.AcceleratorIndex;
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		exponentBuffer.View.CopyFromCPU(stream, ref exponent, 1);
 		// We don't need to worry about any left-overs here.
 		// resultBuffer.MemSetToZero(stream);
@@ -58,7 +60,7 @@ public static class Pow2MontgomeryGpuCalculator
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
 
-		AcceleratorStreamPool.Return(stream);
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 		// GpuPrimeWorkLimiter.Release();
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 
@@ -73,7 +75,8 @@ public static class Pow2MontgomeryGpuCalculator
 		MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = gpu.OutputUlong;
 		var kernel = gpu.ConvertToStandardKernel;
 
-		AcceleratorStream stream = AcceleratorStreamPool.Rent(gpu.Accelerator);
+		int acceleratorIndex = gpu.AcceleratorIndex;
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		exponentBuffer.View.CopyFromCPU(stream, ref exponent, 1);
 		// We don't need to worry about any left-overs here.
 		// resultBuffer.MemSetToZero(stream);
@@ -83,7 +86,7 @@ public static class Pow2MontgomeryGpuCalculator
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
 		
-		AcceleratorStreamPool.Return(stream);
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 
 		return result;
 	}

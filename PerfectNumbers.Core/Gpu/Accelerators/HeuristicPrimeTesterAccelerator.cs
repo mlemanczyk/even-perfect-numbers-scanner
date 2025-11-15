@@ -131,9 +131,12 @@ internal sealed class HeuristicPrimeTesterAccelerator
 
 	public HeuristicGpuDivisorTables HeuristicGpuTables => _heuristicDivisorTables;
 
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
 	internal HeuristicPrimeTesterAccelerator(int minBufferCapacity)
 	{
-		Accelerator accelerator = AcceleratorPool.Shared.Rent();
+		var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		Accelerator accelerator = _accelerators[acceleratorIndex];
 		Context = accelerator.Context;
 
 		Accelerator = accelerator;
@@ -141,7 +144,7 @@ internal sealed class HeuristicPrimeTesterAccelerator
 
 		HeuristicTrialDivisionKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>(PrimeTesterKernels.HeuristicTrialDivisionKernel));
 
-		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		
 		// GpuStaticTableInitializer.EnsureStaticTables(accelerator, kernels, stream);
 
@@ -149,7 +152,7 @@ internal sealed class HeuristicPrimeTesterAccelerator
 		_heuristicDivisorTables = _sharedTables.CreateHeuristicDivisorTables();
 
 		stream.Synchronize();
-		AcceleratorStreamPool.Return(stream); 
+		AcceleratorStreamPool.Return(acceleratorIndex, stream); 
 	}
 
 	public void EnsureCapacity(int minCapacity)

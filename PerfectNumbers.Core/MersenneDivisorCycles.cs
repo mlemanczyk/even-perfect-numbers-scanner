@@ -791,6 +791,8 @@ public class MersenneDivisorCycles
 	[ThreadStatic]
 	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>? _divisorCycleKernel;
 
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
 	public static void GenerateGpu(string path, ulong maxDivisor, int batchSize = 1_000_000, long skipCount = 0L, long nextPosition = 0L)
 	{
 		// Prepare output file with header
@@ -805,7 +807,8 @@ public class MersenneDivisorCycles
 		divisors = pool.Rent(count);
 		outCycles = pool.Rent(count);
 		// GpuPrimeWorkLimiter.Acquire();
-		var accelerator = AcceleratorPool.Shared.Rent();
+		var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
 		var stream = accelerator.CreateStream();
 
 		using Stream outputStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, BufferSize10M, useAsync: true);

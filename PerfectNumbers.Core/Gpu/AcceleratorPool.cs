@@ -11,7 +11,7 @@ namespace PerfectNumbers.Core.Gpu
 
 		private int _index;
 
-		public Accelerator Rent()
+		public int Rent()
 		{
 			Atomic.CompareExchange(ref _index, Capacity, 0);
 			var index = Atomic.Add(ref _index, 1);
@@ -20,27 +20,31 @@ namespace PerfectNumbers.Core.Gpu
 				index -= Capacity;
 			}
 
-			return Accelerators[index];
+			return index;
 		}
 
-		public void Return(Accelerator accelerator)
+		public void Return(int acceleratorIndex)
 		{
 			// Intentionally left empty - there's nothing to do here. We're not really renting anything.
 		}
 
 		public static readonly AcceleratorPool Shared = new(PerfectNumberConstants.RollingAccelerators);
+
 		private readonly int Capacity;
 
 		public AcceleratorPool(int capacity)
 		{
+			Console.WriteLine("Creating accelerators");
 			Capacity = capacity;
 			var context = Context.CreateDefault();
 			var device = context.GetPreferredDevice(false);
 			Context = context;
 			Device = device;
 			int acceleratorsInContext = 0;
+			int acceleratorIndex = 0;
 			Accelerators = [.. Enumerable.Range(0, capacity).Select(_ =>
 			{
+				Console.WriteLine($"Preparing accelerator {acceleratorIndex++}");
 				Accelerator accelerator = device.CreateAccelerator(context);
 				acceleratorsInContext++;
 				if (acceleratorsInContext >= 128)

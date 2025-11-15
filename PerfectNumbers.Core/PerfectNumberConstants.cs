@@ -14,8 +14,8 @@ public static class PerfectNumberConstants
     public static readonly uint PrimesLimit = 1_000_000; //(ulong)Array.MaxLength;// 1_000_000;
     public const int MaxOddPowersCount = 128;
 	public const int PooledArrayThreshold = 64;
-	public static readonly int RollingAccelerators = 256; //SharedGpuContext.Device.MaxNumThreadsPerGroup;
-	public const int ThreadsByStream = 1;
+	public static readonly int RollingAccelerators = 298; //SharedGpuContext.Device.MaxNumThreadsPerGroup;
+	public const int ThreadsByAccelerator = 4096;
     // TODO: Load these limits from the benchmark-driven configuration so CPU and GPU scans stay aligned with the optimal
     // divisor-cycle datasets we generate offline.
     // TODO: Promote these magic numbers into a runtime profile derived from EvenPerfectBitScanner.Benchmarks so we can retune

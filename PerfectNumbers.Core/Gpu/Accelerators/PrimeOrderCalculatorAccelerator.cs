@@ -1,7 +1,6 @@
 using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
-using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Kernels;
 
 namespace PerfectNumbers.Core.Gpu.Accelerators;
@@ -19,8 +18,8 @@ public sealed class PrimeOrderCalculatorAccelerator
 		var pool = _pool ??= [];
 		if (!pool.TryDequeue(out var gpu))
 		{
-			Accelerator accelerator = AcceleratorPool.Shared.Rent();
-			gpu = new(accelerator, PerfectNumberConstants.DefaultFactorsBuffer, primeTesterCapacity, PerfectNumberConstants.DefaultSmallPrimeFactorSlotCount, PerfectNumberConstants.DefaultSpecialMaxFactorCapacity);
+			int acceleratorIndex = AcceleratorPool.Shared.Rent();
+			gpu = new(acceleratorIndex, PerfectNumberConstants.DefaultFactorsBuffer, primeTesterCapacity, PerfectNumberConstants.DefaultSmallPrimeFactorSlotCount, PerfectNumberConstants.DefaultSpecialMaxFactorCapacity);
 		}
 		else
 		{
@@ -65,22 +64,26 @@ public sealed class PrimeOrderCalculatorAccelerator
 		{
 			Console.WriteLine($"Preparing accelerator {i}...");
 			var accelerator = accelerators[i];
-			AcceleratorStreamPool.WarmUp(accelerator);
+			AcceleratorStreamPool.WarmUp(i);
 			// Don't take this from the pool as quick uploads of data to the accelerator consumes much of GPU's memory and throws.
 			AcceleratorStream stream = accelerator.CreateStream();
-			LastDigitGpuTables.WarmUp(accelerator, stream);
+			LastDigitGpuTables.WarmUp(i, stream);
 			// SharedHeuristicGpuTables.EnsureStaticTables(accelerator, stream);
 			// _ = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.None);
 			// KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
 			// GpuStaticTableInitializer.EnsureStaticTables(accelerator, kernels, stream);
 			stream.Synchronize();
 			stream.Dispose();
+			accelerator.Synchronize();
 		}
 	}
 
 	#endregion
 
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
 	public readonly Accelerator Accelerator;
+	public readonly int AcceleratorIndex;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> Input;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> OutputUlong;
 	public MemoryBuffer1D<ulong, Stride1D.Dense> PrimeTestInput;
@@ -161,9 +164,11 @@ public sealed class PrimeOrderCalculatorAccelerator
 		}
 	}
 
-	public PrimeOrderCalculatorAccelerator(Accelerator accelerator, int factorsCount, int primeTesterCapacity, int smallPrimeFactorSlotCount, int specialMaxFactorCapacity)
+	public PrimeOrderCalculatorAccelerator(int acceleratorIndex, int factorsCount, int primeTesterCapacity, int smallPrimeFactorSlotCount, int specialMaxFactorCapacity)
 	{
+		var accelerator = _accelerators[acceleratorIndex];
 		Accelerator = accelerator;
+		AcceleratorIndex = acceleratorIndex;
 		Input = accelerator.Allocate1D<ulong>(1);
 		OutputUlong = accelerator.Allocate1D<ulong>(1);
 		Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
@@ -179,7 +184,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		SpecialMaxCandidates = accelerator.Allocate1D<ulong>(specialMaxFactorCapacity);
 		SpecialMaxResult = accelerator.Allocate1D<ulong>(1);
 
-		var sharedTables = LastDigitGpuTables.EnsureStaticTables(accelerator);
+		var sharedTables = LastDigitGpuTables.EnsureStaticTables(acceleratorIndex);
 
 		DevicePrimesLastOne = sharedTables.DevicePrimesLastOne;
 		DevicePrimesLastSeven = sharedTables.DevicePrimesLastSeven;

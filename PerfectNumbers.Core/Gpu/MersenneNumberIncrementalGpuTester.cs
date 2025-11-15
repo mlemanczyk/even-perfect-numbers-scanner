@@ -12,12 +12,15 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
     private readonly GpuKernelType _kernelType = kernelType;
     private readonly bool _useGpuOrder = useGpuOrder;
 
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
     public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
     {
         throw new NotImplementedException($"GPU incremental scanning requires the device cycle heuristics implementation (kernel: {_kernelType}, GPU order: {_useGpuOrder}).");
 
         // GpuPrimeWorkLimiter.Acquire();
-        var accelerator = AcceleratorPool.Shared.Rent();
+        var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
         var stream = accelerator.CreateStream();
         int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy
         UInt128 kStart = 1UL;

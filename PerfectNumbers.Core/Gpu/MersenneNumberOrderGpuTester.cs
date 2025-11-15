@@ -7,11 +7,14 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 	private readonly GpuKernelType _kernelType = kernelType;
 	private readonly bool _useGpuOrder = useGpuOrder;
 
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
 	public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
 		// var accelerator = SharedGpuContext.Accelerator;
-		var accelerator = AcceleratorPool.Shared.Rent();
+		var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
 		var stream = accelerator.CreateStream();
 		int batchSize = GpuConstants.ScanBatchSize; // large batch improves GPU occupancy and avoids TDR
 		UInt128 kStart = UInt128.One;

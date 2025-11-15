@@ -65,7 +65,10 @@ internal static partial class PrimeOrderCalculator
 		ulong result;
 		if (phiFactors.Factors is null)
 		{
-			result = CalculateByFactorizationGpu(gpu, prime, divisorData);
+			result = prime <= PerfectNumberConstants.MaxQForDivisorCycles
+				? CalculateByFactorizationGpu(gpu, prime, divisorData)
+				: CalculateByFactorizationCpu(gpu, prime, divisorData);
+				
 			phiFactors.Dispose();
 			PrimeOrderCalculatorAccelerator.Return(gpu);
 			return result;

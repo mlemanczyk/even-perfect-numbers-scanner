@@ -160,7 +160,8 @@ public class MersenneNumberLucasLehmerGpuTester
         else
         {
         	// GpuPrimeWorkLimiter.Acquire();
-            var accelerator = AcceleratorPool.Shared.Rent();
+            var acceleratorIndex = AcceleratorPool.Shared.Rent();
+			var accelerator = _accelerators[acceleratorIndex];
             var stream = accelerator.CreateStream();
             var modulus = new GpuUInt128(((UInt128)1 << (int)exponent) - 1UL); // TODO: Cache these Mersenne moduli per exponent so LL GPU runs skip rebuilding them every launch.
 			var buffer = accelerator.Allocate1D<GpuUInt128>(1);
@@ -193,7 +194,8 @@ public class MersenneNumberLucasLehmerGpuTester
             }
         }
 
-        var accelerator = AcceleratorPool.Shared.Rent();
+        var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
         var stream = accelerator.CreateStream();
 
         var expBuffer = accelerator.Allocate1D<ulong>(count);
@@ -246,9 +248,12 @@ public class MersenneNumberLucasLehmerGpuTester
         gpuUInt128Pool.Return(buffer);
     }
 
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
     private bool IsMersennePrimeNtt(ulong exponent, GpuUInt128 nttMod, GpuUInt128 primitiveRoot, bool runOnGpu)
     {
-        var accelerator = AcceleratorPool.Shared.Rent();
+        var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
         var stream = accelerator.CreateStream();
 
         var subKernel = GetSubSmallKernel(accelerator);

@@ -205,6 +205,8 @@ internal static partial class PrimeOrderGpuHeuristics
 		return true;
 	}
 
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
 	private static bool TryLaunchPartialFactorKernel(
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong value,
@@ -220,7 +222,8 @@ internal static partial class PrimeOrderGpuHeuristics
 		try
 		{
 			// GpuPrimeWorkLimiter.Acquire();
-			Accelerator accelerator = AcceleratorPool.Shared.Rent();
+			int acceleratorIndex = AcceleratorPool.Shared.Rent();
+			Accelerator accelerator = _accelerators[acceleratorIndex];
 			AcceleratorStream stream = accelerator.CreateStream();
 
 			SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator, stream);
@@ -382,8 +385,9 @@ internal static partial class PrimeOrderGpuHeuristics
 		order = 0UL;
 
 		// GpuPrimeWorkLimiter.Acquire();
-		Accelerator accelerator = AcceleratorPool.Shared.Rent();
-		AcceleratorStream stream = AcceleratorStreamPool.Rent(accelerator);
+		int acceleratorIndex = AcceleratorPool.Shared.Rent();
+		Accelerator accelerator = _accelerators[acceleratorIndex];
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(accelerator, stream);
 
 		// TODO: These buffers should be created reallocated once and assigned to an accelerator. Callers should use their own
@@ -553,7 +557,8 @@ internal static partial class PrimeOrderGpuHeuristics
 	private static bool TryComputeOnGpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorData divisorData, Span<ulong> results)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
-		Accelerator accelerator = AcceleratorPool.Shared.Rent();
+		int acceleratorIndex = AcceleratorPool.Shared.Rent();
+		Accelerator accelerator = _accelerators[acceleratorIndex];
 		AcceleratorStream? stream = accelerator.CreateStream();
 		// TODO: These buffers should be allocated once per accelerator and only reallocated when the new length exceeds capacity.
 		// Modify the callers to use their own pool of buffers per accelerator, so that other threads don't use the accelerators
@@ -630,19 +635,20 @@ internal static partial class PrimeOrderGpuHeuristics
 
 		GpuUInt128 modulus = (GpuUInt128)prime;
 		gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		int acceleratorIndex = gpu.AcceleratorIndex;
 		Accelerator accelerator = gpu.Accelerator;
 
 		MemoryBuffer1D<GpuUInt128, Stride1D.Dense> exponentBuffer = accelerator.Allocate1D<GpuUInt128>(length);
 		MemoryBuffer1D<GpuUInt128, Stride1D.Dense> remainderBuffer = accelerator.Allocate1D<GpuUInt128>(length);
 
-		AcceleratorStream? stream = AcceleratorStreamPool.Rent(accelerator);
+		AcceleratorStream? stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		exponentBuffer.View.CopyFromCPU(stream, exponentSpan);
 
 		gpu.Pow2ModWideKernel.Launch(stream, length, exponentBuffer.View, modulus, remainderBuffer.View);
 		remainderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(resultSpan), length);
 		stream.Synchronize();
 
-		AcceleratorStreamPool.Return(stream);
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 		for (int i = 0; i < length; i++)
 		{
 			results[i] = (UInt128)resultSpan[i];

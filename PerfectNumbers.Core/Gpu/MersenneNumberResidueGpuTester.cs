@@ -22,11 +22,14 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 	// TODO: When cycles are missing for larger q values, compute only the single required cycle on the device
 	// requested by the caller, skip queuing additional block generation, and keep the snapshot cache untouched.
 
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
 	// GPU residue variant: check 2^p % q == 1 for q = 2*p*k + 1.
 	public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
-		var accelerator = AcceleratorPool.Shared.Rent();
+		var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
 
 		// Monitor.Enter(gpuLease.ExecutionLock);
 

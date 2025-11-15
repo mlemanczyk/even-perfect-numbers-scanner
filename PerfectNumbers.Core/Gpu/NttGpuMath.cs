@@ -574,7 +574,8 @@ public static class NttGpuMath
     {
         int n = values.Length;
         int bits = (int)Math.Log2(n);
-        var accelerator = AcceleratorPool.Shared.Rent();
+        var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
         var pool = ThreadStaticPools.GpuUInt128Pool;
         var array = pool.Rent(n);
         values.CopyTo(array);
@@ -636,7 +637,8 @@ public static class NttGpuMath
     private static void ForwardGpuReference(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = (int)values.Length;
-        var accelerator = AcceleratorPool.Shared.Rent();
+        var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
         var stream = accelerator.CreateStream();
         var pool = ThreadStaticPools.GpuUInt128Pool;
         var inputArray = pool.Rent(n);
@@ -732,7 +734,8 @@ public static class NttGpuMath
     private static void InverseGpuReference(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = values.Length;
-        var accelerator = AcceleratorPool.Shared.Rent();
+        var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
         var stream = accelerator.CreateStream();
         var pool = ThreadStaticPools.GpuUInt128Pool;
         var inputArray = pool.Rent(n);
@@ -780,7 +783,8 @@ public static class NttGpuMath
     private static void ForwardGpuStaged(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = values.Length;
-        var accelerator = AcceleratorPool.Shared.Rent();
+        var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
         var stream = accelerator.CreateStream();
         var buffer = accelerator.Allocate1D<GpuUInt128>(n);
         buffer.View.CopyFromCPU(stream, ref values[0], n);
@@ -795,7 +799,8 @@ public static class NttGpuMath
     private static void InverseGpuStaged(Span<GpuUInt128> values, GpuUInt128 modulus, GpuUInt128 primitiveRoot)
     {
         int n = values.Length;
-        var accelerator = AcceleratorPool.Shared.Rent();
+        var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
         var stream = accelerator.CreateStream();
         var buffer = accelerator.Allocate1D<GpuUInt128>(n);
         buffer.View.CopyFromCPU(stream, ref values[0], n);
@@ -998,9 +1003,12 @@ public static class NttGpuMath
         InverseDevice(accelerator, stream, values, (int)values.Length, modulus, cache);
     }
 
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
     public static void PointwiseMultiply(Span<GpuUInt128> left, Span<GpuUInt128> right, GpuUInt128 modulus)
     {
-        var accelerator = AcceleratorPool.Shared.Rent();
+        var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		var accelerator = _accelerators[acceleratorIndex];
         var stream = accelerator.CreateStream();
         var pool = ThreadStaticPools.GpuUInt128Pool;
         var leftArray = pool.Rent(left.Length);

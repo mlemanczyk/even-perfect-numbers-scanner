@@ -17,6 +17,7 @@ public sealed class DivisorCycleCache
 	private const byte ByteOne = 1;
 	private const int StackBufferThreshold = 128;
 	private readonly Accelerator _accelerator;
+	private readonly int _acceleratorIndex;
 	private readonly Action<AcceleratorStream, Index1D, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> _gpuKernel;
 	private volatile ulong[] _snapshot;
 	private volatile bool _useGpuGeneration = true;
@@ -38,10 +39,14 @@ public sealed class DivisorCycleCache
 
 	public int PreferredBatchSize => _divisorCyclesBatchSize;
 
+	// private static readonly Accelerator[] _accelerators;
+
 	private DivisorCycleCache(int divisorCyclesBatchSize)
 	{
 		_divisorCyclesBatchSize = Math.Max(1, divisorCyclesBatchSize);
-		var accelerator = AcceleratorPool.Shared.Rent();
+		var acceleratorIndex = AcceleratorPool.Shared.Rent();
+		_acceleratorIndex = acceleratorIndex;
+		Accelerator accelerator = AcceleratorPool.Shared.Accelerators[acceleratorIndex];
 		_accelerator = accelerator;
 		_gpuKernel = LoadKernel(accelerator);
 		_snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
@@ -311,7 +316,8 @@ public sealed class DivisorCycleCache
 		// GpuPrimeWorkLimiter.Acquire();
 		int pending;
 		var kernel = _gpuKernel;
-		var stream = AcceleratorStreamPool.Rent(_accelerator);
+		var acceleratorIndex = _acceleratorIndex;
+		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 
 		divisorBuffer!.View.CopyFromCPU(stream, divisors);
 		powBuffer!.View.CopyFromCPU(stream, powSpan);
@@ -339,7 +345,7 @@ public sealed class DivisorCycleCache
 
 		resultBuffer.View.CopyToCPU(stream, resultSpan);
 		stream.Synchronize();
-		AcceleratorStreamPool.Return(stream);
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 
 		resultSpan.CopyTo(destination);
 		if (rentedPow is not null)
