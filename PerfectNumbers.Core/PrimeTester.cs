@@ -123,7 +123,7 @@ public sealed class PrimeTester
 		outputView.CopyToCPU(stream, ref flag, 1);
 		stream.Synchronize();
 
-		AcceleratorStreamPool.Return(acceleratorIndex);
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 		// GpuPrimeWorkLimiter.Release();
 
@@ -162,7 +162,7 @@ public sealed class PrimeTester
 
 		outputView.CopyToCPU(stream, ref flag, 1);
 		stream.Synchronize();
-		AcceleratorStreamPool.Return(acceleratorIndex);
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 
 		return flag != 0;
 	}
@@ -239,7 +239,7 @@ public sealed class PrimeTester
 		}
 
 		stream.Synchronize();
-		AcceleratorStreamPool.Return(acceleratorIndex);
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 		// GpuPrimeWorkLimiter.Release();
 	}
@@ -295,7 +295,7 @@ public sealed class PrimeTester
 		resultBuffer.View.CopyToCPU(stream, in results);
 		stream.Synchronize();
 
-		AcceleratorStreamPool.Return(acceleratorIndex);
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 	}
 

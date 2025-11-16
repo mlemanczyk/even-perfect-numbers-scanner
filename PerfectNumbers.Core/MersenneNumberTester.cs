@@ -204,7 +204,7 @@ public sealed class MersenneNumberTester(
 			qBuffer.Dispose();
 		}
 
-		AcceleratorStreamPool.Return(acceleratorIndex);
+		AcceleratorStreamPool.Return(acceleratorIndex,stream);
 		// GpuPrimeWorkLimiter.Release();
 		uInt128Pool.Return(qs);
 	}

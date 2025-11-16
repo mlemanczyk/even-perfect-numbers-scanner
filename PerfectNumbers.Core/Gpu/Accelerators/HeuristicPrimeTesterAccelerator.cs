@@ -136,7 +136,7 @@ internal sealed class HeuristicPrimeTesterAccelerator
 		Accelerator = accelerator;
 		EnsureCapacity(minBufferCapacity);
 
-		HeuristicTrialDivisionKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(PrimeTesterKernels.HeuristicTrialDivisionKernel));
+		HeuristicTrialDivisionKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuDivisorTables>(PrimeTesterKernels.HeuristicTrialDivisionKernel));
 
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		
@@ -146,7 +146,7 @@ internal sealed class HeuristicPrimeTesterAccelerator
 		_heuristicDivisorTables = _sharedTables.CreateHeuristicDivisorTables();
 
 		stream.Synchronize();
-		AcceleratorStreamPool.Return(acceleratorIndex); 
+		AcceleratorStreamPool.Return(acceleratorIndex, stream); 
 	}
 
 	public void EnsureCapacity(int minCapacity)

@@ -25,7 +25,7 @@ public class GpuKernelPool
 
 	internal static KernelContainer GetOrAddKernels(int acceleratorIndex, AcceleratorStream stream, KernelType kernelType)
 	{
-		var pool = _pool ??= new KernelContainer[PerfectNumberConstants.RollingAccelerators];
+		var pool = _pool ??= [];
 		if (pool[acceleratorIndex] is not {} kernels)
 		{
 			kernels = new();
