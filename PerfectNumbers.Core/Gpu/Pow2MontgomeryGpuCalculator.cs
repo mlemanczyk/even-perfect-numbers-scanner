@@ -32,7 +32,7 @@ public static class Pow2MontgomeryGpuCalculator
 
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
+		AcceleratorStreamPool.Return(acceleratorIndex);
 		// GpuPrimeWorkLimiter.Release();
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
@@ -60,7 +60,7 @@ public static class Pow2MontgomeryGpuCalculator
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
 
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
+		AcceleratorStreamPool.Return(acceleratorIndex);
 		// GpuPrimeWorkLimiter.Release();
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 
@@ -86,7 +86,7 @@ public static class Pow2MontgomeryGpuCalculator
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
 		
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
+		AcceleratorStreamPool.Return(acceleratorIndex);
 
 		return result;
 	}

@@ -898,7 +898,7 @@ public class MersenneDivisorCycles
 			start = end + 1UL;
 		}
 
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
+		AcceleratorStreamPool.Return(acceleratorIndex);
 		pool.Return(divisors, clearArray: false);
 		pool.Return(outCycles, clearArray: false);
 
@@ -907,7 +907,7 @@ public class MersenneDivisorCycles
 
 	private static Kernel GetDivisorCycleKernel(int acceleratorIndex)
 	{
-		var pool = _divisorCycleKernel ??= [];
+		var pool = _divisorCycleKernel ??= new Kernel[PerfectNumberConstants.RollingAccelerators];
 		if (pool[acceleratorIndex] is {} cached)
 		{
 			return cached;

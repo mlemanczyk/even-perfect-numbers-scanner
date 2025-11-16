@@ -345,7 +345,7 @@ public sealed class DivisorCycleCache
 
 		resultBuffer.View.CopyToCPU(stream, resultSpan);
 		stream.Synchronize();
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
+		AcceleratorStreamPool.Return(acceleratorIndex);
 
 		resultSpan.CopyTo(destination);
 		if (rentedPow is not null)

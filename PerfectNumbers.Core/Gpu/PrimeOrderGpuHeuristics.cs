@@ -102,7 +102,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
 	private static SmallPrimeDeviceCache GetSmallPrimeDeviceCache(int acceleratorIndex, AcceleratorStream stream)
 	{
-		var pool = _smallPrimeDeviceCache ??= [];
+		var pool = _smallPrimeDeviceCache ??= new SmallPrimeDeviceCache[PerfectNumberConstants.RollingAccelerators];
 		if (pool[acceleratorIndex] is {} cached)
 		{
 			return cached;
@@ -132,7 +132,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
 	private static Kernel GetPartialFactorKernel(int acceleratorIndex)
 	{
-		var pool = _partialFactorKernel ??= [];
+		var pool = _partialFactorKernel ??= new Kernel[PerfectNumberConstants.RollingAccelerators];
 		if (pool[acceleratorIndex] is {} cached)
 		{
 			return cached;
@@ -487,7 +487,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
 	private static Kernel GetOrderKernel(int acceleratorIndex)
 	{
-		var pool = _orderKernel ??= [];
+		var pool = _orderKernel ??= new Kernel[PerfectNumberConstants.RollingAccelerators];
 		if (pool[acceleratorIndex] is {} cached)
 		{
 			return cached;
@@ -637,7 +637,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		remainderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(resultSpan), length);
 		stream.Synchronize();
 
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
+		AcceleratorStreamPool.Return(acceleratorIndex);
 		for (int i = 0; i < length; i++)
 		{
 			results[i] = (UInt128)resultSpan[i];
@@ -675,7 +675,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
 	private static Kernel GetPow2ModKernel(int acceleratorIndex)
 	{
-		var pool = _pow2ModKernel ??= [];
+		var pool = _pow2ModKernel ??= new Kernel[PerfectNumberConstants.RollingAccelerators];
 		if (pool[acceleratorIndex] is {} cached)
 		{
 			return cached;

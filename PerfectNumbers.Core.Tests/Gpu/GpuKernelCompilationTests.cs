@@ -363,7 +363,7 @@ public class GpuKernelCompilationTests
 		finally
 		{
 			stream.Synchronize();
-			AcceleratorStreamPool.Return(acceleratorIndex, stream);
+			AcceleratorStreamPool.Return(acceleratorIndex);
 			// GpuPrimeWorkLimiter.Release();
 		}
 
@@ -381,7 +381,7 @@ public class GpuKernelCompilationTests
 		finally
 		{
 			stream.Synchronize();
-			AcceleratorStreamPool.Return(acceleratorIndex, stream);
+			AcceleratorStreamPool.Return(acceleratorIndex);
 			// GpuPrimeWorkLimiter.Release();
 		}
 	}

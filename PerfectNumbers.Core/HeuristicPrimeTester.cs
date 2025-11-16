@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
+using ILGPU;
 
 namespace PerfectNumbers.Core;
 
@@ -239,33 +240,36 @@ public sealed class HeuristicPrimeTester
 	}
 
 
-	private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
+	private static bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
 		var gpu = HeuristicPrimeTesterAccelerator.Rent(1);
-		var stream = gpu.Stream;
+		var stream = gpu.Stream!;
 		var kernel = gpu.HeuristicTrialDivisionKernel;
 		var flagView1D = gpu.HeuristicFlag.View;
-		var flagView = flagView1D.AsContiguous();
 
-		bool compositeDetected = false;
+		bool compositeDetected;
 		int compositeFlag = 0;
 
 		int groupALength = HeuristicPrimeSieves.GroupADivisors.Length;
 
 		flagView1D.CopyFromCPU(stream, ref compositeFlag, 1);
+		var tables = gpu.HeuristicGpuTables;
+        ArrayView1D<ulong, Stride1D.Dense> divisors = tables.GroupADivisors;
+        ArrayView1D<ulong, Stride1D.Dense> divisorSquares = tables.GroupADivisorSquares;
+
 		kernel.Launch(
 				stream!,
 				1,
 				groupALength,
-				flagView,
+				flagView1D,
 				n,
 				maxDivisorSquare,
-				HeuristicGpuDivisorTableKind.GroupA,
-				gpu.HeuristicGpuTables);
+				divisors,
+				divisorSquares);
 
 		flagView1D.CopyToCPU(stream, ref compositeFlag, 1);
-		stream!.Synchronize();
+		stream.Synchronize();
 
 		compositeDetected = compositeFlag != 0;
 
@@ -296,7 +300,7 @@ public sealed class HeuristicPrimeTester
 					stream,
 						1,
 						divisorLength,
-						flagView,
+						flagView1D,
 						n,
 						maxDivisorSquare,
 						tableKind,

@@ -50,7 +50,7 @@ internal static partial class PrimeOrderCalculator
 
 		gpu.OutputUlong.View.CopyToCPU(stream, ref order, 1);
 		stream.Synchronize();
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
+		AcceleratorStreamPool.Return(acceleratorIndex);
 
 		// GpuPrimeWorkLimiter.Release();
 		return order;
@@ -114,7 +114,7 @@ internal static partial class PrimeOrderCalculator
 		smallPrimeFactorRemainingSlotView.CopyToCPU(stream, ref remaining, 1);
 		stream.Synchronize();
 
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
+		AcceleratorStreamPool.Return(acceleratorIndex);
 		// GpuPrimeWorkLimiter.Release();
 
 		for (int i = 0; i < factorCount; i++)
@@ -164,7 +164,7 @@ internal static partial class PrimeOrderCalculator
 		specialMaxResultView.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
 		
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
+		AcceleratorStreamPool.Return(acceleratorIndex);
 		// GpuPrimeWorkLimiter.Release();
 		return result != 0;
 	}
@@ -190,7 +190,7 @@ internal static partial class PrimeOrderCalculator
 		gpu.Input.View.CopyToCPU(stream, randomStateSpan);
 		stream.Synchronize();
 
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
+		AcceleratorStreamPool.Return(acceleratorIndex);
 		ThreadStaticDeterministicRandomGpu.Exclusive.SetState(randomStateSpan[0]);
 
 		bool factored = factoredSpan[0] != 0;

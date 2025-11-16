@@ -83,20 +83,10 @@ internal static class PrimeTesterKernels
         ArrayView<int> resultFlag,
         ulong n,
         ulong maxDivisorSquare,
-        HeuristicGpuDivisorTableKind tableKind,
-        HeuristicGpuDivisorTables tables)
+		ArrayView1D<ulong, Stride1D.Dense> divisors,
+		ArrayView1D<ulong, Stride1D.Dense> divisorSquares)
     {
-        byte nMod10 = (byte)(n % 10UL);
-        ArrayView1D<ulong, Stride1D.Dense> divisors = tables.SelectDivisors(tableKind, nMod10);
-        ArrayView1D<ulong, Stride1D.Dense> divisorSquares = tables.SelectDivisorSquares(tableKind, nMod10);
-
-        int divisorLength = (int)divisorSquares.Length;
         int threadIndex = index;
-        if (threadIndex >= divisorLength)
-        {
-            return;
-        }
-
         ulong divisorSquare = divisorSquares[threadIndex];
         if (divisorSquare > maxDivisorSquare)
         {
