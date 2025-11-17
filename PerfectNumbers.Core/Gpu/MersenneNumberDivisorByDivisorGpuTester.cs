@@ -8,6 +8,7 @@ using System.Threading;
 using PerfectNumbers.Core;
 using ILGPU;
 using ILGPU.Runtime;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -106,9 +107,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		ulong lastProcessed;
 
 		// GpuPrimeWorkLimiter();
-		int acceleratorIndex = AcceleratorPool.Shared.Rent();
-		var accelerator = _accelerators[acceleratorIndex];
-		var stream = accelerator.CreateStream();
+		// int acceleratorIndex = AcceleratorPool.Shared.Rent();
+		// var accelerator = _accelerators[acceleratorIndex];
+		var gpu = HeuristicCombinedPrimeTesterAccelerator.Rent(batchCapacity);
+		var acceleratorIndex = gpu.AcceleratorIndex;
+		var accelerator = gpu.Accelerator;
+		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 
 		// Monitor.Enter(gpuLease.ExecutionLock);
 
@@ -116,6 +120,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		var resources = RentBatchResources(accelerator, batchCapacity);
 
 		composite = CheckDivisors(
+			gpu,
 			prime,
 			allowedMax,
 			kernel,
@@ -137,8 +142,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			out coveredRange,
 			out processedCount);
 
-		stream.Dispose();
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 		ReturnBatchResources(resources);
+		HeuristicCombinedPrimeTesterAccelerator.Return(gpu);
 		// Monitor.Exit(gpuLease.ExecutionLock);
 		// GpuPrimeWorkLimiter.Release();
 
@@ -182,6 +188,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 	}
 
 	private static bool CheckDivisors(
+		HeuristicCombinedPrimeTesterAccelerator gpu,
 		ulong prime,
 		ulong allowedMax,
 		Action<AcceleratorStream, Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> kernel,
@@ -205,7 +212,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 	{
 		int batchCapacity = (int)divisorDataBuffer.Length;
 		bool composite = false;
-		bool processedAll = false;
+		bool processedAll;
 		processedCount = 0UL;
 		lastProcessed = 0UL;
 
@@ -303,7 +310,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 				{
 					ulong divisorValue = (ulong)nextDivisor128;
 					MontgomeryDivisorData montgomeryData = MontgomeryDivisorData.FromModulus(divisorValue);
-					ulong divisorCycle = ResolveDivisorCycle(divisorValue, prime, in montgomeryData);
+					ulong divisorCycle = ResolveDivisorCycle(gpu, divisorValue, prime, in montgomeryData);
 					if (divisorCycle == prime)
 					{
 						processedCount += (ulong)(i + 1);
@@ -375,9 +382,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static ulong ResolveDivisorCycle(ulong divisor, ulong prime, in MontgomeryDivisorData divisorData)
+	private static ulong ResolveDivisorCycle(HeuristicCombinedPrimeTesterAccelerator gpu, ulong divisor, ulong prime, in MontgomeryDivisorData divisorData)
 	{
-		if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(divisor, prime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
+		if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(gpu, divisor, prime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
 		{
 			return MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
 		}
@@ -498,6 +505,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
 
 		private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
+		private readonly HeuristicCombinedPrimeTesterAccelerator _primeTesterAccelerator;
 		private readonly Accelerator _accelerator;
 		private readonly AcceleratorStream _stream;
 		private Action<AcceleratorStream, Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> _kernel = null!;
@@ -516,8 +524,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		{
 			_owner = owner;
 			// GpuPrimeWorkLimiter.Acquire();
-			int acceleratorIndex = AcceleratorPool.Shared.Rent();
-			Accelerator accelerator = _accelerators[acceleratorIndex];
+			_primeTesterAccelerator = HeuristicCombinedPrimeTesterAccelerator.Rent();
+			Accelerator accelerator = _primeTesterAccelerator.Accelerator;
 			_accelerator = accelerator;
 			_stream = accelerator.CreateStream();
 			_capacity = Math.Max(1, owner._gpuBatchSize);
@@ -600,7 +608,8 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 			if (cycle == 0UL)
 			{
-				if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(divisor, firstPrime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
+				var gpu = _primeTesterAccelerator;
+				if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(gpu, divisor, firstPrime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
 				{
 					cycle = MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
 				}
@@ -657,10 +666,11 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			ref byte hitRef = ref MemoryMarshal.GetReference(hitSlice);
 			hitView.CopyToCPU(stream, ref hitRef, length);
 			stream.Synchronize();
+
 			// Monitor.Exit(_lease.ExecutionLock);
 		}
 
-		public void Dispose()
+		public void Return()
 		{
 			_owner._sessionPool.Add(this);
 		}

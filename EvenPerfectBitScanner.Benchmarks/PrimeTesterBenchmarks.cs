@@ -2,6 +2,7 @@ using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Open.Numeric.Primes;
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace EvenPerfectBitScanner.Benchmarks;
 
@@ -25,6 +26,8 @@ public class PrimeTesterBenchmarks
             return;
         }
 
+		PrimeOrderCalculatorAccelerator.WarmUp();
+		// HeuristicGroupABPrimeTesterAccelerator.WarmUp();
         _ = _heuristicTester.IsPrimeCpu(_candidates[0]);
         _ = _heuristicTester.IsPrimeGpu(_candidates[0]);
         _ = Prime.Numbers.IsPrime(_candidates[0]);
@@ -48,7 +51,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    // [Benchmark]
+    [Benchmark]
     public int HeuristicGpu()
     {
         HeuristicPrimeTester tester = _heuristicTester;
@@ -66,7 +69,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    // [Benchmark]
+    [Benchmark]
     public int HeuristicCombinedGpu()
     {
         ulong[] values = _candidates;
@@ -83,7 +86,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    // [Benchmark]
+    [Benchmark]
     public int HeuristicCombinedCpu()
     {
         ulong[] values = _candidates;

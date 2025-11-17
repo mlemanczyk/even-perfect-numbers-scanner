@@ -11,7 +11,6 @@ public enum HeuristicGpuDivisorTableKind : byte
     GroupBEnding1 = 1,
     GroupBEnding7 = 7,
     GroupBEnding9 = 9,
-    Combined = 255,
 }
 
 internal static class PrimeTesterKernels
@@ -78,17 +77,49 @@ internal static class PrimeTesterKernels
         results[index] = result;
     }
 
-    public static void HeuristicTrialDivisionKernel(
+    public static void HeuristicTrialCombinedDivisionKernel(
+        Index1D index,
+		byte nMod10,
+        ArrayView<int> resultFlag,
+        ulong n,
+        ulong maxDivisorSquare,
+        HeuristicGpuCombinedDivisorTables tables)
+    {
+        // byte nMod10 = (byte)(n % 10UL);
+        ArrayView1D<ulong, Stride1D.Dense> divisors = tables.SelectDivisors(nMod10);
+        ArrayView1D<ulong, Stride1D.Dense> divisorSquares = tables.SelectDivisorSquares(nMod10);
+
+        int divisorLength = (int)divisorSquares.Length;
+        int threadIndex = index;
+        if (threadIndex >= divisorLength)
+        {
+            return;
+        }
+
+        ulong divisorSquare = divisorSquares[threadIndex];
+        if (divisorSquare > maxDivisorSquare)
+        {
+            return;
+        }
+
+        ulong divisor = divisors[threadIndex];
+        divisor = n % divisor;
+        if (divisor == 0UL)
+        {
+            resultFlag[0] = 1;
+        }
+    }
+
+    public static void HeuristicTrialGroupABDivisionKernel(
         Index1D index,
         ArrayView<int> resultFlag,
         ulong n,
         ulong maxDivisorSquare,
         HeuristicGpuDivisorTableKind tableKind,
-        HeuristicGpuDivisorTables tables)
+        HeuristicGpuGroupABDivisorTables tables)
     {
-        byte nMod10 = (byte)(n % 10UL);
-        ArrayView1D<ulong, Stride1D.Dense> divisors = tables.SelectDivisors(tableKind, nMod10);
-        ArrayView1D<ulong, Stride1D.Dense> divisorSquares = tables.SelectDivisorSquares(tableKind, nMod10);
+        ArrayView1D<ulong, Stride1D.Dense> divisors = tables.SelectDivisors(tableKind);
+        ArrayView1D<ulong, Stride1D.Dense> divisorSquares = tables.SelectDivisorSquares(tableKind);
 
         int divisorLength = (int)divisorSquares.Length;
         int threadIndex = index;

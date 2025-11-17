@@ -52,7 +52,7 @@ public class MersenneDivisorCycles
 		return _smallCycles!;
 	}
 
-	public static bool CycleEqualsExponent(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
+	public static bool CycleEqualsExponent(HeuristicCombinedPrimeTesterAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
 	{
 		if (CycleEqualsExponentForMersenneCandidate(divisor, divisorData, exponent))
 		{
@@ -82,7 +82,7 @@ public class MersenneDivisorCycles
 			return heuristicCycle == exponent;
 		}
 
-		if (TryCalculateCycleLengthForExponentCpu(divisor, exponent, divisorData, out ulong cycleLength, out bool _) && cycleLength != 0UL)
+		if (TryCalculateCycleLengthForExponentCpu(gpu, divisor, exponent, divisorData, out ulong cycleLength, out bool _) && cycleLength != 0UL)
 		{
 			return cycleLength == exponent;
 		}
@@ -260,6 +260,7 @@ public class MersenneDivisorCycles
 	}
 
 	public static bool TryCalculateCycleLengthForExponentCpu(
+		HeuristicCombinedPrimeTesterAccelerator gpu,
 		ulong divisor,
 		ulong exponent,
 		in MontgomeryDivisorData divisorData,
@@ -328,8 +329,8 @@ public class MersenneDivisorCycles
 			factorCounts[2UL] = twoCount;
 		}
 
-		bool exponentAccumulated = AccumulateFactors(exponent, factorCounts);
-		bool factorsAccumulated = exponentAccumulated && AccumulateFactors(k, factorCounts);
+		bool exponentAccumulated = AccumulateFactors(gpu, exponent, factorCounts);
+		bool factorsAccumulated = exponentAccumulated && AccumulateFactors(gpu, k, factorCounts);
 
 		if (factorsAccumulated)
 		{
@@ -344,6 +345,7 @@ public class MersenneDivisorCycles
 	}
 
 	private static bool AccumulateFactors(
+		HeuristicCombinedPrimeTesterAccelerator gpu,
 		ulong value,
 		Dictionary<ulong, int> counts)
 	{
@@ -353,7 +355,7 @@ public class MersenneDivisorCycles
 		}
 
 		Dictionary<ulong, int> scratch = ThreadStaticPools.RentFactorScratchDictionary();
-		bool success = TryFactorIntoCountsInternal(value, scratch);
+		bool success = TryFactorIntoCountsInternal(gpu, value, scratch);
 		if (!success)
 		{
 			scratch.Clear();
@@ -375,7 +377,7 @@ public class MersenneDivisorCycles
 	// private static ulong _tryFactorIntoCountsInternalHits;
 	// private static ulong _tryCalculateCycleLengthHeuristicHits;
 
-	private static bool TryFactorIntoCountsInternal(ulong value, Dictionary<ulong, int> counts)
+	private static bool TryFactorIntoCountsInternal(HeuristicCombinedPrimeTesterAccelerator gpu, ulong value, Dictionary<ulong, int> counts)
 	{
 		// The EvenPerfectBitScanner only requests factors for values >= 2 here. Leave the guard documented without executing it.
 		// if (value <= 1UL)
@@ -412,7 +414,7 @@ public class MersenneDivisorCycles
 		// Console.WriteLine($"MersenneDivisorCycles.TryFactorIntoCountsInternal hits {Volatile.Read(ref _tryFactorIntoCountsInternalHits)}");
 
 		// HeuristicPrimeTester primeTester = _primeTester ??= new();
-		if (PrimeTester.IsPrimeGpu(remaining))
+		if (HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, remaining))
 		// if (PrimeTester.IsPrimeCpu(remaining, CancellationToken.None))
 		{
 			AddFactor(counts, remaining);
@@ -437,13 +439,13 @@ public class MersenneDivisorCycles
 		//     return false;
 		// }
 
-		if (!TryFactorIntoCountsInternal(factor, counts))
+		if (!TryFactorIntoCountsInternal(gpu, factor, counts))
 		{
 			return false;
 		}
 
 		// Guard the recursive calls to terminate once Pollard-Rho reduces either branch to 1.
-		if (quotient > 1UL && !TryFactorIntoCountsInternal(quotient, counts))
+		if (quotient > 1UL && !TryFactorIntoCountsInternal(gpu, quotient, counts))
 		{
 			return false;
 		}
@@ -958,7 +960,7 @@ public class MersenneDivisorCycles
 		// HeuristicPrimeTester primeTester = _primeTester ??= new();
 		// if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.Exclusive.IsPrimeCpu(divisor, CancellationToken.None))
 		// if (!skipPrimeOrderHeuristic && primeTester.IsPrimeGpu(divisor))
-		if (!skipPrimeOrderHeuristic && PrimeTester.IsPrimeGpu(divisor))
+		if (!skipPrimeOrderHeuristic && HeuristicCombinedPrimeTester.IsPrimeGpu(divisor))
 		{
 			ulong computedOrder = PrimeOrderCalculator.Calculate(
 					divisor,

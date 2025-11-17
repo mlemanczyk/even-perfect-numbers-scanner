@@ -47,7 +47,7 @@ public class MersenneNumberDivisorCpuTesterTests
                 }
                 finally
                 {
-                        session.Dispose();
+                        session.Return();
                 }
         }
 
@@ -72,7 +72,7 @@ public class MersenneNumberDivisorCpuTesterTests
                 }
                 finally
                 {
-                        session.Dispose();
+                        session.Return();
                 }
         }
 
@@ -97,7 +97,7 @@ public class MersenneNumberDivisorCpuTesterTests
                 }
                 finally
                 {
-                        session.Dispose();
+                        session.Return();
                 }
         }
 }

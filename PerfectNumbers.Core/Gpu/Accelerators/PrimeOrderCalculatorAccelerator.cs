@@ -68,6 +68,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 			// Don't take this from the pool as quick uploads of data to the accelerator consumes much of GPU's memory and throws.
 			AcceleratorStream stream = accelerator.CreateStream();
 			LastDigitGpuTables.WarmUp(i, stream);
+			HeuristicCombinedPrimeTesterAccelerator.WarmUp(i, stream);
 			// SharedHeuristicGpuTables.EnsureStaticTables(accelerator, stream);
 			// _ = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.None);
 			// KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
@@ -76,6 +77,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 			stream.Dispose();
 			accelerator.Synchronize();
 		}
+
 	}
 
 	#endregion

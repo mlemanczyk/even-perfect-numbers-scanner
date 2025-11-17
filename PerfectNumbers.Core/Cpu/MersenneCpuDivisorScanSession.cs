@@ -62,7 +62,7 @@ internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDi
         }
     }
 
-    public void Dispose()
+    public void Return()
     {
         ThreadStaticPools.ReturnMersenneCpuDivisorSession(this);
     }

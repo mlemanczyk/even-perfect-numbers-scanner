@@ -21,3 +21,4 @@ public static class PerfectNumberConstants
     // TODO: Promote these magic numbers into a runtime profile derived from EvenPerfectBitScanner.Benchmarks so we can retune
     // them automatically when the optimal ranges for 2kp+1 >= 138M change.
 }
+	

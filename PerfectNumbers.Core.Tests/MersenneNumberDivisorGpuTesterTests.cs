@@ -161,7 +161,7 @@ public class MersenneNumberDivisorGpuTesterTests
         }
         finally
         {
-            session.Dispose();
+            session.Return();
         }
     }
 
@@ -189,7 +189,7 @@ public class MersenneNumberDivisorGpuTesterTests
         }
         finally
         {
-            session.Dispose();
+            session.Return();
         }
     }
 
@@ -217,7 +217,7 @@ public class MersenneNumberDivisorGpuTesterTests
         }
         finally
         {
-            session.Dispose();
+            session.Return();
         }
     }
 
@@ -246,7 +246,7 @@ public class MersenneNumberDivisorGpuTesterTests
         }
         finally
         {
-            session.Dispose();
+            session.Return();
         }
     }
 
@@ -275,7 +275,7 @@ public class MersenneNumberDivisorGpuTesterTests
         }
         finally
         {
-            session.Dispose();
+            session.Return();
         }
     }
 
@@ -344,7 +344,7 @@ public class MersenneNumberDivisorGpuTesterTests
         }
         finally
         {
-            session.Dispose();
+            session.Return();
         }
     }
 }

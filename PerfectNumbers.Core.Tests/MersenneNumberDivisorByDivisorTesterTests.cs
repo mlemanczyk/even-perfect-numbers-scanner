@@ -83,7 +83,7 @@ public class MersenneNumberDivisorByDivisorTesterTests
                 throw new NotSupportedException();
             }
 
-            public void Dispose()
+            public void Return()
             {
             }
         }

@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
+using ILGPU;
 
 namespace PerfectNumbers.Core;
 
@@ -242,72 +243,80 @@ public sealed class HeuristicPrimeTester
 	private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
-		var gpu = HeuristicPrimeTesterAccelerator.Rent(1);
-		var stream = gpu.Stream;
-		var kernel = gpu.HeuristicTrialDivisionKernel;
-		var flagView1D = gpu.HeuristicFlag.View;
-		var flagView = flagView1D.AsContiguous();
+		var gpu = HeuristicCombinedPrimeTesterAccelerator.Rent(1);
+		int acceleratorIndex = gpu.AcceleratorIndex;
+		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
+		var kernel = gpu.HeuristicCombinedTrialDivisionKernel;
+		var flagView1D = gpu.HeuristicFlag!.View;
 
-		bool compositeDetected = false;
+		bool compositeDetected;
 		int compositeFlag = 0;
 
-		int groupALength = HeuristicPrimeSieves.GroupADivisors.Length;
-
 		flagView1D.CopyFromCPU(stream, ref compositeFlag, 1);
-		kernel.Launch(
-				stream!,
+
+		//         Index1D index,
+        // ArrayView<int> resultFlag,
+        // ulong n,
+        // ulong maxDivisorSquare,
+        // HeuristicGpuDivisorTableKind tableKind,
+        // HeuristicGpuDivisorTables tables)
+
+		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuCombinedDivisorTables>>();
+		kernelLauncher(
+				stream,
 				1,
-				groupALength,
-				flagView,
+				nMod10,
+				flagView1D,
 				n,
 				maxDivisorSquare,
 				HeuristicGpuDivisorTableKind.GroupA,
-				gpu.HeuristicGpuTables);
+				gpu.DivisorTables);
 
 		flagView1D.CopyToCPU(stream, ref compositeFlag, 1);
 		stream!.Synchronize();
 
 		compositeDetected = compositeFlag != 0;
+		// compositeDetected = compositeFlag != 0;
 
-		if (!compositeDetected)
-		{
-			ReadOnlySpan<byte> endingOrder = GetGroupBEndingOrder(nMod10);
-			for (int i = 0; i < endingOrder.Length && !compositeDetected; i++)
-			{
-				byte ending = endingOrder[i];
-				HeuristicGpuDivisorTableKind tableKind = ending switch
-				{
-					1 => HeuristicGpuDivisorTableKind.GroupBEnding1,
-					7 => HeuristicGpuDivisorTableKind.GroupBEnding7,
-					9 => HeuristicGpuDivisorTableKind.GroupBEnding9,
-					_ => HeuristicGpuDivisorTableKind.GroupA,
-				};
+		// if (!compositeDetected)
+		// {
+		// 	ReadOnlySpan<byte> endingOrder = GetGroupBEndingOrder(nMod10);
+		// 	for (int i = 0; i < endingOrder.Length && !compositeDetected; i++)
+		// 	{
+		// 		byte ending = endingOrder[i];
+		// 		HeuristicGpuDivisorTableKind tableKind = ending switch
+		// 		{
+		// 			1 => HeuristicGpuDivisorTableKind.GroupBEnding1,
+		// 			7 => HeuristicGpuDivisorTableKind.GroupBEnding7,
+		// 			9 => HeuristicGpuDivisorTableKind.GroupBEnding9,
+		// 			_ => HeuristicGpuDivisorTableKind.GroupA,
+		// 		};
 
-				if (tableKind == HeuristicGpuDivisorTableKind.GroupA)
-				{
-					continue;
-				}
+		// 		if (tableKind == HeuristicGpuDivisorTableKind.GroupA)
+		// 		{
+		// 			continue;
+		// 		}
 
-				int divisorLength = GetGroupBDivisors(ending).Length;
+		// 		int divisorLength = GetGroupBDivisors(ending).Length;
 
-				compositeFlag = 0;
-				flagView1D.CopyFromCPU(stream, ref compositeFlag, 1);
-				kernel.Launch(
-					stream,
-						1,
-						divisorLength,
-						flagView,
-						n,
-						maxDivisorSquare,
-						tableKind,
-						gpu.HeuristicGpuTables);
-				flagView1D.CopyToCPU(stream, ref compositeFlag, 1);
-				stream.Synchronize();
-				compositeDetected = compositeFlag != 0;
-			}
-		}
+		// 		compositeFlag = 0;
+		// 		flagView1D.CopyFromCPU(stream, ref compositeFlag, 1);
+		// 		kernelLauncher(
+		// 			stream,
+		// 				1,
+		// 				flagView1D,
+		// 				n,
+		// 				maxDivisorSquare,
+		// 				tableKind,
+		// 				gpu.HeuristicGpuTables);
+		// 		flagView1D.CopyToCPU(stream, ref compositeFlag, 1);
+		// 		stream.Synchronize();
+		// 		compositeDetected = compositeFlag != 0;
+		// 	}
+		// }
 
-		gpu.Dispose();
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
+		gpu.Return();
 		// GpuPrimeWorkLimiter.Release();
 		return compositeDetected;
 	}
@@ -457,6 +466,7 @@ public sealed class HeuristicPrimeTester
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static ulong ResolveHeuristicCycleLength(
+		HeuristicCombinedPrimeTesterAccelerator gpu,
 		ulong exponent,
 		in HeuristicDivisorPreparation preparation,
 		out bool cycleFromHint,
@@ -475,6 +485,7 @@ public sealed class HeuristicPrimeTester
 		MontgomeryDivisorData divisorData = preparation.DivisorData;
 
 		bool trySuccess = MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
+			gpu,
 			divisor,
 			exponent,
 			divisorData,

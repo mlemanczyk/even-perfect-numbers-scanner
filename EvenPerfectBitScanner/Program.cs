@@ -64,7 +64,7 @@ internal static class Program
 			PrimeTester.GpuBatchSize = gpuPrimeBatch;
 			GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
 			Console.WriteLine("Warming up GPU kernels");
-			PrimeTester.WarmUpGpuKernels(1024);
+			PrimeTester.WarmUpGpuKernels(1024);			
 			// PrimeTester.WarmUpGpuKernels(gpuPrimeThreads >> 4);
 			Console.WriteLine("Starting up threads...");
 			_ = UnboundedTaskScheduler.Instance;
@@ -628,7 +628,7 @@ internal static class Program
 		{
 			if (!(_runPrimesOnCpu
 					? PrimeTester.IsPrime(p)
-					: PrimeTester.IsPrimeGpu(p)))
+					: HeuristicCombinedPrimeTester.IsPrimeGpu(p)))
 			{
 				_lastCompositeP = true;
 				return false;
