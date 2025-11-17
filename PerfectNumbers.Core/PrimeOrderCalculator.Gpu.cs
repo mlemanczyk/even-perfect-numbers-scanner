@@ -12,13 +12,13 @@ internal static partial class PrimeOrderCalculator
 
 	private const int GpuSmallPrimeFactorSlots = 64;
 
-	private static ulong CalculateByFactorizationGpu(PrimeOrderCalculatorAccelerator gpu, HeuristicCombinedPrimeTesterAccelerator gpu2, ulong prime, in MontgomeryDivisorData divisorData)
+	private static ulong CalculateByFactorizationGpu(PrimeOrderCalculatorAccelerator gpu, ulong prime, in MontgomeryDivisorData divisorData)
 	{
 		ulong phi = prime - 1UL;
 		Dictionary<ulong, int> counts = gpu.Pow2ModEntriesToTestOnHost;
 		counts.Clear();
 		
-		FactorCompletelyCpu(gpu2, phi, counts);
+		FactorCompletelyCpu(gpu, phi, counts);
 		if (counts.Count == 0)
 		{
 			return phi;

@@ -202,7 +202,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		remainder7 = (byte)((((divisorHigh % 7UL) * 2UL) + (divisorLow % 7UL)) % 7UL);
 		remainder11 = (byte)((((divisorHigh % 11UL) * 5UL) + (divisorLow % 11UL)) % 11UL);
 
-		var gpu = HeuristicCombinedPrimeTesterAccelerator.Rent(1);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 
 		while (divisor.CompareTo(limit) <= 0)
 		{
@@ -245,7 +245,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 					// A cycle equal to the tested exponent (which is prime in this path) guarantees that the candidate divides
 					// the corresponding Mersenne number because the order of 2 modulo the divisor is exactly p.
 					processedAll = true;
-					HeuristicCombinedPrimeTesterAccelerator.Return(gpu);
+					PrimeOrderCalculatorAccelerator.Return(gpu);
 					return true;
 				}
 
@@ -263,7 +263,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 			remainder11 = AddMod11(remainder11, step11);
 		}
 
-		HeuristicCombinedPrimeTesterAccelerator.Return(gpu);
+		PrimeOrderCalculatorAccelerator.Return(gpu);
 		processedAll = true;
 		return false;
 	}
@@ -289,7 +289,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		processedAll = false;
 
 		bool canAdvance = step <= limit;
-		var gpu = HeuristicCombinedPrimeTesterAccelerator.Rent(1);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		if (!canAdvance)
 		{
 			if (divisor <= limit)
@@ -319,7 +319,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 					if (divisorCycle == prime)
 					{
 						processedAll = true;
-						HeuristicCombinedPrimeTesterAccelerator.Return(gpu);
+						PrimeOrderCalculatorAccelerator.Return(gpu);
 						return true;
 					}
 
@@ -370,7 +370,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 				if (divisorCycle == prime)
 				{
 					processedAll = true;
-					HeuristicCombinedPrimeTesterAccelerator.Return(gpu);
+					PrimeOrderCalculatorAccelerator.Return(gpu);
 					return true;
 				}
 

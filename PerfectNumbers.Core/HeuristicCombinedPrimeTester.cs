@@ -173,20 +173,20 @@ public sealed class HeuristicCombinedPrimeTester
 	{
 		byte nMod10 = (byte)n.Mod10();
 		ulong maxDivisorSquare = ComputeHeuristicDivisorSquareLimit(n);
-		var gpu = HeuristicCombinedPrimeTesterAccelerator.Rent(1);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		bool isPrime = IsPrimeGpu(gpu, n, maxDivisorSquare, nMod10);
-		HeuristicCombinedPrimeTesterAccelerator.Return(gpu);
+		PrimeOrderCalculatorAccelerator.Return(gpu);
 		return isPrime;
 	}
 
-	public static bool IsPrimeGpu(HeuristicCombinedPrimeTesterAccelerator gpu, ulong n)
+	public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n)
 	{
 		byte nMod10 = (byte)n.Mod10();
 		ulong maxDivisorSquare = ComputeHeuristicDivisorSquareLimit(n);
 		return IsPrimeGpu(gpu, n, maxDivisorSquare, nMod10);
 	}
 
-	public static bool IsPrimeGpu(HeuristicCombinedPrimeTesterAccelerator gpu, ulong n, ulong maxDivisorSquare, byte nMod10)
+	public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
 		// TODO: Is this condition ever met on the execution path in EvenPerfectBitScanner?
 		if (maxDivisorSquare < 9UL)
@@ -233,10 +233,8 @@ public sealed class HeuristicCombinedPrimeTester
 	};
 
 
-	private static bool HeuristicTrialDivisionGpuDetectsDivisor(HeuristicCombinedPrimeTesterAccelerator gpu, ulong n, ulong maxDivisorSquare, byte nMod10)
+	private static bool HeuristicTrialDivisionGpuDetectsDivisor(PrimeOrderCalculatorAccelerator gpu, ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
-		// GpuPrimeWorkLimiter.Acquire();
-		// var gpu = HeuristicCombinedPrimeTesterAccelerator.Rent(1);
 		var acceleratorIndex = gpu.AcceleratorIndex;
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		var kernel = gpu.HeuristicCombinedTrialDivisionKernel;
@@ -264,7 +262,6 @@ public sealed class HeuristicCombinedPrimeTester
 		// GpuPrimeWorkLimiter.Release();
 
 		compositeDetected = compositeFlag != 0;
-		HeuristicCombinedPrimeTesterAccelerator.Return(gpu);
 		return compositeDetected;
 	}
 
@@ -499,7 +496,7 @@ public sealed class HeuristicCombinedPrimeTester
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static ulong ResolveHeuristicCycleLength(
-		HeuristicCombinedPrimeTesterAccelerator gpu,
+		PrimeOrderCalculatorAccelerator gpu,
 		ulong exponent,
 		in HeuristicDivisorPreparation preparation,
 		out bool cycleFromHint,

@@ -52,7 +52,7 @@ public class MersenneDivisorCycles
 		return _smallCycles!;
 	}
 
-	public static bool CycleEqualsExponent(HeuristicCombinedPrimeTesterAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
+	public static bool CycleEqualsExponent(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
 	{
 		if (CycleEqualsExponentForMersenneCandidate(divisor, divisorData, exponent))
 		{
@@ -260,7 +260,7 @@ public class MersenneDivisorCycles
 	}
 
 	public static bool TryCalculateCycleLengthForExponentCpu(
-		HeuristicCombinedPrimeTesterAccelerator gpu,
+		PrimeOrderCalculatorAccelerator gpu,
 		ulong divisor,
 		ulong exponent,
 		in MontgomeryDivisorData divisorData,
@@ -345,7 +345,7 @@ public class MersenneDivisorCycles
 	}
 
 	private static bool AccumulateFactors(
-		HeuristicCombinedPrimeTesterAccelerator gpu,
+		PrimeOrderCalculatorAccelerator gpu,
 		ulong value,
 		Dictionary<ulong, int> counts)
 	{
@@ -377,7 +377,7 @@ public class MersenneDivisorCycles
 	// private static ulong _tryFactorIntoCountsInternalHits;
 	// private static ulong _tryCalculateCycleLengthHeuristicHits;
 
-	private static bool TryFactorIntoCountsInternal(HeuristicCombinedPrimeTesterAccelerator gpu, ulong value, Dictionary<ulong, int> counts)
+	private static bool TryFactorIntoCountsInternal(PrimeOrderCalculatorAccelerator gpu, ulong value, Dictionary<ulong, int> counts)
 	{
 		// The EvenPerfectBitScanner only requests factors for values >= 2 here. Leave the guard documented without executing it.
 		// if (value <= 1UL)

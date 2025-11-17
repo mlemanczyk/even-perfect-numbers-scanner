@@ -68,7 +68,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 			// Don't take this from the pool as quick uploads of data to the accelerator consumes much of GPU's memory and throws.
 			AcceleratorStream stream = accelerator.CreateStream();
 			LastDigitGpuTables.WarmUp(i, stream);
-			HeuristicCombinedPrimeTesterAccelerator.WarmUp(i, stream);
+			HeuristicGpuCombinedTables.WarmUp(i, stream);
 			// SharedHeuristicGpuTables.EnsureStaticTables(accelerator, stream);
 			// _ = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.None);
 			// KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
@@ -109,12 +109,16 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public MemoryBuffer1D<ulong, Stride1D.Dense> SpecialMaxFactors;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> SpecialMaxResult;
 
+	public readonly HeuristicGpuCombinedDivisorTables DivisorTables;
+
 	public readonly Kernel SmallPrimeSieveKernel;
 	public readonly Kernel CheckFactorsKernel;
 	public readonly Kernel ConvertToStandardKernel;
+	public readonly Kernel HeuristicCombinedTrialDivisionKernel;
 	public readonly Kernel KeepMontgomeryKernel;
 	public readonly Kernel PollardRhoKernel;
 	public readonly Kernel Pow2ModWideKernel;
+
 	public Kernel SharesFactorKernel;
 
 
@@ -186,22 +190,27 @@ public sealed class PrimeOrderCalculatorAccelerator
 		SpecialMaxCandidates = accelerator.Allocate1D<ulong>(specialMaxFactorCapacity);
 		SpecialMaxResult = accelerator.Allocate1D<ulong>(1);
 
-		var sharedTables = LastDigitGpuTables.EnsureStaticTables(acceleratorIndex);
+		var lastDigitSharedTables = LastDigitGpuTables.EnsureStaticTables(acceleratorIndex);
 
-		DevicePrimesLastOne = sharedTables.DevicePrimesLastOne;
-		DevicePrimesLastSeven = sharedTables.DevicePrimesLastSeven;
-		DevicePrimesLastThree = sharedTables.DevicePrimesLastThree;
-		DevicePrimesLastNine = sharedTables.DevicePrimesLastNine;
-		DevicePrimesPow2LastOne = sharedTables.DevicePrimesPow2LastOne;
-		DevicePrimesPow2LastSeven = sharedTables.DevicePrimesPow2LastSeven;
-		DevicePrimesPow2LastThree = sharedTables.DevicePrimesPow2LastThree;
-		DevicePrimesPow2LastNine = sharedTables.DevicePrimesPow2LastNine;
+		DevicePrimesLastOne = lastDigitSharedTables.DevicePrimesLastOne;
+		DevicePrimesLastSeven = lastDigitSharedTables.DevicePrimesLastSeven;
+		DevicePrimesLastThree = lastDigitSharedTables.DevicePrimesLastThree;
+		DevicePrimesLastNine = lastDigitSharedTables.DevicePrimesLastNine;
+		DevicePrimesPow2LastOne = lastDigitSharedTables.DevicePrimesPow2LastOne;
+		DevicePrimesPow2LastSeven = lastDigitSharedTables.DevicePrimesPow2LastSeven;
+		DevicePrimesPow2LastThree = lastDigitSharedTables.DevicePrimesPow2LastThree;
+		DevicePrimesPow2LastNine = lastDigitSharedTables.DevicePrimesPow2LastNine;
+
+		var heuristicSharedTables = HeuristicGpuCombinedTables.GetStaticTables(acceleratorIndex);
+		DivisorTables = heuristicSharedTables.CreateHeuristicDivisorTables();
 
 		var checkFactorsKernel = accelerator.LoadStreamKernel<int, ulong, ArrayView1D<KeyValuePair<ulong, int>, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderGpuHeuristics.CheckFactorsKernel);
 		CheckFactorsKernel = KernelUtil.GetKernel(checkFactorsKernel);
 
 		var convertKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelConvertToStandard);
 		ConvertToStandardKernel = KernelUtil.GetKernel(convertKernel);
+
+		HeuristicCombinedTrialDivisionKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicGpuCombinedDivisorTables>(PrimeTesterKernels.HeuristicTrialCombinedDivisionKernel));
 
 		var keepKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelKeepMontgomery);
 		KeepMontgomeryKernel = KernelUtil.GetKernel(keepKernel);

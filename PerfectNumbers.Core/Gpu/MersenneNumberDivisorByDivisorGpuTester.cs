@@ -109,7 +109,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		// GpuPrimeWorkLimiter();
 		// int acceleratorIndex = AcceleratorPool.Shared.Rent();
 		// var accelerator = _accelerators[acceleratorIndex];
-		var gpu = HeuristicCombinedPrimeTesterAccelerator.Rent(batchCapacity);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(batchCapacity);
 		var acceleratorIndex = gpu.AcceleratorIndex;
 		var accelerator = gpu.Accelerator;
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
@@ -144,7 +144,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 		ReturnBatchResources(resources);
-		HeuristicCombinedPrimeTesterAccelerator.Return(gpu);
+		PrimeOrderCalculatorAccelerator.Return(gpu);
 		// Monitor.Exit(gpuLease.ExecutionLock);
 		// GpuPrimeWorkLimiter.Release();
 
@@ -188,7 +188,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 	}
 
 	private static bool CheckDivisors(
-		HeuristicCombinedPrimeTesterAccelerator gpu,
+		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong allowedMax,
 		Action<AcceleratorStream, Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> kernel,
@@ -382,7 +382,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static ulong ResolveDivisorCycle(HeuristicCombinedPrimeTesterAccelerator gpu, ulong divisor, ulong prime, in MontgomeryDivisorData divisorData)
+	private static ulong ResolveDivisorCycle(PrimeOrderCalculatorAccelerator gpu, ulong divisor, ulong prime, in MontgomeryDivisorData divisorData)
 	{
 		if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(gpu, divisor, prime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
 		{
@@ -505,7 +505,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
 
 		private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
-		private readonly HeuristicCombinedPrimeTesterAccelerator _primeTesterAccelerator;
+		private readonly PrimeOrderCalculatorAccelerator _primeTesterAccelerator;
 		private readonly Accelerator _accelerator;
 		private readonly AcceleratorStream _stream;
 		private Action<AcceleratorStream, Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> _kernel = null!;
@@ -524,7 +524,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		{
 			_owner = owner;
 			// GpuPrimeWorkLimiter.Acquire();
-			_primeTesterAccelerator = HeuristicCombinedPrimeTesterAccelerator.Rent();
+			_primeTesterAccelerator = PrimeOrderCalculatorAccelerator.Rent(1);
 			Accelerator accelerator = _primeTesterAccelerator.Accelerator;
 			_accelerator = accelerator;
 			_stream = accelerator.CreateStream();

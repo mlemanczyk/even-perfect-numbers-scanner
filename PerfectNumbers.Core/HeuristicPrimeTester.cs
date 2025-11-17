@@ -243,7 +243,7 @@ public sealed class HeuristicPrimeTester
 	private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
-		var gpu = HeuristicCombinedPrimeTesterAccelerator.Rent(1);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		var kernel = gpu.HeuristicCombinedTrialDivisionKernel;
@@ -316,7 +316,7 @@ public sealed class HeuristicPrimeTester
 		// }
 
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);
-		gpu.Return();
+		PrimeOrderCalculatorAccelerator.Return(gpu);
 		// GpuPrimeWorkLimiter.Release();
 		return compositeDetected;
 	}
@@ -466,7 +466,7 @@ public sealed class HeuristicPrimeTester
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static ulong ResolveHeuristicCycleLength(
-		HeuristicCombinedPrimeTesterAccelerator gpu,
+		PrimeOrderCalculatorAccelerator gpu,
 		ulong exponent,
 		in HeuristicDivisorPreparation preparation,
 		out bool cycleFromHint,
