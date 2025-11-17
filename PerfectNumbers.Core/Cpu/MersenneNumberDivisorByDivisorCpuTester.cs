@@ -100,8 +100,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		ulong allowedMax,
 		out bool processedAll)
 	{
-		processedAll = false;
-
 		// The EvenPerfectBitScanner feeds primes >= 138,000,000 here, so allowedMax >= 3 in production runs.
 		// Keeping the guard commented out documents the reasoning for benchmarks and tests.
 		// if (allowedMax < 3UL)

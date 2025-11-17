@@ -55,7 +55,7 @@ internal static partial class PrimeOrderCalculator
 		// GpuPrimeWorkLimiter.Release();
 		return order;
 	}
-
+	
 	private static bool TryPopulateSmallPrimeFactorsGpu(PrimeOrderCalculatorAccelerator gpu, ulong value, uint limit, Dictionary<ulong, int> counts, out int factorCount, out ulong remaining)
 	{
 		var primeBufferArray = ThreadStaticPools.UlongPool.Rent(GpuSmallPrimeFactorSlots);
@@ -70,17 +70,16 @@ internal static partial class PrimeOrderCalculator
 
 		// GpuPrimeWorkLimiter.Acquire();
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(acceleratorIndex, stream, KernelType.SmallPrimeFactorKernelScan);
-		SmallPrimeFactorViews tables = GpuKernelPool.GetSmallPrimeFactorTables(kernels);
 
-		var kernel = kernels.SmallPrimeFactor!;
+		var kernel = gpu.SmallPrimeFactorKernel;
 		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
 
 		ArrayView1D<int, Stride1D.Dense> smallPrimeFactorCountSlotView = gpu.SmallPrimeFactorCountSlot.View;
 		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorRemainingSlotView = gpu.SmallPrimeFactorRemainingSlot.View;
 		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorPrimeSlotsView = gpu.SmallPrimeFactorPrimeSlots.View;
 		ArrayView1D<int, Stride1D.Dense> smallPrimeFactorExponentSlotsView = gpu.SmallPrimeFactorExponentSlots.View;
-		ArrayView1D<uint, Stride1D.Dense> smallPrimeFactorsPrimesView = kernels.SmallPrimeFactorsPrimes!.View;
+		ArrayView1D<uint, Stride1D.Dense> smallPrimeFactorsPrimesView = gpu.SmallPrimeFactorTables.Primes.View;
+		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorsSquaresView = gpu.SmallPrimeFactorTables.Squares.View;
 
 		kernelLauncher(
 				stream,
@@ -88,7 +87,7 @@ internal static partial class PrimeOrderCalculator
 				value,
 				limit,
 				smallPrimeFactorsPrimesView,
-				kernels.SmallPrimeFactorsSquares!.View,
+				smallPrimeFactorsSquaresView,
 				(int)smallPrimeFactorsPrimesView.Length,
 				smallPrimeFactorPrimeSlotsView,
 				smallPrimeFactorExponentSlotsView,
@@ -138,20 +137,19 @@ internal static partial class PrimeOrderCalculator
 		gpu.EnsureSpecialMaxFactorsCapacity(factorCount);
 
 		int acceleratorIndex = gpu.AcceleratorIndex;
-		Accelerator accelerator = gpu.Accelerator;
 		// GpuPrimeWorkLimiter.Acquire();
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		var kernels = GpuKernelPool.GetOrAddKernels(acceleratorIndex, stream, KernelType.EvaluateSpecialMaxCandidatesKernel);
 
 		ArrayView1D<ulong, Stride1D.Dense> specialMaxFactorsView = gpu.SpecialMaxFactors.View;
 		specialMaxFactorsView.SubView(0, factorCount).CopyFromCPU(stream, ref MemoryMarshal.GetReference(factors), factorCount);
 
-		var kernel = kernels.SpecialMax!;
+		var kernel = gpu.SpecialMaxKernel;
 
 		ArrayView1D<ulong, Stride1D.Dense> specialMaxResultView = gpu.SpecialMaxResult.View;
 
-		kernel(
+		kernel.Launch(
 				stream,
+				1,
 				1,
 				phi,
 				specialMaxFactorsView,

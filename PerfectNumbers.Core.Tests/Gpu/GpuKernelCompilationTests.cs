@@ -344,7 +344,7 @@ public class GpuKernelCompilationTests
         _ = kernel;
     }
 
-	private static KernelType _kernelType = KernelType.Pow2ModKernelScan | KernelType.OrderKernelScan | KernelType.IncrementalKernelScan | KernelType.IncrementalOrderKernelScan | KernelType.Pow2ModOrderKernelScan | KernelType.EvaluateSpecialMaxCandidatesKernel | KernelType.SmallPrimeFactorKernelScan;
+	private static KernelType _kernelType = KernelType.Pow2ModKernelScan | KernelType.OrderKernelScan | KernelType.IncrementalKernelScan | KernelType.IncrementalOrderKernelScan | KernelType.Pow2ModOrderKernelScan;
 	private static void CompileGpuKernelPoolKernels(Accelerator accelerator)
 	{
 

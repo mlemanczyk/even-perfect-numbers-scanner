@@ -57,16 +57,6 @@ public class GpuKernelPool
 			InitPow2ModOrderKernelScan(accelerator, kernels);
 		}
 
-		if (kernelType.HasFlag(KernelType.EvaluateSpecialMaxCandidatesKernel))
-		{
-			InitEvaluateSpecialMaxCandidatesKernel(accelerator, kernels);
-		}
-
-		if (kernelType.HasFlag(KernelType.SmallPrimeFactorKernelScan))
-		{
-			InitSmallPrimeFactorKernelScan(accelerator, kernels);
-		}
-
 		PreloadStaticTables(accelerator, kernels, stream, kernelType);
 
 		pool[acceleratorIndex] = kernels;
@@ -132,25 +122,6 @@ public class GpuKernelPool
 				return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
 			});
 		}
-
-		static void InitEvaluateSpecialMaxCandidatesKernel(Accelerator accelerator, KernelContainer kernels)
-		{
-			InitOnce(ref kernels.SpecialMax, () =>
-			{
-				var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderGpuHeuristics.EvaluateSpecialMaxCandidatesKernel);
-
-				var kernel = KernelUtil.GetKernel(loaded);
-
-				return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
-			});
-		}
-
-		static void InitSmallPrimeFactorKernelScan(Accelerator accelerator, KernelContainer kernels)
-		{
-			var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(SmallPrimeFactorKernels.SmallPrimeFactorKernelScan);
-
-			kernels.SmallPrimeFactor = KernelUtil.GetKernel(loaded);
-		}
 	}
 
 	internal static void PreloadStaticTables(Accelerator accelerator, KernelContainer kernels, AcceleratorStream stream, KernelType kernelType)
@@ -163,11 +134,6 @@ public class GpuKernelPool
 		if (kernelType.HasFlag(KernelType.SmallPrimes))
 		{
 			EnsureSmallPrimesOnDevice(accelerator, kernels, stream);
-		}
-		
-		if (kernelType.HasFlag(KernelType.SmallPrimeFactorKernelScan))
-		{
-			EnsureSmallPrimeFactorTables(accelerator, kernels, stream);			
 		}
 	}
 
@@ -245,38 +211,6 @@ public class GpuKernelPool
 		kernels.SmallPrimesLastSeven = deviceLastSeven;
 		kernels.SmallPrimesPow2LastOne = deviceLastOnePow2;
 		kernels.SmallPrimesPow2LastSeven = deviceLastSevenPow2;
-	}
-
-	public static SmallPrimeFactorViews GetSmallPrimeFactorTables(KernelContainer kernels) => new(
-		kernels.SmallPrimeFactorsPrimes!,
-		kernels.SmallPrimeFactorsSquares!
-	);
-
-	private static void EnsureSmallPrimeFactorTables(Accelerator accelerator, KernelContainer kernels, AcceleratorStream stream)
-	{
-		if (kernels.SmallPrimeFactorsPrimes is { } && kernels.SmallPrimeFactorsSquares is { })
-		{
-			return;
-		}
-
-		var hostPrimes = PrimesGenerator.SmallPrimes;
-		var hostSquares = PrimesGenerator.SmallPrimesPow2;
-
-		int length = hostPrimes.Length;
-		MemoryBuffer1D<uint, Stride1D.Dense>? devicePrimes;
-		MemoryBuffer1D<ulong, Stride1D.Dense>? deviceSquares;
-
-		// lock (accelerator)
-		{
-			devicePrimes = accelerator.Allocate1D<uint>(length);
-			deviceSquares = accelerator.Allocate1D<ulong>(length);
-		}
-
-		devicePrimes.View.CopyFromCPU(stream, hostPrimes);
-		deviceSquares.View.CopyFromCPU(stream, hostSquares);
-
-		kernels.SmallPrimeFactorsPrimes = devicePrimes;
-		kernels.SmallPrimeFactorsSquares = deviceSquares;
 	}
 
 	/// <summary>

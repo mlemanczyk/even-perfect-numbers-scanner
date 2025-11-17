@@ -10,7 +10,5 @@ public enum KernelType
 	OrderKernelScan,
 	IncrementalKernelScan,
 	IncrementalOrderKernelScan,
-	Pow2ModOrderKernelScan,
-	EvaluateSpecialMaxCandidatesKernel,
-	SmallPrimeFactorKernelScan
+	Pow2ModOrderKernelScan
 }

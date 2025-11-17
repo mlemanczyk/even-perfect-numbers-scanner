@@ -55,7 +55,7 @@ internal static partial class PrimeOrderCalculator
 		ulong phi = prime - 1UL;
 
 		PrimeOrderCalculatorAccelerator gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		if (IsGpuHeuristicDevice && PrimeOrderGpuHeuristics.TryCalculateOrder(prime, previousOrder, config, divisorData, out ulong gpuOrder))
+		if (IsGpuHeuristicDevice && PrimeOrderGpuHeuristics.TryCalculateOrder(gpu, prime, previousOrder, config, divisorData, out ulong gpuOrder))
 		{
 			PrimeOrderCalculatorAccelerator.Return(gpu);
 			return gpuOrder;
@@ -374,9 +374,7 @@ internal static partial class PrimeOrderCalculator
 				return false;
 			}
 
-			PartialFactorResult extended = factorization.WithAdditionalPrime(factorization.Cofactor);
-			factorization.Dispose();
-			factorization = extended;
+			factorization.WithAdditionalPrime(factorization.Cofactor);
 		}
 
 		if (!ValidateOrderAgainstFactors(prime, order, divisorData, factorization))
@@ -541,9 +539,7 @@ internal static partial class PrimeOrderCalculator
 					return false;
 				}
 
-				PartialFactorResult extended = orderFactors.WithAdditionalPrime(orderFactors.Cofactor);
-				orderFactors.Dispose();
-				orderFactors = extended;
+				orderFactors.WithAdditionalPrime(orderFactors.Cofactor);
 			}
 
 			int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks << 2;
@@ -907,9 +903,7 @@ internal static partial class PrimeOrderCalculator
 					return false;
 				}
 
-				PartialFactorResult extended = factorization.WithAdditionalPrime(factorization.Cofactor);
-				factorization.Dispose();
-				factorization = extended;
+				factorization.WithAdditionalPrime(factorization.Cofactor);
 			}
 
 			// ReadOnlySpan<FactorEntry> span = factorization.Factors;

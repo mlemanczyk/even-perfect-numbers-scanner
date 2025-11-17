@@ -502,8 +502,6 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 	public sealed class DivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
 	{
-		private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
-
 		private readonly MersenneNumberDivisorByDivisorGpuTester _owner;
 		private readonly PrimeOrderCalculatorAccelerator _primeTesterAccelerator;
 		private readonly Accelerator _accelerator;

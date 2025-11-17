@@ -67,36 +67,73 @@ namespace PerfectNumbers.Core
 			FullyFactored = true
 		};
 
-        public PartialFactorResult WithAdditionalPrime(ulong prime)
+        public void WithAdditionalPrime(ulong prime)
 		{			
-            ulong[]? source = Factors;
+            ulong[]? sourceFactors = Factors;
 			int sourceCount = Count;
-			int[] exponents;
-			if (source is null || sourceCount == 0)
+			if (sourceFactors is null || sourceCount == 0)
 			{
-				source = ThreadStaticPools.UlongPool.Rent(1);
-				exponents = ThreadStaticPools.IntPool.Rent(1);
-				// source = new ulong[1];
-				// exponents = new int[1];
-				source[0] = prime;
-				exponents[0] = 1;
+				InitializeWithPrime(prime);
+				return;
+			}
 
-				return Rent(source, exponents, 1UL, true, 1, false);
-            }
+			int newSize = sourceCount + 1;
+			int[] extendedExponents;
 
-            ulong[] extended = ThreadStaticPools.UlongPool.Rent(sourceCount + 1);
-            Array.Copy(source, 0, extended, 0, sourceCount);
-			extended[sourceCount] = prime;
+			ulong[] extendedFactors = sourceFactors.Length >= newSize
+				? sourceFactors
+				: ResizeFactors(sourceFactors, sourceCount, newSize);
 
-			exponents = ThreadStaticPools.IntPool.Rent(sourceCount + 1);
-            Array.Copy(Exponents!, 0, exponents, 0, sourceCount);
-			exponents[sourceCount] = 1;
-			Array.Sort(extended, exponents, 0, sourceCount + 1);
+			int[] sourceExponents = Exponents!;
+			extendedExponents = sourceExponents.Length >= newSize
+				? sourceExponents
+				: ResizeExponents(sourceCount, newSize, sourceExponents);
 
-			return Rent(extended, exponents, 1UL, true, sourceCount + 1, false);
+			extendedFactors[sourceCount] = prime;
+			extendedExponents[sourceCount] = 1;
+			Array.Sort(extendedFactors, extendedExponents, 0, newSize);
+
+			Factors = extendedFactors;
+			Exponents = extendedExponents;
+			Cofactor = 1UL;
+			FullyFactored = true;
+			Count = newSize;
+			CofactorIsPrime = false;
         }
 
-        public void Dispose()
+		private static int[] ResizeExponents(int sourceCount, int newSize, int[] sourceExponents)
+		{
+			int[] extendedExponents = ThreadStaticPools.IntPool.Rent(newSize);
+			Array.Copy(sourceExponents, 0, extendedExponents, 0, sourceCount);
+			ThreadStaticPools.IntPool.Return(sourceExponents, clearArray: false);
+			return extendedExponents;
+		}
+
+		private static ulong[] ResizeFactors(ulong[] sourceFactors, int sourceCount, int newSize)
+		{
+			ulong[] extendedFactors = ThreadStaticPools.UlongPool.Rent(newSize);
+			Array.Copy(sourceFactors, 0, extendedFactors, 0, sourceCount);
+			ThreadStaticPools.UlongPool.Return(sourceFactors, clearArray: false);
+			return extendedFactors;
+		}
+
+		private void InitializeWithPrime(ulong prime)
+		{
+			ulong[] source = ThreadStaticPools.UlongPool.Rent(1);
+			int[] exponents = ThreadStaticPools.IntPool.Rent(1);
+			// source = new ulong[1];
+			// exponents = new int[1];
+			source[0] = prime;
+			exponents[0] = 1;
+			Factors = source;
+			Exponents = exponents;
+			Cofactor = 1UL;
+			FullyFactored = true;
+			Count = 1;
+			CofactorIsPrime = false;
+		}
+
+		public void Dispose()
         {
             if (this != Empty)
             {

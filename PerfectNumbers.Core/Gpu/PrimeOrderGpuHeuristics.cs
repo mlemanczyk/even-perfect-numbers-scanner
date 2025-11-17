@@ -33,9 +33,6 @@ internal static partial class PrimeOrderGpuHeuristics
 	[ThreadStatic]
 	private static Kernel[]? _orderKernel;
 
-	[ThreadStatic]
-	private static SmallPrimeDeviceCache[]? _smallPrimeDeviceCache;
-
 	public readonly struct OrderKernelConfig(ulong previousOrder, byte hasPreviousOrder, uint smallFactorLimit, int maxPowChecks, int mode)
 	{
 		public readonly ulong PreviousOrder = previousOrder;
@@ -69,13 +66,6 @@ internal static partial class PrimeOrderGpuHeuristics
 		public readonly ArrayView1D<byte, Stride1D.Dense> Status = status;
 	}
 
-	private sealed class SmallPrimeDeviceCache
-	{
-		public MemoryBuffer1D<uint, Stride1D.Dense>? Primes;
-		public MemoryBuffer1D<ulong, Stride1D.Dense>? Squares;
-		public int Count;
-	}
-
 	private const int WideStackThreshold = 12;
 	private static PrimeOrderGpuCapability s_capability = PrimeOrderGpuCapability.Default;
 
@@ -98,36 +88,6 @@ internal static partial class PrimeOrderGpuHeuristics
 	internal static void ResetCapabilitiesForTesting()
 	{
 		s_capability = PrimeOrderGpuCapability.Default;
-	}
-
-	private static SmallPrimeDeviceCache GetSmallPrimeDeviceCache(int acceleratorIndex, AcceleratorStream stream)
-	{
-		var pool = _smallPrimeDeviceCache ??= [];
-		if (pool[acceleratorIndex] is {} cached)
-		{
-			return cached;
-		}
-
-		uint[] primes = PrimesGenerator.SmallPrimes;
-		ulong[] squares = PrimesGenerator.SmallPrimesPow2;
-		MemoryBuffer1D<uint, Stride1D.Dense>? primeBuffer;
-		MemoryBuffer1D<ulong, Stride1D.Dense>? squareBuffer;
-
-		var accelerator = _accelerators[acceleratorIndex];
-		primeBuffer = accelerator.Allocate1D<uint>(primes.Length);
-		squareBuffer = accelerator.Allocate1D<ulong>(squares.Length);
-
-		primeBuffer.View.CopyFromCPU(stream, primes);
-		squareBuffer.View.CopyFromCPU(stream, squares);
-		cached = new SmallPrimeDeviceCache
-		{
-			Primes = primeBuffer,
-			Squares = squareBuffer,
-			Count = primes.Length,
-		};
-
-		pool[acceleratorIndex] = cached;
-		return cached;
 	}
 
 	private static Kernel GetPartialFactorKernel(int acceleratorIndex)
@@ -212,7 +172,7 @@ internal static partial class PrimeOrderGpuHeuristics
 			Accelerator accelerator = _accelerators[acceleratorIndex];
 			AcceleratorStream stream = accelerator.CreateStream();
 
-			SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(acceleratorIndex, stream);
+			SmallPrimeFactorGpuTables cache = gpu.SmallPrimeFactorTables;
 
 			// TODO: We should create / reallocate these buffer only once or if the new required length is bigger than capacity.
 			MemoryBuffer1D<ulong, Stride1D.Dense>? factorBuffer = accelerator.Allocate1D<ulong>(primeTargets.Length);
@@ -363,6 +323,7 @@ internal static partial class PrimeOrderGpuHeuristics
 	}
 
 	internal static bool TryCalculateOrder(
+		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong? previousOrder,
 		PrimeOrderCalculator.PrimeOrderSearchConfig config,
@@ -375,7 +336,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		int acceleratorIndex = AcceleratorPool.Shared.Rent();
 		Accelerator accelerator = _accelerators[acceleratorIndex];
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		SmallPrimeDeviceCache cache = GetSmallPrimeDeviceCache(acceleratorIndex, stream);
+		SmallPrimeFactorGpuTables cache = gpu.SmallPrimeFactorTables;
 
 		// TODO: These buffers should be created reallocated once and assigned to an accelerator. Callers should use their own
 		// thread static cache to prevent other threads from using taking accelerators with pre-allocated buffers if they don't
