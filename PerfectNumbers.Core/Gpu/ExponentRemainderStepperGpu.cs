@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using PerfectNumbers.Core;
 
 namespace PerfectNumbers.Core.Gpu;
 

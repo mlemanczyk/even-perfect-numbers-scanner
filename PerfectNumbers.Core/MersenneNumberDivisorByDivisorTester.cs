@@ -1,10 +1,7 @@
 using System.Buffers;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using PerfectNumbers.Core.Gpu.Accelerators;
-using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;
 

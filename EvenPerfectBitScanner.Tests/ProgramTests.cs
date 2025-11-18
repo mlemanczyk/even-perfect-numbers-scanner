@@ -3,13 +3,9 @@ using Xunit;
 using System.Reflection;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
-
-using EvenPerfectBitScanner;
 using EvenPerfectBitScanner.Candidates;
 using EvenPerfectBitScanner.Candidates.Transforms;
 using System.Numerics;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace EvenPerfectBitScanner.Tests;
 

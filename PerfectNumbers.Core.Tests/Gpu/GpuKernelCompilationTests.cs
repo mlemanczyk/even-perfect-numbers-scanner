@@ -1,5 +1,4 @@
 using System.Reflection;
-using FluentAssertions;
 using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;

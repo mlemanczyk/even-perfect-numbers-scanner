@@ -1,5 +1,3 @@
-using System;
-
 namespace EvenPerfectBitScanner.Benchmarks;
 
 public enum ModNumericType

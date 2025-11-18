@@ -1,6 +1,5 @@
 using System.Reflection;
 using FluentAssertions;
-using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 using Xunit;
 using UInt128 = System.UInt128;

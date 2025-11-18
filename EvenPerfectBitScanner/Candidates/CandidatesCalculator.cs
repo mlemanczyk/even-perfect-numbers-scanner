@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Threading;
 using Open.Numeric.Primes;
 using PerfectNumbers.Core;
 using EvenPerfectBitScanner.Candidates.Transforms;

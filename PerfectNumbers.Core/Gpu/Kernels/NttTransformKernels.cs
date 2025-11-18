@@ -1,5 +1,4 @@
 using ILGPU;
-using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
 

@@ -1,4 +1,3 @@
-using System;
 using PerfectNumbers.Core;
 
 namespace EvenPerfectBitScanner.Benchmarks;

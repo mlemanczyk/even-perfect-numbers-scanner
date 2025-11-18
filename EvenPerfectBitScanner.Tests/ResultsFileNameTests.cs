@@ -1,6 +1,3 @@
-using System.Collections.Generic;
-using System.IO;
-using System.Numerics;
 using FluentAssertions;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;

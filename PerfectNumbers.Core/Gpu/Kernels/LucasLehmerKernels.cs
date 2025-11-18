@@ -1,7 +1,5 @@
-using System;
 using System.Runtime.CompilerServices;
 using ILGPU;
-using ILGPU.Runtime;
 using UInt128 = System.UInt128;
 
 namespace PerfectNumbers.Core.Gpu;

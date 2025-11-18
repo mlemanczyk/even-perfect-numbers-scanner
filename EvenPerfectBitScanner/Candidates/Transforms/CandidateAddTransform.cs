@@ -1,6 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Threading;
-using EvenPerfectBitScanner.Candidates;
 
 namespace EvenPerfectBitScanner.Candidates.Transforms;
 

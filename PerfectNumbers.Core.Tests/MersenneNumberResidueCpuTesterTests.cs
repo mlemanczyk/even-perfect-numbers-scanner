@@ -1,5 +1,4 @@
 using FluentAssertions;
-using PerfectNumbers.Core;
 using PerfectNumbers.Core.Cpu;
 using Xunit;
 using UInt128 = System.UInt128;

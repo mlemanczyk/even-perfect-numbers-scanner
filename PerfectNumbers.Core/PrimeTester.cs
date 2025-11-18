@@ -1,9 +1,7 @@
-using System.Buffers;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
-using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
@@ -110,14 +108,14 @@ public sealed class PrimeTester
 						stream,
 						1,
 						inputView,
-						gpu.DevicePrimesLastOne.View,
-						gpu.DevicePrimesLastSeven.View,
-						gpu.DevicePrimesLastThree.View,
-						gpu.DevicePrimesLastNine.View,
-						gpu.DevicePrimesPow2LastOne.View,
-						gpu.DevicePrimesPow2LastSeven.View,
-						gpu.DevicePrimesPow2LastThree.View,
-						gpu.DevicePrimesPow2LastNine.View,
+						gpu.DevicePrimesLastOne,
+						gpu.DevicePrimesLastSeven,
+						gpu.DevicePrimesLastThree,
+						gpu.DevicePrimesLastNine,
+						gpu.DevicePrimesPow2LastOne,
+						gpu.DevicePrimesPow2LastSeven,
+						gpu.DevicePrimesPow2LastThree,
+						gpu.DevicePrimesPow2LastNine,
 						outputView);
 
 		outputView.CopyToCPU(stream, ref flag, 1);
@@ -150,14 +148,14 @@ public sealed class PrimeTester
 						stream,
 						1,
 						inputView,
-						gpu.DevicePrimesLastOne.View,
-						gpu.DevicePrimesLastSeven.View,
-						gpu.DevicePrimesLastThree.View,
-						gpu.DevicePrimesLastNine.View,
-						gpu.DevicePrimesPow2LastOne.View,
-						gpu.DevicePrimesPow2LastSeven.View,
-						gpu.DevicePrimesPow2LastThree.View,
-						gpu.DevicePrimesPow2LastNine.View,
+						gpu.DevicePrimesLastOne,
+						gpu.DevicePrimesLastSeven,
+						gpu.DevicePrimesLastThree,
+						gpu.DevicePrimesLastNine,
+						gpu.DevicePrimesPow2LastOne,
+						gpu.DevicePrimesPow2LastSeven,
+						gpu.DevicePrimesPow2LastThree,
+						gpu.DevicePrimesPow2LastNine,
 						outputView);
 
 		outputView.CopyToCPU(stream, ref flag, 1);
@@ -198,7 +196,6 @@ public sealed class PrimeTester
 		// GpuPrimeWorkLimiter.Acquire();
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(GpuBatchSize);
 		int acceleratorIndex = gpu.AcceleratorIndex;
-		var accelerator = gpu.Accelerator;
 		var kernel = gpu.SmallPrimeSieveKernel!;
 		int totalLength = values.Length;
 		int batchSize = GpuBatchSize;
@@ -222,14 +219,14 @@ public sealed class PrimeTester
 					stream,
 					count,
 					inputView,
-					gpu.DevicePrimesLastOne.View,
-					gpu.DevicePrimesLastSeven.View,
-					gpu.DevicePrimesLastThree.View,
-					gpu.DevicePrimesLastNine.View,
-					gpu.DevicePrimesPow2LastOne.View,
-					gpu.DevicePrimesPow2LastSeven.View,
-					gpu.DevicePrimesPow2LastThree.View,
-					gpu.DevicePrimesPow2LastNine.View,
+					gpu.DevicePrimesLastOne,
+					gpu.DevicePrimesLastSeven,
+					gpu.DevicePrimesLastThree,
+					gpu.DevicePrimesLastNine,
+					gpu.DevicePrimesPow2LastOne,
+					gpu.DevicePrimesPow2LastSeven,
+					gpu.DevicePrimesPow2LastThree,
+					gpu.DevicePrimesPow2LastNine,
 					outputView);
 
 			var resultSlice = results.Slice(pos, count);

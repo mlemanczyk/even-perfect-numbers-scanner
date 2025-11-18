@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -7,7 +6,6 @@ using System.Text;
 using System.Runtime.InteropServices;
 using PerfectNumbers.Core.Gpu;
 using ILGPU;
-using ILGPU.Algorithms;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu.Accelerators;
 

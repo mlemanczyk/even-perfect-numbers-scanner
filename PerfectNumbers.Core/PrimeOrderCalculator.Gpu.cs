@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;

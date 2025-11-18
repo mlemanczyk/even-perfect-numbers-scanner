@@ -1,4 +1,3 @@
-using System;
 using System.Buffers.Binary;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;

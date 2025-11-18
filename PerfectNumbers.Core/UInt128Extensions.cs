@@ -1,6 +1,5 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core;

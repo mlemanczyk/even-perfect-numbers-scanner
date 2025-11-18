@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Numerics;
 using UInt128 = System.UInt128;
-using ILGPU;
 using System.Buffers;
 using PerfectNumbers.Core.Cpu;
 

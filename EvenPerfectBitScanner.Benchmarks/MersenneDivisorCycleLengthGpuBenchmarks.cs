@@ -1,6 +1,5 @@
 using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
-using PerfectNumbers.Core;
 using BenchmarkDotNet.Jobs;
 
 namespace EvenPerfectBitScanner.Benchmarks;

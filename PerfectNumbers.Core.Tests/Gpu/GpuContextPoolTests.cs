@@ -1,7 +1,3 @@
-using FluentAssertions;
-using ILGPU;
-using ILGPU.Runtime;
-using PerfectNumbers.Core.Gpu;
 using Xunit;
 
 namespace PerfectNumbers.Core.Tests.Gpu;

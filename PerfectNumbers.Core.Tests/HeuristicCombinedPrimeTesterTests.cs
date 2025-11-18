@@ -1,7 +1,3 @@
-using System;
-using System.Numerics;
-using System.Collections.Generic;
-using PerfectNumbers.Core;
 using FluentAssertions;
 using Xunit;
 

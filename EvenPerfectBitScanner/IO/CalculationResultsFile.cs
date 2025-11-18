@@ -1,7 +1,6 @@
 using Open.Collections;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
-using EvenPerfectBitScanner;
 
 namespace EvenPerfectBitScanner.IO;
 

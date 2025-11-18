@@ -1,5 +1,3 @@
-using PerfectNumbers.Core.Gpu;
-
 namespace PerfectNumbers.Core;
 
 public static class PerfectNumberConstants
