@@ -83,7 +83,7 @@ internal static class PrimeTesterKernels
         ArrayView<int> resultFlag,
         ulong n,
         ulong maxDivisorSquare,
-        HeuristicGpuCombinedDivisorTables tables)
+        HeuristicCombinedGpuViews tables)
     {
         // byte nMod10 = (byte)(n % 10UL);
         ArrayView1D<ulong, Stride1D.Dense> divisors = tables.SelectDivisors(nMod10);
@@ -116,7 +116,7 @@ internal static class PrimeTesterKernels
         ulong n,
         ulong maxDivisorSquare,
         HeuristicGpuDivisorTableKind tableKind,
-        HeuristicGpuGroupABDivisorTables tables)
+        HeuristicGroupABGpuViews tables)
     {
         ArrayView1D<ulong, Stride1D.Dense> divisors = tables.SelectDivisors(tableKind);
         ArrayView1D<ulong, Stride1D.Dense> divisorSquares = tables.SelectDivisorSquares(tableKind);

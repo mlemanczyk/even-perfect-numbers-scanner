@@ -261,7 +261,7 @@ public sealed class HeuristicPrimeTester
         // HeuristicGpuDivisorTableKind tableKind,
         // HeuristicGpuDivisorTables tables)
 
-		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuCombinedDivisorTables>>();
+		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicCombinedGpuViews>>();
 		kernelLauncher(
 				stream,
 				1,

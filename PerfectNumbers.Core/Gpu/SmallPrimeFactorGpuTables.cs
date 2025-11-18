@@ -3,8 +3,8 @@ using ILGPU;
 using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu;
-
 public readonly struct SmallPrimeFactorGpuTables
+
 {
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
 	private static readonly SmallPrimeFactorGpuTables[] _sharedTables = new SmallPrimeFactorGpuTables[PerfectNumberConstants.RollingAccelerators];

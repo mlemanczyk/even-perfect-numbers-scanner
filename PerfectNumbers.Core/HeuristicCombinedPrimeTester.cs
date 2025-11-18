@@ -246,7 +246,7 @@ public sealed class HeuristicCombinedPrimeTester
 		int compositeFlag = 0;
 		flagView1D.CopyFromCPU(stream, ref compositeFlag, 1);
 
-		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicGpuCombinedDivisorTables>>();		
+		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicCombinedGpuViews>>();		
 		kernelLauncher(
 				stream,
 				1,

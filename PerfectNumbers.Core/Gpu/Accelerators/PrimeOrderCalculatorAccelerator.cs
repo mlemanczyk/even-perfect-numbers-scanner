@@ -69,7 +69,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 			AcceleratorStream stream = accelerator.CreateStream();
 			// TODO: Review which tables are needed when final execution path is defined.
 			LastDigitGpuTables.WarmUp(i, stream);
-			HeuristicGpuCombinedTables.WarmUp(i, stream);
+			HeuristicCombinedGpuTables.WarmUp(i, stream);
 			// SmallPrimeFactorGpuTables.WarmUp(i, stream);
 			// SharedHeuristicGpuTables.EnsureStaticTables(accelerator, stream);
 			// _ = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.None);
@@ -111,8 +111,9 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public readonly MemoryBuffer1D<int, Stride1D.Dense> SmallPrimeFactorCountSlot;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> SpecialMaxResult;
 
-	public readonly HeuristicGpuCombinedDivisorTables DivisorTables;
-	public readonly SmallPrimeFactorGpuTables SmallPrimeFactorTables;
+	public readonly HeuristicCombinedGpuViews DivisorTables;
+	public readonly MemoryBuffer1D<uint, Stride1D.Dense> SmallPrimeFactorPrimes;
+	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> SmallPrimeFactorSquares;
 
 	public readonly Kernel CheckFactorsKernel;
 	public readonly Kernel ConvertToStandardKernel;
@@ -217,9 +218,13 @@ public sealed class PrimeOrderCalculatorAccelerator
 		DevicePrimesPow2LastThree = lastDigitSharedTables.DevicePrimesPow2LastThree;
 		DevicePrimesPow2LastNine = lastDigitSharedTables.DevicePrimesPow2LastNine;
 
-		var heuristicSharedTables = HeuristicGpuCombinedTables.GetStaticTables(acceleratorIndex);
-		DivisorTables = heuristicSharedTables.CreateHeuristicDivisorTables();
-		SmallPrimeFactorTables = SmallPrimeFactorGpuTables.GetStaticTables(acceleratorIndex);
+		var heuristicSharedTables = HeuristicCombinedGpuTables.GetStaticTables(acceleratorIndex);
+
+		DivisorTables = heuristicSharedTables.CreateViews();
+
+		var smallPrimeFactorTables = SmallPrimeFactorGpuTables.GetStaticTables(acceleratorIndex);
+		SmallPrimeFactorPrimes = smallPrimeFactorTables.Primes;
+		SmallPrimeFactorSquares = smallPrimeFactorTables.Squares;
 
 		var checkFactorsKernel = accelerator.LoadStreamKernel<int, ulong, ArrayView1D<KeyValuePair<ulong, int>, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderGpuHeuristics.CheckFactorsKernel);
 		CheckFactorsKernel = KernelUtil.GetKernel(checkFactorsKernel);
@@ -227,7 +232,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		var convertKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelConvertToStandard);
 		ConvertToStandardKernel = KernelUtil.GetKernel(convertKernel);
 
-		HeuristicCombinedTrialDivisionKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicGpuCombinedDivisorTables>(PrimeTesterKernels.HeuristicTrialCombinedDivisionKernel));
+		HeuristicCombinedTrialDivisionKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicCombinedGpuViews>(PrimeTesterKernels.HeuristicTrialCombinedDivisionKernel));
 
 		var keepKernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelKeepMontgomery);
 		KeepMontgomeryKernel = KernelUtil.GetKernel(keepKernel);

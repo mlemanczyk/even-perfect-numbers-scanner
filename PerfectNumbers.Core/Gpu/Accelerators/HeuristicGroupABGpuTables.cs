@@ -3,15 +3,15 @@ using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu.Accelerators;
 
-internal sealed class HeuristicGpuGroupABTables
+internal sealed class HeuristicGroupABGpuTables
 {
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
 
-	private static readonly HeuristicGpuGroupABTables[] _sharedTables = new HeuristicGpuGroupABTables[PerfectNumberConstants.RollingAccelerators];
+	private static readonly HeuristicGroupABGpuTables[] _sharedTables = new HeuristicGroupABGpuTables[PerfectNumberConstants.RollingAccelerators];
 
 	private static readonly SemaphoreSlim[] _locks = [..Enumerable.Range(1, PerfectNumberConstants.RollingAccelerators).Select(_ => new SemaphoreSlim(1))];
 
-	internal static HeuristicGpuGroupABTables EnsureStaticTables(int acceleratorIndex, AcceleratorStream stream)
+	internal static HeuristicGroupABGpuTables EnsureStaticTables(int acceleratorIndex, AcceleratorStream stream)
 	{
 		var @lock = _locks[acceleratorIndex];
 		@lock.Wait();
@@ -28,7 +28,7 @@ internal sealed class HeuristicGpuGroupABTables
 		return existing;
 	}
 
-	internal HeuristicGpuGroupABTables(Accelerator accelerator, AcceleratorStream stream)
+	internal HeuristicGroupABGpuTables(Accelerator accelerator, AcceleratorStream stream)
 	{
 		var heuristicGroupA = HeuristicPrimeSieves.GroupADivisorsStorage;
 		HeuristicGroupADivisors = accelerator.CopySpanToDevice(stream, heuristicGroupA);
@@ -55,7 +55,7 @@ internal sealed class HeuristicGpuGroupABTables
 	internal readonly MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorsEnding9;
 	internal readonly MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorSquaresEnding9;
 
-	internal HeuristicGpuGroupABDivisorTables CreateHeuristicDivisorTables() => new(
+	internal HeuristicGroupABGpuViews CreateViews() => new(
 			HeuristicGroupADivisors.View,
 			HeuristicGroupADivisorSquares.View,
 			HeuristicGroupBDivisorsEnding1.View,

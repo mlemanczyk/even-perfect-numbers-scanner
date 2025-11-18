@@ -19,7 +19,7 @@ internal sealed class HeuristicGroupABPrimeTesterAccelerator
 			Console.WriteLine($"Preparing heuristic accelerator {i}...");
 			var accelerator = accelerators[i];
 			AcceleratorStream stream = accelerator.CreateStream();
-			_ = HeuristicGpuGroupABTables.EnsureStaticTables(i, stream);
+			_ = HeuristicGroupABGpuTables.EnsureStaticTables(i, stream);
 			// _ = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.None);
 			// KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
 			// GpuStaticTableInitializer.EnsureStaticTables(accelerator, kernels, stream);
@@ -75,7 +75,7 @@ internal sealed class HeuristicGroupABPrimeTesterAccelerator
 
 	#endregion
 
-	public readonly HeuristicGpuGroupABDivisorTables DivisorTables;
+	public readonly HeuristicGroupABGpuViews DivisorTables;
 	internal readonly Context Context;
 	public readonly Accelerator Accelerator;
 
@@ -102,7 +102,7 @@ internal sealed class HeuristicGroupABPrimeTesterAccelerator
 	public MemoryBuffer1D<int, Stride1D.Dense>? HeuristicFlag = null!;
 	public int BufferCapacity;
 
-	private HeuristicGpuGroupABTables _sharedTables;
+	private HeuristicGroupABGpuTables _sharedTables;
 	public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupADivisors => _sharedTables.HeuristicGroupADivisors;
 	public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupADivisorSquares => _sharedTables.HeuristicGroupADivisorSquares;
 	public MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicGroupBDivisorsEnding1 => _sharedTables.HeuristicGroupBDivisorsEnding1;
@@ -125,14 +125,14 @@ internal sealed class HeuristicGroupABPrimeTesterAccelerator
 		Accelerator = accelerator;
 		EnsureCapacity(minBufferCapacity);
 
-		HeuristicTrialDivisionKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGpuGroupABDivisorTables>(PrimeTesterKernels.HeuristicTrialGroupABDivisionKernel));
+		HeuristicTrialDivisionKernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicGroupABGpuViews>(PrimeTesterKernels.HeuristicTrialGroupABDivisionKernel));
 
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		
 		// GpuStaticTableInitializer.EnsureStaticTables(accelerator, kernels, stream);
 
-		_sharedTables = HeuristicGpuGroupABTables.EnsureStaticTables(acceleratorIndex, stream);
-		DivisorTables = _sharedTables.CreateHeuristicDivisorTables();
+		_sharedTables = HeuristicGroupABGpuTables.EnsureStaticTables(acceleratorIndex, stream);
+		DivisorTables = _sharedTables.CreateViews();
 
 		stream.Synchronize();
 		AcceleratorStreamPool.Return(acceleratorIndex, stream); 

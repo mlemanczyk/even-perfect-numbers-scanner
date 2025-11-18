@@ -3,17 +3,17 @@ using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu.Accelerators;
 
-internal sealed class HeuristicGpuCombinedTables
+internal readonly struct HeuristicCombinedGpuTables
 {
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
 
-	private static readonly HeuristicGpuCombinedTables[] _sharedTables = new HeuristicGpuCombinedTables[PerfectNumberConstants.RollingAccelerators];
+	private static readonly HeuristicCombinedGpuTables[] _sharedTables = new HeuristicCombinedGpuTables[PerfectNumberConstants.RollingAccelerators];
 
 	internal static void WarmUp(int acceleratorIndex, AcceleratorStream stream) => _sharedTables[acceleratorIndex] = new(_accelerators[acceleratorIndex], stream);
 
-	internal static HeuristicGpuCombinedTables GetStaticTables(int acceleratorIndex) => _sharedTables[acceleratorIndex];
+	internal static HeuristicCombinedGpuTables GetStaticTables(int acceleratorIndex) => _sharedTables[acceleratorIndex];
 
-	internal HeuristicGpuCombinedTables(Accelerator accelerator, AcceleratorStream stream)
+	internal HeuristicCombinedGpuTables(Accelerator accelerator, AcceleratorStream stream)
 	{
 		var combinedEnding1 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding1;
 		HeuristicCombinedDivisorsEnding1 = accelerator.CopySpanToDevice(stream, combinedEnding1);
@@ -45,7 +45,7 @@ internal sealed class HeuristicGpuCombinedTables
 	internal readonly MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorsEnding9;
 	internal readonly MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding9;
 
-	internal HeuristicGpuCombinedDivisorTables CreateHeuristicDivisorTables() => new(
+	internal HeuristicCombinedGpuViews CreateViews() => new(
 			HeuristicCombinedDivisorsEnding1.View,
 			HeuristicCombinedDivisorsEnding3.View,
 			HeuristicCombinedDivisorsEnding7.View,
