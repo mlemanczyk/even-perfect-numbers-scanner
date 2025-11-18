@@ -7,10 +7,10 @@ public readonly struct SmallPrimeFactorGpuTables
 
 {
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
-	private static readonly SmallPrimeFactorGpuTables[] _sharedTables = new SmallPrimeFactorGpuTables[PerfectNumberConstants.RollingAccelerators];
+	private static readonly SmallPrimeFactorGpuTables?[] _sharedTables = new SmallPrimeFactorGpuTables?[PerfectNumberConstants.RollingAccelerators];
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static SmallPrimeFactorGpuTables GetStaticTables(int acceleratorIndex) => _sharedTables[acceleratorIndex];
+	internal static SmallPrimeFactorGpuTables? GetStaticTables(int acceleratorIndex) => _sharedTables[acceleratorIndex];
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static void WarmUp(int acceleratorIndex, AcceleratorStream stream) => _sharedTables[acceleratorIndex] = new SmallPrimeFactorGpuTables(_accelerators[acceleratorIndex], stream);

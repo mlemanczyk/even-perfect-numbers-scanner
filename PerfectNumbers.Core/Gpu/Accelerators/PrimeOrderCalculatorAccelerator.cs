@@ -129,7 +129,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public void EnsureCapacity(int factorsCount, int primeTesterCapacity)
 	{
 		Accelerator accelerator = Accelerator;
-		
+
 		MemoryBuffer1D<KeyValuePair<ulong, int>, Stride1D.Dense> pow2ModEntriesToTestOnDevice = Pow2ModEntriesToTestOnDevice;
 		if (pow2ModEntriesToTestOnDevice.Length < factorsCount)
 		{
@@ -225,8 +225,13 @@ public sealed class PrimeOrderCalculatorAccelerator
 			.CreateViews();
 
 		var smallPrimeFactorTables = SmallPrimeFactorGpuTables.GetStaticTables(acceleratorIndex);
-		SmallPrimeFactorPrimes = smallPrimeFactorTables.Primes.View;
-		SmallPrimeFactorSquares = smallPrimeFactorTables.Squares.View;
+
+		if (smallPrimeFactorTables.HasValue)
+		{
+			SmallPrimeFactorGpuTables tables = smallPrimeFactorTables.Value;
+			SmallPrimeFactorPrimes = tables.Primes.View;
+			SmallPrimeFactorSquares = tables.Squares.View;			
+		}
 
 		CheckFactorsKernel = KernelUtil.GetKernel(accelerator.LoadStreamKernel<int, ulong, ArrayView1D<KeyValuePair<ulong, int>, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderGpuHeuristics.CheckFactorsKernel));
 
