@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
 
-namespace PerfectNumbers.Core.Gpu;
+namespace PerfectNumbers.Core.Gpu.Accelerators;
 
 public readonly struct HeuristicGroupABGpuViews(
 		ArrayView1D<ulong, Stride1D.Dense> groupADivisors,

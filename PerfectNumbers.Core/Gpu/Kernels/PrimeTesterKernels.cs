@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Algorithms;
 using ILGPU.Runtime;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core.Gpu;
 

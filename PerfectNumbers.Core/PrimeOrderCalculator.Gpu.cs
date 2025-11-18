@@ -77,8 +77,8 @@ internal static partial class PrimeOrderCalculator
 		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorRemainingSlotView = gpu.Input.View;
 		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorPrimeSlotsView = gpu.OutputUlong.View;
 		ArrayView1D<int, Stride1D.Dense> smallPrimeFactorExponentSlotsView = gpu.OutputInt.View;
-		ArrayView1D<uint, Stride1D.Dense> smallPrimeFactorsPrimesView = gpu.SmallPrimeFactorTables.Primes.View;
-		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorsSquaresView = gpu.SmallPrimeFactorTables.Squares.View;
+		ArrayView1D<uint, Stride1D.Dense> smallPrimeFactorsPrimesView = gpu.SmallPrimeFactorPrimes;
+		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorsSquaresView = gpu.SmallPrimeFactorSquares;
 
 		kernelLauncher(
 				stream,

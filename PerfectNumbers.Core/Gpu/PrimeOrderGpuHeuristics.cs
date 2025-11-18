@@ -172,7 +172,8 @@ internal static partial class PrimeOrderGpuHeuristics
 			Accelerator accelerator = _accelerators[acceleratorIndex];
 			AcceleratorStream stream = accelerator.CreateStream();
 
-			SmallPrimeFactorGpuTables cache = gpu.SmallPrimeFactorTables;
+			var smallPrimesView = gpu.SmallPrimeFactorPrimes;
+			var smallSquaresView = gpu.SmallPrimeFactorSquares;
 
 			// TODO: We should create / reallocate these buffer only once or if the new required length is bigger than capacity.
 			MemoryBuffer1D<ulong, Stride1D.Dense>? factorBuffer = accelerator.Allocate1D<ulong>(primeTargets.Length);
@@ -194,9 +195,9 @@ internal static partial class PrimeOrderGpuHeuristics
 				stream,
 				1,
 				1,
-				cache.Primes!.View,
-				cache.Squares!.View,
-				cache.Count,
+				smallPrimesView,
+				smallSquaresView,
+				smallPrimesView.Length,
 				primeTargets.Length,
 				value,
 				limit,
@@ -336,7 +337,8 @@ internal static partial class PrimeOrderGpuHeuristics
 		int acceleratorIndex = AcceleratorPool.Shared.Rent();
 		Accelerator accelerator = _accelerators[acceleratorIndex];
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		SmallPrimeFactorGpuTables cache = gpu.SmallPrimeFactorTables;
+		var smallPrimesView = gpu.SmallPrimeFactorPrimes;
+		var smallSquaresView = gpu.SmallPrimeFactorSquares;
 
 		// TODO: These buffers should be created reallocated once and assigned to an accelerator. Callers should use their own
 		// thread static cache to prevent other threads from using taking accelerators with pre-allocated buffers if they don't
@@ -403,9 +405,9 @@ internal static partial class PrimeOrderGpuHeuristics
 			prime,
 			kernelConfig,
 			divisorData,
-			cache.Primes!.View,
-			cache.Squares!.View,
-			cache.Count,
+			smallPrimesView,
+			smallSquaresView,
+			smallPrimesView.Length,
 			buffers);
 
 
