@@ -4,13 +4,13 @@ using ILGPU.Runtime;
 
 namespace PerfectNumbers.Core.Gpu.Accelerators;
 
-internal sealed class LastDigitGpuTables
+internal readonly struct LastDigitGpuTables
 {
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
 	private static readonly LastDigitGpuTables[] _sharedTables = new LastDigitGpuTables[PerfectNumberConstants.RollingAccelerators];
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static LastDigitGpuTables EnsureStaticTables(int acceleratorIndex) => _sharedTables[acceleratorIndex];
+	internal static LastDigitGpuTables GetStaticTables(int acceleratorIndex) => _sharedTables[acceleratorIndex];
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static void WarmUp(int acceleratorIndex, AcceleratorStream stream) => _sharedTables[acceleratorIndex] = new LastDigitGpuTables(_accelerators[acceleratorIndex], stream);

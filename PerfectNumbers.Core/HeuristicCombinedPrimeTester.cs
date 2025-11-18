@@ -238,7 +238,7 @@ public sealed class HeuristicCombinedPrimeTester
 		var acceleratorIndex = gpu.AcceleratorIndex;
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		var kernel = gpu.HeuristicCombinedTrialDivisionKernel;
-		var flagView1D = gpu.HeuristicFlag!.View;
+		var flagView1D = gpu.OutputInt!.View;
 
 		bool compositeDetected = false;
 		int divisorLength = GetCombinedDivisors(nMod10).Length;

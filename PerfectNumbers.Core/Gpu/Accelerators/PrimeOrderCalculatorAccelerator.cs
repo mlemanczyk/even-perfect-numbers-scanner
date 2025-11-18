@@ -88,13 +88,15 @@ public sealed class PrimeOrderCalculatorAccelerator
 
 	public readonly Accelerator Accelerator;
 	public readonly int AcceleratorIndex;
-	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> Input;
-	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> OutputUlong;
-	public MemoryBuffer1D<ulong, Stride1D.Dense> PrimeTestInput;
+	public MemoryBuffer1D<ulong, Stride1D.Dense> Input;
+	public MemoryBuffer1D<ulong, Stride1D.Dense> OutputUlong;
 	public MemoryBuffer1D<byte, Stride1D.Dense> OutputByte;
-	public MemoryBuffer1D<int, Stride1D.Dense> HeuristicFlag;
+	public MemoryBuffer1D<int, Stride1D.Dense> OutputInt;
 	public MemoryBuffer1D<KeyValuePair<ulong, int>, Stride1D.Dense> Pow2ModEntriesToTestOnDevice;
 	public Dictionary<ulong, int> Pow2ModEntriesToTestOnHost = [];
+
+	#region Static Tables
+
 	public readonly MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastOne;
 	public readonly MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastSeven;
 	public readonly MemoryBuffer1D<uint, Stride1D.Dense> DevicePrimesLastThree;
@@ -103,29 +105,25 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastSeven;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastThree;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> DevicePrimesPow2LastNine;
+
+	#endregion
+
 	public readonly MemoryBuffer1D<int, Stride1D.Dense> SmallPrimeFactorCountSlot;
-	public MemoryBuffer1D<int, Stride1D.Dense> SmallPrimeFactorExponentSlots;
-	public MemoryBuffer1D<ulong, Stride1D.Dense> SmallPrimeFactorPrimeSlots;
-	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> SmallPrimeFactorRemainingSlot;
-	public MemoryBuffer1D<ulong, Stride1D.Dense> SpecialMaxCandidates;
-	public MemoryBuffer1D<ulong, Stride1D.Dense> SpecialMaxFactors;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> SpecialMaxResult;
 
 	public readonly HeuristicGpuCombinedDivisorTables DivisorTables;
 	public readonly SmallPrimeFactorGpuTables SmallPrimeFactorTables;
 
-	public readonly Kernel SmallPrimeSieveKernel;
 	public readonly Kernel CheckFactorsKernel;
 	public readonly Kernel ConvertToStandardKernel;
 	public readonly Kernel HeuristicCombinedTrialDivisionKernel;
 	public readonly Kernel KeepMontgomeryKernel;
 	public readonly Kernel PollardRhoKernel;
 	public readonly Kernel Pow2ModWideKernel;
+	public readonly Kernel SharesFactorKernel;
 	public readonly Kernel SmallPrimeFactorKernel;
+	public readonly Kernel SmallPrimeSieveKernel;
 	public readonly Kernel SpecialMaxKernel;
-
-	public Kernel SharesFactorKernel;
-
 
 	public void EnsureCapacity(int factorsCount, int primeTesterCapacity)
 	{
@@ -136,42 +134,61 @@ public sealed class PrimeOrderCalculatorAccelerator
 			Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
 		}
 
-		if (primeTesterCapacity > PrimeTestInput.Length)
+		if (primeTesterCapacity > Input.Length)
 		{
-			PrimeTestInput.Dispose();
-			OutputByte.Dispose();
-			HeuristicFlag.Dispose();
+			Input.Dispose();
+			Input = Accelerator.Allocate1D<ulong>(primeTesterCapacity);			
+		}
 
-			PrimeTestInput = Accelerator.Allocate1D<ulong>(primeTesterCapacity);
+		if (primeTesterCapacity > OutputByte.Length)
+		{
+			OutputByte.Dispose();
 			OutputByte = Accelerator.Allocate1D<byte>(primeTesterCapacity);
-			HeuristicFlag = Accelerator.Allocate1D<int>(primeTesterCapacity);
+		}
+
+		if (primeTesterCapacity > OutputInt.Length)
+		{
+			OutputInt.Dispose();
+			OutputInt = Accelerator.Allocate1D<int>(primeTesterCapacity);
 		}
 	}
 
 	public void EnsureSmallPrimeFactorSlotsCapacity(int newSize)
 	{
 		// Console.WriteLine($"Resizing GPU scratch buffer from pool ({buffer.SmallPrimeFactorPrimeSlots.Length} / {smallPrimeFactorSlotCount}), ({buffer.SpecialMaxFactors.Length}/{specialMaxFactorCapacity})");
-		if (SmallPrimeFactorPrimeSlots.Length < newSize)
+		if (OutputUlong.Length < newSize)
 		{
-			SmallPrimeFactorPrimeSlots.Dispose();
-			SmallPrimeFactorExponentSlots.Dispose();
+			OutputUlong.Dispose();
 
 			var accelerator = Accelerator;
-			SmallPrimeFactorPrimeSlots = accelerator.Allocate1D<ulong>(newSize);
-			SmallPrimeFactorExponentSlots = accelerator.Allocate1D<int>(newSize);
+			OutputUlong = accelerator.Allocate1D<ulong>(newSize);
+		}
+
+		if (OutputInt.Length < newSize)
+		{
+			OutputInt.Dispose();
+			
+			var accelerator = Accelerator;
+			OutputInt = accelerator.Allocate1D<int>(newSize);
 		}
 	}
 
 	public void EnsureSpecialMaxFactorsCapacity(int newSize)
 	{
-		if (SpecialMaxFactors.Length < newSize)
+		if (Input.Length < newSize)
 		{
-			SpecialMaxFactors.Dispose();
-			SpecialMaxCandidates.Dispose();
+			Input.Dispose();
 
 			var accelerator = Accelerator;
-			SpecialMaxFactors = accelerator.Allocate1D<ulong>(newSize);
-			SpecialMaxCandidates = accelerator.Allocate1D<ulong>(newSize);
+			Input = accelerator.Allocate1D<ulong>(newSize);
+		}
+
+		if (OutputUlong.Length < newSize)
+		{
+			OutputUlong.Dispose();
+
+			var accelerator = Accelerator;
+			OutputUlong = accelerator.Allocate1D<ulong>(newSize);
 		}
 	}
 
@@ -180,22 +197,16 @@ public sealed class PrimeOrderCalculatorAccelerator
 		var accelerator = _accelerators[acceleratorIndex];
 		Accelerator = accelerator;
 		AcceleratorIndex = acceleratorIndex;
-		Input = accelerator.Allocate1D<ulong>(1);
-		OutputUlong = accelerator.Allocate1D<ulong>(1);
+		Input = accelerator.Allocate1D<ulong>(Math.Max(specialMaxFactorCapacity, primeTesterCapacity));
+		OutputUlong = accelerator.Allocate1D<ulong>(Math.Max(specialMaxFactorCapacity, smallPrimeFactorSlotCount));
 		Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
-		PrimeTestInput = Accelerator.Allocate1D<ulong>(primeTesterCapacity);
 		OutputByte = Accelerator.Allocate1D<byte>(primeTesterCapacity);
-		HeuristicFlag = Accelerator.Allocate1D<int>(primeTesterCapacity);
-		SmallPrimeFactorPrimeSlots = accelerator.Allocate1D<ulong>(smallPrimeFactorSlotCount);
-		SmallPrimeFactorExponentSlots = accelerator.Allocate1D<int>(smallPrimeFactorSlotCount);
+		OutputInt = Accelerator.Allocate1D<int>(Math.Max(primeTesterCapacity, smallPrimeFactorSlotCount));
 		SmallPrimeFactorCountSlot = accelerator.Allocate1D<int>(1);
-		SmallPrimeFactorRemainingSlot = accelerator.Allocate1D<ulong>(1);
 
-		SpecialMaxFactors = accelerator.Allocate1D<ulong>(specialMaxFactorCapacity);
-		SpecialMaxCandidates = accelerator.Allocate1D<ulong>(specialMaxFactorCapacity);
 		SpecialMaxResult = accelerator.Allocate1D<ulong>(1);
 
-		var lastDigitSharedTables = LastDigitGpuTables.EnsureStaticTables(acceleratorIndex);
+		LastDigitGpuTables lastDigitSharedTables = LastDigitGpuTables.GetStaticTables(acceleratorIndex);
 
 		DevicePrimesLastOne = lastDigitSharedTables.DevicePrimesLastOne;
 		DevicePrimesLastSeven = lastDigitSharedTables.DevicePrimesLastSeven;
@@ -240,15 +251,9 @@ public sealed class PrimeOrderCalculatorAccelerator
 		Input.Dispose();
 		OutputUlong.Dispose();
 		Pow2ModEntriesToTestOnDevice.Dispose();
-		PrimeTestInput.Dispose();
 		OutputByte.Dispose();
-		HeuristicFlag.Dispose();
-		SmallPrimeFactorPrimeSlots.Dispose();
-		SmallPrimeFactorExponentSlots.Dispose();
+		OutputInt.Dispose();
 		SmallPrimeFactorCountSlot.Dispose();
-		SmallPrimeFactorRemainingSlot.Dispose();
-		SpecialMaxFactors.Dispose();
-		SpecialMaxCandidates.Dispose();
 		SpecialMaxResult.Dispose();
 
 		// These resources are shared between GPU leases

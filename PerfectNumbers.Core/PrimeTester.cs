@@ -96,7 +96,7 @@ public sealed class PrimeTester
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		int acceleratorIndex = gpu.AcceleratorIndex;
-		var inputView = gpu.PrimeTestInput.View;
+		var inputView = gpu.Input.View;
 		var outputView = gpu.OutputByte.View;
 		var kernel = gpu.SmallPrimeSieveKernel!;
 
@@ -134,7 +134,7 @@ public sealed class PrimeTester
 	public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n)
 	{
 		byte flag = 0;
-		var input = gpu.PrimeTestInput;
+		var input = gpu.Input;
 		var inputView = input.View;
 		var output = gpu.OutputByte;
 		var outputView = output.View;
@@ -203,7 +203,7 @@ public sealed class PrimeTester
 		int totalLength = values.Length;
 		int batchSize = GpuBatchSize;
 
-		var input = gpu.PrimeTestInput;
+		var input = gpu.Input;
 		var output = gpu.OutputByte;
 		var inputView = input.View;
 		var outputView = output.View;
@@ -281,10 +281,9 @@ public sealed class PrimeTester
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		int acceleratorIndex = gpu.AcceleratorIndex;
-		var accelerator = gpu.Accelerator;
 		var kernel = gpu.SharesFactorKernel;
 		gpu.EnsureCapacity(0, length);
-		MemoryBuffer1D<ulong, Stride1D.Dense>? inputBuffer = gpu.PrimeTestInput;
+		MemoryBuffer1D<ulong, Stride1D.Dense>? inputBuffer = gpu.Input;
 		MemoryBuffer1D<byte, Stride1D.Dense>? resultBuffer = gpu.OutputByte;
 
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
