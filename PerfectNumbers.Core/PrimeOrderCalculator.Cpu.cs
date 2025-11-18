@@ -1113,9 +1113,7 @@ internal static partial class PrimeOrderCalculator
 
 		List<PendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(2);
 		Stack<ulong>? compositeStack = null;
-		PartialFactorResult result;
 		PrimeTester primeTester = PrimeTester.Exclusive;
-		CancellationToken ct = CancellationToken.None;
 		// HeuristicPrimeTester? tester = _tester ??= new();
 
 		if (!gpuFactored)
@@ -1288,6 +1286,7 @@ internal static partial class PrimeOrderCalculator
 
 		// ArrayPool<FactorEntry> pool = ThreadStaticPools.FactorEntryPool;
 		bool temp;
+		PartialFactorResult result;
 		if (factorCount == 0)
 		{
 			if (cofactor == value)
