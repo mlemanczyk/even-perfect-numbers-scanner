@@ -83,18 +83,6 @@ public sealed class PrimeOrderCalculatorAccelerator
 	}
 
 	#endregion
-
-	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
-
-	public readonly Accelerator Accelerator;
-	public readonly int AcceleratorIndex;
-	public MemoryBuffer1D<ulong, Stride1D.Dense> Input;
-	public MemoryBuffer1D<ulong, Stride1D.Dense> OutputUlong;
-	public MemoryBuffer1D<byte, Stride1D.Dense> OutputByte;
-	public MemoryBuffer1D<int, Stride1D.Dense> OutputInt;
-	public MemoryBuffer1D<KeyValuePair<ulong, int>, Stride1D.Dense> Pow2ModEntriesToTestOnDevice;
-	public Dictionary<ulong, int> Pow2ModEntriesToTestOnHost = [];
-
 	#region Static Tables
 
 	public readonly ArrayView1D<uint, Stride1D.Dense> DevicePrimesLastOne;
@@ -106,14 +94,26 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public readonly ArrayView1D<ulong, Stride1D.Dense> DevicePrimesPow2LastThree;
 	public readonly ArrayView1D<ulong, Stride1D.Dense> DevicePrimesPow2LastNine;
 
+	public readonly HeuristicCombinedGpuViews DivisorTables;
+
+	public readonly ArrayView1D<uint, Stride1D.Dense> SmallPrimeFactorPrimes;
+	public readonly ArrayView1D<ulong, Stride1D.Dense> SmallPrimeFactorSquares;
+
 	#endregion
 
+	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
+	public readonly Accelerator Accelerator;
+	public readonly int AcceleratorIndex;
+	public MemoryBuffer1D<ulong, Stride1D.Dense> Input;
+	public MemoryBuffer1D<ulong, Stride1D.Dense> OutputUlong;
+	public MemoryBuffer1D<byte, Stride1D.Dense> OutputByte;
+	public MemoryBuffer1D<int, Stride1D.Dense> OutputInt;
+	public MemoryBuffer1D<KeyValuePair<ulong, int>, Stride1D.Dense> Pow2ModEntriesToTestOnDevice;
 	public readonly MemoryBuffer1D<int, Stride1D.Dense> SmallPrimeFactorCountSlot;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> SpecialMaxResult;
 
-	public readonly HeuristicCombinedGpuViews DivisorTables;
-	public readonly ArrayView1D<uint, Stride1D.Dense> SmallPrimeFactorPrimes;
-	public readonly ArrayView1D<ulong, Stride1D.Dense> SmallPrimeFactorSquares;
+	public Dictionary<ulong, int> Pow2ModEntriesToTestOnHost = [];
 
 	public readonly Kernel CheckFactorsKernel;
 	public readonly Kernel ConvertToStandardKernel;
@@ -129,6 +129,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public void EnsureCapacity(int factorsCount, int primeTesterCapacity)
 	{
 		Accelerator accelerator = Accelerator;
+		
 		MemoryBuffer1D<KeyValuePair<ulong, int>, Stride1D.Dense> pow2ModEntriesToTestOnDevice = Pow2ModEntriesToTestOnDevice;
 		if (pow2ModEntriesToTestOnDevice.Length < factorsCount)
 		{
@@ -201,12 +202,11 @@ public sealed class PrimeOrderCalculatorAccelerator
 		Accelerator = accelerator;
 		AcceleratorIndex = acceleratorIndex;
 		Input = accelerator.Allocate1D<ulong>(Math.Max(specialMaxFactorCapacity, primeTesterCapacity));
-		OutputUlong = accelerator.Allocate1D<ulong>(Math.Max(specialMaxFactorCapacity, smallPrimeFactorSlotCount));
-		Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
 		OutputByte = Accelerator.Allocate1D<byte>(primeTesterCapacity);
 		OutputInt = Accelerator.Allocate1D<int>(Math.Max(primeTesterCapacity, smallPrimeFactorSlotCount));
+		OutputUlong = accelerator.Allocate1D<ulong>(Math.Max(specialMaxFactorCapacity, smallPrimeFactorSlotCount));
+		Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
 		SmallPrimeFactorCountSlot = accelerator.Allocate1D<int>(1);
-
 		SpecialMaxResult = accelerator.Allocate1D<ulong>(1);
 
 		LastDigitGpuTables lastDigitSharedTables = LastDigitGpuTables.GetStaticTables(acceleratorIndex);
