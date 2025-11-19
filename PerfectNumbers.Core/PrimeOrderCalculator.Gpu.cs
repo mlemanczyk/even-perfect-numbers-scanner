@@ -145,9 +145,10 @@ internal static partial class PrimeOrderCalculator
 
 		ArrayView1D<ulong, Stride1D.Dense> specialMaxResultView = gpu.SpecialMaxResult.View;
 
-		kernel.Launch(
+		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();	
+
+		kernelLauncher(
 				stream,
-				1,
 				1,
 				phi,
 				specialMaxFactorsView,

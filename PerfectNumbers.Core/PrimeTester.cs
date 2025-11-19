@@ -207,6 +207,8 @@ public sealed class PrimeTester
 
 		int pos = 0;
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
+		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>();
+
 		while (pos < totalLength)
 		{
 			int remaining = totalLength - pos;
@@ -215,7 +217,7 @@ public sealed class PrimeTester
 			var valueSlice = values.Slice(pos, count);
 			inputView.CopyFromCPU(stream, valueSlice);
 
-			kernel.Launch(
+			kernelLauncher(
 					stream,
 					count,
 					inputView,
@@ -285,8 +287,9 @@ public sealed class PrimeTester
 
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		inputBuffer.View.CopyFromCPU(stream, values);
+		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>>>();
 
-		kernel.Launch(stream, length, inputBuffer.View, resultBuffer.View);
+		kernelLauncher(stream, length, inputBuffer.View, resultBuffer.View);
 
 		resultBuffer.View.CopyToCPU(stream, in results);
 		stream.Synchronize();

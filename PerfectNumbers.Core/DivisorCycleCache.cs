@@ -260,11 +260,14 @@ public sealed class DivisorCycleCache
 		}
 
 		Accelerator accelerator = _accelerator;
-		divisorBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
-		powBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
-		orderBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
-		resultBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
-		statusBuffer = accelerator.Allocate1D<byte>(requiredCapacity);
+		lock(accelerator)
+		{
+			divisorBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+			powBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+			orderBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+			resultBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+			statusBuffer = accelerator.Allocate1D<byte>(requiredCapacity);
+		}
 	}
 
 	private void ComputeCyclesGpuCore(ReadOnlySpan<ulong> divisors, Span<ulong> destination)

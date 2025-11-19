@@ -190,14 +190,14 @@ internal static partial class PrimeOrderGpuHeuristics
 			// fullyFactoredBuffer.MemSetToZero(stream);
 
 			var partialFactorKernel = GetPartialFactorKernel(acceleratorIndex);
+			var kernelLauncher = partialFactorKernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>>();
 
-			partialFactorKernel.Launch(
+			kernelLauncher(
 				stream,
-				1,
 				1,
 				smallPrimesView,
 				smallSquaresView,
-				smallPrimesView.Length,
+				(int)smallPrimesView.Length,
 				primeTargets.Length,
 				value,
 				limit,
@@ -354,7 +354,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		MemoryBuffer1D<ulong, Stride1D.Dense>? resultBuffer;
 		MemoryBuffer1D<byte, Stride1D.Dense>? statusBuffer;
 
-		// lock(accelerator)
+		lock(accelerator)
 		{
 			phiFactorBuffer = accelerator.Allocate1D<ulong>(GpuSmallPrimeFactorSlots);
 			phiExponentBuffer = accelerator.Allocate1D<int>(GpuSmallPrimeFactorSlots);
@@ -398,16 +398,17 @@ internal static partial class PrimeOrderGpuHeuristics
 			statusBuffer.View);
 
 		var orderKernel = GetOrderKernel(acceleratorIndex);
-		orderKernel.Launch(
+		var kernelLauncher = orderKernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, OrderKernelConfig, MontgomeryDivisorData, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, OrderKernelBuffers>>();
+
+		kernelLauncher(
 			stream,
-			1,
 			1,
 			prime,
 			kernelConfig,
 			divisorData,
 			smallPrimesView,
 			smallSquaresView,
-			smallPrimesView.Length,
+			(int)smallPrimesView.Length,
 			buffers);
 
 
@@ -517,7 +518,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		// with out preallocated buffers. Share the pool with Pow2ModWide kernel.
 		MemoryBuffer1D<ulong, Stride1D.Dense>? exponentBuffer;
 		MemoryBuffer1D<ulong, Stride1D.Dense>? remainderBuffer;
-		// lock(accelerator)
+		lock(accelerator)
 		{
 			exponentBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
 			remainderBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
@@ -529,9 +530,11 @@ internal static partial class PrimeOrderGpuHeuristics
 		// remainderBuffer.MemSetToZero(stream);
 
 		var pow2ModKernel = GetPow2ModKernel(acceleratorIndex);
+		var kernelLauncher = pow2ModKernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
+
 		try
 		{
-			pow2ModKernel.Launch(stream, 1, exponents.Length, exponentBuffer.View, divisorData, remainderBuffer.View);
+			kernelLauncher(stream, exponents.Length, exponentBuffer.View, divisorData, remainderBuffer.View);
 			remainderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(results), exponents.Length);
 			stream.Synchronize();
 
@@ -590,13 +593,20 @@ internal static partial class PrimeOrderGpuHeuristics
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		Accelerator accelerator = gpu.Accelerator;
 
-		MemoryBuffer1D<GpuUInt128, Stride1D.Dense> exponentBuffer = accelerator.Allocate1D<GpuUInt128>(length);
-		MemoryBuffer1D<GpuUInt128, Stride1D.Dense> remainderBuffer = accelerator.Allocate1D<GpuUInt128>(length);
-
 		AcceleratorStream? stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		exponentBuffer.View.CopyFromCPU(stream, exponentSpan);
+		MemoryBuffer1D<GpuUInt128, Stride1D.Dense> exponentBuffer;
+		MemoryBuffer1D<GpuUInt128, Stride1D.Dense> remainderBuffer;
 
-		gpu.Pow2ModWideKernel.Launch(stream, length, exponentBuffer.View, modulus, remainderBuffer.View);
+		lock(accelerator)
+		{
+			exponentBuffer = accelerator.Allocate1D<GpuUInt128>(length);
+			remainderBuffer = accelerator.Allocate1D<GpuUInt128>(length);
+		}
+
+		exponentBuffer.View.CopyFromCPU(stream, exponentSpan);
+		var kernelLauncher = gpu.Pow2ModWideKernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>>();
+
+		kernelLauncher(stream, length, exponentBuffer.View, modulus, remainderBuffer.View);
 		remainderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(resultSpan), length);
 		stream.Synchronize();
 

@@ -26,7 +26,7 @@ public class GpuKernelPool
 	internal static KernelContainer GetOrAddKernels(int acceleratorIndex, AcceleratorStream stream, KernelType kernelType)
 	{
 		var pool = _pool ??= [];
-		if (pool[acceleratorIndex] is not {} kernels)
+		if (pool[acceleratorIndex] is not { } kernels)
 		{
 			kernels = new();
 		}
@@ -151,7 +151,7 @@ public class GpuKernelPool
 		var host = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
 		MemoryBuffer1D<ulong, Stride1D.Dense>? device;
 
-		// lock (accelerator)
+		lock (accelerator)
 		{
 			device = accelerator.Allocate1D<ulong>(host.Length);
 		}
@@ -195,13 +195,13 @@ public class GpuKernelPool
 		MemoryBuffer1D<ulong, Stride1D.Dense>? deviceLastOnePow2;
 		MemoryBuffer1D<ulong, Stride1D.Dense>? deviceLastSevenPow2;
 
-		// lock (accelerator)
-		// {
-		deviceLastOne = accelerator.Allocate1D<uint>(hostLastOne.Length);
-		deviceLastSeven = accelerator.Allocate1D<uint>(hostLastSeven.Length);
-		deviceLastOnePow2 = accelerator.Allocate1D<ulong>(hostLastOnePow2.Length);
-		deviceLastSevenPow2 = accelerator.Allocate1D<ulong>(hostLastSevenPow2.Length);
-		// }
+		lock (accelerator)
+		{
+			deviceLastOne = accelerator.Allocate1D<uint>(hostLastOne.Length);
+			deviceLastSeven = accelerator.Allocate1D<uint>(hostLastSeven.Length);
+			deviceLastOnePow2 = accelerator.Allocate1D<ulong>(hostLastOnePow2.Length);
+			deviceLastSevenPow2 = accelerator.Allocate1D<ulong>(hostLastSevenPow2.Length);
+		}
 
 		deviceLastOne.View.CopyFromCPU(stream, hostLastOne);
 		deviceLastSeven.View.CopyFromCPU(stream, hostLastSeven);

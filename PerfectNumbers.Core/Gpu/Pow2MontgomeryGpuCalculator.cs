@@ -55,8 +55,10 @@ public static class Pow2MontgomeryGpuCalculator
 		// We don't need to worry about any left-overs here.
 		// resultBuffer.MemSetToZero(stream);
 
-		var kernel = gpu.ConvertToStandardKernel;
-		kernel.Launch(stream, 1, 1, exponentBuffer.View, divisor, resultBuffer.View);
+		var kernelLauncher = gpu.ConvertToStandardKernelLauncher!;
+
+		kernelLauncher(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);			
+
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
 
@@ -73,7 +75,6 @@ public static class Pow2MontgomeryGpuCalculator
 		ulong result = 0UL;
 		MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer = gpu.Input;
 		MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = gpu.OutputUlong;
-		var kernel = gpu.ConvertToStandardKernel;
 
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
@@ -81,8 +82,11 @@ public static class Pow2MontgomeryGpuCalculator
 		// We don't need to worry about any left-overs here.
 		// resultBuffer.MemSetToZero(stream);
 
-		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
-		kernelLauncher(stream, 1,exponentBuffer.View, divisor, resultBuffer.View);
+		
+		var accelerator = gpu.Accelerator;
+		var kernelLauncher = gpu.ConvertToStandardKernelLauncher;
+		kernelLauncher(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);			
+
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
 		

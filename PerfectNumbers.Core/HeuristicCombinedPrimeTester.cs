@@ -240,13 +240,12 @@ public sealed class HeuristicCombinedPrimeTester
 		var kernel = gpu.HeuristicCombinedTrialDivisionKernel;
 		var flagView1D = gpu.OutputInt!.View;
 
-		bool compositeDetected = false;
-		int divisorLength = GetCombinedDivisors(nMod10).Length;
+		bool compositeDetected;
+		// int compositeFlag = 0;
+		Span<int> compositeFlag = stackalloc int[1];
+		flagView1D.MemSetToZero(stream);
 
-		int compositeFlag = 0;
-		flagView1D.CopyFromCPU(stream, ref compositeFlag, 1);
-
-		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicCombinedGpuViews>>();		
+		var kernelLauncher = gpu.HeuristicCombinedTrialDivisionKernelLauncher;
 		kernelLauncher(
 				stream,
 				1,
@@ -255,13 +254,13 @@ public sealed class HeuristicCombinedPrimeTester
 				n,
 				maxDivisorSquare,
 				gpu.DivisorTables);
-		flagView1D.CopyToCPU(stream, ref compositeFlag, 1);
+		flagView1D.CopyToCPU(stream, compositeFlag);
 		stream.Synchronize();
 
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 		// GpuPrimeWorkLimiter.Release();
 
-		compositeDetected = compositeFlag != 0;
+		compositeDetected = compositeFlag[0] != 0;
 		return compositeDetected;
 	}
 

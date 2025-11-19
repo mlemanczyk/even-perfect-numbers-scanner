@@ -840,6 +840,8 @@ public class MersenneDivisorCycles
 		}
 
 		var divisorCycleKernel = GetDivisorCycleKernel(acceleratorIndex);
+		var kernelLauncher = divisorCycleKernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+
 		while (start <= maxDivisor)
 		{
 			end = Math.Min(start + batchSizeUL - 1UL, maxDivisor);
@@ -860,15 +862,14 @@ public class MersenneDivisorCycles
 			// GpuKernelPool.Run((accelerator, stream) =>
 			MemoryBuffer1D<ulong, Stride1D.Dense>? bufferDiv;
 			MemoryBuffer1D<ulong, Stride1D.Dense>? bufferCycle;
-			// lock(accelerator)
+			lock(accelerator)
 			{
 				bufferDiv = accelerator.Allocate1D(validDivisors);
 				bufferCycle = accelerator.Allocate1D<ulong>(idx);				
 			}
 
-			divisorCycleKernel.Launch(
+			kernelLauncher(
 					stream,
-					1,
 					idx,
 					bufferDiv.View,
 					bufferCycle.View);
