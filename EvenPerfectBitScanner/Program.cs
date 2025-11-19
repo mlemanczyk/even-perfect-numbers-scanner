@@ -422,7 +422,7 @@ internal static class Program
 						_byDivisorStartPrime,
 						static () => _lastCompositeP = true,
 						static () => _lastCompositeP = false,
-						static (candidate, searchedMersenne, detailedCheck, passedAllTests) => CalculationResultHandler.HandleResult(candidate, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP),
+						static (candidate, searchedMersenne, detailedCheck, passedAllTests, divisor) => CalculationResultHandler.HandleResult(candidate, divisor, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP),
 						threadCount,
 						byDivisorPrimeRange);
 						
@@ -483,7 +483,7 @@ internal static class Program
 							{
 								p = buffer[j];
 								passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
-								CalculationResultHandler.HandleResult(p, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP);
+								CalculationResultHandler.HandleResult(p, 0UL, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP);
 							}
 
 							continue;
@@ -506,7 +506,7 @@ internal static class Program
 							}
 
 							passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
-							CalculationResultHandler.HandleResult(p, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP);
+							CalculationResultHandler.HandleResult(p, 0UL, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP);
 
 							if (p == maxP)
 							{
@@ -649,7 +649,7 @@ internal static class Program
 		if (_cliArguments.UseByDivisor)
 		{
 			// Windowed pow2mod kernel handles by-divisor scans.
-			return _byDivisorTester!.IsPrime(p, out detailedCheck);
+			return _byDivisorTester!.IsPrime(p, out detailedCheck, out _);
 		}
 
 		detailedCheck = MersenneTesters.Value!.IsMersennePrime(p);

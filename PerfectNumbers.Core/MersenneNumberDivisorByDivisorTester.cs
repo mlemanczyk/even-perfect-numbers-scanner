@@ -14,7 +14,7 @@ public static class MersenneNumberDivisorByDivisorTester
 			ulong startPrime,
 			Action markComposite,
 			Action clearComposite,
-			Action<ulong, bool, bool, bool> printResult,
+			Action<ulong, bool, bool, bool, ulong> printResult,
 			int threadCount,
 			int primesPerTask)
 	{
@@ -242,18 +242,18 @@ public static class MersenneNumberDivisorByDivisorTester
 		void ProcessPrime(ulong prime)
 		{
 			Console.WriteLine($"Processing {prime}");
-			bool isPrime = tester.IsPrime(prime, out bool divisorsExhausted);
+			bool isPrime = tester.IsPrime(prime, out bool divisorsExhausted, out ulong divisor);
 
 			if (!isPrime)
 			{
 				markComposite();
-				printResult(prime, true, true, false);
+				printResult(prime, true, true, false, divisor);
 				Console.WriteLine($"Finished processing {prime}");
 				return;
 			}
 
 			clearComposite();
-			printResult(prime, true, divisorsExhausted, true);
+			printResult(prime, true, divisorsExhausted, true, divisor);
 			Console.WriteLine($"Finished processing {prime}");
 		}
 

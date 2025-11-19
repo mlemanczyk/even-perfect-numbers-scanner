@@ -100,6 +100,7 @@ internal static class CalculationResultsFile
                 int first = 0;
                 int second = 0;
                 int third = 0;
+                int fourth = 0;
                 ulong parsedP = 0UL;
                 ReadOnlySpan<char> detailedSpan = default;
                 ReadOnlySpan<char> passedAllTestsSpan = default;
@@ -139,8 +140,15 @@ internal static class CalculationResultsFile
                                 continue;
                         }
 
-                        detailedSpan = span[..third];
-                        passedAllTestsSpan = span[(third + 1)..];
+                        span = span[(third + 1)..];
+                        fourth = span.IndexOf(',');
+                        if (fourth < 0)
+                        {
+                                continue;
+                        }
+
+                        detailedSpan = span[..fourth];
+                        passedAllTestsSpan = span[(fourth + 1)..];
 
                         if (Utf8CliParser.TryParseBoolean(detailedSpan, out detailed) && Utf8CliParser.TryParseBoolean(passedAllTestsSpan, out passedAllTests))
                         {

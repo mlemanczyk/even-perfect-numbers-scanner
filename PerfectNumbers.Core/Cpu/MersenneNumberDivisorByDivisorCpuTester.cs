@@ -42,7 +42,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public ulong GetAllowedMaxDivisor(ulong prime) => ComputeAllowedMaxDivisor(prime, _divisorLimit);
 
-	public bool IsPrime(ulong prime, out bool divisorsExhausted)
+	public bool IsPrime(ulong prime, out bool divisorsExhausted, out ulong divisor)
 	{
 		ulong allowedMax = ComputeAllowedMaxDivisor(prime, _divisorLimit);
 
@@ -60,7 +60,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		bool composite = CheckDivisors(
 			prime,
 			allowedMax,
-			out processedAll);
+			out processedAll,
+			out divisor);
 
 		if (composite)
 		{
@@ -69,6 +70,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		}
 
 		divisorsExhausted = processedAll || composite;
+		divisor = 0UL;
 		return true;
 	}
 
@@ -96,8 +98,10 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 	private bool CheckDivisors(
 		ulong prime,
 		ulong allowedMax,
-		out bool processedAll)
+		out bool processedAll,
+		out ulong foundDivisor)
 	{
+		foundDivisor = 0UL;
 		// The EvenPerfectBitScanner feeds primes >= 138,000,000 here, so allowedMax >= 3 in production runs.
 		// Keeping the guard commented out documents the reasoning for benchmarks and tests.
 		// if (allowedMax < 3UL)
@@ -123,6 +127,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		if (divisor.CompareTo(limit) > 0)
 		{
 			processedAll = true;
+			foundDivisor = 0UL;
 			return false;
 		}
 
@@ -182,7 +187,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 				remainder3,
 				remainder7,
 				remainder11,
-				out processedAll);
+				out processedAll,
+				out foundDivisor);
 		}
 
 		ulong divisorHigh = divisor.High;
@@ -240,6 +246,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 				{
 					// A cycle equal to the tested exponent (which is prime in this path) guarantees that the candidate divides
 					// the corresponding Mersenne number because the order of 2 modulo the divisor is exactly p.
+					foundDivisor = candidate;
 					processedAll = true;
 					PrimeOrderCalculatorAccelerator.Return(gpu);
 					return true;
@@ -261,6 +268,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 		processedAll = true;
+		foundDivisor = 0UL;
 		return false;
 	}
 
@@ -280,9 +288,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		byte remainder3,
 		byte remainder7,
 		byte remainder11,
-		out bool processedAll)
+		out bool processedAll,
+		out ulong foundDivisor)
 	{
 		processedAll = false;
+		foundDivisor = 0UL;
 
 		bool canAdvance = step <= limit;
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
@@ -314,6 +324,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
 					if (divisorCycle == prime)
 					{
+						foundDivisor = divisor;
 						processedAll = true;
 						PrimeOrderCalculatorAccelerator.Return(gpu);
 						return true;
@@ -327,12 +338,14 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 			}
 
 			processedAll = true;
+			foundDivisor = 0UL;
 			return false;
 		}
 
 		if (divisor > limit)
 		{
 			processedAll = true;
+			foundDivisor = 0UL;
 			return false;
 		}
 
@@ -365,6 +378,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
 				if (divisorCycle == prime)
 				{
+					foundDivisor = divisor;
 					processedAll = true;
 					PrimeOrderCalculatorAccelerator.Return(gpu);
 					return true;
@@ -380,6 +394,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 			if (remainingIterations == 0UL)
 			{
 				processedAll = true;
+				foundDivisor = 0UL;
 				return false;
 			}
 

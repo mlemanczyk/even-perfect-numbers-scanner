@@ -70,7 +70,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
 
-	public bool IsPrime(ulong prime, out bool divisorsExhausted)
+	public bool IsPrime(ulong prime, out bool divisorsExhausted, out ulong divisor)
 	{
 		ulong allowedMax;
 		int batchCapacity;
@@ -147,10 +147,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		if (composite)
 		{
 			divisorsExhausted = true;
+			divisor = lastProcessed;
 			return false;
 		}
 
 		divisorsExhausted = coveredRange;
+		divisor = 0UL;
 		return true;
 	}
 

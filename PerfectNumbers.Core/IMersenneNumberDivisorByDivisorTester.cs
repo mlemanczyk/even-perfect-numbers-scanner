@@ -10,7 +10,7 @@ public interface IMersenneNumberDivisorByDivisorTester
 
     ulong GetAllowedMaxDivisor(ulong prime);
 
-    bool IsPrime(ulong prime, out bool divisorsExhausted);
+    bool IsPrime(ulong prime, out bool divisorsExhausted, out ulong divisor);
 
     IDivisorScanSession CreateDivisorSession();
 

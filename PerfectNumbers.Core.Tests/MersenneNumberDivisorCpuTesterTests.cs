@@ -13,14 +13,17 @@ public class MersenneNumberDivisorCpuTesterTests
                 var tester = new MersenneNumberDivisorByDivisorCpuTester();
                 tester.ConfigureFromMaxPrime(11UL);
 
-                tester.IsPrime(5UL, out bool divisorsExhausted).Should().BeTrue();
+                tester.IsPrime(5UL, out bool divisorsExhausted, out ulong divisor).Should().BeTrue();
                 divisorsExhausted.Should().BeTrue();
+                divisor.Should().Be(0UL);
 
-                tester.IsPrime(7UL, out divisorsExhausted).Should().BeTrue();
+                tester.IsPrime(7UL, out divisorsExhausted, out divisor).Should().BeTrue();
                 divisorsExhausted.Should().BeTrue();
+                divisor.Should().Be(0UL);
 
-                tester.IsPrime(11UL, out divisorsExhausted).Should().BeFalse();
+                tester.IsPrime(11UL, out divisorsExhausted, out divisor).Should().BeFalse();
                 divisorsExhausted.Should().BeTrue();
+                divisor.Should().BeGreaterThan(0UL);
         }
 
         [Fact]

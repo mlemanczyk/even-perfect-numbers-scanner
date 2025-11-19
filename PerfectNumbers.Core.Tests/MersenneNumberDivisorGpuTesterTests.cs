@@ -73,14 +73,17 @@ public class MersenneNumberDivisorGpuTesterTests
         var tester = new MersenneNumberDivisorByDivisorGpuTester();
         tester.ConfigureFromMaxPrime(43UL);
 
-        tester.IsPrime(31UL, out bool exhausted).Should().BeTrue();
+        tester.IsPrime(31UL, out bool exhausted, out ulong divisor).Should().BeTrue();
         exhausted.Should().BeTrue();
+        divisor.Should().Be(0UL);
 
-        tester.IsPrime(37UL, out exhausted).Should().BeFalse();
+        tester.IsPrime(37UL, out exhausted, out divisor).Should().BeFalse();
         exhausted.Should().BeTrue();
+        divisor.Should().BeGreaterThan(0UL);
 
-        tester.IsPrime(43UL, out exhausted).Should().BeFalse();
+        tester.IsPrime(43UL, out exhausted, out divisor).Should().BeFalse();
         exhausted.Should().BeTrue();
+        divisor.Should().BeGreaterThan(0UL);
     }
 
     [Fact]
@@ -105,12 +108,15 @@ public class MersenneNumberDivisorGpuTesterTests
         var tester = new MersenneNumberDivisorByDivisorGpuTester();
         tester.ConfigureFromMaxPrime(41UL);
 
-        tester.IsPrime(31UL, out _).Should().BeTrue();
-        tester.IsPrime(37UL, out bool exhausted).Should().BeFalse();
+        tester.IsPrime(31UL, out _, out ulong divisor).Should().BeTrue();
+        divisor.Should().Be(0UL);
+        tester.IsPrime(37UL, out bool exhausted, out divisor).Should().BeFalse();
         exhausted.Should().BeTrue();
+        divisor.Should().BeGreaterThan(0UL);
 
-        tester.IsPrime(41UL, out bool divisorsExhausted).Should().BeFalse();
+        tester.IsPrime(41UL, out bool divisorsExhausted, out divisor).Should().BeFalse();
         divisorsExhausted.Should().BeTrue();
+        divisor.Should().BeGreaterThan(0UL);
     }
 
 
@@ -124,8 +130,16 @@ public class MersenneNumberDivisorGpuTesterTests
         var tester = new MersenneNumberDivisorByDivisorGpuTester();
         tester.ConfigureFromMaxPrime(exponent);
 
-        tester.IsPrime(exponent, out bool exhausted).Should().Be(expectedPrime);
+        tester.IsPrime(exponent, out bool exhausted, out ulong divisor).Should().Be(expectedPrime);
         exhausted.Should().BeTrue();
+        if (expectedPrime)
+        {
+            divisor.Should().Be(0UL);
+        }
+        else
+        {
+            divisor.Should().BeGreaterThan(0UL);
+        }
     }
     [Fact]
     [Trait("Category", "Fast")]
@@ -138,8 +152,9 @@ public class MersenneNumberDivisorGpuTesterTests
 
         tester.ConfigureFromMaxPrime(43UL);
 
-        tester.IsPrime(41UL, out bool divisorsExhausted).Should().BeFalse();
+        tester.IsPrime(41UL, out bool divisorsExhausted, out ulong divisor).Should().BeFalse();
         divisorsExhausted.Should().BeTrue();
+        divisor.Should().BeGreaterThan(0UL);
     }
 
     [Fact]
@@ -309,8 +324,9 @@ public class MersenneNumberDivisorGpuTesterTests
                 .GetField("_divisorLimit", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .SetValue(tester, 200UL);
 
-            tester.IsPrime(19UL, out bool divisorsExhausted).Should().BeTrue();
+            tester.IsPrime(19UL, out bool divisorsExhausted, out ulong divisor).Should().BeTrue();
             divisorsExhausted.Should().BeTrue();
+            divisor.Should().Be(0UL);
         }
         finally
         {

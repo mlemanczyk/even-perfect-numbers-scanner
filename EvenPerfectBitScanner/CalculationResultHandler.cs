@@ -7,7 +7,7 @@ namespace EvenPerfectBitScanner;
 
 internal static class CalculationResultHandler
 {
-        private const string ResultsHeader = "p,searchedMersenne,detailedCheck,passedAllTests";
+        private const string ResultsHeader = "p,divisor,searchedMersenne,detailedCheck,passedAllTests";
         private const string PrimeFoundSuffix = " (FOUND VALID CANDIDATES)";
         internal const int DefaultWriteBatchSize = 100;
 
@@ -93,19 +93,19 @@ internal static class CalculationResultHandler
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void HandleResult(ulong currentP, bool searchedMersenne, bool detailedCheck, bool passedAllTests, bool lastWasComposite)
+        internal static void HandleResult(ulong currentP, ulong divisor, bool searchedMersenne, bool detailedCheck, bool passedAllTests, bool lastWasComposite)
         {
                 // Program flow ensures Initialize(...) and InitializeOutputBuffer() ran before this call. Do not add initialization guards here.
 
                 Span<byte> stackBuffer = stackalloc byte[128];
                 byte[]? rentedBuffer = null;
                 Span<byte> utf8Span = stackBuffer;
-                int byteCount = TryFormatResultLine(utf8Span, currentP, searchedMersenne, detailedCheck, passedAllTests);
+                int byteCount = TryFormatResultLine(utf8Span, currentP, divisor, searchedMersenne, detailedCheck, passedAllTests);
                 if (byteCount < 0)
                 {
                         rentedBuffer = ThreadStaticPools.BytePool.Rent(256);
                         utf8Span = rentedBuffer;
-                        byteCount = TryFormatResultLine(utf8Span, currentP, searchedMersenne, detailedCheck, passedAllTests);
+                        byteCount = TryFormatResultLine(utf8Span, currentP, divisor, searchedMersenne, detailedCheck, passedAllTests);
                         if (byteCount < 0)
                         {
                                 ThreadStaticPools.BytePool.Return(rentedBuffer);
@@ -229,11 +229,24 @@ internal static class CalculationResultHandler
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int TryFormatResultLine(Span<byte> destination, ulong currentP, bool searchedMersenne, bool detailedCheck, bool passedAllTests)
+        private static int TryFormatResultLine(Span<byte> destination, ulong currentP, ulong divisor, bool searchedMersenne, bool detailedCheck, bool passedAllTests)
         {
                 int offset = 0;
 
                 if (!Utf8Formatter.TryFormat(currentP, destination[offset..], out int written))
+                {
+                        return -1;
+                }
+
+                offset += written;
+                if (offset >= destination.Length)
+                {
+                        return -1;
+                }
+
+                destination[offset++] = (byte)',';
+
+                if (!Utf8Formatter.TryFormat(divisor, destination[offset..], out written))
                 {
                         return -1;
                 }

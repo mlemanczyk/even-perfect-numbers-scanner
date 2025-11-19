@@ -11,7 +11,7 @@ public class MersenneNumberDivisorByDivisorTesterTests
     {
         var candidates = new List<ulong> { 5UL, 7UL, 11UL, 13UL };
         var tester = new FakeTester();
-        var results = new List<(ulong Prime, bool Searched, bool Detailed, bool Passed)>();
+        var results = new List<(ulong Prime, bool Searched, bool Detailed, bool Passed, ulong Divisor)>();
         int compositeMarks = 0;
         int clearedMarks = 0;
 
@@ -22,7 +22,7 @@ public class MersenneNumberDivisorByDivisorTesterTests
             startPrime: 0UL,
             markComposite: () => compositeMarks++,
             clearComposite: () => clearedMarks++,
-            printResult: (prime, searched, detailed, passed) => results.Add((prime, searched, detailed, passed)),
+            printResult: (prime, searched, detailed, passed, divisor) => results.Add((prime, searched, detailed, passed, divisor)),
             threadCount: 1,
             primesPerTask: 2);
 
@@ -32,10 +32,10 @@ public class MersenneNumberDivisorByDivisorTesterTests
         results.Should().Equal(
             new[]
             {
-                (5UL, true, true, true),
-                (7UL, true, true, false),
-                (11UL, true, true, false),
-                (13UL, true, true, true),
+                (5UL, true, true, true, 0UL),
+                (7UL, true, true, false, 7UL),
+                (11UL, true, true, false, 11UL),
+                (13UL, true, true, true, 0UL),
             });
     }
 
@@ -57,10 +57,23 @@ public class MersenneNumberDivisorByDivisorTesterTests
             return DivisorLimit;
         }
 
-        public bool IsPrime(ulong prime, out bool divisorsExhausted)
+        public bool IsPrime(ulong prime, out bool divisorsExhausted, out ulong divisor)
         {
             divisorsExhausted = true;
-            return prime % 7UL != 0UL && prime % 11UL != 0UL;
+            if (prime % 7UL == 0UL)
+            {
+                divisor = 7UL;
+                return false;
+            }
+
+            if (prime % 11UL == 0UL)
+            {
+                divisor = 11UL;
+                return false;
+            }
+
+            divisor = 0UL;
+            return true;
         }
 
         public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession()

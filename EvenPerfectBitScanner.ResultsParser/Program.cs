@@ -19,7 +19,7 @@ internal static class Program
 				"/help"
 		};
 
-	private const string DefaultHeader = "p,searchedMersenne,detailedCheck,passedAllTests";
+private const string DefaultHeader = "p,divisor,searchedMersenne,detailedCheck,passedAllTests";
 
 	private static int Main(string[] args)
 	{
