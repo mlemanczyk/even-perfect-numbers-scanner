@@ -1177,7 +1177,7 @@ internal static partial class PrimeOrderCalculator
 					// bool isPrime = HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
 					bool runOnGpu = RunOnGpu();
 
-					bool isPrime = runOnGpu ? PrimeTester.IsPrime(composite) : HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
+					bool isPrime = !runOnGpu ? PrimeTester.IsPrime(composite) : HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
 					// bool isPrime = PrimeTester.IsPrime(composite);
 					// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
@@ -1375,19 +1375,19 @@ internal static partial class PrimeOrderCalculator
 
 	private static bool RunOnGpu()
 	{
-		const int GpuFrequency = 1024 - 1;
-
-		int cpuCount = Atomic.Add(target: ref _cpuCount, 1);
-		if (cpuCount == GpuFrequency)
+		// return true;
+		int cpuCount = Atomic.Add(ref _cpuCount, 1);
+		// return (cpuCount % GpuFrequency) == 0;
+		if (cpuCount == PerfectNumberConstants.GpuFrequency)
 		{
-			Atomic.Add(ref _cpuCount, -GpuFrequency);
+			Atomic.Add(ref _cpuCount, -PerfectNumberConstants.GpuFrequency);
 		}
-		else if (cpuCount > GpuFrequency)
+		else if (cpuCount > PerfectNumberConstants.GpuFrequency)
 		{
-			cpuCount -= GpuFrequency;
+			cpuCount -= PerfectNumberConstants.GpuFrequency;
 		}
 
-		return cpuCount != GpuFrequency;
+		return cpuCount == PerfectNumberConstants.GpuFrequency;
 	}
 
 	private static void PopulateSmallPrimeFactorsCpu(
