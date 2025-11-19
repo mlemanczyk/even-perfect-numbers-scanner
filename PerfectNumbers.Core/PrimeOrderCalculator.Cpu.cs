@@ -1177,7 +1177,7 @@ internal static partial class PrimeOrderCalculator
 					// bool isPrime = HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
 					bool runOnGpu = RunOnGpu();
 
-					bool isPrime = runOnGpu ? PrimeTester.IsPrime(composite) : HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
+					bool isPrime = !runOnGpu ? PrimeTester.IsPrime(composite) : HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
 					// bool isPrime = PrimeTester.IsPrime(composite);
 					// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
@@ -1375,6 +1375,7 @@ internal static partial class PrimeOrderCalculator
 
 	private static bool RunOnGpu()
 	{
+		return true;
 		const int GpuFrequency = 1024 - 1;
 
 		int cpuCount = Atomic.Add(target: ref _cpuCount, 1);
