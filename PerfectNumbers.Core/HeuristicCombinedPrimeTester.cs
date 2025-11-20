@@ -3,7 +3,6 @@ using ILGPU.Runtime;
 using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
-using ILGPU;
 
 namespace PerfectNumbers.Core;
 
@@ -266,14 +265,10 @@ public sealed class HeuristicCombinedPrimeTester
 
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static bool EvaluateWithOpenNumericFallback(ulong n)
-	{
-		return Prime.Numbers.IsPrime(n);
-	}
-	internal static ulong ComputeHeuristicDivisorSquareLimit(ulong n)
-	{
-		return n;
-	}
+	private static bool EvaluateWithOpenNumericFallback(ulong n) => Prime.Numbers.IsPrime(n);
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	internal static ulong ComputeHeuristicDivisorSquareLimit(ulong n) => n;
 
 	private static ReadOnlySpan<ulong> GetCombinedDivisors(byte nMod10) => nMod10 switch
 	{
@@ -470,9 +465,7 @@ public sealed class HeuristicCombinedPrimeTester
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static HeuristicDivisorEnumerator CreateHeuristicDivisorEnumerator(ulong maxDivisorSquare, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
-	{
-		return new HeuristicDivisorEnumerator(maxDivisorSquare, nMod10, groupBBuffer);
-	}
+		=> new(maxDivisorSquare, nMod10, groupBBuffer);
 
 	internal struct HeuristicGroupBSequenceState
 	{
@@ -480,9 +473,7 @@ public sealed class HeuristicCombinedPrimeTester
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static MersenneHeuristicDivisorEnumerator CreateMersenneDivisorEnumerator(ulong exponent, ulong maxDivisor)
-	{
-		return new MersenneHeuristicDivisorEnumerator(exponent, maxDivisor);
-	}
+		=> new(exponent, maxDivisor);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static HeuristicDivisorPreparation PrepareHeuristicDivisor(in HeuristicDivisorCandidate candidate)
@@ -490,7 +481,7 @@ public sealed class HeuristicCombinedPrimeTester
 		ulong divisor = candidate.Value;
 		MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
 		bool hasCycleHint = TryGetCycleLengthHint(divisor, out ulong cycleLength);
-		return new HeuristicDivisorPreparation(candidate, divisorData, cycleLength, hasCycleHint);
+		return new(candidate, divisorData, cycleLength, hasCycleHint);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -588,7 +579,7 @@ public sealed class HeuristicCombinedPrimeTester
 				ulong value = entry;
 				byte ending = (byte)(value % 10UL);
 				ushort residue = (ushort)(value % Wheel210);
-				candidate = new HeuristicDivisorCandidate(value, group, ending, 0, residue);
+				candidate = new(value, group, ending, 0, residue);
 				return true;
 			}
 
@@ -691,7 +682,7 @@ public sealed class HeuristicCombinedPrimeTester
 			}
 
 			ushort residue = (ushort)(value % Wheel210);
-			return new HeuristicDivisorCandidate(value, group, ending, 0, residue);
+			return new(value, group, ending, 0, residue);
 		}
 	}
 }

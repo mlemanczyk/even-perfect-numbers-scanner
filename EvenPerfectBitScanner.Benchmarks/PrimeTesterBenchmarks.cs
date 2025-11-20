@@ -28,8 +28,8 @@ public class PrimeTesterBenchmarks
 
 		PrimeOrderCalculatorAccelerator.WarmUp();
 		// HeuristicGroupABPrimeTesterAccelerator.WarmUp();
-        _ = _heuristicTester.IsPrimeCpu(_candidates[0]);
-        _ = _heuristicTester.IsPrimeGpu(_candidates[0]);
+        _ = HeuristicPrimeTester.IsPrimeCpu(_candidates[0]);
+        _ = HeuristicPrimeTester.IsPrimeGpu(_candidates[0]);
         _ = Prime.Numbers.IsPrime(_candidates[0]);
     }
 
@@ -42,7 +42,7 @@ public class PrimeTesterBenchmarks
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (tester.IsPrimeCpu(values[i]))
+            if (HeuristicPrimeTester.IsPrimeCpu(values[i]))
             {
                 primeCount++;
             }
@@ -60,7 +60,7 @@ public class PrimeTesterBenchmarks
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (tester.IsPrimeGpu(values[i]))
+            if (HeuristicPrimeTester.IsPrimeGpu(values[i]))
             {
                 primeCount++;
             }

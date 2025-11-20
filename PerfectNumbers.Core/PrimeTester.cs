@@ -265,7 +265,7 @@ public sealed class PrimeTester
 		// ResidueComputationBenchmarks so divisor-cycle metadata can short-circuit the test
 		// instead of recomputing binary GCD for every candidate.
 		ulong m = (ulong)BitOperations.Log2(n);
-		return BinaryGcd(n, m) != 1UL;
+		return n.BinaryGcd(m) != 1UL;
 	}
 
 	internal static void SharesFactorWithMaxExponentBatch(ReadOnlySpan<ulong> values, Span<byte> results)
@@ -298,39 +298,4 @@ public sealed class PrimeTester
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static ulong BinaryGcd(ulong u, ulong v)
-	{
-		// TODO: Swap this handwritten binary GCD for the optimized helper measured in
-		// GpuUInt128BinaryGcdBenchmarks so CPU callers share the faster subtract-less
-		// ladder once the common implementation is promoted into PerfectNumbers.Core.
-		// You have an example in the benchmarks and you already implemented it in
-		// GpuUInt128, iirc.
-		if (u == 0UL)
-		{
-			return v;
-		}
-
-		if (v == 0UL)
-		{
-			return u;
-		}
-
-		int shift = BitOperations.TrailingZeroCount(u | v);
-		u >>= BitOperations.TrailingZeroCount(u);
-
-		do
-		{
-			v >>= BitOperations.TrailingZeroCount(v);
-			if (u > v)
-			{
-				(u, v) = (v, u);
-			}
-
-			v -= u;
-		}
-		while (v != 0UL);
-
-		return u << shift;
-	}
 }

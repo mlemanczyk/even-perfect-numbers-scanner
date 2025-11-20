@@ -68,7 +68,8 @@ public sealed class HeuristicPrimeTester
 
 	public static HeuristicPrimeTester Exclusive => _tester ??= new();
 
-	public bool IsPrimeCpu(ulong n)
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool IsPrimeCpu(ulong n)
 	{
 		byte nMod10 = (byte)n.Mod10();
 		ulong maxDivisorSquare = ComputeHeuristicDivisorSquareLimit(n);
@@ -82,19 +83,18 @@ public sealed class HeuristicPrimeTester
 		return HeuristicTrialDivisionCpu(n, maxDivisorSquare, nMod10, includeGroupB);
 	}
 
-	public bool IsPrimeGpu(ulong n)
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool IsPrimeGpu(ulong n)
 	{
 		byte nMod10 = (byte)n.Mod10();
 		ulong maxDivisorSquare = ComputeHeuristicDivisorSquareLimit(n);
 		return IsPrimeGpu(n, maxDivisorSquare, nMod10);
 	}
 
-	public bool IsPrimeGpu(ulong n, ulong maxDivisorSquare, byte nMod10)
-	{
-		return HeuristicIsPrimeGpuCore(n, maxDivisorSquare, nMod10);
-	}
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool IsPrimeGpu(ulong n, ulong maxDivisorSquare, byte nMod10) => HeuristicIsPrimeGpuCore(n, maxDivisorSquare, nMod10);
 
-	private bool HeuristicIsPrimeGpuCore(ulong n, ulong maxDivisorSquare, byte nMod10)
+	private static bool HeuristicIsPrimeGpuCore(ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
 		// TODO: Is this condition ever met on the execution path in EvenPerfectBitScanner?
 		if (maxDivisorSquare < 9UL)
@@ -133,7 +133,7 @@ public sealed class HeuristicPrimeTester
 						break;
 					}
 
-					ulong divisor = (ulong)groupADivisors[groupAIndex];
+					ulong divisor = groupADivisors[groupAIndex];
 					if (n % divisor == 0UL)
 					{
 						return false;
@@ -186,7 +186,7 @@ public sealed class HeuristicPrimeTester
 						break;
 					}
 
-					ulong divisor = (ulong)groupADivisors[groupAIndex];
+					ulong divisor = groupADivisors[groupAIndex];
 					if (n % divisor == 0UL)
 					{
 						return false;
@@ -240,7 +240,7 @@ public sealed class HeuristicPrimeTester
 	}
 
 
-	private bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
+	private static bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
@@ -321,17 +321,11 @@ public sealed class HeuristicPrimeTester
 		return compositeDetected;
 	}
 
-
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool EvaluateWithOpenNumericFallback(ulong n) => Prime.Numbers.IsPrime(n);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static bool EvaluateWithOpenNumericFallback(ulong n)
-	{
-		return Prime.Numbers.IsPrime(n);
-	}
-	internal static ulong ComputeHeuristicDivisorSquareLimit(ulong n)
-	{
-		return n;
-	}
+	internal static ulong ComputeHeuristicDivisorSquareLimit(ulong n) => n;
 
 	private static ReadOnlySpan<byte> GetGroupBEndingOrder(byte nMod10) => nMod10 switch
 	{
@@ -339,7 +333,7 @@ public sealed class HeuristicPrimeTester
 		3 => GroupBEndingOrderMod3,
 		7 => GroupBEndingOrderMod7,
 		9 => GroupBEndingOrderMod9,
-		_ => ReadOnlySpan<byte>.Empty,
+		_ => [],
 	};
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -415,19 +409,19 @@ public sealed class HeuristicPrimeTester
 	private static ReadOnlySpan<uint> GetGroupBDivisors(byte ending) => ending switch
 	{
 		1 => DivisorGenerator.SmallPrimesLastOneWithoutLastThree,
-		3 => ReadOnlySpan<uint>.Empty,
+		3 => [],
 		7 => DivisorGenerator.SmallPrimesLastSevenWithoutLastThree,
 		9 => DivisorGenerator.SmallPrimesLastNineWithoutLastThree,
-		_ => ReadOnlySpan<uint>.Empty,
+		_ => [],
 	};
 
 	private static ReadOnlySpan<ulong> GetGroupBDivisorSquares(byte ending) => ending switch
 	{
 		1 => DivisorGenerator.SmallPrimesPow2LastOneWithoutLastThree,
-		3 => ReadOnlySpan<ulong>.Empty,
+		3 => [],
 		7 => DivisorGenerator.SmallPrimesPow2LastSevenWithoutLastThree,
 		9 => DivisorGenerator.SmallPrimesPow2LastNineWithoutLastThree,
-		_ => ReadOnlySpan<ulong>.Empty,
+		_ => [],
 	};
 
 	private static int InitializeGroupBStates(byte nMod10, Span<HeuristicGroupBSequenceState> buffer)
@@ -444,16 +438,11 @@ public sealed class HeuristicPrimeTester
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static HeuristicDivisorEnumerator CreateHeuristicDivisorEnumerator(ulong maxDivisorSquare, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
-	{
-		return new HeuristicDivisorEnumerator(maxDivisorSquare, nMod10, groupBBuffer);
-	}
+	internal static HeuristicDivisorEnumerator CreateHeuristicDivisorEnumerator(ulong maxDivisorSquare, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer) => new(maxDivisorSquare, nMod10, groupBBuffer);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static MersenneHeuristicDivisorEnumerator CreateMersenneDivisorEnumerator(ulong exponent, ulong maxDivisor)
-	{
-		return new MersenneHeuristicDivisorEnumerator(exponent, maxDivisor);
-	}
+		=> new(exponent, maxDivisor);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static HeuristicDivisorPreparation PrepareHeuristicDivisor(in HeuristicDivisorCandidate candidate)
@@ -611,25 +600,18 @@ public sealed class HeuristicPrimeTester
 
 
 
-	internal struct HeuristicGroupBSequenceState
+	internal struct HeuristicGroupBSequenceState(byte ending, byte priorityIndex)
 	{
-		public byte Ending;
-		public byte PriorityIndex;
-		public int Index;
-
-		public HeuristicGroupBSequenceState(byte ending, byte priorityIndex)
-		{
-			Ending = ending;
-			PriorityIndex = priorityIndex;
-			Index = 0;
-		}
+		public byte Ending = ending;
+		public byte PriorityIndex = priorityIndex;
+		public int Index = 0;
 
 		public bool TryPeek(ulong maxDivisorSquare, out ulong divisor)
 		{
 			ReadOnlySpan<uint> divisors = GetGroupBDivisors(Ending);
 			ReadOnlySpan<ulong> squares = GetGroupBDivisorSquares(Ending);
 			int index = Index;
-			if ((uint)index >= (uint)divisors.Length)
+			if (index >= divisors.Length)
 			{
 				divisor = 0UL;
 				return false;
@@ -642,7 +624,7 @@ public sealed class HeuristicPrimeTester
 				return false;
 			}
 
-			divisor = (ulong)divisors[index];
+			divisor = divisors[index];
 			return true;
 		}
 
@@ -731,11 +713,11 @@ public sealed class HeuristicPrimeTester
 			residueStepper.Advance();
 		}
 
-		public ulong ProcessedCount => processedCount;
+		public readonly ulong ProcessedCount => processedCount;
 
-		public ulong LastDivisor => lastDivisor;
+		public readonly ulong LastDivisor => lastDivisor;
 
-		public bool Exhausted => !active;
+		public readonly bool Exhausted => !active;
 
 		private static HeuristicDivisorCandidate CreateCandidate(ulong value)
 		{
