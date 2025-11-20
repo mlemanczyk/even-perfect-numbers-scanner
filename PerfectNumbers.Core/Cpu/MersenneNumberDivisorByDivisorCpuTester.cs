@@ -339,6 +339,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
 			processedAll = true;
 			foundDivisor = 0UL;
+			PrimeOrderCalculatorAccelerator.Return(gpu);
 			return false;
 		}
 
@@ -346,6 +347,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		{
 			processedAll = true;
 			foundDivisor = 0UL;
+			PrimeOrderCalculatorAccelerator.Return(gpu);
 			return false;
 		}
 
@@ -395,6 +397,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 			{
 				processedAll = true;
 				foundDivisor = 0UL;
+				PrimeOrderCalculatorAccelerator.Return(gpu);
 				return false;
 			}
 
