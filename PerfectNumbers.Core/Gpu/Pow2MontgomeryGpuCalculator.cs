@@ -18,16 +18,13 @@ public static class Pow2MontgomeryGpuCalculator
 		Accelerator? accelerator = gpu.Accelerator;
 		MemoryBuffer1D<ulong, Stride1D.Dense> exponentBuffer = gpu.Input;
 		MemoryBuffer1D<ulong, Stride1D.Dense> resultBuffer = gpu.OutputUlong;
-		var kernel = gpu.KeepMontgomeryKernel;
 
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-
 		exponentBuffer.View.CopyFromCPU(stream, ref exponent, 1);
 		// We don't need to worry about any left-overs here.
 		// resultBuffer.MemSetToZero(stream);
 
-		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
-
+		var kernelLauncher = gpu.KeepMontgomeryKernelLauncher;
 		kernelLauncher(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
 
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);

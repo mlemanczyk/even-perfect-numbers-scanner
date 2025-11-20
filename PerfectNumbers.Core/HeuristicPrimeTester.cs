@@ -3,7 +3,6 @@ using System.Runtime.CompilerServices;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
-using ILGPU;
 
 namespace PerfectNumbers.Core;
 
@@ -246,7 +245,6 @@ public sealed class HeuristicPrimeTester
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		var kernel = gpu.HeuristicCombinedTrialDivisionKernel;
 		var flagView1D = gpu.OutputInt!.View;
 
 		bool compositeDetected;
@@ -261,7 +259,7 @@ public sealed class HeuristicPrimeTester
         // HeuristicGpuDivisorTableKind tableKind,
         // HeuristicGpuDivisorTables tables)
 
-		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicGpuDivisorTableKind, HeuristicCombinedGpuViews>>();
+		var kernelLauncher = gpu.HeuristicCombinedTrialDivisionKernelLauncher;
 		kernelLauncher(
 				stream,
 				1,
@@ -269,7 +267,6 @@ public sealed class HeuristicPrimeTester
 				flagView1D,
 				n,
 				maxDivisorSquare,
-				HeuristicGpuDivisorTableKind.GroupA,
 				gpu.DivisorTables);
 
 		flagView1D.CopyToCPU(stream, ref compositeFlag, 1);

@@ -604,7 +604,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		}
 
 		exponentBuffer.View.CopyFromCPU(stream, exponentSpan);
-		var kernelLauncher = gpu.Pow2ModWideKernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>>();
+		var kernelLauncher = gpu.Pow2ModWideKernelLauncher;
 
 		kernelLauncher(stream, length, exponentBuffer.View, modulus, remainderBuffer.View);
 		remainderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(resultSpan), length);

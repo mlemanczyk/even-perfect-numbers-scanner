@@ -36,15 +36,13 @@ internal static partial class PrimeOrderCalculator
 
 		ulong order = phi;
 		var acceleratorIndex = gpu.AcceleratorIndex;
-		var kernel = gpu.CheckFactorsKernel;
 		gpu.EnsureCapacity(entryCount, 1);
 
 		// GpuPrimeWorkLimiter.Acquire();
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		gpu.Pow2ModEntriesToTestOnDevice.View.CopyFromCPU(stream, entries);
 
-		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, int, ulong, ArrayView1D<KeyValuePair<ulong, int>, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
-		
+		var kernelLauncher = gpu.CheckFactorsKernelLauncher;		
 		kernelLauncher(stream, entryCount, phi, gpu.Pow2ModEntriesToTestOnDevice.View, divisorData, gpu.OutputUlong.View);
 
 		gpu.OutputUlong.View.CopyToCPU(stream, ref order, 1);
@@ -67,19 +65,16 @@ internal static partial class PrimeOrderCalculator
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		var accelerator = gpu.Accelerator;
 
-		// GpuPrimeWorkLimiter.Acquire();
-		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-
-		var kernel = gpu.SmallPrimeFactorKernel;
-		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
-
+		var kernelLauncher = gpu.SmallPrimeFactorKernelLauncher;
 		ArrayView1D<int, Stride1D.Dense> smallPrimeFactorCountSlotView = gpu.SmallPrimeFactorCountSlot.View;
 		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorRemainingSlotView = gpu.Input.View;
 		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorPrimeSlotsView = gpu.OutputUlong.View;
 		ArrayView1D<int, Stride1D.Dense> smallPrimeFactorExponentSlotsView = gpu.OutputInt.View;
-		ArrayView1D<uint, Stride1D.Dense> smallPrimeFactorsPrimesView = gpu.SmallPrimeFactorPrimes;
 		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorsSquaresView = gpu.SmallPrimeFactorSquares;
+		ArrayView1D<uint, Stride1D.Dense> smallPrimeFactorsPrimesView = gpu.SmallPrimeFactorPrimes;
 
+		// GpuPrimeWorkLimiter.Acquire();
+		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		kernelLauncher(
 				stream,
 				1,
@@ -136,17 +131,14 @@ internal static partial class PrimeOrderCalculator
 
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		// GpuPrimeWorkLimiter.Acquire();
-		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-
 		ArrayView1D<ulong, Stride1D.Dense> specialMaxFactorsView = gpu.Input.View;
-		specialMaxFactorsView.SubView(0, factorCount).CopyFromCPU(stream, factors);
 
-		var kernel = gpu.SpecialMaxKernel;
+		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
+		specialMaxFactorsView.SubView(0, factorCount).CopyFromCPU(stream, factors);
 
 		ArrayView1D<ulong, Stride1D.Dense> specialMaxResultView = gpu.SpecialMaxResult.View;
 
-		var kernelLauncher = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();	
-
+		var kernelLauncher = gpu.SpecialMaxKernelLauncher;
 		kernelLauncher(
 				stream,
 				1,
@@ -178,7 +170,7 @@ internal static partial class PrimeOrderCalculator
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		gpu.Input.View.CopyFromCPU(stream, randomStateSpan);
 
-		var kernelLauncher = gpu.PollardRhoKernel.CreateLauncherDelegate<Action<AcceleratorStream, ulong, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		var kernelLauncher = gpu.PollardRhoKernelLauncher;
 
 		kernelLauncher(stream, n, 1, gpu.Input.View, gpu.OutputByte.View, gpu.OutputUlong.View);
 
