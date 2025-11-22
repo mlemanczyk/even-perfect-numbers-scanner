@@ -42,8 +42,9 @@ internal static partial class PrimeOrderCalculator
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		gpu.Pow2ModEntriesToTestOnDevice.View.CopyFromCPU(stream, entries);
 
-		var kernelLauncher = gpu.CheckFactorsKernelLauncher;		
-		kernelLauncher(stream, entryCount, phi, gpu.Pow2ModEntriesToTestOnDevice.View, divisorData, gpu.OutputUlong.View);
+		// var kernelLauncher = gpu.CheckFactorsKernelLauncher;		
+		var kernel = gpu.CheckFactorsKernel;
+		kernel.Launch(stream, 1, entryCount, phi, gpu.Pow2ModEntriesToTestOnDevice.View, divisorData, gpu.OutputUlong.View);
 
 		gpu.OutputUlong.View.CopyToCPU(stream, ref order, 1);
 		stream.Synchronize();
@@ -170,9 +171,9 @@ internal static partial class PrimeOrderCalculator
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		gpu.Input.View.CopyFromCPU(stream, randomStateSpan);
 
-		var kernelLauncher = gpu.PollardRhoKernelLauncher;
+		var kernel = gpu.PollardRhoKernel;
 
-		kernelLauncher(stream, n, 1, gpu.Input.View, gpu.OutputByte.View, gpu.OutputUlong.View);
+		kernel.Launch(stream, 1, n, 1, gpu.Input.View, gpu.OutputByte.View, gpu.OutputUlong.View);
 
 		gpu.OutputByte.View.CopyToCPU(stream, factoredSpan);
 		gpu.OutputUlong.View.CopyToCPU(stream, factorSpan);

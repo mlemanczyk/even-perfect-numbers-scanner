@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -12,7 +11,7 @@ namespace PerfectNumbers.Core.Gpu;
 /// Scans Mersenne divisors on the GPU for prime exponents p >= 31 using cached GPU divisor partial data.
 /// Consumers must call <see cref="ConfigureFromMaxPrime"/> before invoking other members so the divisor limits are populated.
 /// </summary>
-public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDivisorByDivisorTester
+public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDivisorByDivisorTester
 {
 	private int _gpuBatchSize = GpuConstants.ScanBatchSize;
 	// EvenPerfectBitScanner configures the GPU tester once before scanning and never mutates the configuration afterwards,
@@ -21,26 +20,9 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 	private ulong _divisorLimit;
 	// private bool _isConfigured;
 
-	[ThreadStatic]
-	private static Dictionary<Accelerator, Action<AcceleratorStream, Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>>? _kernel;
+	private readonly ConcurrentBag<MersenneNumberDivisorByDivisorAccelerator>[] _resourcePool = [..AcceleratorPool.Shared.Accelerators.Select(x => new ConcurrentBag<MersenneNumberDivisorByDivisorAccelerator>())];
 
-	private readonly ConcurrentBag<BatchResources> _resourcePool = [];
 	private readonly ConcurrentBag<DivisorScanSession> _sessionPool = [];
-
-	private static Action<AcceleratorStream, Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> GetKernel(Accelerator accelerator)
-	{
-		var pool = _kernel ??= [];
-		if (pool.TryGetValue(accelerator, out var cached))
-		{
-			return cached;
-		}
-
-		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>(DivisorByDivisorKernels.CheckKernel);
-		var kernel = KernelUtil.GetKernel(loaded);
-		cached = kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>>();
-		pool[accelerator] = cached;
-		return cached;
-	}
 
 	public int GpuBatchSize
 	{
@@ -107,20 +89,16 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		// var accelerator = _accelerators[acceleratorIndex];
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(batchCapacity);
 		var acceleratorIndex = gpu.AcceleratorIndex;
-		var accelerator = gpu.Accelerator;
-		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 
 		// Monitor.Enter(gpuLease.ExecutionLock);
 
-		var kernel = GetKernel(accelerator);
-		var resources = RentBatchResources(accelerator, batchCapacity);
+		var resources = RentBatchResources(acceleratorIndex, batchCapacity);
 
 		composite = CheckDivisors(
 			gpu,
 			prime,
 			allowedMax,
-			kernel,
-			stream,
+			resources.CheckDivisorKernel,
 			resources.DivisorDataBuffer,
 			resources.OffsetBuffer,
 			resources.CountBuffer,
@@ -138,8 +116,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			out coveredRange,
 			out processedCount);
 
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
-		ReturnBatchResources(resources);
+		ReturnBatchResources(acceleratorIndex, resources);
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 		// Monitor.Exit(gpuLease.ExecutionLock);
 		// GpuPrimeWorkLimiter.Release();
@@ -189,8 +166,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong allowedMax,
-		Action<AcceleratorStream, Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> kernel,
-		AcceleratorStream stream,
+		Kernel kernel,
 		MemoryBuffer1D<GpuDivisorPartialData, Stride1D.Dense> divisorDataBuffer,
 		MemoryBuffer1D<int, Stride1D.Dense> offsetBuffer,
 		MemoryBuffer1D<int, Stride1D.Dense> countBuffer,
@@ -213,6 +189,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 		bool processedAll;
 		processedCount = 0UL;
 		lastProcessed = 0UL;
+		var acceleratorIndex = gpu.AcceleratorIndex;
 
 		// EvenPerfectBitScanner always configures non-empty GPU divisor buffers, so the defensive guard stays
 		// commented out. Tests and benchmarks that rely on zero-capacity buffers must be updated instead of re-enabling
@@ -352,6 +329,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 				continue;
 			}
 
+			var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 			divisorDataView.CopyFromCPU(stream, ref divisorDataRef, admissibleCount);
 			offsetView.CopyFromCPU(stream, ref offsetRef, admissibleCount);
 			countView.CopyFromCPU(stream, ref countRef, admissibleCount);
@@ -361,11 +339,12 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 			int sentinel = int.MaxValue;
 			hitIndexView.CopyFromCPU(stream, ref sentinel, 1);
 
-			kernel(stream, new Index1D(admissibleCount), divisorDataView, offsetView, countView, exponentViewDevice, cycleView, hitsView, hitIndexView);
+			kernel.Launch(stream, 1, new Index1D(admissibleCount), divisorDataView, offsetView, countView, exponentViewDevice, cycleView, hitsView, hitIndexView);
 
 			int firstHit = sentinel;
 			hitIndexView.CopyToCPU(stream, ref firstHit, 1);
 			stream.Synchronize();
+			AcceleratorStreamPool.Return(acceleratorIndex, stream);
 			int hitIndex = firstHit >= admissibleCount ? -1 : firstHit;
 			bool hitFound = hitIndex >= 0;
 			composite = hitFound;
@@ -537,7 +516,7 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 			if (_kernel == null)
 			{
-				_kernel = GetKernel(_accelerator);
+				_kernel =  KernelUtil.GetKernel(_accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>(DivisorByDivisorKernels.CheckKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>>();
 			}
 
 			if (_divisorBuffer == null)
@@ -694,192 +673,20 @@ public sealed class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDiv
 
 
 
-	private BatchResources RentBatchResources(Accelerator accelerator, int capacity)
+	private MersenneNumberDivisorByDivisorAccelerator RentBatchResources(int acceleratorIndex, int capacity)
 	{
-		if (!_resourcePool.TryTake(out BatchResources? resources))
+		var queue = _resourcePool[acceleratorIndex];
+		var accelerator = AcceleratorPool.Shared.Accelerators[acceleratorIndex];
+		if (!queue.TryTake(out MersenneNumberDivisorByDivisorAccelerator? resources))
 		{
-			resources = new BatchResources(Math.Max(1, capacity));
+			return new MersenneNumberDivisorByDivisorAccelerator(accelerator, capacity);
 		}
 
-		resources.Bind(accelerator, capacity);
+		resources.EnsureCapacity(accelerator, capacity);
 		return resources;
 	}
 
-	private void ReturnBatchResources(BatchResources resources) => _resourcePool.Add(resources);
-
-	private sealed class BatchResources
-	{
-		private Accelerator? _accelerator;
-		private MemoryBuffer1D<GpuDivisorPartialData, Stride1D.Dense>? _divisorDataBuffer;
-		private MemoryBuffer1D<int, Stride1D.Dense>? _offsetBuffer;
-		private MemoryBuffer1D<int, Stride1D.Dense>? _countBuffer;
-		private MemoryBuffer1D<ulong, Stride1D.Dense>? _cycleBuffer;
-		private MemoryBuffer1D<ulong, Stride1D.Dense>? _exponentBuffer;
-		private MemoryBuffer1D<byte, Stride1D.Dense>? _hitsBuffer;
-		private MemoryBuffer1D<int, Stride1D.Dense>? _hitIndexBuffer;
-		private int _deviceCapacity;
-		private int _hostCapacity;
-
-		internal BatchResources(int capacity)
-		{
-			int actualCapacity = Math.Max(1, capacity);
-			RentHostArrays(actualCapacity);
-		}
-
-		internal MemoryBuffer1D<GpuDivisorPartialData, Stride1D.Dense> DivisorDataBuffer => _divisorDataBuffer ?? throw new InvalidOperationException("Batch resources not bound to an accelerator.");
-
-		internal MemoryBuffer1D<int, Stride1D.Dense> OffsetBuffer => _offsetBuffer ?? throw new InvalidOperationException("Batch resources not bound to an accelerator.");
-
-		internal MemoryBuffer1D<int, Stride1D.Dense> CountBuffer => _countBuffer ?? throw new InvalidOperationException("Batch resources not bound to an accelerator.");
-
-		internal MemoryBuffer1D<ulong, Stride1D.Dense> CycleBuffer => _cycleBuffer ?? throw new InvalidOperationException("Batch resources not bound to an accelerator.");
-
-		internal MemoryBuffer1D<ulong, Stride1D.Dense> ExponentBuffer => _exponentBuffer ?? throw new InvalidOperationException("Batch resources not bound to an accelerator.");
-
-		internal MemoryBuffer1D<byte, Stride1D.Dense> HitsBuffer => _hitsBuffer ?? throw new InvalidOperationException("Batch resources not bound to an accelerator.");
-
-		internal MemoryBuffer1D<int, Stride1D.Dense> HitIndexBuffer => _hitIndexBuffer ?? throw new InvalidOperationException("Batch resources not bound to an accelerator.");
-
-		internal ulong[] Divisors { get; private set; } = null!;
-
-		internal ulong[] Exponents { get; private set; } = null!;
-
-		internal GpuDivisorPartialData[] DivisorData { get; private set; } = null!;
-
-		internal int[] Offsets { get; private set; } = null!;
-
-		internal int[] Counts { get; private set; } = null!;
-
-		internal ulong[] Cycles { get; private set; } = null!;
-
-
-		internal int Capacity => _hostCapacity;
-
-		internal void Bind(Accelerator accelerator, int requiredCapacity)
-		{
-			EnsureHostCapacity(requiredCapacity);
-
-			if (!ReferenceEquals(_accelerator, accelerator))
-			{
-				ReleaseDeviceBuffers();
-				_accelerator = accelerator;
-			}
-
-			EnsureDeviceCapacity(accelerator, requiredCapacity);
-		}
-
-		private void EnsureHostCapacity(int requiredCapacity)
-		{
-			int desiredCapacity = Math.Max(1, requiredCapacity);
-			if (_hostCapacity >= desiredCapacity)
-			{
-				return;
-			}
-
-			ReturnHostArrays();
-			RentHostArrays(desiredCapacity);
-		}
-
-		private void EnsureDeviceCapacity(Accelerator accelerator, int requiredCapacity)
-		{
-			int desiredCapacity = Math.Max(1, requiredCapacity);
-			if (_divisorDataBuffer is null)
-			{
-				AllocateDeviceBuffers(accelerator, desiredCapacity);
-				return;
-			}
-
-			if (_deviceCapacity >= desiredCapacity)
-			{
-				return;
-			}
-
-			ReleaseDeviceBuffers();
-			AllocateDeviceBuffers(accelerator, desiredCapacity);
-		}
-
-		private void AllocateDeviceBuffers(Accelerator accelerator, int capacity)
-		{
-			lock (accelerator)
-			{
-				_divisorDataBuffer = accelerator.Allocate1D<GpuDivisorPartialData>(capacity);
-				_offsetBuffer = accelerator.Allocate1D<int>(capacity);
-				_countBuffer = accelerator.Allocate1D<int>(capacity);
-				_cycleBuffer = accelerator.Allocate1D<ulong>(capacity);
-				_exponentBuffer = accelerator.Allocate1D<ulong>(capacity);
-				_hitsBuffer = accelerator.Allocate1D<byte>(capacity);
-				_hitIndexBuffer = accelerator.Allocate1D<int>(1);
-			}
-
-			_deviceCapacity = capacity;
-		}
-
-		private void RentHostArrays(int capacity)
-		{
-			ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
-			ArrayPool<int> intPool = ThreadStaticPools.IntPool;
-			ArrayPool<GpuDivisorPartialData> partialPool = ThreadStaticPools.GpuDivisorPartialDataPool;
-
-			Divisors = ulongPool.Rent(capacity);
-			Exponents = ulongPool.Rent(capacity);
-			DivisorData = partialPool.Rent(capacity);
-			Offsets = intPool.Rent(capacity);
-			Counts = intPool.Rent(capacity);
-			Cycles = ulongPool.Rent(capacity);
-			_hostCapacity = capacity;
-		}
-
-		private void ReleaseDeviceBuffers()
-		{
-			_divisorDataBuffer?.Dispose();
-			_offsetBuffer?.Dispose();
-			_countBuffer?.Dispose();
-			_cycleBuffer?.Dispose();
-			_exponentBuffer?.Dispose();
-			_hitsBuffer?.Dispose();
-			_hitIndexBuffer?.Dispose();
-			_divisorDataBuffer = null;
-			_offsetBuffer = null;
-			_countBuffer = null;
-			_cycleBuffer = null;
-			_exponentBuffer = null;
-			_hitsBuffer = null;
-			_hitIndexBuffer = null;
-			_deviceCapacity = 0;
-		}
-
-		private void ReturnHostArrays()
-		{
-			if (_hostCapacity == 0)
-			{
-				return;
-			}
-
-			ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
-			ArrayPool<int> intPool = ThreadStaticPools.IntPool;
-			ArrayPool<GpuDivisorPartialData> partialPool = ThreadStaticPools.GpuDivisorPartialDataPool;
-			ulongPool.Return(Divisors, clearArray: false);
-			ulongPool.Return(Exponents, clearArray: false);
-			partialPool.Return(DivisorData, clearArray: false);
-			intPool.Return(Offsets, clearArray: false);
-			intPool.Return(Counts, clearArray: false);
-			ulongPool.Return(Cycles, clearArray: false);
-			Divisors = Array.Empty<ulong>();
-			Exponents = Array.Empty<ulong>();
-			DivisorData = Array.Empty<GpuDivisorPartialData>();
-			Offsets = Array.Empty<int>();
-			Counts = Array.Empty<int>();
-			Cycles = Array.Empty<ulong>();
-			_hostCapacity = 0;
-		}
-
-		public void Dispose()
-		{
-			ReleaseDeviceBuffers();
-			_accelerator = null;
-			ReturnHostArrays();
-		}
-	}
+	private void ReturnBatchResources(int acceleratorIndex, MersenneNumberDivisorByDivisorAccelerator resources) => _resourcePool[acceleratorIndex].Add(resources);
 
 	private sealed class AcceleratorReferenceComparer : IEqualityComparer<Accelerator>
 	{
