@@ -260,7 +260,7 @@ public sealed class DivisorCycleCache
 		}
 
 		Accelerator accelerator = _accelerator;
-		lock(accelerator)
+		// lock (accelerator)
 		{
 			divisorBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
 			powBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);

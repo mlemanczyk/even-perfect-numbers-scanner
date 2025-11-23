@@ -151,7 +151,7 @@ public class GpuKernelPool
 		var host = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
 		MemoryBuffer1D<ulong, Stride1D.Dense>? device;
 
-		lock (accelerator)
+		// lock (accelerator)
 		{
 			device = accelerator.Allocate1D<ulong>(host.Length);
 		}
@@ -195,7 +195,7 @@ public class GpuKernelPool
 		MemoryBuffer1D<ulong, Stride1D.Dense>? deviceLastOnePow2;
 		MemoryBuffer1D<ulong, Stride1D.Dense>? deviceLastSevenPow2;
 
-		lock (accelerator)
+		// lock (accelerator)
 		{
 			deviceLastOne = accelerator.Allocate1D<uint>(hostLastOne.Length);
 			deviceLastSeven = accelerator.Allocate1D<uint>(hostLastSeven.Length);

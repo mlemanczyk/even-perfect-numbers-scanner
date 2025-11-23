@@ -521,7 +521,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 
 			if (_divisorBuffer == null)
 			{
-				lock(accelerator)
+				// lock (accelerator)
 				{
 					_divisorBuffer = accelerator.Allocate1D<GpuDivisorPartialData>(1);
 					_offsetBuffer = accelerator.Allocate1D<int>(1);
@@ -551,7 +551,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			{
 				int desiredCapacity = requiredCapacity > _capacity ? requiredCapacity : _capacity;
 				_capacity = desiredCapacity;
-				lock (accelerator)
+				// lock (accelerator)
 				{
 					_exponentsBuffer = accelerator.Allocate1D<ulong>(desiredCapacity);
 					_hitBuffer = accelerator.Allocate1D<byte>(desiredCapacity);

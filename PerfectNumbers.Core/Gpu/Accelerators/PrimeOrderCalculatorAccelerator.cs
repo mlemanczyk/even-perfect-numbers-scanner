@@ -135,7 +135,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		MemoryBuffer1D<KeyValuePair<ulong, int>, Stride1D.Dense> pow2ModEntriesToTestOnDevice = Pow2ModEntriesToTestOnDevice;
 		if (pow2ModEntriesToTestOnDevice.Length < factorsCount)
 		{
-			lock (accelerator)
+			// lock (accelerator)
 			{
 				pow2ModEntriesToTestOnDevice.Dispose();
 				Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
@@ -145,7 +145,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		MemoryBuffer1D<ulong, Stride1D.Dense> input = Input;
 		if (input.Length < primeTesterCapacity)
 		{
-			lock (accelerator)
+			// lock (accelerator)
 			{
 				input.Dispose();
 				Input = accelerator.Allocate1D<ulong>(primeTesterCapacity);
@@ -155,7 +155,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		MemoryBuffer1D<byte, Stride1D.Dense> outputByte = OutputByte;
 		if (outputByte.Length < primeTesterCapacity)
 		{
-			lock (accelerator)
+			// lock (accelerator)
 			{
 				outputByte.Dispose();
 				OutputByte = accelerator.Allocate1D<byte>(primeTesterCapacity);
@@ -165,7 +165,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		MemoryBuffer1D<int, Stride1D.Dense> outputInt = OutputInt;
 		if (outputInt.Length < primeTesterCapacity)
 		{
-			lock (accelerator)
+			// lock (accelerator)
 			{
 				outputInt.Dispose();
 				OutputInt = accelerator.Allocate1D<int>(primeTesterCapacity);
@@ -180,7 +180,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		MemoryBuffer1D<ulong, Stride1D.Dense> outputUlong = OutputUlong;
 		if (outputUlong.Length < newSize)
 		{
-			lock (accelerator)
+			// lock (accelerator)
 			{
 				outputUlong.Dispose();
 				OutputUlong = accelerator.Allocate1D<ulong>(newSize);
@@ -190,7 +190,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		MemoryBuffer1D<int, Stride1D.Dense> outputInt = OutputInt;
 		if (outputInt.Length < newSize)
 		{
-			lock (accelerator)
+			// lock (accelerator)
 			{
 				outputInt.Dispose();
 				OutputInt = accelerator.Allocate1D<int>(newSize);
@@ -204,7 +204,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		MemoryBuffer1D<ulong, Stride1D.Dense> input = Input;
 		if (input.Length < newSize)
 		{
-			lock (accelerator)
+			// lock (accelerator)
 			{
 				input.Dispose();
 				Input = accelerator.Allocate1D<ulong>(newSize);
@@ -214,7 +214,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		MemoryBuffer1D<ulong, Stride1D.Dense> outputUlong = OutputUlong;
 		if (outputUlong.Length < newSize)
 		{
-			lock (accelerator)
+			// lock (accelerator)
 			{
 				outputUlong.Dispose();
 				OutputUlong = accelerator.Allocate1D<ulong>(newSize);
@@ -227,7 +227,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		var accelerator = _accelerators[acceleratorIndex];
 		Accelerator = accelerator;
 		AcceleratorIndex = acceleratorIndex;
-		lock (accelerator)
+		// lock (accelerator)
 		{
 			Input = accelerator.Allocate1D<ulong>(Math.Max(specialMaxFactorCapacity, primeTesterCapacity));
 			OutputByte = Accelerator.Allocate1D<byte>(primeTesterCapacity);

@@ -63,7 +63,7 @@ public sealed class MersenneNumberDivisorGpuTester
 		Queue<MemoryBuffer1D<byte, Stride1D.Dense>> resultBuffers = GetQueue(accelerator);
 		if (!resultBuffers.TryDequeue(out var resultBuffer))
 		{
-			// lock(accelerator)
+			// lock (accelerator)
 			{
 				resultBuffer = accelerator.Allocate1D<byte>(1);
 			}

@@ -19,7 +19,7 @@ public sealed class MersenneNumberDivisorByDivisorAccelerator
 		Counts = intPool.Rent(capacity);
 		Cycles = ulongPool.Rent(capacity);
 
-		lock (accelerator)
+		// lock (accelerator)
 		{
 			DivisorDataBuffer = accelerator.Allocate1D<GpuDivisorPartialData>(capacity);
 			OffsetBuffer = accelerator.Allocate1D<int>(capacity);
@@ -67,7 +67,7 @@ public sealed class MersenneNumberDivisorByDivisorAccelerator
 		HitsBuffer.Dispose();
 		HitIndexBuffer.Dispose();
 
-		lock (accelerator)
+		// lock (accelerator)
 		{
 			DivisorDataBuffer = accelerator.Allocate1D<GpuDivisorPartialData>(capacity);
 			OffsetBuffer = accelerator.Allocate1D<int>(capacity);

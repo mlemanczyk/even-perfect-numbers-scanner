@@ -354,7 +354,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		MemoryBuffer1D<ulong, Stride1D.Dense>? resultBuffer;
 		MemoryBuffer1D<byte, Stride1D.Dense>? statusBuffer;
 
-		lock(accelerator)
+		// lock (accelerator)
 		{
 			phiFactorBuffer = accelerator.Allocate1D<ulong>(GpuSmallPrimeFactorSlots);
 			phiExponentBuffer = accelerator.Allocate1D<int>(GpuSmallPrimeFactorSlots);
@@ -518,7 +518,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		// with out preallocated buffers. Share the pool with Pow2ModWide kernel.
 		MemoryBuffer1D<ulong, Stride1D.Dense>? exponentBuffer;
 		MemoryBuffer1D<ulong, Stride1D.Dense>? remainderBuffer;
-		lock(accelerator)
+		// lock (accelerator)
 		{
 			exponentBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
 			remainderBuffer = accelerator.Allocate1D<ulong>(exponents.Length);
@@ -597,7 +597,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		MemoryBuffer1D<GpuUInt128, Stride1D.Dense> exponentBuffer;
 		MemoryBuffer1D<GpuUInt128, Stride1D.Dense> remainderBuffer;
 
-		lock(accelerator)
+		// lock (accelerator)
 		{
 			exponentBuffer = accelerator.Allocate1D<GpuUInt128>(length);
 			remainderBuffer = accelerator.Allocate1D<GpuUInt128>(length);

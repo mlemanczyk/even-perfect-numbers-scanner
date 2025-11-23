@@ -862,7 +862,7 @@ public class MersenneDivisorCycles
 			// GpuKernelPool.Run((accelerator, stream) =>
 			MemoryBuffer1D<ulong, Stride1D.Dense>? bufferDiv;
 			MemoryBuffer1D<ulong, Stride1D.Dense>? bufferCycle;
-			lock(accelerator)
+			// lock (accelerator)
 			{
 				bufferDiv = accelerator.Allocate1D(validDivisors);
 				bufferCycle = accelerator.Allocate1D<ulong>(idx);				
