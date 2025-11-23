@@ -133,7 +133,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
 		// Intentionally recomputes factorizations without a per-thread cache.
 		// The previous factor cache recorded virtually no hits and only slowed down the scan.
-		_ = DivisorCycleCache.Shared;
 
 		ulong stepHigh = step.High;
 		ulong stepLow = step.Low;
