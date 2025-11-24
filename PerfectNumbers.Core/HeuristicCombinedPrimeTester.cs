@@ -168,16 +168,6 @@ public sealed class HeuristicCombinedPrimeTester
 		return HeuristicTrialDivisionCpu(n, maxDivisorSquare, nMod10);
 	}
 
-	// public static bool IsPrimeGpu(ulong n)
-	// {
-	// 	byte nMod10 = (byte)n.Mod10();
-	// 	ulong maxDivisorSquare = ComputeHeuristicDivisorSquareLimit(n);
-	// 	var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-	// 	bool isPrime = IsPrimeGpu(gpu, n, maxDivisorSquare, nMod10);
-	// 	PrimeOrderCalculatorAccelerator.Return(gpu);
-	// 	return isPrime;
-	// }
-
 	public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n)
 	{
 		byte nMod10 = (byte)n.Mod10();

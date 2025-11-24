@@ -180,6 +180,7 @@ public sealed class MersenneNumberTester(
 			{
 				tmp[i] = (GpuUInt128)qs[offset + i];
 			}
+			
 			// Copy only the populated elements to the device buffer to avoid overrun on pooled arrays.
 			qBuffer.View.CopyFromCPU(stream, ref tmp[0], count);
 			gpuUInt128Pool.Return(tmp);

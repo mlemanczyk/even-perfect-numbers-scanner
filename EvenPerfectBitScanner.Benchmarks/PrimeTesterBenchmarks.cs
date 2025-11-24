@@ -33,7 +33,7 @@ public class PrimeTesterBenchmarks
         _ = HeuristicPrimeTester.IsPrimeCpu(_candidates[0]);
         _ = HeuristicPrimeTester.IsPrimeGpu(gpu, _candidates[0]);
         _ = Prime.Numbers.IsPrime(_candidates[0]);
-			PrimeOrderCalculatorAccelerator.Return(gpu);
+		PrimeOrderCalculatorAccelerator.Return(gpu);
     }
 
     // [Benchmark]
@@ -67,8 +67,8 @@ public class PrimeTesterBenchmarks
                 primeCount++;
             }
         }
-		PrimeOrderCalculatorAccelerator.Return(gpu);
 
+		PrimeOrderCalculatorAccelerator.Return(gpu);
         return primeCount;
     }
 
