@@ -82,7 +82,7 @@ internal static partial class PrimeOrderCalculator
                         Console.WriteLine(messageFactory());
                 }
         }
-    private static UInt128 CalculateWideInternal(in UInt128 prime, in UInt128? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
+    private static UInt128 CalculateWideInternal(in UInt128 prime, in UInt128? previousOrder, in MontgomeryDivisorData? divisorData, in PrimeOrderSearchConfig config)
     {
         if (prime <= UInt128.One)
         {

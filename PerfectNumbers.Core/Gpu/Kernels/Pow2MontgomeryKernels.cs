@@ -17,18 +17,28 @@ internal static class Pow2MontgomeryKernels
 	public static void Pow2MontgomeryKernelKeepMontgomery(
 		Index1D index,
 		ArrayView1D<ulong, Stride1D.Dense> exponents,
-		MontgomeryDivisorData divisor,
+		ulong divisorModulus,
+		ulong divisorNPrime,
+		ulong divisorMontgomeryOne,
+		ulong divisorMontgomeryTwo,
+		ulong divisorMontgomeryTwoSquared,
 		ArrayView1D<ulong, Stride1D.Dense> results)
 	{
+		MontgomeryDivisorDataGpu divisor = new(divisorModulus, divisorNPrime, divisorMontgomeryOne, divisorMontgomeryTwo, divisorMontgomeryTwoSquared);
 		results[0] = ULongExtensions.Pow2MontgomeryModWindowedGpuKeepMontgomery(divisor, exponents[0]);
 	}
 
 	public static void Pow2MontgomeryKernelConvertToStandard(
 		Index1D index,
 		ArrayView1D<ulong, Stride1D.Dense> exponents,
-		MontgomeryDivisorData divisor,
+		ulong divisorModulus,
+		ulong divisorNPrime,
+		ulong divisorMontgomeryOne,
+		ulong divisorMontgomeryTwo,
+		ulong divisorMontgomeryTwoSquared,
 		ArrayView1D<ulong, Stride1D.Dense> results)
 	{
+		MontgomeryDivisorDataGpu divisor = new(divisorModulus, divisorNPrime, divisorMontgomeryOne, divisorMontgomeryTwo, divisorMontgomeryTwoSquared);
 		results[0] = ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponents[0]);
 	}
 

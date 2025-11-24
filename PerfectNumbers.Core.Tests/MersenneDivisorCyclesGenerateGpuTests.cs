@@ -38,7 +38,7 @@ public class MersenneDivisorCyclesGenerateGpuTests
             foreach (var pair in pairs)
             {
                 expected.Should().Contain(pair.divisor);
-                MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(pair.divisor);
+                MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(pair.divisor);
                 pair.cycle.Should().Be(MersenneDivisorCycles.CalculateCycleLength(pair.divisor, divisorData));
             }
         }
@@ -87,7 +87,7 @@ public class MersenneDivisorCyclesGenerateGpuTests
             foreach (var pair in pairs)
             {
                 uniqueDivisors.Add(pair.divisor).Should().BeTrue();
-                MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(pair.divisor);
+                MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(pair.divisor);
                 pair.cycle.Should().Be(MersenneDivisorCycles.CalculateCycleLength(pair.divisor, divisorData));
             }
 

@@ -11,12 +11,17 @@ internal static partial class PrimeOrderGpuHeuristics
 		int count,
 		ulong phi,
 		ArrayView1D<KeyValuePair<ulong, int>, Stride1D.Dense> toTest,
-		MontgomeryDivisorData divisorData,
+		ulong divisorModulus,
+		ulong divisorNPrime,
+		ulong divisorMontgomeryOne,
+		ulong divisorMontgomeryTwo,
+		ulong divisorMontgomeryTwoSquared,
 		ArrayView1D<ulong, Stride1D.Dense> result
 	)
 	{
 		ulong order = phi;
 		int entryCount = count;
+		MontgomeryDivisorDataGpu divisorData = new(divisorModulus, divisorNPrime, divisorMontgomeryOne, divisorMontgomeryTwo, divisorMontgomeryTwoSquared);
 
 		for (int i = 0; i < entryCount; i++)
 		{
@@ -155,7 +160,11 @@ internal static partial class PrimeOrderGpuHeuristics
 		Index1D index,
 		ulong prime,
 		OrderKernelConfig config,
-		MontgomeryDivisorData divisor,
+		ulong divisorModulus,
+		ulong divisorNPrime,
+		ulong divisorMontgomeryOne,
+		ulong divisorMontgomeryTwo,
+		ulong divisorMontgomeryTwoSquared,
 		ArrayView1D<uint, Stride1D.Dense> primes,
 		ArrayView1D<ulong, Stride1D.Dense> squares,
 		int primeCount,
@@ -226,6 +235,8 @@ internal static partial class PrimeOrderGpuHeuristics
 		}
 
 		SortFactors(phiFactors, phiExponents, phiFactorCount);
+
+		MontgomeryDivisorDataGpu divisor = new(divisorModulus, divisorNPrime, divisorMontgomeryOne, divisorMontgomeryTwo, divisorMontgomeryTwoSquared);
 
 		if (TrySpecialMaxKernel(phi, prime, phiFactors, phiFactorCount, divisor))
 		{
@@ -381,7 +392,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		ulong prime,
 		ArrayView1D<ulong, Stride1D.Dense> factors,
 		int factorCount,
-		in MontgomeryDivisorData divisor)
+		in MontgomeryDivisorDataGpu divisor)
 	{
 		for (int i = 0; i < factorCount; i++)
 		{
@@ -401,7 +412,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		return true;
 	}
 
-	private static ulong InitializeStartingOrderKernel(ulong prime, ulong phi, in MontgomeryDivisorData divisor)
+	private static ulong InitializeStartingOrderKernel(ulong prime, ulong phi, in MontgomeryDivisorDataGpu divisor)
 	{
 		ulong order = phi;
 		ulong residue = prime & 7UL;
@@ -423,7 +434,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		ArrayView1D<ulong, Stride1D.Dense> factors,
 		ArrayView1D<int, Stride1D.Dense> exponents,
 		int factorCount,
-		in MontgomeryDivisorData divisor)
+		in MontgomeryDivisorDataGpu divisor)
 	{
 		for (int i = 0; i < factorCount; i++)
 		{
@@ -458,7 +469,7 @@ internal static partial class PrimeOrderGpuHeuristics
 	private static bool TryConfirmOrderKernel(
 		ulong prime,
 		ulong order,
-		in MontgomeryDivisorData divisor,
+		in MontgomeryDivisorDataGpu divisor,
 		uint limit,
 		ArrayView1D<uint, Stride1D.Dense> primes,
 		ArrayView1D<ulong, Stride1D.Dense> squares,
@@ -532,7 +543,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		ulong order,
 		ulong previousOrder,
 		byte hasPreviousOrder,
-		in MontgomeryDivisorData divisor,
+		in MontgomeryDivisorDataGpu divisor,
 		uint limit,
 		int maxPowChecks,
 		ArrayView1D<uint, Stride1D.Dense> primes,
@@ -851,7 +862,7 @@ internal static partial class PrimeOrderGpuHeuristics
 	private static bool TryConfirmCandidateKernel(
 		ulong prime,
 		ulong candidate,
-		in MontgomeryDivisorData divisor,
+		in MontgomeryDivisorDataGpu divisor,
 		uint limit,
 		ArrayView1D<uint, Stride1D.Dense> primes,
 		ArrayView1D<ulong, Stride1D.Dense> squares,
@@ -1174,7 +1185,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		}
 	}
 
-	private static bool Pow2EqualsOneKernel(ulong exponent, in MontgomeryDivisorData divisor)
+	private static bool Pow2EqualsOneKernel(ulong exponent, in MontgomeryDivisorDataGpu divisor)
 	{
 		return ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponent) == 1UL;
 	}
@@ -1200,9 +1211,10 @@ internal static partial class PrimeOrderGpuHeuristics
 
 	/// This kernel always sets the result of the corresponding element. Callers don't need to clear the output buffers.
 
-	internal static void Pow2ModKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> exponents, MontgomeryDivisorData divisor, ArrayView1D<ulong, Stride1D.Dense> remainders)
+	internal static void Pow2ModKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> exponents, ulong divisorModulus, ulong divisorNPrime, ulong divisorMontgomeryOne, ulong divisorMontgomeryTwo, ulong divisorMontgomeryTwoSquared, ArrayView1D<ulong, Stride1D.Dense> remainders)
 	{
 		ulong exponent = exponents[index];
+		MontgomeryDivisorDataGpu divisor = new(divisorModulus, divisorNPrime, divisorMontgomeryOne, divisorMontgomeryTwo, divisorMontgomeryTwoSquared);
 		remainders[index] = ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponent);
 	}
 

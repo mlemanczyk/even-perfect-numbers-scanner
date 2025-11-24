@@ -260,7 +260,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		ArrayView1D<ulong, Stride1D.Dense> exponentViewDevice = exponentBuffer.View;
 		ArrayView1D<byte, Stride1D.Dense> hitsView = hitsBuffer.View;
 		ArrayView1D<int, Stride1D.Dense> hitIndexView = hitIndexBuffer.View;
-
+		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		while (remainingCount > 0UL && !composite)
 		{
 			int chunkCount = chunkCountBaseline;
@@ -284,7 +284,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 				if (passesSmallModuli && (localRemainder8 == 1 || localRemainder8 == 7) && ((decimalMask >> localRemainder10) & 1) != 0)
 				{
 					ulong divisorValue = (ulong)nextDivisor128;
-					MontgomeryDivisorData montgomeryData = MontgomeryDivisorData.FromModulus(divisorValue);
+					MontgomeryDivisorData montgomeryData = divisorPool.FromModulus(divisorValue);
 					ulong divisorCycle = ResolveDivisorCycle(gpu, divisorValue, prime, in montgomeryData);
 					if (divisorCycle == prime)
 					{
@@ -294,6 +294,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 						return true;
 					}
 
+					divisorPool.Return(montgomeryData);
 					divisorSpan[admissibleCount] = divisorValue;
 					divisorDataSpan[admissibleCount] = new GpuDivisorPartialData(divisorValue);
 					offsetSpan[admissibleCount] = admissibleCount;

@@ -76,19 +76,23 @@ public sealed class DivisorCycleCache
 		// }
 
 		ulong[] snapshot = _snapshot;
+		ulong cycleLength;
 		if (divisor < (ulong)snapshot.Length)
 		{
-			ulong cached = snapshot[divisor];
-			if (cached == 0UL)
+			cycleLength = snapshot[divisor];
+			if (cycleLength == 0UL)
 			{
 				throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
 			}
 
-			return cached;
+			return cycleLength;
 		}
 
-		MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
-		return MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData, skipPrimeOrderHeuristic: true);
+		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+		MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
+		cycleLength = MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData, skipPrimeOrderHeuristic: true);
+		divisorPool.Return(divisorData);
+		return cycleLength;
 	}
 
 	public void GetCycleLengths(ReadOnlySpan<ulong> divisors, Span<ulong> cycles)
@@ -185,12 +189,14 @@ public sealed class DivisorCycleCache
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void ComputeCyclesCpu(ReadOnlySpan<ulong> divisors, Span<ulong> cycles, ReadOnlySpan<int> indices)
 	{
+		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		for (int i = 0; i < indices.Length; i++)
 		{
 			int targetIndex = indices[i];
 			ulong divisor = divisors[targetIndex];
-			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
+			MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
 			cycles[targetIndex] = MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData);
+			divisorPool.Return(divisorData);
 		}
 	}
 

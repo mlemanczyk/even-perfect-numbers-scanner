@@ -229,13 +229,13 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static ulong Pow2MontgomeryModWindowedGpuKeepMontgomery(in MontgomeryDivisorData divisor, ulong exponent)
+	internal static ulong Pow2MontgomeryModWindowedGpuKeepMontgomery(in MontgomeryDivisorDataGpu divisor, ulong exponent)
 	{
 		return Pow2MontgomeryModWindowedGpuMontgomeryResult(divisor, exponent);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static ulong Pow2MontgomeryModWindowedGpuConvertToStandard(in MontgomeryDivisorData divisor, ulong exponent)
+	internal static ulong Pow2MontgomeryModWindowedGpuConvertToStandard(in MontgomeryDivisorDataGpu divisor, ulong exponent)
 	{
 		ulong modulus = divisor.Modulus;
 		ulong nPrime = divisor.NPrime;
@@ -244,7 +244,7 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static ulong Pow2MontgomeryModWindowedGpuMontgomeryResult(in MontgomeryDivisorData divisor, ulong exponent)
+	private static ulong Pow2MontgomeryModWindowedGpuMontgomeryResult(in MontgomeryDivisorDataGpu divisor, ulong exponent)
 	{
 		ulong modulus = divisor.Modulus;
 		// Reuse the GPU-compatible MontgomeryMultiply helper highlighted in MontgomeryMultiplyBenchmarks so the accelerator path
@@ -349,7 +349,7 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static ulong ComputeMontgomeryOddPowerGpu(ulong exponent, in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime)
+	private static ulong ComputeMontgomeryOddPowerGpu(ulong exponent, in MontgomeryDivisorDataGpu divisor, ulong modulus, ulong nPrime)
 	{
 		ulong baseValue = divisor.MontgomeryTwo;
 		ulong power = divisor.MontgomeryOne;

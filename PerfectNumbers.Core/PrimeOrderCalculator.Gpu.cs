@@ -44,7 +44,7 @@ internal static partial class PrimeOrderCalculator
 
 		// var kernelLauncher = gpu.CheckFactorsKernelLauncher;		
 		var kernel = gpu.CheckFactorsKernel;
-		kernel.Launch(stream, 1, entryCount, phi, gpu.Pow2ModEntriesToTestOnDevice.View, divisorData, gpu.OutputUlong.View);
+		kernel.Launch(stream, 1, entryCount, phi, gpu.Pow2ModEntriesToTestOnDevice.View, divisorData.Modulus, divisorData.NPrime, divisorData.MontgomeryOne, divisorData.MontgomeryTwo, divisorData.MontgomeryTwoSquared, gpu.OutputUlong.View);
 
 		gpu.OutputUlong.View.CopyToCPU(stream, ref order, 1);
 		stream.Synchronize();
@@ -146,7 +146,7 @@ internal static partial class PrimeOrderCalculator
 				phi,
 				specialMaxFactorsView,
 				factorCount,
-				divisorData,
+				divisorData.Modulus,
 				gpu.OutputUlong.View,
 				specialMaxResultView);
 

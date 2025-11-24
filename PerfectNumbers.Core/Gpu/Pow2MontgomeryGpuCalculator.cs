@@ -25,7 +25,7 @@ public static class Pow2MontgomeryGpuCalculator
 		// resultBuffer.MemSetToZero(stream);
 
 		var kernelLauncher = gpu.KeepMontgomeryKernelLauncher;
-		kernelLauncher(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);
+		kernelLauncher(stream, 1, exponentBuffer.View, divisor.Modulus, divisor.NPrime, divisor.MontgomeryOne, divisor.MontgomeryTwo, divisor.MontgomeryTwoSquared, resultBuffer.View);
 
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
@@ -54,7 +54,7 @@ public static class Pow2MontgomeryGpuCalculator
 
 		var kernelLauncher = gpu.ConvertToStandardKernelLauncher!;
 
-		kernelLauncher(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);			
+		kernelLauncher(stream, 1, exponentBuffer.View, divisor.Modulus, divisor.NPrime, divisor.MontgomeryOne, divisor.MontgomeryTwo, divisor.MontgomeryTwoSquared, resultBuffer.View);			
 
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();
@@ -82,7 +82,7 @@ public static class Pow2MontgomeryGpuCalculator
 		
 		var accelerator = gpu.Accelerator;
 		var kernelLauncher = gpu.ConvertToStandardKernelLauncher;
-		kernelLauncher(stream, 1, exponentBuffer.View, divisor, resultBuffer.View);			
+		kernelLauncher(stream, 1, exponentBuffer.View, divisor.Modulus, divisor.NPrime, divisor.MontgomeryOne, divisor.MontgomeryTwo, divisor.MontgomeryTwoSquared, resultBuffer.View);			
 
 		resultBuffer.View.CopyToCPU(stream, ref result, 1);
 		stream.Synchronize();

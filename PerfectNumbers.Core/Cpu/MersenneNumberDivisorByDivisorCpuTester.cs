@@ -204,43 +204,37 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		remainder11 = (byte)((((divisorHigh % 11UL) * 5UL) + (divisorLow % 11UL)) % 11UL);
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-
+		var divisorPool = MontgomeryDivisorDataPool.Shared;
 		while (divisor.CompareTo(limit) <= 0)
 		{
 			bool passesSmallModuli = remainder3 != 0 && remainder7 != 0 && remainder11 != 0;
 			if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
 			{
 				ulong candidate = divisor.Low;
-				MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(candidate);
+				MontgomeryDivisorData divisorData = divisorPool.FromModulus(candidate);
 				ulong divisorCycle;
 				// Divisors generated from 2 * k * p + 1 exceed the small-cycle snapshot when p >= 138,000,000, so the short path below never runs.
-				// if (candidate <= PerfectNumberConstants.MaxQForDivisorCycles)
-				// {
-				//     divisorCycle = cycleCache.GetCycleLength(candidate);
-				// }
-				// else
+				if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
+						gpu,
+						candidate,
+						prime,
+						divisorData,
+						out ulong computedCycle,
+						out bool primeOrderFailed) || computedCycle == 0UL)
 				{
-					if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
-							gpu,
-							candidate,
-							prime,
-							divisorData,
-							out ulong computedCycle,
-							out bool primeOrderFailed) || computedCycle == 0UL)
-					{
-						// Divisors produced by 2 * k * p + 1 always exceed PerfectNumberConstants.MaxQForDivisorCycles
-						// for the exponents scanned here, so skip the unused cache fallback and compute directly.
-						divisorCycle = MersenneDivisorCycles.CalculateCycleLength(
-							candidate,
-							divisorData,
-							skipPrimeOrderHeuristic: primeOrderFailed);
-					}
-					else
-					{
-						divisorCycle = computedCycle;
-					}
+					// Divisors produced by 2 * k * p + 1 always exceed PerfectNumberConstants.MaxQForDivisorCycles
+					// for the exponents scanned here, so skip the unused cache fallback and compute directly.
+					divisorCycle = MersenneDivisorCycles.CalculateCycleLength(
+						candidate,
+						divisorData,
+						skipPrimeOrderHeuristic: primeOrderFailed);
+				}
+				else
+				{
+					divisorCycle = computedCycle;
 				}
 
+				divisorPool.Return(divisorData);
 				if (divisorCycle == prime)
 				{
 					// A cycle equal to the tested exponent (which is prime in this path) guarantees that the candidate divides
@@ -290,18 +284,16 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		out bool processedAll,
 		out ulong foundDivisor)
 	{
-		processedAll = false;
-		foundDivisor = 0UL;
-
 		bool canAdvance = step <= limit;
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		if (!canAdvance)
 		{
 			if (divisor <= limit)
 			{
 				if (remainder3 != 0 && remainder7 != 0 && remainder11 != 0 && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
 				{
-					MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
+					MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
 					ulong divisorCycle;
 					if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
 							gpu,
@@ -320,6 +312,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 					{
 						divisorCycle = computedCycle;
 					}
+
+					divisorPool.Return(divisorData);
 
 					if (divisorCycle == prime)
 					{
@@ -351,13 +345,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		}
 
 		ulong remainingIterations = ((limit - divisor) / step) + 1UL;
-
 		while (true)
 		{
 			bool passesSmallModuli = remainder3 != 0 && remainder7 != 0 && remainder11 != 0;
 			if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
 			{
-				MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
+				MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
 				ulong divisorCycle;
 				if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
 						gpu,
@@ -377,6 +370,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 					divisorCycle = computedCycle;
 				}
 
+				divisorPool.Return(divisorData);
 				if (divisorCycle == prime)
 				{
 					foundDivisor = divisor;

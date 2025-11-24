@@ -398,14 +398,18 @@ internal static partial class PrimeOrderGpuHeuristics
 			statusBuffer.View);
 
 		var orderKernel = GetOrderKernel(acceleratorIndex);
-		var kernelLauncher = orderKernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, OrderKernelConfig, MontgomeryDivisorData, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, OrderKernelBuffers>>();
+		var kernelLauncher = orderKernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, OrderKernelConfig, ulong, ulong, ulong, ulong, ulong, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, OrderKernelBuffers>>();
 
 		kernelLauncher(
 			stream,
 			1,
 			prime,
 			kernelConfig,
-			divisorData,
+			divisorData.Modulus,
+			divisorData.NPrime,
+			divisorData.MontgomeryOne,
+			divisorData.MontgomeryTwo,
+			divisorData.MontgomeryTwoSquared,
 			smallPrimesView,
 			smallSquaresView,
 			(int)smallPrimesView.Length,
@@ -417,7 +421,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		resultBuffer.View.CopyToCPU(stream, ref order, 1);
 		stream.Synchronize();
 
-		stream.Dispose();
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 		phiFactorBuffer.Dispose();
 		phiExponentBuffer.Dispose();
 		workFactorBuffer.Dispose();
@@ -458,7 +462,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		}
 
 		var accelerator = _accelerators[acceleratorIndex];
-		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, OrderKernelConfig, MontgomeryDivisorData, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, OrderKernelBuffers>(CalculateOrderKernel);
+		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, OrderKernelConfig, ulong, ulong, ulong, ulong, ulong, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, OrderKernelBuffers>(CalculateOrderKernel);
 
 		var kernel = KernelUtil.GetKernel(loaded);
 		pool[acceleratorIndex] = kernel;
@@ -530,11 +534,12 @@ internal static partial class PrimeOrderGpuHeuristics
 		// remainderBuffer.MemSetToZero(stream);
 
 		var pow2ModKernel = GetPow2ModKernel(acceleratorIndex);
-		var kernelLauncher = pow2ModKernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>>();
+		var kernelLauncher = pow2ModKernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>>();
 
 		try
 		{
-			kernelLauncher(stream, exponents.Length, exponentBuffer.View, divisorData, remainderBuffer.View);
+			kernelLauncher(stream, exponents.Length, exponentBuffer.View, divisorData.Modulus, divisorData.NPrime, divisorData.MontgomeryOne, divisorData.MontgomeryTwo, divisorData.MontgomeryTwoSquared, remainderBuffer.View);
+
 			remainderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(results), exponents.Length);
 			stream.Synchronize();
 
@@ -557,7 +562,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		return true;
 	}
 
-	private static void ComputePow2ModCpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorData divisorData, Span<ulong> results)
+	private static void ComputePow2ModCpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorDataGpu divisorData, Span<ulong> results)
 	{
 		int length = exponents.Length;
 		for (int i = 0; i < length; i++)
@@ -636,7 +641,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		}
 	}
 
-	private static ulong Pow2ModCpu(ulong exponent, ulong modulus, in MontgomeryDivisorData divisorData)
+	private static ulong Pow2ModCpu(ulong exponent, ulong modulus, in MontgomeryDivisorDataGpu divisorData)
 	{
 		if (modulus <= 1UL)
 		{
@@ -655,7 +660,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		}
 
 		var accelerator = _accelerators[acceleratorIndex];
-		var loaded = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, MontgomeryDivisorData, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernel));
+		var loaded = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernel));
 
 		pool[acceleratorIndex] = loaded;
 		return loaded;

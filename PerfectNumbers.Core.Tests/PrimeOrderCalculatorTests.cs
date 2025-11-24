@@ -46,7 +46,7 @@ public class PrimeOrderCalculatorTests
         ulong result = PrimeOrderCalculator.Calculate(
             prime,
             previousOrder: null,
-            MontgomeryDivisorData.FromModulus(prime),
+            MontgomeryDivisorDataPool.Shared.FromModulus(prime),
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
 			      PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
@@ -63,14 +63,14 @@ public class PrimeOrderCalculatorTests
         ulong heuristic = PrimeOrderCalculator.Calculate(
             prime,
             previousOrder,
-            MontgomeryDivisorData.FromModulus(prime),
+            MontgomeryDivisorDataPool.Shared.FromModulus(prime),
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
 			      PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
         ulong strict = PrimeOrderCalculator.Calculate(
             prime,
             previousOrder: null,
-            MontgomeryDivisorData.FromModulus(prime),
+            MontgomeryDivisorDataPool.Shared.FromModulus(prime),
             PrimeOrderCalculator.PrimeOrderSearchConfig.StrictDefault,
 			      PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
@@ -86,7 +86,7 @@ public class PrimeOrderCalculatorTests
         ulong result = PrimeOrderCalculator.Calculate(
             prime,
             previousOrder: null,
-            MontgomeryDivisorData.FromModulus(prime),
+            MontgomeryDivisorDataPool.Shared.FromModulus(prime),
             PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
 			      PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
@@ -106,7 +106,7 @@ public class PrimeOrderCalculatorTests
         ulong result = PrimeOrderCalculator.Calculate(
             prime: 13UL,
             previousOrder: null,
-            MontgomeryDivisorData.FromModulus(13UL),
+            MontgomeryDivisorDataPool.Shared.FromModulus(13UL),
             config,
 			      PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
@@ -123,7 +123,7 @@ public class PrimeOrderCalculatorTests
             maxPowChecks: 1,
             mode: PrimeOrderCalculator.PrimeOrderMode.Heuristic);
 
-        MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(239UL);
+        MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(239UL);
         ulong heuristic = PrimeOrderCalculator.Calculate(
             prime: 239UL,
             previousOrder: null,

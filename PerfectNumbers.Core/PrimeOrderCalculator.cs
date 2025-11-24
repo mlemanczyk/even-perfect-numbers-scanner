@@ -86,13 +86,15 @@ internal static partial class PrimeOrderCalculator
 			}
 
 			ulong prime64 = (ulong)prime;
-			divisorData = MontgomeryDivisorData.FromModulus(prime64);
+			Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+			divisorData = divisorPool.FromModulus(prime64);
 			ulong order64 = Calculate(prime64, previous, divisorData, config, device);
+			divisorPool.Return(divisorData);
 			result = order64 == 0UL ? UInt128.Zero : (UInt128)order64;
 		}
 		else
 		{
-			divisorData = default;
+			divisorData = MontgomeryDivisorData.Empty;
 			result = CalculateWideInternal(prime, previousOrder, divisorData, config);
 		}
 

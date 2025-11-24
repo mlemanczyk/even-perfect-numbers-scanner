@@ -8,7 +8,7 @@ public static class PerfectNumberConstants
 	public const int DefaultSmallPrimeFactorSlotCount = 64;
 	public const int DefaultSpecialMaxFactorCapacity = 1024;
     public const ulong ExtraDivisorCycleSearchLimit = 64UL;
-	public const int GpuFrequency = 16 - 1;
+	public const int GpuFrequency = 4 - 1;
     public const int MaxQForDivisorCycles = 4_000_000;
     public static readonly uint PrimesLimit = 1_000_000; //(ulong)Array.MaxLength;// 1_000_000;
     public const int MaxOddPowersCount = 128;

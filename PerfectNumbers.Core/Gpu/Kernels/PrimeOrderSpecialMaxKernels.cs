@@ -10,7 +10,7 @@ internal static partial class PrimeOrderGpuHeuristics
         ulong phi,
         ArrayView1D<ulong, Stride1D.Dense> factors,
         int factorCount,
-        MontgomeryDivisorData divisor,
+        ulong divisorModulus,
         ArrayView1D<ulong, Stride1D.Dense> candidates,
         ArrayView1D<ulong, Stride1D.Dense> resultOut)
     {
@@ -57,7 +57,7 @@ internal static partial class PrimeOrderGpuHeuristics
             candidates[insert + 1] = current;
         }
 
-        var divisorPartial = new GpuDivisorPartialData(divisor.Modulus);
+        var divisorPartial = new GpuDivisorPartialData(divisorModulus);
         var stepper = new ExponentRemainderStepperGpu(divisorPartial);
         if (stepper.InitializeIsUnityGpu(candidates[0]))
         {

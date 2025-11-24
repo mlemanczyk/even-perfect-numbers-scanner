@@ -18,7 +18,7 @@ public class MersenneDivisorCyclesTests
     [MemberData(nameof(Divisors))]
     public void CalculateCycleLength_returns_expected_value(ulong divisor, ulong expected)
     {
-        MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
+        MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(divisor);
         MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData).Should().Be(expected);
         MersenneDivisorCycles.CalculateCycleLengthGpu(divisor).Should().Be(expected);
     }

@@ -222,8 +222,10 @@ public class MersenneDivisorCycles
 		if (divisor <= ulong.MaxValue)
 		{
 			ulong divisor64 = (ulong)divisor;
-			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor64);
+			Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+			MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor64);
 			ulong cycle = CalculateCycleLength(divisor64, divisorData);
+			divisorPool.Return(divisorData);
 			return (UInt128)cycle;
 		}
 
@@ -733,6 +735,7 @@ public class MersenneDivisorCycles
 
 			ulong localStart = threadStart;
 			ulong localEnd = threadEnd;
+			Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 			tasks[taskIndex] = Task.Run(() =>
 			{
 				ulong rangeLength = localEnd - localStart + 1UL;
@@ -758,8 +761,9 @@ public class MersenneDivisorCycles
 					// TODO: Migrate this generation path to the shared
 					// unrolled-hex calculator so the CPU generator matches
 					// the GPU benchmark leader for large divisors.
-					MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
+					MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
 					ulong cycle = CalculateCycleLength(divisor, divisorData);
+					divisorPool.Return(divisorData);
 					localCycles[localCycleIndex++] = (divisor, cycle);
 				}
 

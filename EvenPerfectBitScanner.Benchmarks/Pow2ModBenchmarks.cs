@@ -470,7 +470,7 @@ public class Pow2ModBenchmarks
 				Console.WriteLine($"Calculating small cycle {smallModulus}");
                 smallDivisors[i] = CreateMontgomeryDivisorData(smallModulus);
                 smallExponents[i] = NextSmallExponent(random);
-                smallCycles[i] = MersenneDivisorCycles.CalculateCycleLength(smallModulus, MontgomeryDivisorData.FromModulus(smallModulus));
+                smallCycles[i] = MersenneDivisorCycles.CalculateCycleLength(smallModulus, MontgomeryDivisorDataPool.Shared.FromModulus(smallModulus));
 
                 (ulong largeModulus, ulong largeCycle) = NextLargeModulusAndCycle(random);
 				Console.WriteLine($"Calculating large cycle {largeModulus}");
@@ -582,7 +582,7 @@ public class Pow2ModBenchmarks
 
         private static ulong CalculateCycleLengthWithHeuristics(ulong modulus, ref ulong? previousPrimeOrder)
         {
-            MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(modulus);
+            MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(modulus);
             if (modulus <= 1UL || (modulus & 1UL) == 0UL)
             {
                 return MersenneDivisorCycles.CalculateCycleLength(modulus, divisorData);
@@ -651,7 +651,7 @@ public class Pow2ModBenchmarks
 
     private ulong CalculateCycleLengthWithHeuristics(ulong modulus, ulong fallbackOrder = 0UL)
     {
-        MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(modulus);
+        MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(modulus);
         if (modulus <= 1UL || (modulus & 1UL) == 0UL)
         {
             return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLength(modulus, divisorData);

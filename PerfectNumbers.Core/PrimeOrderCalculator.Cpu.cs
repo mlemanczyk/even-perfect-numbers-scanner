@@ -1389,7 +1389,7 @@ internal static partial class PrimeOrderCalculator
 	private static bool RunOnGpu()
 	{
 		// return false;
-		// return true;
+		return true;
 		// int cpuCount;
 		
 		// lock(_sync)

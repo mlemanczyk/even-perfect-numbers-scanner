@@ -170,7 +170,7 @@ public class MersenneNumberDivisorGpuTesterTests
             ulong[] primes = { 31UL, 37UL, 41UL };
             byte[] hits = new byte[primes.Length];
 
-            session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), 0UL, primes, hits);
+            session.CheckDivisor(223UL, MontgomeryDivisorDataPool.Shared.FromModulus(223UL), 0UL, primes, hits);
 
             hits.Should().ContainInOrder(new byte[] { 0, 1, 0 });
         }
@@ -193,13 +193,13 @@ public class MersenneNumberDivisorGpuTesterTests
             ulong[] primes = { 31UL, 37UL, 41UL, 43UL };
             byte[] hits = new byte[primes.Length];
 
-            ulong cycle223 = MersenneDivisorCycles.CalculateCycleLength(223UL, MontgomeryDivisorData.FromModulus(223UL));
-            session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes, hits);
+            ulong cycle223 = MersenneDivisorCycles.CalculateCycleLength(223UL, MontgomeryDivisorDataPool.Shared.FromModulus(223UL));
+            session.CheckDivisor(223UL, MontgomeryDivisorDataPool.Shared.FromModulus(223UL), cycle223, primes, hits);
             hits.Should().ContainInOrder(new byte[] { 0, 1, 0, 0 });
 
             Array.Fill(hits, (byte)0);
-            ulong cycle13367 = MersenneDivisorCycles.CalculateCycleLength(13367UL, MontgomeryDivisorData.FromModulus(13367UL));
-            session.CheckDivisor(13367UL, MontgomeryDivisorData.FromModulus(13367UL), cycle13367, primes, hits);
+            ulong cycle13367 = MersenneDivisorCycles.CalculateCycleLength(13367UL, MontgomeryDivisorDataPool.Shared.FromModulus(13367UL));
+            session.CheckDivisor(13367UL, MontgomeryDivisorDataPool.Shared.FromModulus(13367UL), cycle13367, primes, hits);
             hits.Should().ContainInOrder(new byte[] { 0, 0, 1, 0 });
         }
         finally
@@ -225,8 +225,8 @@ public class MersenneNumberDivisorGpuTesterTests
             ulong[] primes = { 31UL, 37UL, 41UL, 43UL, 47UL };
             byte[] hits = new byte[primes.Length];
 
-            ulong cycle223 = MersenneDivisorCycles.CalculateCycleLength(223UL, MontgomeryDivisorData.FromModulus(223UL));
-            session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes, hits);
+            ulong cycle223 = MersenneDivisorCycles.CalculateCycleLength(223UL, MontgomeryDivisorDataPool.Shared.FromModulus(223UL));
+            session.CheckDivisor(223UL, MontgomeryDivisorDataPool.Shared.FromModulus(223UL), cycle223, primes, hits);
 
             hits.Should().ContainInOrder(new byte[] { 0, 1, 0, 0, 0 });
         }
@@ -252,7 +252,7 @@ public class MersenneNumberDivisorGpuTesterTests
             ulong[] exponents = { 6UL, 7UL, 9UL, 10UL, 12UL };
             byte[] hits = new byte[exponents.Length];
 
-            MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(7UL);
+            MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(7UL);
             ulong cycle = MersenneDivisorCycles.CalculateCycleLength(7UL, divisorData);
 
             session.CheckDivisor(7UL, divisorData, cycle, exponents, hits);
@@ -281,7 +281,7 @@ public class MersenneNumberDivisorGpuTesterTests
             ulong[] exponents = { 10UL, 11UL, 20UL, 21UL, 30UL };
             byte[] hits = new byte[exponents.Length];
 
-            MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(11UL);
+            MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(11UL);
             ulong cycle = MersenneDivisorCycles.CalculateCycleLength(11UL, divisorData);
 
             session.CheckDivisor(11UL, divisorData, cycle, exponents, hits);
@@ -310,7 +310,7 @@ public class MersenneNumberDivisorGpuTesterTests
             var patchedTable = new List<(ulong Divisor, ulong Cycle)>();
             ulong[] patchedSmall = new ulong[PerfectNumberConstants.MaxQForDivisorCycles + 1];
 
-            MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(191UL);
+            MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(191UL);
             patchedSmall[191] = MersenneDivisorCycles.CalculateCycleLength(191UL, divisorData);
 
             tableField.SetValue(cycles, patchedTable);
@@ -353,8 +353,8 @@ public class MersenneNumberDivisorGpuTesterTests
             ulong[] primes = { 31UL, 37UL, 41UL, 43UL, 47UL };
             byte[] hits = new byte[primes.Length];
 
-            ulong cycle223 = MersenneDivisorCycles.CalculateCycleLength(223UL, MontgomeryDivisorData.FromModulus(223UL));
-            session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes, hits);
+            ulong cycle223 = MersenneDivisorCycles.CalculateCycleLength(223UL, MontgomeryDivisorDataPool.Shared.FromModulus(223UL));
+            session.CheckDivisor(223UL, MontgomeryDivisorDataPool.Shared.FromModulus(223UL), cycle223, primes, hits);
 
             hits.Should().ContainInOrder(new byte[] { 0, 1, 0, 0, 0 });
         }

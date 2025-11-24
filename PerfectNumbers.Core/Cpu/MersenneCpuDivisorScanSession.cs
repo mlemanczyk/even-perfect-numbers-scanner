@@ -21,10 +21,10 @@ internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDi
         //     return;
         // }
 
-        MontgomeryDivisorData cachedData = divisorData;
-        if (cachedData.Modulus != divisor)
+        if (divisorData.Modulus != divisor)
         {
-            cachedData = MontgomeryDivisorData.FromModulus(divisor);
+			throw new InvalidOperationException("Divisor data is for a different modulus");
+            // cachedData = MontgomeryDivisorData.FromModulus(divisor);
         }
 
         if (divisorCycle == 0UL)
@@ -39,7 +39,7 @@ internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDi
 
         // Keep these remainder steppers in place so future updates continue reusing the previously computed residues.
         // They are critical for avoiding repeated full Montgomery exponentiation work when scanning divisors.
-        var exponentStepper = new ExponentRemainderStepperCpu(cachedData);
+        var exponentStepper = new ExponentRemainderStepperCpu(divisorData);
 
         var cycleStepper = new CycleRemainderStepper(divisorCycle);
 
