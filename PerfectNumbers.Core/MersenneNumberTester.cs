@@ -146,6 +146,7 @@ public sealed class MersenneNumberTester(
 
 		if (idx == 0)
 		{
+			PrimeOrderCalculatorAccelerator.Return(gpu);
 			ThreadStaticPools.UInt128Pool.Return(qsBuffer);
 			return;
 		}
