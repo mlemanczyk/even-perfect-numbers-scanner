@@ -6,6 +6,7 @@ using PerfectNumbers.Core.Gpu;
 using EvenPerfectBitScanner.Candidates;
 using EvenPerfectBitScanner.Candidates.Transforms;
 using System.Numerics;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace EvenPerfectBitScanner.Tests;
 
@@ -104,14 +105,16 @@ public class ProgramTests
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
         candidatesField.SetValue(null, new (ulong, uint)[] { (7UL, 3U), (23UL, 11U) });
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         try
         {
-            Program.IsEvenPerfectCandidate(11UL, 32UL, out _, out _).Should().BeFalse();
-            Program.IsEvenPerfectCandidate(5UL, 32UL, out _, out _).Should().BeTrue();
-            Program.IsEvenPerfectCandidate(127UL, 32UL, out _, out _).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(gpu, 11UL, 32UL, out _, out _).Should().BeFalse();
+            Program.IsEvenPerfectCandidate(gpu, 5UL, 32UL, out _, out _).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(gpu, 127UL, 32UL, out _, out _).Should().BeTrue();
         }
         finally
         {
+			PrimeOrderCalculatorAccelerator.Return(gpu);
             testerField.SetValue(null, null);
             candidatesField.SetValue(null, null);
             primeField.SetValue(null, null);
@@ -134,14 +137,16 @@ public class ProgramTests
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
         candidatesField.SetValue(null, Array.Empty<(ulong, uint)>());
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         try
         {
-            Program.IsEvenPerfectCandidate(11UL, 0UL, out bool searched, out bool detailedCheck).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(gpu, 11UL, 0UL, out bool searched, out bool detailedCheck).Should().BeTrue();
             searched.Should().BeTrue();
             detailedCheck.Should().BeFalse();
         }
         finally
         {
+			PrimeOrderCalculatorAccelerator.Return(gpu);
             testerField.SetValue(null, null);
             candidatesField.SetValue(null, null);
             primeField.SetValue(null, null);
@@ -163,14 +168,16 @@ public class ProgramTests
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         try
         {
-            Program.IsEvenPerfectCandidate(3UL, 4_000_000_000UL, out bool searched, out bool detailed).Should().BeFalse();
+            Program.IsEvenPerfectCandidate(gpu, 3UL, 4_000_000_000UL, out bool searched, out bool detailed).Should().BeFalse();
             searched.Should().BeTrue();
             detailed.Should().BeTrue();
         }
         finally
         {
+			PrimeOrderCalculatorAccelerator.Return(gpu);
             testerField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
@@ -191,18 +198,20 @@ public class ProgramTests
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         try
         {
-            Program.IsEvenPerfectCandidate(11UL, 0UL, out bool searched, out bool detailed).Should().BeFalse();
+            Program.IsEvenPerfectCandidate(gpu, 11UL, 0UL, out bool searched, out bool detailed).Should().BeFalse();
             searched.Should().BeTrue();
             detailed.Should().BeTrue();
 
-            Program.IsEvenPerfectCandidate(13UL, 0UL, out searched, out detailed).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(gpu, 13UL, 0UL, out searched, out detailed).Should().BeTrue();
             searched.Should().BeTrue();
             detailed.Should().BeFalse();
         }
         finally
         {
+			PrimeOrderCalculatorAccelerator.Return(gpu);
             testerField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
@@ -222,18 +231,20 @@ public class ProgramTests
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         try
         {
-            Program.IsEvenPerfectCandidate(29UL, 0UL, out bool searched, out bool detailed).Should().BeFalse();
+            Program.IsEvenPerfectCandidate(gpu, 29UL, 0UL, out bool searched, out bool detailed).Should().BeFalse();
             searched.Should().BeTrue();
             detailed.Should().BeFalse();
 
-            Program.IsEvenPerfectCandidate(31UL, 0UL, out searched, out detailed).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(gpu, 31UL, 0UL, out searched, out detailed).Should().BeTrue();
             searched.Should().BeTrue();
             detailed.Should().BeTrue();
         }
         finally
         {
+			PrimeOrderCalculatorAccelerator.Return(gpu);
             mersenneField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
@@ -256,18 +267,20 @@ public class ProgramTests
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         try
         {
             ulong[] primes = [107UL, 127UL];
             foreach (ulong prime in primes)
             {
-                Program.IsEvenPerfectCandidate(prime, 1024UL, out bool searched, out bool detailed).Should().BeTrue();
+                Program.IsEvenPerfectCandidate(gpu, prime, 1024UL, out bool searched, out bool detailed).Should().BeTrue();
                 searched.Should().BeTrue();
                 detailed.Should().BeTrue();
             }
         }
         finally
         {
+			PrimeOrderCalculatorAccelerator.Return(gpu);
             mersenneField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
@@ -291,18 +304,20 @@ public class ProgramTests
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         try
         {
             ulong[] primes = [107UL, 127UL, 521UL, 607UL];
             Parallel.ForEach(primes, prime =>
             {
-                Program.IsEvenPerfectCandidate(prime, 0UL, out bool searched, out bool detailed).Should().BeTrue();
+                Program.IsEvenPerfectCandidate(gpu, prime, 0UL, out bool searched, out bool detailed).Should().BeTrue();
                 searched.Should().BeTrue();
                 detailed.Should().BeTrue();
             });
         }
         finally
         {
+			PrimeOrderCalculatorAccelerator.Return(gpu);
             mersenneField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
@@ -325,18 +340,20 @@ public class ProgramTests
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         try
         {
-            Program.IsEvenPerfectCandidate(107UL, 0UL, out bool searched, out bool detailed).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(gpu, 107UL, 0UL, out bool searched, out bool detailed).Should().BeTrue();
             searched.Should().BeTrue();
             detailed.Should().BeTrue();
 
-            Program.IsEvenPerfectCandidate(127UL, 0UL, out searched, out detailed).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(gpu, 127UL, 0UL, out searched, out detailed).Should().BeTrue();
             searched.Should().BeTrue();
             detailed.Should().BeTrue();
         }
         finally
         {
+			PrimeOrderCalculatorAccelerator.Return(gpu);
             mersenneField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
@@ -362,13 +379,15 @@ public class ProgramTests
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, exponent, true), trackAllValues: true));
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         try
         {
-            Program.IsEvenPerfectCandidate(exponent, 0UL, out bool searched, out bool detailedCheck).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(gpu, exponent, 0UL, out bool searched, out bool detailedCheck).Should().BeTrue();
             searched.Should().BeTrue();
         }
         finally
         {
+			PrimeOrderCalculatorAccelerator.Return(gpu);
             mersenneField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
@@ -397,13 +416,15 @@ public class ProgramTests
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, exponent, true), trackAllValues: true));
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         try
         {
-            Program.IsEvenPerfectCandidate(exponent, 0UL, out bool searched, out bool detailedCheck).Should().BeTrue();
+            Program.IsEvenPerfectCandidate(gpu, exponent, 0UL, out bool searched, out bool detailedCheck).Should().BeTrue();
             searched.Should().BeTrue();
         }
         finally
         {
+			PrimeOrderCalculatorAccelerator.Return(gpu);
             mersenneField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();
@@ -476,21 +497,23 @@ public class ProgramTests
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         try
         {
             compositeField.SetValue(null, false);
 
-            Program.IsEvenPerfectCandidate(9UL, 0UL, out bool searched, out bool detailed).Should().BeFalse();
+            Program.IsEvenPerfectCandidate(gpu, 9UL, 0UL, out bool searched, out bool detailed).Should().BeFalse();
             searched.Should().BeFalse();
             detailed.Should().BeFalse();
             ((bool)compositeField.GetValue(null)!).Should().BeTrue();
 
-            Program.IsEvenPerfectCandidate(11UL, 0UL, out searched, out detailed);
+            Program.IsEvenPerfectCandidate(gpu, 11UL, 0UL, out searched, out detailed);
             searched.Should().BeTrue();
             ((bool)compositeField.GetValue(null)!).Should().BeFalse();
         }
         finally
         {
+			PrimeOrderCalculatorAccelerator.Return(gpu);
             mersenneField.SetValue(null, null);
             primeField.SetValue(null, null);
             CandidatesCalculator.ResetResidueTrackers();

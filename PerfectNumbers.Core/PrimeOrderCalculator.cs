@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 
@@ -48,6 +49,7 @@ internal static partial class PrimeOrderCalculator
 	// TODO: Remove branching on the CPU / GPU paths
 	// TODO: Split big non-static functions into smaller / extract static code to limit JIT time
 	public static ulong Calculate(
+			PrimeOrderCalculatorAccelerator gpu,
 			ulong prime,
 			ulong? previousOrder,
 			in MontgomeryDivisorData divisorData,
@@ -55,12 +57,13 @@ internal static partial class PrimeOrderCalculator
 			PrimeOrderHeuristicDevice device)
 	{
 		var scope = UsePow2Mode(device);
-		ulong order = CalculateInternal(prime, previousOrder, divisorData, config);
+		ulong order = CalculateInternal(gpu, prime, previousOrder, divisorData, config);
 		scope.Dispose();
 		return order;
 	}
 
 	public static UInt128 Calculate(
+			PrimeOrderCalculatorAccelerator gpu,
 			in UInt128 prime,
 			in UInt128? previousOrder,
 			in PrimeOrderSearchConfig config,
@@ -88,14 +91,14 @@ internal static partial class PrimeOrderCalculator
 			ulong prime64 = (ulong)prime;
 			Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 			divisorData = divisorPool.FromModulus(prime64);
-			ulong order64 = Calculate(prime64, previous, divisorData, config, device);
+			ulong order64 = Calculate(gpu, prime64, previous, divisorData, config, device);
 			divisorPool.Return(divisorData);
 			result = order64 == 0UL ? UInt128.Zero : (UInt128)order64;
 		}
 		else
 		{
 			divisorData = MontgomeryDivisorData.Empty;
-			result = CalculateWideInternal(prime, previousOrder, divisorData, config);
+			result = CalculateWideInternal(gpu, prime, previousOrder, divisorData, config);
 		}
 
 		scope.Dispose();

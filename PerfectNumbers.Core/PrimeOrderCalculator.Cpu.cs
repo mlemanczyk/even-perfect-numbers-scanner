@@ -44,7 +44,7 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
-	private static ulong CalculateInternal(ulong prime, ulong? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
+	private static ulong CalculateInternal(PrimeOrderCalculatorAccelerator gpu, ulong prime, ulong? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderSearchConfig config)
 	{
 		// TODO: Is this condition ever met on EvenPerfectBitScanner's execution path? If not, we can add a clarification comment and comment out the entire block. We want to support p candidates at least greater or equal to 31.
 		if (prime <= 3UL)
@@ -54,10 +54,8 @@ internal static partial class PrimeOrderCalculator
 
 		ulong phi = prime - 1UL;
 
-		PrimeOrderCalculatorAccelerator gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		if (IsGpuHeuristicDevice && PrimeOrderGpuHeuristics.TryCalculateOrder(gpu, prime, previousOrder, config, divisorData, out ulong gpuOrder))
 		{
-			PrimeOrderCalculatorAccelerator.Return(gpu);
 			return gpuOrder;
 		}
 
@@ -73,13 +71,11 @@ internal static partial class PrimeOrderCalculator
 			// result = CalculateByFactorizationCpu(gpu, prime, divisorData);
 				
 			phiFactors.Dispose();
-			PrimeOrderCalculatorAccelerator.Return(gpu);
 			return result;
 		}
 
 		result = RunHeuristicPipelineCpu(gpu, prime, previousOrder, config, divisorData, phi, phiFactors);
 		phiFactors.Dispose();
-		PrimeOrderCalculatorAccelerator.Return(gpu);
 		return result;
 	}
 

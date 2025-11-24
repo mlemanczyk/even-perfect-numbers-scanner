@@ -1,4 +1,5 @@
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace EvenPerfectBitScanner.Benchmarks;
 
@@ -60,12 +61,13 @@ internal static class Pow2MontgomeryModWindowedBenchmarkInputsProvider
         };
 
         var cases = new Pow2MontgomeryModWindowedBenchmarkCase[seeds.Length];
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         for (int i = 0; i < seeds.Length; i++)
         {
             Pow2MontgomeryModWindowedBenchmarkSeed seed = seeds[i];
             ulong modulus = 2UL * seed.Multiplier * seed.Exponent + 1UL;
             MontgomeryDivisorData divisor = MontgomeryDivisorDataPool.Shared.FromModulus(modulus);
-            ulong cycleLength = MersenneDivisorCycles.CalculateCycleLength(modulus, divisor);
+            ulong cycleLength = MersenneDivisorCycles.CalculateCycleLength(gpu, modulus, divisor);
             ulong reducedExponent = seed.Exponent % cycleLength;
             cases[i] = new Pow2MontgomeryModWindowedBenchmarkCase(
                 seed.Exponent,
@@ -75,6 +77,7 @@ internal static class Pow2MontgomeryModWindowedBenchmarkInputsProvider
                 reducedExponent);
         }
 
+		PrimeOrderCalculatorAccelerator.Return(gpu);
         return new Pow2MontgomeryModWindowedBenchmarkInputs(cases);
     }
 

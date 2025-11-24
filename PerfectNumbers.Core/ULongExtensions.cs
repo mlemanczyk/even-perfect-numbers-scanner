@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 
@@ -98,7 +99,7 @@ public static partial class ULongExtensions
 		}
 	}
 
-	public static ulong CalculateOrder(this ulong q)
+	public static ulong CalculateOrder(this ulong q, PrimeOrderCalculatorAccelerator gpu)
 	{
 		if (q <= 2UL)
 		{
@@ -111,7 +112,7 @@ public static partial class ULongExtensions
 
 		int i = 0, primesLength = smallPrimes.Length;
 		UInt128 q128 = q,
-				cycle = MersenneDivisorCycles.GetCycle(q128);
+				cycle = MersenneDivisorCycles.GetCycle(gpu, q128);
 		// TODO: When the shared cycle snapshot cannot serve this divisor, trigger an on-demand
 		// GPU computation (respecting the configured device) without promoting the result into
 		// the cache so the order calculator still benefits from cycle stepping while keeping the
@@ -860,7 +861,7 @@ public static partial class ULongExtensions
 	/// Computes 2^exponent mod modulus using iterative CRT composition from mod 10 up to modulus.
 	/// Only for modulus >= 10 and reasonable size.
 	/// </summary>
-	public static UInt128 PowModCrt(this ulong exponent, UInt128 modulus, MersenneDivisorCycles cycles)
+	public static UInt128 PowModCrt(this ulong exponent, PrimeOrderCalculatorAccelerator gpu, UInt128 modulus, MersenneDivisorCycles cycles)
 	{
 		if (modulus < 10)
 			return PowMod(exponent, modulus); // fallback to classic
@@ -875,7 +876,7 @@ public static partial class ULongExtensions
 
 		for (; modulusCandidate <= modulus; modulusCandidate++)
 		{
-			cycle = MersenneDivisorCycles.GetCycle(modulusCandidate);
+			cycle = MersenneDivisorCycles.GetCycle(gpu, modulusCandidate);
 			remainderForCandidate = cycle > zero
 					? PowModWithCycle(exponent, modulusCandidate, cycle)
 					: PowMod(exponent, modulusCandidate);
@@ -935,7 +936,7 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool SharesFactorWithExponentMinusOne(this ulong exponent)
+	public static bool SharesFactorWithExponentMinusOne(this ulong exponent, PrimeOrderCalculatorAccelerator gpu)
 	{
 		ulong prime, value = exponent - 1UL;
 		value >>= BitOperations.TrailingZeroCount(value);
@@ -951,7 +952,7 @@ public static partial class ULongExtensions
 				continue;
 			}
 
-			if (exponent % prime.CalculateOrder() == 0UL)
+			if (exponent % prime.CalculateOrder(gpu) == 0UL)
 			{
 				return true;
 			}
@@ -963,7 +964,7 @@ public static partial class ULongExtensions
 			while (value % prime == 0UL);
 		}
 
-		if (value > 1UL && exponent % value.CalculateOrder() == 0UL)
+		if (value > 1UL && exponent % value.CalculateOrder(gpu) == 0UL)
 		{
 			return true;
 		}

@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using ILGPU;
 using ILGPU.Runtime;
+using PerfectNumbers.Core.Gpu.Accelerators;
 using UInt128 = System.UInt128;
 
 namespace PerfectNumbers.Core.Gpu;
@@ -131,7 +132,7 @@ public class MersenneNumberLucasLehmerGpuTester
     // Configurable LL slice size to keep kernels short. Default 32.
     public int SliceSize = 32;
 
-    public bool IsPrime(ulong exponent, bool runOnGpu)
+    public bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong exponent, bool runOnGpu)
     {
         // Early rejections aligned with incremental/order sieves, but safe for small p:
         // - If 3 | p and p != 3, then 7 | M_p -> composite.
@@ -142,7 +143,7 @@ public class MersenneNumberLucasLehmerGpuTester
             return false;
         }
 
-        if ((exponent & 3UL) == 1UL && exponent.SharesFactorWithExponentMinusOne())
+        if ((exponent & 3UL) == 1UL && exponent.SharesFactorWithExponentMinusOne(gpu))
         {
             return false;
         }

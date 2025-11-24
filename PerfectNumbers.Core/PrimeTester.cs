@@ -87,45 +87,45 @@ public sealed class PrimeTester
 		return result;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool IsPrimeGpu(ulong n)
-	{
+	// [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	// public static bool IsPrimeGpu(ulong n)
+	// {
 
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		int acceleratorIndex = gpu.AcceleratorIndex;
-		var inputView = gpu.Input.View;
-		var outputView = gpu.OutputByte.View;
+	// 	var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+	// 	int acceleratorIndex = gpu.AcceleratorIndex;
+	// 	var inputView = gpu.Input.View;
+	// 	var outputView = gpu.OutputByte.View;
 
-		// GpuPrimeWorkLimiter.Acquire();
-		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		inputView.CopyFromCPU(stream, ref n, 1);
+	// 	// GpuPrimeWorkLimiter.Acquire();
+	// 	AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
+	// 	inputView.CopyFromCPU(stream, ref n, 1);
 
-		var kernelLauncher = gpu.SmallPrimeSieveKernelLauncher;
+	// 	var kernelLauncher = gpu.SmallPrimeSieveKernelLauncher;
 
-		kernelLauncher(
-						stream,
-						1,
-						inputView,
-						gpu.DevicePrimesLastOne,
-						gpu.DevicePrimesLastSeven,
-						gpu.DevicePrimesLastThree,
-						gpu.DevicePrimesLastNine,
-						gpu.DevicePrimesPow2LastOne,
-						gpu.DevicePrimesPow2LastSeven,
-						gpu.DevicePrimesPow2LastThree,
-						gpu.DevicePrimesPow2LastNine,
-						outputView);
+	// 	kernelLauncher(
+	// 					stream,
+	// 					1,
+	// 					inputView,
+	// 					gpu.DevicePrimesLastOne,
+	// 					gpu.DevicePrimesLastSeven,
+	// 					gpu.DevicePrimesLastThree,
+	// 					gpu.DevicePrimesLastNine,
+	// 					gpu.DevicePrimesPow2LastOne,
+	// 					gpu.DevicePrimesPow2LastSeven,
+	// 					gpu.DevicePrimesPow2LastThree,
+	// 					gpu.DevicePrimesPow2LastNine,
+	// 					outputView);
 
-		byte flag = 0;
-		outputView.CopyToCPU(stream, ref flag, 1);
-		stream.Synchronize();
+	// 	byte flag = 0;
+	// 	outputView.CopyToCPU(stream, ref flag, 1);
+	// 	stream.Synchronize();
 
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
-		PrimeOrderCalculatorAccelerator.Return(gpu);
-		// GpuPrimeWorkLimiter.Release();
+	// 	AcceleratorStreamPool.Return(acceleratorIndex, stream);
+	// 	PrimeOrderCalculatorAccelerator.Return(gpu);
+	// 	// GpuPrimeWorkLimiter.Release();
 
-		return flag != 0;
-	}
+	// 	return flag != 0;
+	// }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n)
@@ -189,10 +189,9 @@ public sealed class PrimeTester
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void IsPrimeBatchGpu(ReadOnlySpan<ulong> values, Span<byte> results)
+	public static void IsPrimeBatchGpu(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> values, Span<byte> results)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(GpuBatchSize);
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		int totalLength = values.Length;
 		int batchSize = GpuBatchSize;
@@ -236,7 +235,6 @@ public sealed class PrimeTester
 
 		stream.Synchronize();
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);
-		PrimeOrderCalculatorAccelerator.Return(gpu);
 		// GpuPrimeWorkLimiter.Release();
 	}
 
@@ -265,7 +263,7 @@ public sealed class PrimeTester
 		return n.BinaryGcd(m) != 1UL;
 	}
 
-	internal static void SharesFactorWithMaxExponentBatch(ReadOnlySpan<ulong> values, Span<byte> results)
+	internal static void SharesFactorWithMaxExponentBatch(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> values, Span<byte> results)
 	{
 		// TODO: Route this batch helper through the shared GPU kernel pool from
 		// GpuUInt128BinaryGcdBenchmarks so we reuse cached kernels, pinned host buffers,
@@ -275,7 +273,6 @@ public sealed class PrimeTester
 
 		int length = values.Length;
 
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		gpu.EnsureCapacity(0, length);
 		MemoryBuffer1D<ulong, Stride1D.Dense>? inputBuffer = gpu.Input;
@@ -291,7 +288,6 @@ public sealed class PrimeTester
 		stream.Synchronize();
 
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);
-		PrimeOrderCalculatorAccelerator.Return(gpu);
 	}
 
 }

@@ -28,15 +28,17 @@ public class PrimeTesterBenchmarks
 
 		PrimeOrderCalculatorAccelerator.WarmUp();
 		// HeuristicGroupABPrimeTesterAccelerator.WarmUp();
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+
         _ = HeuristicPrimeTester.IsPrimeCpu(_candidates[0]);
-        _ = HeuristicPrimeTester.IsPrimeGpu(_candidates[0]);
+        _ = HeuristicPrimeTester.IsPrimeGpu(gpu, _candidates[0]);
         _ = Prime.Numbers.IsPrime(_candidates[0]);
+			PrimeOrderCalculatorAccelerator.Return(gpu);
     }
 
     // [Benchmark]
     public int HeuristicCpu()
     {
-        HeuristicPrimeTester tester = _heuristicTester;
         ulong[] values = _candidates;
         int primeCount = 0;
 
@@ -54,17 +56,18 @@ public class PrimeTesterBenchmarks
     [Benchmark]
     public int HeuristicGpu()
     {
-        HeuristicPrimeTester tester = _heuristicTester;
         ulong[] values = _candidates;
         int primeCount = 0;
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (HeuristicPrimeTester.IsPrimeGpu(values[i]))
+            if (HeuristicPrimeTester.IsPrimeGpu(gpu, values[i]))
             {
                 primeCount++;
             }
         }
+		PrimeOrderCalculatorAccelerator.Return(gpu);
 
         return primeCount;
     }
@@ -75,9 +78,10 @@ public class PrimeTesterBenchmarks
         ulong[] values = _candidates;
         int primeCount = 0;
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         for (int i = 0; i < values.Length; i++)
         {
-            if (HeuristicCombinedPrimeTester.IsPrimeGpu(values[i]))
+            if (HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, values[i]))
             {
                 primeCount++;
             }
@@ -109,14 +113,16 @@ public class PrimeTesterBenchmarks
         ulong[] values = _candidates;
         int primeCount = 0;
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         for (int i = 0; i < values.Length; i++)
         {
-            if (PrimeTester.IsPrimeGpu(values[i]))
+            if (PrimeTester.IsPrimeGpu(gpu, values[i]))
             {
                 primeCount++;
             }
         }
 
+		PrimeOrderCalculatorAccelerator.Return(gpu);
         return primeCount;
     }
 

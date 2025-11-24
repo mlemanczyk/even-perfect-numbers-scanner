@@ -1,5 +1,6 @@
 using ILGPU;
 using ILGPU.Runtime;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -86,7 +87,7 @@ public sealed class MersenneNumberDivisorGpuTester
 
 	private static (ulong divisor, uint cycle)[]? _divisorCandidates = [];
 
-	public bool IsPrime(ulong p, UInt128 d, ulong divisorCyclesSearchLimit, out bool divisorsExhausted)
+	public bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong p, UInt128 d, ulong divisorCyclesSearchLimit, out bool divisorsExhausted)
 	{
 		ReadOnlyGpuUInt128 readOnlyDivisor;
 
@@ -142,7 +143,7 @@ public sealed class MersenneNumberDivisorGpuTester
 				continue;
 			}
 
-			UInt128 cycle128 = MersenneDivisorCycles.GetCycle(d);
+			UInt128 cycle128 = MersenneDivisorCycles.GetCycle(gpu, d);
 			if ((UInt128)p % cycle128 != UInt128.Zero)
 			{
 				continue;

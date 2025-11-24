@@ -1,5 +1,5 @@
 using System.Runtime.CompilerServices;
-
+using PerfectNumbers.Core.Gpu.Accelerators;
 using UInt128 = System.UInt128;
 
 namespace PerfectNumbers.Core;
@@ -39,7 +39,7 @@ public sealed class ModResidueTracker
 	/// (number must be non-decreasing across calls). Adds and initializes new
 	/// divisors on first use.
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public bool IsDivisible(UInt128 number, UInt128 divisor)
+	public bool IsDivisible(PrimeOrderCalculatorAccelerator gpu, UInt128 number, UInt128 divisor)
 	{
 		if (divisor == UInt128.Zero)
 		{
@@ -52,7 +52,7 @@ public sealed class ModResidueTracker
 		int idx = LowerBound(divisors, divisor);
 		if (idx == divisors.Count || divisors[idx] != divisor)
 		{
-			UInt128 residue = ComputeInitialResidue(number, divisor);
+			UInt128 residue = ComputeInitialResidue(gpu, number, divisor);
 			divisors.Insert(idx, divisor);
 			_residues.Insert(idx, residue);
 			if (_hasLastAppended && idx == divisors.Count - 1 && divisor >= _lastAppended)
@@ -81,7 +81,7 @@ public sealed class ModResidueTracker
 	// Merge or append current candidate divisor (ascending order required across calls).
 	// Returns true and sets 'divisible' based on residue at 'number'.
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public bool MergeOrAppend(UInt128 number, UInt128 divisor, out bool divisible)
+	public bool MergeOrAppend(PrimeOrderCalculatorAccelerator gpu, UInt128 number, UInt128 divisor, out bool divisible)
 	{
 		// Assume number is non-decreasing; advance residues lazily when number changes.
 		List<UInt128> divisors = _divisors;
@@ -97,7 +97,7 @@ public sealed class ModResidueTracker
 		List<UInt128> residues = _residues;
 		if (divisors.Count == 0 || (_hasLastAppended && divisor >= _lastAppended && divisors[^1] <= divisor))
 		{
-			residue = ComputeInitialResidue(number, divisor);
+			residue = ComputeInitialResidue(gpu, number, divisor);
 			divisors.Add(divisor);
 			residues.Add(residue);
 			_hasLastAppended = true;
@@ -123,7 +123,7 @@ public sealed class ModResidueTracker
 
 
 		// Insert at cursor to keep order
-		residue = ComputeInitialResidue(number, divisor);
+		residue = ComputeInitialResidue(gpu, number, divisor);
 		divisors.Insert(cursor, divisor);
 		residues.Insert(cursor, residue);
 		divisible = residue == UInt128.Zero;
@@ -238,7 +238,7 @@ public sealed class ModResidueTracker
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private UInt128 ComputeInitialResidue(UInt128 number, UInt128 divisor)
+	private UInt128 ComputeInitialResidue(PrimeOrderCalculatorAccelerator gpu, UInt128 number, UInt128 divisor)
 	{
                 if (_model == ResidueModel.Identity)
                 {
@@ -266,7 +266,7 @@ public sealed class ModResidueTracker
                 if (pow != UInt128.One)
                         return (pow - UInt128.One) % divisor;
 
-		ulong ord = divisor.CalculateOrder();
+		ulong ord = divisor.CalculateOrder(gpu);
 		if (ord == 0UL || number % (UInt128)ord != UInt128.Zero)
 			return UInt128.One; // does NOT divide
 

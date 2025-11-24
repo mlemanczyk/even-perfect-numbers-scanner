@@ -44,27 +44,23 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Pow2MontgomeryModWindowedKeepGpu(this ulong exponent, in MontgomeryDivisorData divisor)
-		=> Pow2MontgomeryGpuCalculator.CalculateKeep(exponent, divisor);
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Pow2MontgomeryModWindowedConvertGpu(this ulong exponent, in MontgomeryDivisorData divisor)
-		=> Pow2MontgomeryGpuCalculator.CalculateConvert(exponent, divisor);
+	public static ulong Pow2MontgomeryModWindowedKeepGpu(this ulong exponent, PrimeOrderCalculatorAccelerator gpu, in MontgomeryDivisorData divisor)
+		=> Pow2MontgomeryGpuCalculator.CalculateKeep(gpu, exponent, divisor);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong Pow2MontgomeryModWindowedConvertGpu(this ulong exponent, PrimeOrderCalculatorAccelerator gpu, in MontgomeryDivisorData divisor)
 		=> Pow2MontgomeryGpuCalculator.CalculateConvert(gpu, exponent, divisor);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Pow2MontgomeryModWithCycleGpu(this ulong exponent, ulong cycleLength, in MontgomeryDivisorData divisor)
+	public static ulong Pow2MontgomeryModWithCycleGpu(this ulong exponent, PrimeOrderCalculatorAccelerator gpu, ulong cycleLength, in MontgomeryDivisorData divisor)
 	{
 		ulong rotationCount = exponent % cycleLength;
-		return Pow2MontgomeryGpuCalculator.CalculateConvert(rotationCount, divisor);
+		return Pow2MontgomeryGpuCalculator.CalculateConvert(gpu, rotationCount, divisor);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Pow2MontgomeryModFromCycleRemainderGpu(this ulong reducedExponent, in MontgomeryDivisorData divisor)
+	public static ulong Pow2MontgomeryModFromCycleRemainderGpu(this ulong reducedExponent, PrimeOrderCalculatorAccelerator gpu, in MontgomeryDivisorData divisor)
 	{
-		return Pow2MontgomeryGpuCalculator.CalculateConvert(reducedExponent, divisor);
+		return Pow2MontgomeryGpuCalculator.CalculateConvert(gpu, reducedExponent, divisor);
 	}
 }

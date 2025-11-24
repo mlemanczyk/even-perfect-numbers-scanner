@@ -1,3 +1,5 @@
+using PerfectNumbers.Core.Gpu.Accelerators;
+
 namespace PerfectNumbers.Core;
 
 public interface IMersenneNumberDivisorByDivisorTester
@@ -10,9 +12,9 @@ public interface IMersenneNumberDivisorByDivisorTester
 
     ulong GetAllowedMaxDivisor(ulong prime);
 
-    bool IsPrime(ulong prime, out bool divisorsExhausted, out ulong divisor);
+    bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out ulong divisor);
 
-    IDivisorScanSession CreateDivisorSession();
+    IDivisorScanSession CreateDivisorSession(PrimeOrderCalculatorAccelerator gpu);
 
     void PrepareCandidates(in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues);
 

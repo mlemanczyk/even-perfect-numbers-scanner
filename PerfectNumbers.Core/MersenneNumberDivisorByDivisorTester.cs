@@ -239,10 +239,10 @@ public static class MersenneNumberDivisorByDivisorTester
 
 		int chunkSize = primesPerTask <= 0 ? 1 : primesPerTask;
 
-		void ProcessPrime(ulong prime)
+		void ProcessPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime)
 		{
 			Console.WriteLine($"Processing {prime}");
-			bool isPrime = tester.IsPrime(prime, out bool divisorsExhausted, out ulong divisor);
+			bool isPrime = tester.IsPrime(gpu, prime, out bool divisorsExhausted, out ulong divisor);
 
 			if (!isPrime)
 			{
@@ -259,10 +259,13 @@ public static class MersenneNumberDivisorByDivisorTester
 
 		if (workerCount == 1)
 		{
+			var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 			foreach (ulong prime in filteredPrimes)
 			{
-				ProcessPrime(prime);
+				ProcessPrime(gpu, prime);
 			}
+
+			PrimeOrderCalculatorAccelerator.Return(gpu);
 		}
 		else
 		{
@@ -295,11 +298,13 @@ public static class MersenneNumberDivisorByDivisorTester
 						startGate.Wait();
 						Console.WriteLine($"Task started for range {rangeStart}");
 
+						var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 						for (int index = rangeStart; index < rangeEnd; index++)
 						{
-							ProcessPrime(filteredPrimes[index]);
+							ProcessPrime(gpu, filteredPrimes[index]);
 						}
 
+						PrimeOrderCalculatorAccelerator.Return(gpu);
 						Console.WriteLine($"Task finished for range {rangeStart}");
 						PrimeOrderCalculatorAccelerator.DisposeAll();
 					},

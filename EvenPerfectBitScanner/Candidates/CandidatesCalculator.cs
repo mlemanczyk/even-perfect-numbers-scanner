@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Open.Numeric.Primes;
 using PerfectNumbers.Core;
 using EvenPerfectBitScanner.Candidates.Transforms;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace EvenPerfectBitScanner.Candidates;
 
@@ -53,7 +54,7 @@ internal static class CandidatesCalculator
         return trackers.Value!;
     }
 
-    internal static bool IsCompositeByResidues(ulong p)
+    internal static bool IsCompositeByResidues(PrimeOrderCalculatorAccelerator gpu, ulong p)
     {
         ModResidueTracker tracker = AcquireResidueTracker();
         // Use ModResidueTracker with a small set of primes to pre-filter composite p.
@@ -71,7 +72,7 @@ internal static class CandidatesCalculator
                 break;
             }
 
-            if (tracker.MergeOrAppend(p, primes[primeIndex], out bool divisible) && divisible)
+            if (tracker.MergeOrAppend(gpu, p, primes[primeIndex], out bool divisible) && divisible)
             {
                 return true;
             }

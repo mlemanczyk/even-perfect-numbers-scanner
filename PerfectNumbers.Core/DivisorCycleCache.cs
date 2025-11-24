@@ -57,13 +57,13 @@ public sealed class DivisorCycleCache
 		_snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
 	}
 
-	public ulong GetCycleLength(ulong divisor, bool skipPrimeOrderHeuristic = false)
+	public ulong GetCycleLength(PrimeOrderCalculatorAccelerator gpu, ulong divisor, bool skipPrimeOrderHeuristic = false)
 	{
 		if (!skipPrimeOrderHeuristic)
 		{
 			Span<ulong> result = stackalloc ulong[1];
 			ReadOnlySpan<ulong> singleDivisor = stackalloc ulong[1] { divisor };
-			GetCycleLengths(singleDivisor, result);
+			GetCycleLengths(gpu, singleDivisor, result);
 			return result[0];
 		}
 
@@ -90,12 +90,12 @@ public sealed class DivisorCycleCache
 
 		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
-		cycleLength = MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData, skipPrimeOrderHeuristic: true);
+		cycleLength = MersenneDivisorCycles.CalculateCycleLength(gpu, divisor, divisorData, skipPrimeOrderHeuristic: true);
 		divisorPool.Return(divisorData);
 		return cycleLength;
 	}
 
-	public void GetCycleLengths(ReadOnlySpan<ulong> divisors, Span<ulong> cycles)
+	public void GetCycleLengths(PrimeOrderCalculatorAccelerator gpu,ReadOnlySpan<ulong> divisors, Span<ulong> cycles)
 	{
 		ulong[] snapshot = _snapshot;
 		int length = divisors.Length;
@@ -139,7 +139,7 @@ public sealed class DivisorCycleCache
 			}
 			else
 			{
-				ComputeCyclesCpu(divisors, cycles, missingIndices);
+				ComputeCyclesCpu(gpu, divisors, cycles, missingIndices);
 			}
 		}
 
@@ -187,7 +187,7 @@ public sealed class DivisorCycleCache
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void ComputeCyclesCpu(ReadOnlySpan<ulong> divisors, Span<ulong> cycles, ReadOnlySpan<int> indices)
+	private static void ComputeCyclesCpu(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> divisors, Span<ulong> cycles, ReadOnlySpan<int> indices)
 	{
 		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		for (int i = 0; i < indices.Length; i++)
@@ -195,7 +195,7 @@ public sealed class DivisorCycleCache
 			int targetIndex = indices[i];
 			ulong divisor = divisors[targetIndex];
 			MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
-			cycles[targetIndex] = MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData);
+			cycles[targetIndex] = MersenneDivisorCycles.CalculateCycleLength(gpu, divisor, divisorData);
 			divisorPool.Return(divisorData);
 		}
 	}

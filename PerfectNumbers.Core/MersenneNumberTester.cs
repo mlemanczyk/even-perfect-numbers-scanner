@@ -63,6 +63,7 @@ public sealed class MersenneNumberTester(
 		UInt128 twoP = (UInt128)exponent << 1; // 2 * p
 		LastDigit lastDigit = (exponent & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
 		// CPU path: compute orders directly and cache
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		if (!_useGpuOrder)
 		{
 			UInt128 k = UInt128.One;
@@ -97,10 +98,11 @@ public sealed class MersenneNumberTester(
 					continue;
 				}
 
-				ulong ord = q.CalculateOrder();
+				ulong ord = q.CalculateOrder(gpu);
 				_orderCache[q] = ord;
 			}
 
+			PrimeOrderCalculatorAccelerator.Return(gpu);
 			return;
 		}
 
@@ -190,7 +192,7 @@ public sealed class MersenneNumberTester(
 				ulong order = orders[i];
 				if (order == 0UL)
 				{
-					order = qs[offset + i].CalculateOrder();
+					order = qs[offset + i].CalculateOrder(gpu);
 				}
 
 				if (useOrderCache)
@@ -205,11 +207,12 @@ public sealed class MersenneNumberTester(
 		}
 
 		AcceleratorStreamPool.Return(acceleratorIndex,stream);
+		PrimeOrderCalculatorAccelerator.Return(gpu);
 		// GpuPrimeWorkLimiter.Release();
 		uInt128Pool.Return(qs);
 	}
 
-	public bool IsMersennePrime(ulong exponent)
+	public bool IsMersennePrime(PrimeOrderCalculatorAccelerator gpu, ulong exponent)
 	{
 		// Safe early rejections using known orders for tiny primes:
 		// 7 | M_p iff 3 | p. Avoid rejecting p == 3 where M_3 == 7 is prime.
@@ -220,7 +223,7 @@ public sealed class MersenneNumberTester(
 			return false;
 		}
 
-		if ((exponent & 3UL) == 1UL && exponent.SharesFactorWithExponentMinusOne())
+		if ((exponent & 3UL) == 1UL && exponent.SharesFactorWithExponentMinusOne(gpu))
 		{
 			return false;
 		}
@@ -251,7 +254,7 @@ public sealed class MersenneNumberTester(
 			}
 			else
 			{
-				_residueCpuTester!.Scan(exponent, twoP, lastDigit, maxK, ref prePrime);
+				_residueCpuTester!.Scan(gpu, exponent, twoP, lastDigit, maxK, ref prePrime);
 			}
 
 			return prePrime;
@@ -270,7 +273,7 @@ public sealed class MersenneNumberTester(
 			}
 			else
 			{
-				_incrementalCpuTester.Scan(exponent, twoPPre, lastDigitPre, maxKPre, ref prePrime);
+				_incrementalCpuTester.Scan(gpu, exponent, twoPPre, lastDigitPre, maxKPre, ref prePrime);
 			}
 
 			if (!prePrime)
@@ -279,8 +282,8 @@ public sealed class MersenneNumberTester(
 			}
 
 			return _useGpuLucas
-				? _lucasLehmerGpuTester.IsPrime(exponent, runOnGpu: true)
-				: _lucasLehmerCpuTester.IsPrime(exponent);
+				? _lucasLehmerGpuTester.IsPrime(gpu, exponent, runOnGpu: true)
+				: _lucasLehmerCpuTester.IsPrime(gpu, exponent);
 		}
 
 		bool isPrime = true;
@@ -293,7 +296,7 @@ public sealed class MersenneNumberTester(
 			}
 			else
 			{
-				_orderCpuTester.Scan(exponent, twoP, lastDigit, maxK, ref isPrime);
+				_orderCpuTester.Scan(gpu, exponent, twoP, lastDigit, maxK, ref isPrime);
 			}
 		}
 		else
@@ -304,7 +307,7 @@ public sealed class MersenneNumberTester(
 			}
 			else
 			{
-				_incrementalCpuTester.Scan(exponent, twoP, lastDigit, maxK, ref isPrime);
+				_incrementalCpuTester.Scan(gpu, exponent, twoP, lastDigit, maxK, ref isPrime);
 			}
 		}
 

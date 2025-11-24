@@ -1,4 +1,5 @@
 using FluentAssertions;
+using PerfectNumbers.Core.Gpu.Accelerators;
 using Xunit;
 
 namespace PerfectNumbers.Core.Tests;
@@ -57,7 +58,7 @@ public class MersenneNumberDivisorByDivisorTesterTests
             return DivisorLimit;
         }
 
-        public bool IsPrime(ulong prime, out bool divisorsExhausted, out ulong divisor)
+        public bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out ulong divisor)
         {
             divisorsExhausted = true;
             if (prime % 7UL == 0UL)
@@ -76,7 +77,7 @@ public class MersenneNumberDivisorByDivisorTesterTests
             return true;
         }
 
-        public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession()
+        public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession(PrimeOrderCalculatorAccelerator gpu)
         {
             return new DummySession();
         }

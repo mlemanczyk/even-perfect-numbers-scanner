@@ -1,5 +1,6 @@
 using FluentAssertions;
 using PerfectNumbers.Core.Cpu;
+using PerfectNumbers.Core.Gpu.Accelerators;
 using Xunit;
 using UInt128 = System.UInt128;
 
@@ -7,24 +8,32 @@ namespace PerfectNumbers.Core.Tests;
 
 public class MersenneNumberResidueCpuTesterTests
 {
-    private static LastDigit GetLastDigit(ulong exponent) => (exponent & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
+	private static LastDigit GetLastDigit(ulong exponent) => (exponent & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
 
-    [Fact]
-    [Trait("Category", "Fast")]
-    public void Scan_handles_various_prime_exponents()
-    {
-        var tester = new MersenneNumberResidueCpuTester();
+	[Fact]
+	[Trait("Category", "Fast")]
+	public void Scan_handles_various_prime_exponents()
+	{
+		var tester = new MersenneNumberResidueCpuTester();
 
-        RunCase(tester, 23UL, 1UL, expectedPrime: false);
-        RunCase(tester, 29UL, 36UL, expectedPrime: false);
-        RunCase(tester, 89UL, 1_000UL, expectedPrime: true);
-        RunCase(tester, 127UL, 1_000UL, expectedPrime: true);
-    }
+		RunCase(tester, 23UL, 1UL, expectedPrime: false);
+		RunCase(tester, 29UL, 36UL, expectedPrime: false);
+		RunCase(tester, 89UL, 1_000UL, expectedPrime: true);
+		RunCase(tester, 127UL, 1_000UL, expectedPrime: true);
+	}
 
-    private static void RunCase(MersenneNumberResidueCpuTester tester, ulong exponent, ulong maxK, bool expectedPrime)
-    {
-        bool isPrime = true;
-        tester.Scan(exponent, (UInt128)exponent << 1, GetLastDigit(exponent), (UInt128)maxK, ref isPrime);
-        isPrime.Should().Be(expectedPrime);
-    }
+	private static void RunCase(MersenneNumberResidueCpuTester tester, ulong exponent, ulong maxK, bool expectedPrime)
+	{
+		bool isPrime = true;
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		try
+		{
+			tester.Scan(gpu, exponent, (UInt128)exponent << 1, GetLastDigit(exponent), (UInt128)maxK, ref isPrime);
+			isPrime.Should().Be(expectedPrime);
+		}
+		finally
+		{
+			PrimeOrderCalculatorAccelerator.Return(gpu);
+		}
+	}
 }

@@ -7,6 +7,7 @@ using Open.Collections;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Cpu;
 using PerfectNumbers.Core.Gpu;
+using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace EvenPerfectBitScanner;
 
@@ -64,7 +65,7 @@ internal static class Program
 			PrimeTester.GpuBatchSize = gpuPrimeBatch;
 			GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
 			Console.WriteLine("Warming up GPU kernels");
-			PrimeTester.WarmUpGpuKernels(1024);			
+			PrimeTester.WarmUpGpuKernels(1024);
 			// PrimeTester.WarmUpGpuKernels(gpuPrimeThreads >> 4);
 			Console.WriteLine("Starting up threads...");
 			_ = UnboundedTaskScheduler.Instance;
@@ -425,7 +426,7 @@ internal static class Program
 						static (candidate, searchedMersenne, detailedCheck, passedAllTests, divisor) => CalculationResultHandler.HandleResult(candidate, divisor, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP),
 						threadCount,
 						byDivisorPrimeRange);
-						
+
 				CalculationResultHandler.FlushBuffer();
 				CalculationResultHandler.ReleaseOutputBuffer();
 				if (stopwatch is not null)
@@ -469,6 +470,7 @@ internal static class Program
 					bool passedAllTests, searchedMersenne, detailedCheck;
 					ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
 					ulong[] buffer = pool.Rent(blockSize);
+					PrimeOrderCalculatorAccelerator gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 					while (!Volatile.Read(ref _limitReached))
 					{
 						count = CandidatesCalculator.ReserveBlock(buffer, blockSize, ref _limitReached);
@@ -482,7 +484,7 @@ internal static class Program
 							for (j = 0; j < count && !Volatile.Read(ref _limitReached); j++)
 							{
 								p = buffer[j];
-								passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
+								passedAllTests = IsEvenPerfectCandidate(gpu, p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
 								CalculationResultHandler.HandleResult(p, 0UL, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP);
 							}
 
@@ -505,7 +507,7 @@ internal static class Program
 								continue;
 							}
 
-							passedAllTests = IsEvenPerfectCandidate(p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
+							passedAllTests = IsEvenPerfectCandidate(gpu, p, divisorCyclesSearchLimit, out searchedMersenne, out detailedCheck);
 							CalculationResultHandler.HandleResult(p, 0UL, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP);
 
 							if (p == maxP)
@@ -522,6 +524,7 @@ internal static class Program
 					}
 
 					pool.Return(buffer);
+					PrimeOrderCalculatorAccelerator.Return(gpu);
 				});
 			}
 
@@ -565,7 +568,7 @@ internal static class Program
 		}
 	}
 
-	internal static bool IsEvenPerfectCandidate(ulong p, ulong divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck)
+	internal static bool IsEvenPerfectCandidate(PrimeOrderCalculatorAccelerator gpu, ulong p, ulong divisorCyclesSearchLimit, out bool searchedMersenne, out bool detailedCheck)
 	{
 		searchedMersenne = false;
 		detailedCheck = false;
@@ -615,7 +618,7 @@ internal static class Program
 		}
 
 		// Fast residue-based composite check for p using small primes
-		if (!_cliArguments.UseDivisor && !_cliArguments.UseByDivisor && CandidatesCalculator.IsCompositeByResidues(p))
+		if (!_cliArguments.UseDivisor && !_cliArguments.UseByDivisor && CandidatesCalculator.IsCompositeByResidues(gpu, p))
 		{
 			searchedMersenne = false;
 			detailedCheck = false;
@@ -628,7 +631,7 @@ internal static class Program
 		{
 			if (!(_runPrimesOnCpu
 					? PrimeTester.IsPrime(p)
-					: HeuristicCombinedPrimeTester.IsPrimeGpu(p)))
+					: HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, p)))
 			{
 				_lastCompositeP = true;
 				return false;
@@ -641,7 +644,7 @@ internal static class Program
 		if (_cliArguments.UseDivisor)
 		{
 			bool divisorsExhausted;
-			bool isPrime = _divisorTester!.IsPrime(p, _divisor, divisorCyclesSearchLimit, out divisorsExhausted);
+			bool isPrime = _divisorTester!.IsPrime(gpu, p, _divisor, divisorCyclesSearchLimit, out divisorsExhausted);
 			detailedCheck = divisorsExhausted;
 			return isPrime;
 		}
@@ -649,10 +652,10 @@ internal static class Program
 		if (_cliArguments.UseByDivisor)
 		{
 			// Windowed pow2mod kernel handles by-divisor scans.
-			return _byDivisorTester!.IsPrime(p, out detailedCheck, out _);
+			return _byDivisorTester!.IsPrime(gpu, p, out detailedCheck, out _);
 		}
 
-		detailedCheck = MersenneTesters.Value!.IsMersennePrime(p);
+		detailedCheck = MersenneTesters.Value!.IsMersennePrime(gpu, p);
 		return detailedCheck;
 	}
 }

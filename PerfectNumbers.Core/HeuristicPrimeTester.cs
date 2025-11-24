@@ -83,17 +83,17 @@ public sealed class HeuristicPrimeTester
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool IsPrimeGpu(ulong n)
+	public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n)
 	{
 		byte nMod10 = (byte)n.Mod10();
 		ulong maxDivisorSquare = ComputeHeuristicDivisorSquareLimit(n);
-		return IsPrimeGpu(n, maxDivisorSquare, nMod10);
+		return IsPrimeGpu(gpu, n, maxDivisorSquare, nMod10);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool IsPrimeGpu(ulong n, ulong maxDivisorSquare, byte nMod10) => HeuristicIsPrimeGpuCore(n, maxDivisorSquare, nMod10);
+	public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n, ulong maxDivisorSquare, byte nMod10) => HeuristicIsPrimeGpuCore(gpu, n, maxDivisorSquare, nMod10);
 
-	private static bool HeuristicIsPrimeGpuCore(ulong n, ulong maxDivisorSquare, byte nMod10)
+	private static bool HeuristicIsPrimeGpuCore(PrimeOrderCalculatorAccelerator gpu, ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
 		// TODO: Is this condition ever met on the execution path in EvenPerfectBitScanner?
 		if (maxDivisorSquare < 9UL)
@@ -106,7 +106,7 @@ public sealed class HeuristicPrimeTester
 		//     return HeuristicTrialDivisionCpu(n, maxDivisorSquare, nMod10, includeGroupB: false);
 		// }
 
-		bool compositeDetected = HeuristicTrialDivisionGpuDetectsDivisor(n, maxDivisorSquare, nMod10);
+		bool compositeDetected = HeuristicTrialDivisionGpuDetectsDivisor(gpu, n, maxDivisorSquare, nMod10);
 		return !compositeDetected;
 	}
 
@@ -239,10 +239,9 @@ public sealed class HeuristicPrimeTester
 	}
 
 
-	private static bool HeuristicTrialDivisionGpuDetectsDivisor(ulong n, ulong maxDivisorSquare, byte nMod10)
+	private static bool HeuristicTrialDivisionGpuDetectsDivisor(PrimeOrderCalculatorAccelerator gpu, ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		var flagView1D = gpu.OutputInt!.View;
@@ -313,7 +312,6 @@ public sealed class HeuristicPrimeTester
 		// }
 
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);
-		PrimeOrderCalculatorAccelerator.Return(gpu);
 		// GpuPrimeWorkLimiter.Release();
 		return compositeDetected;
 	}
@@ -487,7 +485,7 @@ public sealed class HeuristicPrimeTester
 		}
 
 		primeOrderFailed = primeOrderFailedLocal || !trySuccess || computedCycle == 0UL;
-		ulong resolvedCycle = MersenneDivisorCycles.CalculateCycleLength(divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
+		ulong resolvedCycle = MersenneDivisorCycles.CalculateCycleLength(gpu, divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
 		cycleFromHint = false;
 		cycleComputed = resolvedCycle != 0UL;
 		return resolvedCycle;

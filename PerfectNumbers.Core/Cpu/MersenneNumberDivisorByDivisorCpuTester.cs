@@ -4,7 +4,7 @@ using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core.Cpu;
 
-public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDivisorByDivisorTester
+public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberDivisorByDivisorTester
 {
 	private ulong _divisorLimit;
 	private int _batchSize = 1_024;
@@ -42,7 +42,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public ulong GetAllowedMaxDivisor(ulong prime) => ComputeAllowedMaxDivisor(prime, _divisorLimit);
 
-	public bool IsPrime(ulong prime, out bool divisorsExhausted, out ulong divisor)
+	public bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out ulong divisor)
 	{
 		ulong allowedMax = ComputeAllowedMaxDivisor(prime, _divisorLimit);
 
@@ -58,6 +58,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		bool processedAll;
 
 		bool composite = CheckDivisors(
+			gpu,
 			prime,
 			allowedMax,
 			out processedAll,
@@ -84,7 +85,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		}
 	}
 
-	public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession()
+	public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession(PrimeOrderCalculatorAccelerator gpu)
 	{
 		MersenneCpuDivisorScanSession? session = ThreadStaticPools.RentMersenneCpuDivisorSession();
 		if (session is not null)
@@ -92,16 +93,16 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 			return session;
 		}
 
-		return new MersenneCpuDivisorScanSession();
+		return new MersenneCpuDivisorScanSession(gpu);
 	}
 
 	private bool CheckDivisors(
+		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong allowedMax,
 		out bool processedAll,
 		out ulong foundDivisor)
 	{
-		foundDivisor = 0UL;
 		// The EvenPerfectBitScanner feeds primes >= 138,000,000 here, so allowedMax >= 3 in production runs.
 		// Keeping the guard commented out documents the reasoning for benchmarks and tests.
 		// if (allowedMax < 3UL)
@@ -171,6 +172,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 			remainder11 = (byte)(divisorLow % 11UL);
 
 			return CheckDivisors64(
+				gpu,
 				prime,
 				stepLow,
 				limit.Low,
@@ -203,7 +205,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		remainder7 = (byte)((((divisorHigh % 7UL) * 2UL) + (divisorLow % 7UL)) % 7UL);
 		remainder11 = (byte)((((divisorHigh % 11UL) * 5UL) + (divisorLow % 11UL)) % 11UL);
 
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		var divisorPool = MontgomeryDivisorDataPool.Shared;
 		while (divisor.CompareTo(limit) <= 0)
 		{
@@ -225,6 +226,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 					// Divisors produced by 2 * k * p + 1 always exceed PerfectNumberConstants.MaxQForDivisorCycles
 					// for the exponents scanned here, so skip the unused cache fallback and compute directly.
 					divisorCycle = MersenneDivisorCycles.CalculateCycleLength(
+						gpu,
 						candidate,
 						divisorData,
 						skipPrimeOrderHeuristic: primeOrderFailed);
@@ -241,7 +243,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 					// the corresponding Mersenne number because the order of 2 modulo the divisor is exactly p.
 					foundDivisor = candidate;
 					processedAll = true;
-					PrimeOrderCalculatorAccelerator.Return(gpu);
 					return true;
 				}
 
@@ -259,13 +260,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 			remainder11 = AddMod11(remainder11, step11);
 		}
 
-		PrimeOrderCalculatorAccelerator.Return(gpu);
 		processedAll = true;
 		foundDivisor = 0UL;
 		return false;
 	}
 
 	private static bool CheckDivisors64(
+		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong step,
 		ulong limit,
@@ -285,7 +286,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		out ulong foundDivisor)
 	{
 		bool canAdvance = step <= limit;
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		if (!canAdvance)
 		{
@@ -304,6 +304,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 							out bool primeOrderFailed) || computedCycle == 0UL)
 					{
 						divisorCycle = MersenneDivisorCycles.CalculateCycleLength(
+							gpu,
 							divisor,
 							divisorData,
 							skipPrimeOrderHeuristic: primeOrderFailed);
@@ -319,7 +320,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 					{
 						foundDivisor = divisor;
 						processedAll = true;
-						PrimeOrderCalculatorAccelerator.Return(gpu);
 						return true;
 					}
 
@@ -332,7 +332,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
 			processedAll = true;
 			foundDivisor = 0UL;
-			PrimeOrderCalculatorAccelerator.Return(gpu);
 			return false;
 		}
 
@@ -340,7 +339,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		{
 			processedAll = true;
 			foundDivisor = 0UL;
-			PrimeOrderCalculatorAccelerator.Return(gpu);
 			return false;
 		}
 
@@ -361,6 +359,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 						out bool primeOrderFailed) || computedCycle == 0UL)
 				{
 					divisorCycle = MersenneDivisorCycles.CalculateCycleLength(
+						gpu,
 						divisor,
 						divisorData,
 						skipPrimeOrderHeuristic: primeOrderFailed);
@@ -375,7 +374,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 				{
 					foundDivisor = divisor;
 					processedAll = true;
-					PrimeOrderCalculatorAccelerator.Return(gpu);
 					return true;
 				}
 
@@ -390,7 +388,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 			{
 				processedAll = true;
 				foundDivisor = 0UL;
-				PrimeOrderCalculatorAccelerator.Return(gpu);
 				return false;
 			}
 

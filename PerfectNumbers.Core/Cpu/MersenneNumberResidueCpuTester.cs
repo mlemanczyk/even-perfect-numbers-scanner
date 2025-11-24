@@ -1,3 +1,5 @@
+using PerfectNumbers.Core.Gpu.Accelerators;
+
 namespace PerfectNumbers.Core.Cpu;
 
 public class MersenneNumberResidueCpuTester
@@ -5,7 +7,7 @@ public class MersenneNumberResidueCpuTester
 	private ModResidueTracker? _mersenneResidueTracker;
 
 	// CPU residue variant using tracker + unrolled residue updates (no method calls in the loop).
-	public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
+	public void Scan(PrimeOrderCalculatorAccelerator gpu, ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
 		// Initialize/update Mersenne residue tracker and start a merge walk for ascending q divisors
 
@@ -92,7 +94,7 @@ public class MersenneNumberResidueCpuTester
                                 // (and below) so every qualifying q reuses precomputed lengths instead of recomputing via
                                 // tracker.MergeOrAppend.
                                 // cycle-based quick check for small q
-                                if (localIsPrime && tracker.MergeOrAppend(exponent, q, out isDivider) && isDivider &&
+                                if (localIsPrime && tracker.MergeOrAppend(gpu, exponent, q, out isDivider) && isDivider &&
                                         (q <= ulong.MaxValue ? ((ulong)q).IsPrimeCandidate() : q.IsPrimeCandidate()))
 				{
 					localIsPrime = false;
@@ -105,7 +107,7 @@ public class MersenneNumberResidueCpuTester
 				((allowMask >> (int)r10_1) & 1) != 0 && (r8_1 == 1UL || r8_1 == 7UL) && r3_1 != 0UL && r5_1 != 0UL &&
 				localIsPrime)
 			{
-				if (localIsPrime && tracker.MergeOrAppend(exponent, qIncremental, out isDivider) && isDivider &&
+				if (localIsPrime && tracker.MergeOrAppend(gpu, exponent, qIncremental, out isDivider) && isDivider &&
 					(qIncremental <= ulong.MaxValue ? ((ulong)qIncremental).IsPrimeCandidate() : qIncremental.IsPrimeCandidate()))
 				{
 					localIsPrime = false;
@@ -118,7 +120,7 @@ public class MersenneNumberResidueCpuTester
 				((allowMask >> (int)r10_2) & 1) != 0 && (r8_2 == 1UL || r8_2 == 7UL) && r3_2 != 0UL && r5_2 != 0UL &&
 				localIsPrime)
 			{
-				if (localIsPrime && tracker.MergeOrAppend(exponent, qIncremental, out isDivider) && isDivider &&
+				if (localIsPrime && tracker.MergeOrAppend(gpu, exponent, qIncremental, out isDivider) && isDivider &&
 					(qIncremental <= ulong.MaxValue ? ((ulong)qIncremental).IsPrimeCandidate() : qIncremental.IsPrimeCandidate()))
 				{
 					localIsPrime = false;
@@ -131,7 +133,7 @@ public class MersenneNumberResidueCpuTester
 				((allowMask >> (int)r10_3) & 1) != 0 && (r8_3 == 1UL || r8_3 == 7UL) && r3_3 != 0UL && r5_3 != 0UL &&
 				localIsPrime)
 			{
-				if (localIsPrime && tracker.MergeOrAppend(exponent, qIncremental, out isDivider) && isDivider &&
+				if (localIsPrime && tracker.MergeOrAppend(gpu, exponent, qIncremental, out isDivider) && isDivider &&
 					(qIncremental <= ulong.MaxValue ? ((ulong)qIncremental).IsPrimeCandidate() : qIncremental.IsPrimeCandidate()))
 				{
 					localIsPrime = false;

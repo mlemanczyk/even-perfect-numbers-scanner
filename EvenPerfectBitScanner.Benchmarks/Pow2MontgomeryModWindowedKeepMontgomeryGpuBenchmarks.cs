@@ -1,6 +1,7 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Gpu.Accelerators;
 using PerfectNumbers.Core.Gpu.Kernels;
 
 namespace EvenPerfectBitScanner.Benchmarks;
@@ -31,12 +32,14 @@ public class Pow2MontgomeryModWindowedKeepMontgomeryGpuBenchmarks
         ulong checksum = 0UL;
         Pow2MontgomeryModWindowedBenchmarkCase[] cases = _inputs.Cases;
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         for (int i = 0; i < cases.Length; i++)
         {
             ref readonly Pow2MontgomeryModWindowedBenchmarkCase current = ref cases[i];
-            checksum ^= current.Exponent.Pow2MontgomeryModWindowedConvertGpu(current.Divisor);
+            checksum ^= current.Exponent.Pow2MontgomeryModWindowedConvertGpu(gpu, current.Divisor);
         }
 
+		PrimeOrderCalculatorAccelerator.Return(gpu);
         return checksum;
     }
 
@@ -49,12 +52,14 @@ public class Pow2MontgomeryModWindowedKeepMontgomeryGpuBenchmarks
         ulong checksum = 0UL;
         Pow2MontgomeryModWindowedBenchmarkCase[] cases = _inputs.Cases;
 
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         for (int i = 0; i < cases.Length; i++)
         {
             ref readonly Pow2MontgomeryModWindowedBenchmarkCase current = ref cases[i];
-            checksum ^= current.Exponent.Pow2MontgomeryModWindowedKeepGpu(current.Divisor);
+            checksum ^= current.Exponent.Pow2MontgomeryModWindowedKeepGpu(gpu, current.Divisor);
         }
 
+		PrimeOrderCalculatorAccelerator.Return(gpu);
         return checksum;
     }
 

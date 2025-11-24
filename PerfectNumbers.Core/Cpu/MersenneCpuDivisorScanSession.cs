@@ -1,11 +1,14 @@
+using PerfectNumbers.Core.Gpu.Accelerators;
+
 namespace PerfectNumbers.Core.Cpu;
 
-internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
+internal sealed class MersenneCpuDivisorScanSession(PrimeOrderCalculatorAccelerator gpu) : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
 {
-    public void Reset()
+	public void Reset()
     {
     }
 
+	// TODO: Convert this to static method
     public void CheckDivisor(
         ulong divisor,
         in MontgomeryDivisorData divisorData,
@@ -29,7 +32,7 @@ internal sealed class MersenneCpuDivisorScanSession : IMersenneNumberDivisorByDi
 
         if (divisorCycle == 0UL)
         {
-            divisorCycle = DivisorCycleCache.Shared.GetCycleLength(divisor);
+            divisorCycle = DivisorCycleCache.Shared.GetCycleLength(gpu, divisor);
             if (divisorCycle == 0UL)
             {
                 // DivisorCycleCache guarantees a positive cycle for divisors greater than one.

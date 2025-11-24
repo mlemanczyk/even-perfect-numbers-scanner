@@ -1,4 +1,5 @@
 using FluentAssertions;
+using PerfectNumbers.Core.Gpu.Accelerators;
 using Xunit;
 
 namespace PerfectNumbers.Core.Tests.Gpu;
@@ -6,26 +7,39 @@ namespace PerfectNumbers.Core.Tests.Gpu;
 [Trait("Category", "Fast")]
 public class PrimeTesterGpuTests
 {
-    [Fact]
-    public void IsPrimeGpu_accepts_known_primes()
-    {
-		var tester = new PrimeTester();
+	[Fact]
+	public void IsPrimeGpu_accepts_known_primes()
+	{
 		ulong[] primes = [31UL, 61UL, 89UL, 107UL, 127UL, 521UL];
-		foreach (ulong prime in primes)
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		try
 		{
-			PrimeTester.IsPrimeGpu(prime).Should().BeTrue();
+			foreach (ulong prime in primes)
+			{
+				PrimeTester.IsPrimeGpu(gpu, prime).Should().BeTrue();
+			}
 		}
-    }
+		finally
+		{
+			PrimeOrderCalculatorAccelerator.Return(gpu);
+		}
+	}
 
-    [Fact]
-    public void IsPrimeGpu_rejects_composites()
-    {
-		var tester = new PrimeTester();
+	[Fact]
+	public void IsPrimeGpu_rejects_composites()
+	{
 		ulong[] composites = [33UL, 39UL, 51UL, 77UL, 91UL];
-		foreach (ulong composite in composites)
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		try
 		{
-			PrimeTester.IsPrimeGpu(composite).Should().BeFalse();
+			foreach (ulong composite in composites)
+			{
+				PrimeTester.IsPrimeGpu(gpu, composite).Should().BeFalse();
+			}
 		}
-    }
-
+		finally
+		{
+			PrimeOrderCalculatorAccelerator.Return(gpu);
+		}
+	}
 }

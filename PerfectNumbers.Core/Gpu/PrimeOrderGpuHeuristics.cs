@@ -243,7 +243,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		}
 	}
 
-	public static GpuPow2ModStatus TryPow2Mod(ulong exponent, ulong prime, out ulong remainder, in MontgomeryDivisorData divisorData)
+	public static GpuPow2ModStatus TryPow2Mod(ulong exponent, ulong prime, out ulong remainder, in MontgomeryDivisorData? divisorData)
 	{
 		Span<ulong> exponents = stackalloc ulong[1];
 		Span<ulong> remainders = stackalloc ulong[1];
@@ -254,7 +254,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		return status;
 	}
 
-	public static GpuPow2ModStatus TryPow2ModBatch(ReadOnlySpan<ulong> exponents, ulong prime, Span<ulong> remainders, in MontgomeryDivisorData divisorData)
+	public static GpuPow2ModStatus TryPow2ModBatch(ReadOnlySpan<ulong> exponents, ulong prime, Span<ulong> remainders, in MontgomeryDivisorData? divisorData)
 	{
 		// This will never occur in production code
 		// if (exponents.Length == 0)
@@ -309,20 +309,20 @@ internal static partial class PrimeOrderGpuHeuristics
 		return computed ? GpuPow2ModStatus.Success : GpuPow2ModStatus.Unavailable;
 	}
 
-	public static GpuPow2ModStatus TryPow2Mod(in UInt128 exponent, in UInt128 prime, out UInt128 remainder)
+	public static GpuPow2ModStatus TryPow2Mod(PrimeOrderCalculatorAccelerator gpu, in UInt128 exponent, in UInt128 prime, out UInt128 remainder)
 	{
 		Span<UInt128> exponents = stackalloc UInt128[1];
 		Span<UInt128> remainders = stackalloc UInt128[1];
 		exponents[0] = exponent;
 
-		GpuPow2ModStatus status = TryPow2ModBatch(exponents, prime, remainders);
+		GpuPow2ModStatus status = TryPow2ModBatch(gpu, exponents, prime, remainders);
 		remainder = remainders[0];
 		return status;
 	}
 
-	public static GpuPow2ModStatus TryPow2ModBatch(ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> remainders)
+	public static GpuPow2ModStatus TryPow2ModBatch(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> remainders)
 	{
-		return TryPow2ModBatchInternal(exponents, prime, remainders);
+		return TryPow2ModBatchInternal(gpu, exponents, prime, remainders);
 	}
 
 	internal static bool TryCalculateOrder(
@@ -471,7 +471,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		return kernel;
 	}
 
-	private static GpuPow2ModStatus TryPow2ModBatchInternal(ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> remainders)
+	private static GpuPow2ModStatus TryPow2ModBatchInternal(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> remainders)
 	{
 		if (exponents.Length == 0)
 		{
@@ -509,11 +509,11 @@ internal static partial class PrimeOrderGpuHeuristics
 			}
 		}
 
-		ComputeOnGpuWide(exponents, prime, target);
+		ComputeOnGpuWide(gpu, exponents, prime, target);
 		return GpuPow2ModStatus.Success;
 	}
 
-	private static bool TryComputeOnGpu(ReadOnlySpan<ulong> exponents, ulong prime, in MontgomeryDivisorData divisorData, Span<ulong> results)
+	private static bool TryComputeOnGpu(ReadOnlySpan<ulong> exponents, ulong prime, MontgomeryDivisorData? divisorData, Span<ulong> results)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
 		int acceleratorIndex = AcceleratorPool.Shared.Rent();
@@ -540,6 +540,11 @@ internal static partial class PrimeOrderGpuHeuristics
 
 		try
 		{
+			if (divisorData is null)
+			{
+				divisorData = MontgomeryDivisorData.Empty;
+			}
+
 			kernelLauncher(stream, exponents.Length, exponentBuffer.View, divisorData.Modulus, divisorData.NPrime, divisorData.MontgomeryOne, divisorData.MontgomeryTwo, divisorData.MontgomeryTwoSquared, remainderBuffer.View);
 
 			remainderBuffer.View.CopyToCPU(stream, ref MemoryMarshal.GetReference(results), exponents.Length);
@@ -573,14 +578,13 @@ internal static partial class PrimeOrderGpuHeuristics
 		}
 	}
 
-	private static void ComputeOnGpuWide(ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> results)
+	private static void ComputeOnGpuWide(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> results)
 	{
 		int length = exponents.Length;
 
 		GpuUInt128[]? rentedExponents = null;
 		GpuUInt128[]? rentedResults = null;
 		ArrayPool<GpuUInt128> gpuUInt128Pool = ThreadStaticPools.GpuUInt128Pool;
-		PrimeOrderCalculatorAccelerator? gpu = null;
 		bool poolingRequired = length > WideStackThreshold;
 		Span<GpuUInt128> exponentSpan = poolingRequired
 			? stackalloc GpuUInt128[length]
@@ -596,7 +600,6 @@ internal static partial class PrimeOrderGpuHeuristics
 		}
 
 		GpuUInt128 modulus = (GpuUInt128)prime;
-		gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		Accelerator accelerator = gpu.Accelerator;
 
@@ -625,7 +628,6 @@ internal static partial class PrimeOrderGpuHeuristics
 
 		remainderBuffer.Dispose();
 		exponentBuffer.Dispose();
-		PrimeOrderCalculatorAccelerator.Return(gpu);
 
 		if (rentedExponents is not null)
 		{
