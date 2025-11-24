@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Xunit;
+using PerfectNumbers.Core.Gpu.Kernels;
 
 namespace PerfectNumbers.Core.Tests.Gpu;
 

@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
+using PerfectNumbers.Core.Gpu.Kernels;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -38,7 +39,7 @@ internal static partial class PrimeOrderGpuHeuristics
 				}
 
 				// ulong candidate = order / primeFactor;
-				if (ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisorData, candidate) == 1UL)
+				if (divisorData.Pow2MontgomeryModWindowedGpuConvertToStandard(candidate) == 1UL)
 				{
 					order = candidate;
 					continue;
@@ -403,7 +404,7 @@ internal static partial class PrimeOrderGpuHeuristics
 			}
 
 			ulong reduced = phi / factor;
-			if (ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, reduced) == 1UL)
+			if (divisor.Pow2MontgomeryModWindowedGpuConvertToStandard(reduced) == 1UL)
 			{
 				return false;
 			}
@@ -1187,7 +1188,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
 	private static bool Pow2EqualsOneKernel(ulong exponent, in MontgomeryDivisorDataGpu divisor)
 	{
-		return ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponent) == 1UL;
+		return divisor.Pow2MontgomeryModWindowedGpuConvertToStandard(exponent) == 1UL;
 	}
 
 	private static ulong CalculateByDoublingKernel(ulong prime)
@@ -1215,7 +1216,7 @@ internal static partial class PrimeOrderGpuHeuristics
 	{
 		ulong exponent = exponents[index];
 		MontgomeryDivisorDataGpu divisor = new(divisorModulus, divisorNPrime, divisorMontgomeryOne, divisorMontgomeryTwo, divisorMontgomeryTwoSquared);
-		remainders[index] = ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisor, exponent);
+		remainders[index] = divisor.Pow2MontgomeryModWindowedGpuConvertToStandard(exponent);
 	}
 
 	/// This kernel always sets the result of the corresponding element. Callers don't need to clear the output buffers.

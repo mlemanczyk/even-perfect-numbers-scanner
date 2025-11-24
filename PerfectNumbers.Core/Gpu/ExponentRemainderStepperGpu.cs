@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using PerfectNumbers.Core.Gpu.Kernels;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -92,7 +93,7 @@ internal struct ExponentRemainderStepperGpu
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void InitializeStateGpu(ulong exponent)
     {
-        ulong residue = ULongExtensions.Pow2ModWindowedGpuKernel(exponent, _modulus);
+        ulong residue = exponent.Pow2ModWindowedGpuKernel(_modulus);
         _currentResidue = new GpuUInt128(residue);
         PreviousExponent = exponent;
     }
@@ -101,7 +102,7 @@ internal struct ExponentRemainderStepperGpu
     private void AdvanceStateGpu(ulong exponent)
     {
         ulong delta = exponent - PreviousExponent;
-        ulong multiplier = ULongExtensions.Pow2ModWindowedGpuKernel(delta, _modulus);
+        ulong multiplier = delta.Pow2ModWindowedGpuKernel(_modulus);
         _currentResidue.MulMod(multiplier, _modulusWide);
         PreviousExponent = exponent;
     }

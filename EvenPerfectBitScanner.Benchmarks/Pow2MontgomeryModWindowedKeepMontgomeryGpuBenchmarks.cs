@@ -1,6 +1,7 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Gpu.Kernels;
 
 namespace EvenPerfectBitScanner.Benchmarks;
 

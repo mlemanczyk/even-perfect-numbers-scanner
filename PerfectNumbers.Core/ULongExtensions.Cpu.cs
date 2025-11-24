@@ -261,7 +261,7 @@ public static partial class ULongExtensions
                         return 7;
                 }
 
-                return Pow2WindowSize;
+                return PerfectNumberConstants.Pow2WindowSize;
         }
 
 }

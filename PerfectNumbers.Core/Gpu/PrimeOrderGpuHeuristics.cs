@@ -5,6 +5,8 @@ using ILGPU;
 using ILGPU.Runtime;
 using ILGPU.Runtime.OpenCL;
 using PerfectNumbers.Core.Gpu.Accelerators;
+using PerfectNumbers.Core.Gpu.Kernels;
+
 namespace PerfectNumbers.Core.Gpu;
 
 internal enum GpuPow2ModStatus
@@ -648,7 +650,7 @@ internal static partial class PrimeOrderGpuHeuristics
 			return 0UL;
 		}
 
-		return ULongExtensions.Pow2MontgomeryModWindowedGpuConvertToStandard(divisorData, exponent);
+		return divisorData.Pow2MontgomeryModWindowedGpuConvertToStandard(exponent);
 	}
 
 	private static Kernel GetPow2ModKernel(int acceleratorIndex)

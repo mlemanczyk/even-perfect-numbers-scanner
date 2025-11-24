@@ -78,7 +78,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 			// GpuStaticTableInitializer.EnsureStaticTables(accelerator, kernels, stream);
 			stream.Synchronize();
 			stream.Dispose();
-			accelerator.Synchronize();
+			GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive | GCCollectionMode.Forced, blocking: true, compacting: true);
 		}
 
 	}

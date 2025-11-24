@@ -5,11 +5,10 @@ namespace PerfectNumbers.Core;
 
 public static partial class ULongExtensions
 {
-	private const int Pow2WindowSize = 8;
 	private const ulong Pow2WindowFallbackThreshold = 32UL;
-	private const int Pow2WindowOddPowerCount = 1 << (Pow2WindowSize - 1);
+	private const int Pow2WindowOddPowerCount = 1 << (PerfectNumberConstants.Pow2WindowSize - 1);
 
-        private static readonly UInt128 Pow2WindowedModulusThreshold = (UInt128)PerfectNumberConstants.MaxQForDivisorCycles;
+	private static readonly UInt128 Pow2WindowedModulusThreshold = (UInt128)PerfectNumberConstants.MaxQForDivisorCycles;
 
 	private static readonly byte[] BitStatsZeroCount = new byte[256];
 	private static readonly byte[] BitStatsPrefixZero = new byte[256];

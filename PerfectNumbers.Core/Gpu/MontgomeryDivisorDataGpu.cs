@@ -8,3 +8,4 @@ public readonly struct MontgomeryDivisorDataGpu(ulong modulus, ulong nPrime, ulo
 	public readonly ulong MontgomeryTwo = montgomeryTwo;
 	public readonly ulong MontgomeryTwoSquared = montgomeryTwoSquared;
 }
+	
