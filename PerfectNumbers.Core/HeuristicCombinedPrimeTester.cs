@@ -269,6 +269,7 @@ public sealed class HeuristicCombinedPrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static ulong ComputeHeuristicDivisorSquareLimit(ulong n) => n;
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static ReadOnlySpan<ulong> GetCombinedDivisors(byte nMod10) => nMod10 switch
 	{
 		1 => CombinedDivisorsEnding1,
@@ -278,6 +279,7 @@ public sealed class HeuristicCombinedPrimeTester
 		_ => throw new InvalidOperationException($"Unsupported combined divisor selector for digit {nMod10}."),
 	};
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static ReadOnlySpan<ulong> GetCombinedDivisorSquares(byte nMod10) => nMod10 switch
 	{
 		1 => CombinedDivisorsEnding1Squares,
@@ -287,6 +289,7 @@ public sealed class HeuristicCombinedPrimeTester
 		_ => throw new InvalidOperationException($"Unsupported combined divisor square selector for digit {nMod10}."),
 	};
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static ReadOnlySpan<ulong> GetCombinedDivisors(byte nMod10, CombinedDivisorPattern pattern) => pattern switch
 	{
 		CombinedDivisorPattern.TwoAOneB => nMod10 switch
@@ -324,6 +327,7 @@ public sealed class HeuristicCombinedPrimeTester
 		_ => throw new InvalidOperationException($"Unsupported combined divisor pattern: {pattern}."),
 	};
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static ReadOnlySpan<ulong> GetCombinedDivisorSquares(byte nMod10, CombinedDivisorPattern pattern) => pattern switch
 	{
 		CombinedDivisorPattern.TwoAOneB => nMod10 switch
