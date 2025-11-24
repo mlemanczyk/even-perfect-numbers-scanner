@@ -168,7 +168,6 @@ public class PrimeOrderCalculatorTests
 					  PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
 
 			strict.Should().Be(heuristic);
-
 		}
 		finally
 		{

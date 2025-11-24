@@ -87,46 +87,6 @@ public sealed class PrimeTester
 		return result;
 	}
 
-	// [MethodImpl(MethodImplOptions.AggressiveInlining)]
-	// public static bool IsPrimeGpu(ulong n)
-	// {
-
-	// 	var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-	// 	int acceleratorIndex = gpu.AcceleratorIndex;
-	// 	var inputView = gpu.Input.View;
-	// 	var outputView = gpu.OutputByte.View;
-
-	// 	// GpuPrimeWorkLimiter.Acquire();
-	// 	AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-	// 	inputView.CopyFromCPU(stream, ref n, 1);
-
-	// 	var kernelLauncher = gpu.SmallPrimeSieveKernelLauncher;
-
-	// 	kernelLauncher(
-	// 					stream,
-	// 					1,
-	// 					inputView,
-	// 					gpu.DevicePrimesLastOne,
-	// 					gpu.DevicePrimesLastSeven,
-	// 					gpu.DevicePrimesLastThree,
-	// 					gpu.DevicePrimesLastNine,
-	// 					gpu.DevicePrimesPow2LastOne,
-	// 					gpu.DevicePrimesPow2LastSeven,
-	// 					gpu.DevicePrimesPow2LastThree,
-	// 					gpu.DevicePrimesPow2LastNine,
-	// 					outputView);
-
-	// 	byte flag = 0;
-	// 	outputView.CopyToCPU(stream, ref flag, 1);
-	// 	stream.Synchronize();
-
-	// 	AcceleratorStreamPool.Return(acceleratorIndex, stream);
-	// 	PrimeOrderCalculatorAccelerator.Return(gpu);
-	// 	// GpuPrimeWorkLimiter.Release();
-
-	// 	return flag != 0;
-	// }
-
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n)
 	{
@@ -289,5 +249,4 @@ public sealed class PrimeTester
 
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 	}
-
 }
