@@ -409,7 +409,6 @@ public class MersenneDivisorCycles
 			}
 		}
 
-		// TODO: Benchmark PrimeTester.IsPrimeInternal against Open.Numeric.Primes on the EvenPerfectBitScanner workloads to confirm the faster option for wide composites.
 		// if (HeuristicPrimeTester.Exclusive.IsPrime(remaining, CancellationToken.None))
 
 		// Atomic.Add(ref _tryFactorIntoCountsInternalHits, 1UL);
