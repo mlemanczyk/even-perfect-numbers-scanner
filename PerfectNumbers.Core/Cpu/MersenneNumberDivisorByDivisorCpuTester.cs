@@ -96,7 +96,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 		return new MersenneCpuDivisorScanSession(gpu);
 	}
 
-	private bool CheckDivisors(
+	private static bool CheckDivisors(
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong allowedMax,
