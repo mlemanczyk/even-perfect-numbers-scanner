@@ -8,7 +8,6 @@ internal sealed class MersenneCpuDivisorScanSession(PrimeOrderCalculatorAccelera
     {
     }
 
-	// TODO: Convert this to static method
     public void CheckDivisor(
         ulong divisor,
         in MontgomeryDivisorData divisorData,
