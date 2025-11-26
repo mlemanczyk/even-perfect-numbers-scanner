@@ -217,6 +217,7 @@ internal static class Program
 				_byDivisorTester = mersenneOnGpu
 						? new MersenneNumberDivisorByDivisorGpuTester()
 						: new MersenneNumberDivisorByDivisorCpuTester();
+				_byDivisorTester.MinK = _cliArguments.MinK;
 				_byDivisorTester.BatchSize = scanBatchSize;
 			}
 

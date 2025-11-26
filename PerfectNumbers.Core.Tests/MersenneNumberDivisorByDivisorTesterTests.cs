@@ -46,6 +46,8 @@ public class MersenneNumberDivisorByDivisorTesterTests
 
         public int BatchSize { get; set; }
 
+        public ulong MinK { get; set; }
+
         public ulong DivisorLimit => ConfiguredMaxPrime + 100UL;
 
         public void ConfigureFromMaxPrime(ulong maxPrime)

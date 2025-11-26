@@ -8,6 +8,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 {
 	private ulong _divisorLimit;
 	private int _batchSize = 1_024;
+	private ulong _minK = 1UL;
 
 	[ThreadStatic]
 	private static GpuUInt128WorkSet _divisorScanGpuWorkSet;
@@ -23,6 +24,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 	{
 		get => _batchSize;
 		set => _batchSize = Math.Max(1, value);
+	}
+
+	public ulong MinK
+	{
+		get => _minK;
+		set => _minK = value < 1UL ? 1UL : value;
 	}
 
 	public void ConfigureFromMaxPrime(ulong maxPrime)
@@ -61,6 +68,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 			gpu,
 			prime,
 			allowedMax,
+			_minK,
 			out processedAll,
 			out divisor);
 
@@ -100,9 +108,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong allowedMax,
+		ulong minK,
 		out bool processedAll,
 		out ulong foundDivisor)
 	{
+		foundDivisor = 0UL;
+		processedAll = true;
+
 		// The EvenPerfectBitScanner feeds primes >= 138,000,000 here, so allowedMax >= 3 in production runs.
 		// Keeping the guard commented out documents the reasoning for benchmarks and tests.
 		// if (allowedMax < 3UL)
@@ -125,6 +137,13 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 		divisor.High = step.High;
 		divisor.Low = step.Low;
 		divisor.Add(1UL);
+		if (minK > 1UL)
+		{
+			GpuUInt128 offset = new(minK - 1UL);
+			divisor = step * offset;
+			divisor.Add(1UL);
+		}
+
 		if (divisor.CompareTo(limit) > 0)
 		{
 			processedAll = true;
@@ -165,31 +184,66 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 			step7 = (byte)(stepLow % 7UL);
 			step11 = (byte)(stepLow % 11UL);
 
-			remainder10 = (byte)(divisorLow % 10UL);
-			remainder8 = (byte)(divisorLow & 7UL);
-			remainder3 = (byte)(divisorLow % 3UL);
-			remainder7 = (byte)(divisorLow % 7UL);
-			remainder11 = (byte)(divisorLow % 11UL);
+			ulong maxK = allowedMax > 0UL ? (allowedMax - 1UL) / stepLow : 0UL;
+			if (maxK == 0UL)
+			{
+				processedAll = true;
+				foundDivisor = 0UL;
+				return false;
+			}
 
-			return CheckDivisors64(
-				gpu,
-				prime,
-				stepLow,
-				limit.Low,
-				divisorLow,
-				decimalMask,
-				step10,
-				step8,
-				step3,
-				step7,
-				step11,
-				remainder10,
-				remainder8,
-				remainder3,
-				remainder7,
-				remainder11,
-				out processedAll,
-				out foundDivisor);
+			ulong startK = minK < 1UL ? 1UL : minK;
+			bool processedTop = true;
+			bool processedBottom = true;
+			bool composite = false;
+
+			if (startK <= maxK)
+			{
+				composite = CheckDivisors64Range(
+					gpu,
+					prime,
+					stepLow,
+					allowedMax,
+					startK,
+					maxK,
+					decimalMask,
+					step10,
+					step8,
+					step3,
+					step7,
+					step11,
+					out processedTop,
+					out foundDivisor);
+				if (composite)
+				{
+					processedAll = true;
+					return true;
+				}
+			}
+
+			ulong lowerEnd = startK > 1UL ? startK - 1UL : 0UL;
+			if (lowerEnd >= 1UL)
+			{
+				lowerEnd = Math.Min(lowerEnd, maxK);
+				composite = CheckDivisors64Range(
+					gpu,
+					prime,
+					stepLow,
+					allowedMax,
+					1UL,
+					lowerEnd,
+					decimalMask,
+					step10,
+					step8,
+					step3,
+					step7,
+					step11,
+					out processedBottom,
+					out foundDivisor);
+			}
+
+			processedAll = processedTop && processedBottom;
+			return composite;
 		}
 
 		ulong divisorHigh = divisor.High;
@@ -263,6 +317,75 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 		processedAll = true;
 		foundDivisor = 0UL;
 		return false;
+	}
+
+	private static bool CheckDivisors64Range(
+		PrimeOrderCalculatorAccelerator gpu,
+		ulong prime,
+		ulong step,
+		ulong allowedMax,
+		ulong startK,
+		ulong endK,
+		ushort decimalMask,
+		byte step10,
+		byte step8,
+		byte step3,
+		byte step7,
+		byte step11,
+		out bool processedAll,
+		out ulong foundDivisor)
+	{
+		if (startK < 1UL || endK < startK)
+		{
+			processedAll = true;
+			foundDivisor = 0UL;
+			return false;
+		}
+
+		UInt128 step128 = step;
+		UInt128 allowedMax128 = allowedMax;
+		UInt128 startDivisor128 = (step128 * startK) + UInt128.One;
+		if (startDivisor128 > allowedMax128)
+		{
+			processedAll = true;
+			foundDivisor = 0UL;
+			return false;
+		}
+
+		UInt128 rangeLimit128 = (step128 * endK) + UInt128.One;
+		if (rangeLimit128 > allowedMax128)
+		{
+			rangeLimit128 = allowedMax128;
+		}
+
+		ulong startDivisor = (ulong)startDivisor128;
+		ulong rangeLimit = (ulong)rangeLimit128;
+
+		byte remainder10 = (byte)(startDivisor % 10UL);
+		byte remainder8 = (byte)(startDivisor & 7UL);
+		byte remainder3 = (byte)(startDivisor % 3UL);
+		byte remainder7 = (byte)(startDivisor % 7UL);
+		byte remainder11 = (byte)(startDivisor % 11UL);
+
+		return CheckDivisors64(
+			gpu,
+			prime,
+			step,
+			rangeLimit,
+			startDivisor,
+			decimalMask,
+			step10,
+			step8,
+			step3,
+			step7,
+			step11,
+			remainder10,
+			remainder8,
+			remainder3,
+			remainder7,
+			remainder11,
+			out processedAll,
+			out foundDivisor);
 	}
 
 	private static bool CheckDivisors64(

@@ -6,6 +6,8 @@ public interface IMersenneNumberDivisorByDivisorTester
 {
     int BatchSize { get; set; }
 
+    ulong MinK { get; set; }
+
     void ConfigureFromMaxPrime(ulong maxPrime);
 
     ulong DivisorLimit { get; }

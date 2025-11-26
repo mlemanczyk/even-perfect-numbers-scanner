@@ -50,6 +50,7 @@ internal readonly struct CliArguments
     internal readonly double ZeroFractionHard;
     internal readonly double ZeroFractionConjecture;
     internal readonly int MaxZeroConjecture;
+    internal readonly ulong MinK;
 
     private CliArguments(
             ulong startPrime,
@@ -93,7 +94,8 @@ internal readonly struct CliArguments
             bool rleOnlyLast7,
             double zeroFractionHard,
             double zeroFractionConjecture,
-            int maxZeroConjecture)
+            int maxZeroConjecture,
+            ulong minK)
     {
         StartPrime = startPrime;
         StartPrimeProvided = startPrimeProvided;
@@ -137,6 +139,7 @@ internal readonly struct CliArguments
         ZeroFractionHard = zeroFractionHard;
         ZeroFractionConjecture = zeroFractionConjecture;
         MaxZeroConjecture = maxZeroConjecture;
+        MinK = minK;
     }
 
     internal bool UseFilter => !TestMode && !string.IsNullOrEmpty(FilterFile);
@@ -185,6 +188,7 @@ internal readonly struct CliArguments
         double zeroFractionHard = -1.0;
         double zeroFractionConjecture = -1.0;
         int maxZeroConjecture = -1;
+        ulong minK = 1UL;
 
         foreach (string argument in args)
         {
@@ -293,6 +297,21 @@ internal readonly struct CliArguments
                 if (Utf8CliParser.TryParseUInt64(argument.AsSpan("--residue-max-k=".Length), out ulong parsedResidueMax))
                 {
                     residueKMax = parsedResidueMax;
+                }
+
+                continue;
+            }
+
+            if (argument.StartsWith("--min-k=", StringComparison.OrdinalIgnoreCase))
+            {
+                if (Utf8CliParser.TryParseUInt64(argument.AsSpan("--min-k=".Length), out ulong parsedMinK) && parsedMinK > 0UL)
+                {
+                    minK = parsedMinK;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid value for --min-k.");
+                    return default;
                 }
 
                 continue;
@@ -568,7 +587,8 @@ internal readonly struct CliArguments
                 rleOnlyLast7,
                 zeroFractionHard,
                 zeroFractionConjecture,
-                maxZeroConjecture);
+                maxZeroConjecture,
+                minK);
     }
 
     internal static void PrintHelp()
@@ -609,6 +629,7 @@ internal readonly struct CliArguments
         Console.WriteLine("  --filter-p=<path>      process only p from previous run results (required for --mersenne=bydivisor)");
         Console.WriteLine("  --write-batch-size=<value> overwrite frequency of disk writes (default 100 lines)");
         Console.WriteLine("  --gcd-filter           enable early sieve based on GCD");
+        Console.WriteLine("  --min-k=<value>        starting k for --mersenne=bydivisor divisor scan (default 1)");
         Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
     }
 }

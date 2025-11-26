@@ -54,11 +54,11 @@ internal static partial class PrimeOrderCalculator
 
 		ulong phi = prime - 1UL;
 
-		if (PrimeOrderGpuHeuristics.TryCalculateOrder(gpu, prime, previousOrder, config, divisorData, out ulong gpuOrder))
+		// if (PrimeOrderGpuHeuristics.TryCalculateOrder(gpu, prime, previousOrder, config, divisorData, out ulong gpuOrder))
 		// if (IsGpuHeuristicDevice && PrimeOrderGpuHeuristics.TryCalculateOrder(gpu, prime, previousOrder, config, divisorData, out ulong gpuOrder))
-		{
-			return gpuOrder;
-		}
+		// {
+		// 	return gpuOrder;
+		// }
 
 		PartialFactorResult phiFactors = PartialFactor(gpu, phi, config);
 
@@ -137,7 +137,7 @@ internal static partial class PrimeOrderCalculator
 
 		Span<ulong> stackBuffer = stackalloc ulong[length];
 
-		if (length <= 8)
+		if (length <= 7)
 		{
 			return EvaluateSpecialMaxCandidates(stackBuffer, factorSpan, phi, prime, divisorData);
 		}
@@ -1106,19 +1106,19 @@ internal static partial class PrimeOrderCalculator
 		uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
 		ulong remaining = value;
 
-		bool gpuFactored = false;
-		if (IsGpuHeuristicDevice)
-		{
-			gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(gpu, value, limit, primeSlots, exponentSlots, out factorCount, out remaining);
-		}
+		// bool gpuFactored = false;
+		// if (IsGpuHeuristicDevice)
+		// {
+		// 	gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(gpu, value, limit, primeSlots, exponentSlots, out factorCount, out remaining);
+		// }
 
 		List<PendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(2);
 		Stack<ulong>? compositeStack = null;
 		PrimeTester primeTester = PrimeTester.Exclusive;
 		// HeuristicPrimeTester? tester = _tester ??= new();
 
-		if (!gpuFactored)
-		{
+		// if (!gpuFactored)
+		// {
 			PopulateSmallPrimeFactorsCpu(
 				value,
 				limit,
@@ -1128,7 +1128,7 @@ internal static partial class PrimeOrderCalculator
 				ref exponentSlotArray,
 				out factorCount,
 				out remaining);
-		}
+		// }
 
 
 		if (remaining > 1UL)
@@ -1176,7 +1176,7 @@ internal static partial class PrimeOrderCalculator
 					// bool isPrime = HeuristicCombinedPrimeTester.IsPrimeCpu(composite);
 					// bool isPrime = HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
 					bool runOnGpu = RunOnGpu();
-					bool isPrime = !runOnGpu ? HeuristicCombinedPrimeTester.IsPrimeCpu(composite) : HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
+					bool isPrime = !runOnGpu ? PrimeTester.IsPrime(composite) : HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
 					// bool isPrime = PrimeTester.IsPrime(composite);
 					// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
@@ -1244,15 +1244,15 @@ internal static partial class PrimeOrderCalculator
 			{
 				// bool isPrime = HeuristicCombinedPrimeTester.IsPrimeCpu(composite);
 				// bool isPrime = PrimeTester.IsPrime(composite);
-				// bool isPrime = HeuristicCombinedPrimeTester.IsPrimeGpu(composite);
+				bool isPrime = HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
 				// bool isPrime = PrimeTester.IsPrimeInternal(composite, CancellationToken.None);
 
 				// Atomic.Add(ref _partialFactorPendingHits, 1UL);
 				// Console.WriteLine($"Partial factor pending hits {Volatile.Read(ref _partialFactorPendingHits)}");
 
-				bool isPrime = RunOnGpu()
-					? HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite)
-					: HeuristicCombinedPrimeTester.IsPrimeCpu(composite);
+				// bool isPrime = RunOnGpu()
+				// 	? HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite)
+				// 	: PrimeTester.IsPrime(composite);
 				// bool isPrime = PrimeTester.IsPrime(composite);
 				// bool isPrime = HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
 				// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
@@ -1287,7 +1287,7 @@ internal static partial class PrimeOrderCalculator
 		{
 			// cofactorIsPrime = PrimeTester.IsPrime(cofactor);
 			// cofactorIsPrime = HeuristicCombinedPrimeTester.IsPrimeCpu(cofactor);
-			// cofactorIsPrime = HeuristicCombinedPrimeTester.IsPrimeGpu(cofactor);
+			cofactorIsPrime = HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, cofactor);
 			// cofactorIsPrime = PrimeTester.IsPrimeInternal(cofactor, CancellationToken.None);
 
 			// Atomic.Add(ref _partialFactorCofactorHits, 1UL);
@@ -1295,9 +1295,9 @@ internal static partial class PrimeOrderCalculator
 
 			// cofactorIsPrime = HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, cofactor);
 			// cofactorIsPrime = PrimeTester.IsPrimeGpu(gpu, cofactor);
-			cofactorIsPrime = RunOnGpu()
-				? HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, cofactor)
-				: HeuristicCombinedPrimeTester.IsPrimeCpu(cofactor);
+			// cofactorIsPrime = RunOnGpu()
+			// 	? HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, cofactor)
+			// 	: PrimeTester.IsPrime(cofactor);
 			// cofactorIsPrime = PrimeTester.IsPrime(cofactor);
 			// cofactorIsPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(cofactor);
 		}
@@ -1385,7 +1385,7 @@ internal static partial class PrimeOrderCalculator
 	private static bool RunOnGpu()
 	{
 		// return false;
-		return true;
+		// return true;
 		// int cpuCount;
 		
 		// lock(_sync)

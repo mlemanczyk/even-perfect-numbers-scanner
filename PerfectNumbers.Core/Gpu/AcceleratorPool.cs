@@ -1,9 +1,10 @@
 using ILGPU;
 using ILGPU.Runtime;
+using Open.Collections;
 
 namespace PerfectNumbers.Core.Gpu
 {
-	public struct AcceleratorPool
+	public struct AcceleratorPool : IDisposable
 	{
 		internal readonly Context Context;
 		internal readonly Device Device;
@@ -26,6 +27,23 @@ namespace PerfectNumbers.Core.Gpu
 		public void Return(int acceleratorIndex)
 		{
 			// Intentionally left empty - there's nothing to do here. We're not really renting anything.
+		}
+
+		public readonly void Dispose()
+		{
+			Accelerator[] accelerators = Accelerators;
+			HashSet<Context> contexts = new(accelerators.Length);
+			foreach (var accelerator in accelerators)
+			{
+				contexts.Add(accelerator.Context);
+				accelerator.Synchronize();
+				accelerator.Dispose();
+			}
+
+			foreach (var context in contexts)
+			{
+				context.Dispose();
+			}
 		}
 
 		public static readonly AcceleratorPool Shared = new(PerfectNumberConstants.RollingAccelerators);
