@@ -321,7 +321,7 @@ public class GpuKernelCompilationTests
 
     private static void CompilePrimeOrderPow2ModWideKernel(Accelerator accelerator)
     {
-        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>(PrimeOrderGpuHeuristics.Pow2ModKernelWide);
+        var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>(PrimeOrderKernels.Pow2ModKernelWide);
         _ = kernel;
     }
 

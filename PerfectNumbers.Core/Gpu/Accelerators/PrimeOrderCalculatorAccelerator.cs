@@ -79,7 +79,6 @@ public sealed class PrimeOrderCalculatorAccelerator
 			stream.Synchronize();
 			stream.Dispose();
 		}
-
 	}
 
 	#endregion
@@ -105,21 +104,57 @@ public sealed class PrimeOrderCalculatorAccelerator
 
 	public readonly Accelerator Accelerator;
 	public readonly int AcceleratorIndex;
+	
 	public MemoryBuffer1D<ulong, Stride1D.Dense> Input;
-	public MemoryBuffer1D<ulong, Stride1D.Dense> OutputUlong;
+	public ArrayView1D<ulong, Stride1D.Dense> InputView;
+	
 	public MemoryBuffer1D<byte, Stride1D.Dense> OutputByte;
+	public ArrayView1D<byte, Stride1D.Dense> OutputByteView;
+
+	public MemoryBuffer1D<ulong, Stride1D.Dense> OutputUlong;
+	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> OutputUlong2;
+	public ArrayView1D<ulong, Stride1D.Dense> OutputUlongView;
+	public readonly ArrayView1D<ulong, Stride1D.Dense> OutputUlongView2;
+
 	public MemoryBuffer1D<int, Stride1D.Dense> OutputInt;
+	public readonly MemoryBuffer1D<int, Stride1D.Dense> OutputInt2;	
+	public ArrayView1D<int, Stride1D.Dense> OutputIntView;
+	public readonly ArrayView1D<int, Stride1D.Dense> OutputIntView2;
+
 	public MemoryBuffer1D<KeyValuePair<ulong, int>, Stride1D.Dense> Pow2ModEntriesToTestOnDevice;
-	public readonly MemoryBuffer1D<int, Stride1D.Dense> SmallPrimeFactorCountSlot;
-	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> SpecialMaxResult;
+	public ArrayView1D<KeyValuePair<ulong, int>, Stride1D.Dense> Pow2ModEntriesToTestOnDeviceView;
+
+	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> WorkFactorBuffer;
+	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> CandidateBuffer;
+	public readonly MemoryBuffer1D<int, Stride1D.Dense> StackIndexBuffer;
+	public readonly MemoryBuffer1D<int, Stride1D.Dense> StackExponentBuffer;
+	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> StackProductBuffer;
+
+	public OrderKernelBuffers CalculateOrderKernelBuffers;
+	public readonly ArrayView1D<ulong, Stride1D.Dense> WorkFactorBufferView;
+	public readonly ArrayView1D<ulong, Stride1D.Dense> CandidateBufferView;
+	public readonly ArrayView1D<int, Stride1D.Dense> StackIndexBufferView;
+	public readonly ArrayView1D<int, Stride1D.Dense> StackExponentBufferView;
+	public readonly ArrayView1D<ulong, Stride1D.Dense> StackProductBufferView;
+
+
+
+
+	public MemoryBuffer1D<GpuUInt128, Stride1D.Dense> CalculateOrderWideExponentBuffer;
+	public MemoryBuffer1D<GpuUInt128, Stride1D.Dense> CalculateOrderWideRemainderBuffer;
+	public ArrayView1D<GpuUInt128, Stride1D.Dense> CalculateOrderWideExponentBufferView;
+	public ArrayView1D<GpuUInt128, Stride1D.Dense> CalculateOrderWideRemainderBufferView;
+
 
 	public Dictionary<ulong, int> Pow2ModEntriesToTestOnHost = [];
 
-	private static readonly CalculatorKernels[] _kernels =new CalculatorKernels[AcceleratorPool.Shared.Accelerators.Length];
+	private static readonly CalculatorKernels[] _kernels = new CalculatorKernels[_accelerators.Length];
 
 	private sealed class CalculatorKernels(Accelerator accelerator)
 	{
-		public readonly Kernel CheckFactorsKernel = KernelUtil.GetKernel(accelerator.LoadStreamKernel<int, ulong, ArrayView1D<KeyValuePair<ulong, int>, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderGpuHeuristics.CheckFactorsKernel));
+		public readonly Action<AcceleratorStream, Index1D, ulong, CalculateOrderKernelConfig, ulong, ulong, ulong, ulong, ulong, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, OrderKernelBuffers> CalculateOrderKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, CalculateOrderKernelConfig, ulong, ulong, ulong, ulong, ulong, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, OrderKernelBuffers>(PrimeOrderKernels.CalculateOrderKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, CalculateOrderKernelConfig, ulong, ulong, ulong, ulong, ulong, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, OrderKernelBuffers>>();
+
+		public readonly Kernel CheckFactorsKernel = KernelUtil.GetKernel(accelerator.LoadStreamKernel<int, ulong, ArrayView1D<KeyValuePair<ulong, int>, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderKernels.CheckFactorsKernel));
 
 		public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>> ConvertToStandardKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelConvertToStandard)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>>();
 
@@ -127,9 +162,13 @@ public sealed class PrimeOrderCalculatorAccelerator
 
 		public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>> KeepMontgomeryKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelKeepMontgomery)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>>();
 
+		public readonly Action<AcceleratorStream, Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> PartialFactorKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>(PrimeOrderKernels.PartialFactorKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>>>();
+
 		public readonly Kernel PollardRhoKernel = KernelUtil.GetKernel(accelerator.LoadStreamKernel<ulong, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.TryPollardRhoKernel));
 
-		public readonly Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>> Pow2ModWideKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>(PrimeOrderGpuHeuristics.Pow2ModKernelWide)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>>();
+		public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>> Pow2ModKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderKernels.Pow2ModKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>>();
+
+		public readonly Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>> Pow2ModWideKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>(PrimeOrderKernels.Pow2ModKernelWide)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>>>();
 
 		public readonly Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>> SharesFactorKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SharesFactorKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>>>();
 
@@ -140,16 +179,37 @@ public sealed class PrimeOrderCalculatorAccelerator
 		public readonly Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ulong, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> SpecialMaxKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ulong, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderGpuHeuristics.EvaluateSpecialMaxCandidatesKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ulong, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
 	}
 
+	public readonly Action<AcceleratorStream, Index1D, ulong, CalculateOrderKernelConfig, ulong, ulong, ulong, ulong, ulong, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, OrderKernelBuffers> CalculateOrderKernelLauncher;
 	public readonly Kernel CheckFactorsKernel;
 	public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>> ConvertToStandardKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicCombinedGpuViews> HeuristicCombinedTrialDivisionKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>> KeepMontgomeryKernelLauncher;
+	public readonly Action<AcceleratorStream, Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> PartialFactorKernelLauncher;
 	public readonly Kernel PollardRhoKernel;
+	public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>> Pow2ModKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, ArrayView1D<GpuUInt128, Stride1D.Dense>, GpuUInt128, ArrayView1D<GpuUInt128, Stride1D.Dense>> Pow2ModWideKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>> SharesFactorKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> SmallPrimeFactorKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> SmallPrimeSieveKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ulong, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> SpecialMaxKernelLauncher;
+
+	public void EnsureCalculateOrderWideCapacity(int newSize)
+	{
+		if (newSize > Input.Length)
+		{
+			CalculateOrderWideExponentBuffer.Dispose();
+			CalculateOrderWideRemainderBuffer.Dispose();
+
+			var accelerator = Accelerator;
+			// lock (accelerator)
+			// {
+			CalculateOrderWideExponentBuffer = accelerator.Allocate1D<GpuUInt128>(newSize);
+			CalculateOrderWideRemainderBuffer = accelerator.Allocate1D<GpuUInt128>(newSize);
+			CalculateOrderWideExponentBufferView = CalculateOrderWideExponentBuffer.View;
+			CalculateOrderWideRemainderBufferView = CalculateOrderWideRemainderBuffer.View;
+			// }			
+		}
+	}
 
 	public void EnsureCapacity(int factorsCount, int primeTesterCapacity)
 	{
@@ -159,40 +219,76 @@ public sealed class PrimeOrderCalculatorAccelerator
 		if (pow2ModEntriesToTestOnDevice.Length < factorsCount)
 		{
 			// lock (accelerator)
-			{
+			// {
 				pow2ModEntriesToTestOnDevice.Dispose();
-				Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
-			}
+				pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
+				Pow2ModEntriesToTestOnDevice = pow2ModEntriesToTestOnDevice;
+				Pow2ModEntriesToTestOnDeviceView = pow2ModEntriesToTestOnDevice.View;
+			// }
 		}
 
 		MemoryBuffer1D<ulong, Stride1D.Dense> input = Input;
 		if (input.Length < primeTesterCapacity)
 		{
 			// lock (accelerator)
-			{
+			// {
 				input.Dispose();
-				Input = accelerator.Allocate1D<ulong>(primeTesterCapacity);
-			}
+
+				input = accelerator.Allocate1D<ulong>(primeTesterCapacity);
+				Input = input;
+				InputView = input.View;
+			// }
 		}
 
 		MemoryBuffer1D<byte, Stride1D.Dense> outputByte = OutputByte;
 		if (outputByte.Length < primeTesterCapacity)
 		{
 			// lock (accelerator)
-			{
+			// {
 				outputByte.Dispose();
-				OutputByte = accelerator.Allocate1D<byte>(primeTesterCapacity);
-			}
+
+				outputByte = accelerator.Allocate1D<byte>(primeTesterCapacity);
+				OutputByte = outputByte;
+				OutputByteView = outputByte.View;
+			// }
 		}
 
 		MemoryBuffer1D<int, Stride1D.Dense> outputInt = OutputInt;
 		if (outputInt.Length < primeTesterCapacity)
 		{
 			// lock (accelerator)
-			{
+			// {
 				outputInt.Dispose();
-				OutputInt = accelerator.Allocate1D<int>(primeTesterCapacity);
-			}
+
+				outputInt = accelerator.Allocate1D<int>(primeTesterCapacity);
+				OutputInt = outputInt;
+				OutputIntView = outputInt.View;
+			// }
+		}
+	}
+
+	public void EnsurePartialFactorCapacity(int newSize)
+	{
+		var accelerator = Accelerator;
+
+		var outputUlong = OutputUlong;
+		if (newSize > outputUlong.Length)
+		{
+			outputUlong.Dispose();
+
+			outputUlong = accelerator.Allocate1D<ulong>(newSize);
+			OutputUlong = outputUlong;
+			OutputUlongView = outputUlong.View;
+		}
+
+		var outputInt = OutputInt;
+		if (newSize > outputInt.Length)
+		{
+			outputInt.Dispose();
+			
+			outputInt = accelerator.Allocate1D<int>(newSize);
+			OutputInt = outputInt;
+			OutputIntView = outputInt.View;
 		}
 	}
 
@@ -204,44 +300,56 @@ public sealed class PrimeOrderCalculatorAccelerator
 		if (outputUlong.Length < newSize)
 		{
 			// lock (accelerator)
-			{
+			// {
 				outputUlong.Dispose();
-				OutputUlong = accelerator.Allocate1D<ulong>(newSize);
-			}
+
+				outputUlong = accelerator.Allocate1D<ulong>(newSize);
+				OutputUlong = outputUlong;
+				OutputUlongView = outputUlong.View;
+			// }
 		}
 
 		MemoryBuffer1D<int, Stride1D.Dense> outputInt = OutputInt;
 		if (outputInt.Length < newSize)
 		{
 			// lock (accelerator)
-			{
+			// {
 				outputInt.Dispose();
-				OutputInt = accelerator.Allocate1D<int>(newSize);
-			}
+
+				outputInt = accelerator.Allocate1D<int>(newSize);
+				OutputInt = outputInt;
+				OutputIntView = outputInt.View;
+			// }
 		}
 	}
 
-	public void EnsureSpecialMaxFactorsCapacity(int newSize)
+	public void EnsureUlongInputOutputCapacity(int newSize)
 	{
 		var accelerator = Accelerator;
-		MemoryBuffer1D<ulong, Stride1D.Dense> input = Input;
-		if (input.Length < newSize)
+		MemoryBuffer1D<ulong, Stride1D.Dense> buffer = Input;
+		if (buffer.Length < newSize)
 		{
 			// lock (accelerator)
-			{
-				input.Dispose();
-				Input = accelerator.Allocate1D<ulong>(newSize);
-			}
+			// {
+				buffer.Dispose();
+
+				buffer = accelerator.Allocate1D<ulong>(newSize);
+				Input = buffer;
+				InputView = buffer.View;
+			// }
 		}
 
-		MemoryBuffer1D<ulong, Stride1D.Dense> outputUlong = OutputUlong;
-		if (outputUlong.Length < newSize)
+		buffer = OutputUlong;
+		if (buffer.Length < newSize)
 		{
 			// lock (accelerator)
-			{
-				outputUlong.Dispose();
-				OutputUlong = accelerator.Allocate1D<ulong>(newSize);
-			}
+			// {
+				buffer.Dispose();
+
+				buffer = accelerator.Allocate1D<ulong>(newSize);
+				OutputUlong = buffer;
+				OutputUlongView = buffer.View;
+			// }
 		}
 	}
 
@@ -250,15 +358,59 @@ public sealed class PrimeOrderCalculatorAccelerator
 		var accelerator = _accelerators[acceleratorIndex];
 		Accelerator = accelerator;
 		AcceleratorIndex = acceleratorIndex;
+
 		// lock (accelerator)
-		{
-			Input = accelerator.Allocate1D<ulong>(Math.Max(specialMaxFactorCapacity, primeTesterCapacity));
+		// {
+			Input = accelerator.Allocate1D<ulong>(Math.Max(Math.Max(specialMaxFactorCapacity, primeTesterCapacity), PrimeOrderConstants.MaxGpuBatchSize));
+			InputView = Input.View;
+
 			OutputByte = Accelerator.Allocate1D<byte>(primeTesterCapacity);
-			OutputInt = Accelerator.Allocate1D<int>(Math.Max(primeTesterCapacity, smallPrimeFactorSlotCount));
-			OutputUlong = accelerator.Allocate1D<ulong>(Math.Max(specialMaxFactorCapacity, smallPrimeFactorSlotCount));
+			OutputByteView = OutputByte.View;
+
+			OutputInt = Accelerator.Allocate1D<int>(Math.Max(Math.Max(primeTesterCapacity, smallPrimeFactorSlotCount), PrimeOrderConstants.GpuSmallPrimeFactorSlots));
+			OutputIntView = OutputInt.View;
+
+			OutputInt2 = accelerator.Allocate1D<int>(PrimeOrderConstants.GpuSmallPrimeFactorSlots);			
+			OutputIntView2 = OutputInt2.View;
+
+			OutputUlong = accelerator.Allocate1D<ulong>(Math.Max(Math.Max(Math.Max(specialMaxFactorCapacity, smallPrimeFactorSlotCount), PrimeOrderConstants.MaxGpuBatchSize), PrimeOrderConstants.GpuSmallPrimeFactorSlots));
+			OutputUlongView = OutputUlong.View;
+
+			OutputUlong2 = accelerator.Allocate1D<ulong>(1);
+			OutputUlongView2 = OutputUlong2.View;
+
 			Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
-			SmallPrimeFactorCountSlot = accelerator.Allocate1D<int>(1);
-			SpecialMaxResult = accelerator.Allocate1D<ulong>(1);
+			Pow2ModEntriesToTestOnDeviceView = Pow2ModEntriesToTestOnDevice.View;
+
+			WorkFactorBuffer = accelerator.Allocate1D<ulong>(PrimeOrderConstants.GpuSmallPrimeFactorSlots);
+			CandidateBuffer = accelerator.Allocate1D<ulong>(PrimeOrderConstants.HeuristicCandidateLimit);
+			StackIndexBuffer = accelerator.Allocate1D<int>(PrimeOrderConstants.HeuristicStackCapacity);
+			StackExponentBuffer = accelerator.Allocate1D<int>(PrimeOrderConstants.HeuristicStackCapacity);
+			StackProductBuffer = accelerator.Allocate1D<ulong>(PrimeOrderConstants.HeuristicStackCapacity);
+
+			WorkFactorBufferView = WorkFactorBuffer.View;
+			CandidateBufferView = CandidateBuffer.View;
+			StackIndexBufferView = StackIndexBuffer.View;
+			StackExponentBufferView = StackExponentBuffer.View;
+			StackProductBufferView = StackProductBuffer.View;
+
+			CalculateOrderKernelBuffers = new OrderKernelBuffers(
+				OutputUlongView,
+				OutputIntView,
+				WorkFactorBufferView,
+				OutputIntView2,
+				CandidateBufferView,
+				StackIndexBufferView,
+				StackExponentBufferView,
+				StackProductBufferView,
+				OutputUlongView2,
+				OutputByteView
+			);
+
+			CalculateOrderWideExponentBuffer = accelerator.Allocate1D<GpuUInt128>(PrimeOrderConstants.MaxGpuBatchSize);
+			CalculateOrderWideRemainderBuffer = accelerator.Allocate1D<GpuUInt128>(PrimeOrderConstants.MaxGpuBatchSize);
+			CalculateOrderWideExponentBufferView = CalculateOrderWideExponentBuffer.View;
+			CalculateOrderWideRemainderBufferView = CalculateOrderWideRemainderBuffer.View;
 
 			LastDigitGpuTables lastDigitSharedTables = LastDigitGpuTables.GetStaticTables(acceleratorIndex);
 			DevicePrimesLastOne = lastDigitSharedTables.DevicePrimesLastOne.View;
@@ -285,17 +437,20 @@ public sealed class PrimeOrderCalculatorAccelerator
 
 			var kernels = _kernels[acceleratorIndex];
 
+			CalculateOrderKernelLauncher = kernels.CalculateOrderKernelLauncher;
 			CheckFactorsKernel = kernels.CheckFactorsKernel;
 			ConvertToStandardKernelLauncher = kernels.ConvertToStandardKernelLauncher;
 			HeuristicCombinedTrialDivisionKernelLauncher = kernels.HeuristicCombinedTrialDivisionKernelLauncher;
 			KeepMontgomeryKernelLauncher = kernels.KeepMontgomeryKernelLauncher;
+			PartialFactorKernelLauncher = kernels.PartialFactorKernelLauncher;
 			PollardRhoKernel = kernels.PollardRhoKernel;
+			Pow2ModKernelLauncher = kernels.Pow2ModKernelLauncher;
 			Pow2ModWideKernelLauncher = kernels.Pow2ModWideKernelLauncher;
 			SharesFactorKernelLauncher = kernels.SharesFactorKernelLauncher;
 			SmallPrimeFactorKernelLauncher = kernels.SmallPrimeFactorKernelLauncher;
 			SmallPrimeSieveKernelLauncher = kernels.SmallPrimeSieveKernelLauncher;
 			SpecialMaxKernelLauncher = kernels.SpecialMaxKernelLauncher;
-		}
+		// }
 	}
 
 	public void Dispose()
@@ -303,10 +458,20 @@ public sealed class PrimeOrderCalculatorAccelerator
 		Input.Dispose();
 		OutputByte.Dispose();
 		OutputInt.Dispose();
+		OutputInt2.Dispose();
 		OutputUlong.Dispose();
+		OutputUlong2.Dispose();
+		
 		Pow2ModEntriesToTestOnDevice.Dispose();
-		SmallPrimeFactorCountSlot.Dispose();
-		SpecialMaxResult.Dispose();
+
+		WorkFactorBuffer.Dispose();
+		CandidateBuffer.Dispose();
+		StackIndexBuffer.Dispose();
+		StackExponentBuffer.Dispose();
+		StackProductBuffer.Dispose();
+
+		CalculateOrderWideExponentBuffer.Dispose();
+		CalculateOrderWideRemainderBuffer.Dispose();
 
 		// These resources are shared between GPU leases
 		// Stream.Dispose();

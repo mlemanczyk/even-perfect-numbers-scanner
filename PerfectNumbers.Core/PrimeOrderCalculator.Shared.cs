@@ -1042,7 +1042,7 @@ internal static partial class PrimeOrderCalculator
             {
                 ulong prime64 = (ulong)modulus;
                 ulong exponent64 = (ulong)exponent;
-                GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent64, prime64, out ulong remainder, divisorData);
+                GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(gpu, exponent64, prime64, out ulong remainder, divisorData);
                 if (status == GpuPow2ModStatus.Success)
                 {
                     return remainder;

@@ -21,17 +21,19 @@ public class PrimeOrderGpuHeuristicsTests
 	public void TryPow2Mod_returns_overflow_for_marked_prime()
 	{
 		const ulong prime = 97UL;
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
 			PrimeOrderGpuHeuristics.OverflowRegistry[prime] = 0;
 			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(prime);
-			GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(1UL, prime, out ulong remainder, divisorData);
+			GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(gpu, 1UL, prime, out ulong remainder, divisorData);
 
 			status.Should().Be(GpuPow2ModStatus.Overflow);
 			remainder.Should().Be(0UL);
 		}
 		finally
 		{
+			PrimeOrderCalculatorAccelerator.Return(gpu);
 			PrimeOrderGpuHeuristics.OverflowRegistry.TryRemove(prime, out _);
 		}
 	}
@@ -42,7 +44,10 @@ public class PrimeOrderGpuHeuristicsTests
 		const ulong exponent = 138_000_001UL;
 		const ulong prime = 138_000_001UL;
 		MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(prime);
-		GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(exponent, prime, out ulong remainder, divisorData);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(gpu, exponent, prime, out ulong remainder, divisorData);
+
+		PrimeOrderCalculatorAccelerator.Return(gpu);
 
 		status.Should().Be(GpuPow2ModStatus.Success);
 		remainder.Should().Be(2UL);
@@ -54,16 +59,18 @@ public class PrimeOrderGpuHeuristicsTests
 		const ulong prime = 97UL;
 		var capability = new PrimeOrderGpuHeuristics.PrimeOrderGpuCapability(6, 64);
 		PrimeOrderGpuHeuristics.OverrideCapabilitiesForTesting(capability);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
 			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(prime);
-			GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(1UL, prime, out ulong remainder, divisorData);
+			GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(gpu, 1UL, prime, out ulong remainder, divisorData);
 
 			status.Should().Be(GpuPow2ModStatus.Overflow);
 			remainder.Should().Be(0UL);
 		}
 		finally
 		{
+			PrimeOrderCalculatorAccelerator.Return(gpu);
 			PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
 			PrimeOrderGpuHeuristics.OverflowRegistry.TryRemove(prime, out _);
 		}
@@ -73,22 +80,24 @@ public class PrimeOrderGpuHeuristicsTests
 	public void TryPow2Mod_returns_overflow_when_exponent_exceeds_capability()
 	{
 		var capability = new PrimeOrderGpuHeuristics.PrimeOrderGpuCapability(64, 3);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		PrimeOrderGpuHeuristics.OverrideCapabilitiesForTesting(capability);
 		try
 		{
 			const ulong prime = 193UL;
 			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(prime);
-			GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(16UL, prime, out ulong remainder, divisorData);
+			GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2Mod(gpu, 16UL, prime, out ulong remainder, divisorData);
 
 			status.Should().Be(GpuPow2ModStatus.Overflow);
 			remainder.Should().Be(0UL);
 
-			GpuPow2ModStatus followUp = PrimeOrderGpuHeuristics.TryPow2Mod(4UL, prime, out ulong followUpRemainder, divisorData);
+			GpuPow2ModStatus followUp = PrimeOrderGpuHeuristics.TryPow2Mod(gpu, 4UL, prime, out ulong followUpRemainder, divisorData);
 			followUp.Should().Be(GpuPow2ModStatus.Success);
 			followUpRemainder.Should().Be(16UL);
 		}
 		finally
 		{
+			PrimeOrderCalculatorAccelerator.Return(gpu);
 			PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
 		}
 	}
@@ -97,6 +106,7 @@ public class PrimeOrderGpuHeuristicsTests
 	public void TryPow2ModBatch_returns_overflow_for_marked_prime()
 	{
 		const ulong prime = 193UL;
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
 			PrimeOrderGpuHeuristics.OverflowRegistry[prime] = 0;
@@ -104,7 +114,7 @@ public class PrimeOrderGpuHeuristicsTests
 			ulong[] remainders = new ulong[2];
 			ulong[] exponents = { 1UL, 2UL };
 			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(prime);
-			GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponents, prime, remainders, divisorData);
+			GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(gpu, exponents, prime, remainders, divisorData);
 
 			status.Should().Be(GpuPow2ModStatus.Overflow);
 			remainders[0].Should().Be(0UL);
@@ -112,6 +122,7 @@ public class PrimeOrderGpuHeuristicsTests
 		}
 		finally
 		{
+			PrimeOrderCalculatorAccelerator.Return(gpu);
 			PrimeOrderGpuHeuristics.OverflowRegistry.TryRemove(prime, out _);
 		}
 	}
@@ -123,7 +134,11 @@ public class PrimeOrderGpuHeuristicsTests
 		ulong[] exponents = { 138_000_001UL, 138_000_011UL };
 		const ulong prime = 138_000_001UL;
 		MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(prime);
-		GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponents, prime, remainders, divisorData);
+
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(gpu, exponents, prime, remainders, divisorData);
+		
+		PrimeOrderCalculatorAccelerator.Return(gpu);
 
 		ulong expectedFirst = (ulong)BigInteger.ModPow(2, exponents[0], prime);
 		ulong expectedSecond = (ulong)BigInteger.ModPow(2, exponents[1], prime);
@@ -140,6 +155,7 @@ public class PrimeOrderGpuHeuristicsTests
 	{
 		const ulong prime = 97UL;
 		var capability = new PrimeOrderGpuHeuristics.PrimeOrderGpuCapability(6, 64);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		PrimeOrderGpuHeuristics.OverrideCapabilitiesForTesting(capability);
 		try
 		{
@@ -147,7 +163,7 @@ public class PrimeOrderGpuHeuristicsTests
 			ulong[] remainders = { 5UL, 6UL };
 
 			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(prime);
-			GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponents, prime, remainders, divisorData);
+			GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(gpu, exponents, prime, remainders, divisorData);
 
 			status.Should().Be(GpuPow2ModStatus.Overflow);
 			remainders[0].Should().Be(0UL);
@@ -155,6 +171,7 @@ public class PrimeOrderGpuHeuristicsTests
 		}
 		finally
 		{
+			PrimeOrderCalculatorAccelerator.Return(gpu);
 			PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
 			PrimeOrderGpuHeuristics.OverflowRegistry.TryRemove(prime, out _);
 		}
@@ -164,6 +181,7 @@ public class PrimeOrderGpuHeuristicsTests
 	public void TryPow2ModBatch_returns_overflow_when_any_exponent_exceeds_capability()
 	{
 		var capability = new PrimeOrderGpuHeuristics.PrimeOrderGpuCapability(64, 3);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		PrimeOrderGpuHeuristics.OverrideCapabilitiesForTesting(capability);
 		try
 		{
@@ -172,7 +190,7 @@ public class PrimeOrderGpuHeuristicsTests
 
 			const ulong prime = 193UL;
 			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(prime);
-			GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(exponents, prime, remainders, divisorData);
+			GpuPow2ModStatus status = PrimeOrderGpuHeuristics.TryPow2ModBatch(gpu, exponents, prime, remainders, divisorData);
 
 			status.Should().Be(GpuPow2ModStatus.Overflow);
 			remainders[0].Should().Be(0UL);
@@ -180,6 +198,7 @@ public class PrimeOrderGpuHeuristicsTests
 		}
 		finally
 		{
+			PrimeOrderCalculatorAccelerator.Return(gpu);
 			PrimeOrderGpuHeuristics.ResetCapabilitiesForTesting();
 		}
 	}

@@ -91,10 +91,8 @@ public sealed class PrimeTester
 	public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n)
 	{
 		byte flag = 0;
-		var input = gpu.Input;
-		var inputView = input.View;
-		var output = gpu.OutputByte;
-		var outputView = output.View;
+		var inputView = gpu.InputView;
+		var outputView = gpu.OutputByteView;
 
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
@@ -156,10 +154,8 @@ public sealed class PrimeTester
 		int totalLength = values.Length;
 		int batchSize = GpuBatchSize;
 
-		var input = gpu.Input;
-		var output = gpu.OutputByte;
-		var inputView = input.View;
-		var outputView = output.View;
+		var inputView = gpu.InputView;
+		var outputView = gpu.OutputByteView;
 
 		int pos = 0;
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
@@ -235,16 +231,16 @@ public sealed class PrimeTester
 
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		gpu.EnsureCapacity(0, length);
-		MemoryBuffer1D<ulong, Stride1D.Dense>? inputBuffer = gpu.Input;
+		var inputBufferView = gpu.InputView;
+		var resultBufferView = gpu.OutputByteView;
+		var kernelLauncher = gpu.SharesFactorKernelLauncher;
 
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		inputBuffer.View.CopyFromCPU(stream, values);
+		inputBufferView.CopyFromCPU(stream, values);
 
-		MemoryBuffer1D<byte, Stride1D.Dense>? resultBuffer = gpu.OutputByte;
-		var kernelLauncher = gpu.SharesFactorKernelLauncher;
-		kernelLauncher(stream, length, inputBuffer.View, resultBuffer.View);
+		kernelLauncher(stream, length, inputBufferView, resultBufferView);
 
-		resultBuffer.View.CopyToCPU(stream, in results);
+		resultBufferView.CopyToCPU(stream, in results);
 		stream.Synchronize();
 
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);

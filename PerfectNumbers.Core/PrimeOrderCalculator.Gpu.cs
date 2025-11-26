@@ -36,20 +36,21 @@ internal static partial class PrimeOrderCalculator
 
 		ulong order = phi;
 		var acceleratorIndex = gpu.AcceleratorIndex;
+		var kernel = gpu.CheckFactorsKernel;
+
 		gpu.EnsureCapacity(entryCount, 1);
+		var pow2ModEntriesToTestOnDeviceView = gpu.Pow2ModEntriesToTestOnDeviceView;
 
 		// GpuPrimeWorkLimiter.Acquire();
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		gpu.Pow2ModEntriesToTestOnDevice.View.CopyFromCPU(stream, entries);
+		pow2ModEntriesToTestOnDeviceView.CopyFromCPU(stream, entries);
 
-		// var kernelLauncher = gpu.CheckFactorsKernelLauncher;		
-		var kernel = gpu.CheckFactorsKernel;
-		kernel.Launch(stream, 1, entryCount, phi, gpu.Pow2ModEntriesToTestOnDevice.View, divisorData.Modulus, divisorData.NPrime, divisorData.MontgomeryOne, divisorData.MontgomeryTwo, divisorData.MontgomeryTwoSquared, gpu.OutputUlong.View);
+		kernel.Launch(stream, 1, entryCount, phi, pow2ModEntriesToTestOnDeviceView, divisorData.Modulus, divisorData.NPrime, divisorData.MontgomeryOne, divisorData.MontgomeryTwo, divisorData.MontgomeryTwoSquared, gpu.OutputUlongView);
 
-		gpu.OutputUlong.View.CopyToCPU(stream, ref order, 1);
+		gpu.OutputUlongView.CopyToCPU(stream, ref order, 1);
 		stream.Synchronize();
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 
+		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 		// GpuPrimeWorkLimiter.Release();
 		return order;
 	}
@@ -67,10 +68,10 @@ internal static partial class PrimeOrderCalculator
 		var accelerator = gpu.Accelerator;
 
 		var kernelLauncher = gpu.SmallPrimeFactorKernelLauncher;
-		ArrayView1D<int, Stride1D.Dense> smallPrimeFactorCountSlotView = gpu.SmallPrimeFactorCountSlot.View;
-		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorRemainingSlotView = gpu.Input.View;
-		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorPrimeSlotsView = gpu.OutputUlong.View;
-		ArrayView1D<int, Stride1D.Dense> smallPrimeFactorExponentSlotsView = gpu.OutputInt.View;
+		ArrayView1D<int, Stride1D.Dense> smallPrimeFactorCountSlotView = gpu.OutputIntView2;
+		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorRemainingSlotView = gpu.InputView;
+		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorPrimeSlotsView = gpu.OutputUlongView;
+		ArrayView1D<int, Stride1D.Dense> smallPrimeFactorExponentSlotsView = gpu.OutputIntView;
 		ArrayView1D<ulong, Stride1D.Dense> smallPrimeFactorsSquaresView = gpu.SmallPrimeFactorSquares;
 		ArrayView1D<uint, Stride1D.Dense> smallPrimeFactorsPrimesView = gpu.SmallPrimeFactorPrimes;
 
@@ -128,18 +129,17 @@ internal static partial class PrimeOrderCalculator
 			in MontgomeryDivisorData divisorData)
 	{
 		int factorCount = factors.Length;
-		gpu.EnsureSpecialMaxFactorsCapacity(factorCount);
+		gpu.EnsureUlongInputOutputCapacity(factorCount);
 
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		// GpuPrimeWorkLimiter.Acquire();
-		ArrayView1D<ulong, Stride1D.Dense> specialMaxFactorsView = gpu.Input.View;
+		ArrayView1D<ulong, Stride1D.Dense> specialMaxFactorsView = gpu.InputView;
+		ArrayView1D<ulong, Stride1D.Dense> specialMaxResultView = gpu.OutputUlongView2;
+		var kernelLauncher = gpu.SpecialMaxKernelLauncher;
 
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		specialMaxFactorsView.SubView(0, factorCount).CopyFromCPU(stream, factors);
 
-		ArrayView1D<ulong, Stride1D.Dense> specialMaxResultView = gpu.SpecialMaxResult.View;
-
-		var kernelLauncher = gpu.SpecialMaxKernelLauncher;
 		kernelLauncher(
 				stream,
 				1,
@@ -147,7 +147,7 @@ internal static partial class PrimeOrderCalculator
 				specialMaxFactorsView,
 				factorCount,
 				divisorData.Modulus,
-				gpu.OutputUlong.View,
+				gpu.OutputUlongView,
 				specialMaxResultView);
 
 		ulong result = 0UL;
@@ -168,16 +168,16 @@ internal static partial class PrimeOrderCalculator
 		Span<ulong> factorSpan = stackalloc ulong[1];
 		
 		int acceleratorIndex = gpu.AcceleratorIndex;
-		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		gpu.Input.View.CopyFromCPU(stream, randomStateSpan);
-
 		var kernel = gpu.PollardRhoKernel;
 
-		kernel.Launch(stream, 1, n, 1, gpu.Input.View, gpu.OutputByte.View, gpu.OutputUlong.View);
+		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
+		gpu.InputView.CopyFromCPU(stream, randomStateSpan);
 
-		gpu.OutputByte.View.CopyToCPU(stream, factoredSpan);
-		gpu.OutputUlong.View.CopyToCPU(stream, factorSpan);
-		gpu.Input.View.CopyToCPU(stream, randomStateSpan);
+		kernel.Launch(stream, 1, n, 1, gpu.InputView, gpu.OutputByteView, gpu.OutputUlongView);
+
+		gpu.OutputByteView.CopyToCPU(stream, factoredSpan);
+		gpu.OutputUlongView.CopyToCPU(stream, factorSpan);
+		gpu.InputView.CopyToCPU(stream, randomStateSpan);
 		stream.Synchronize();
 
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);

@@ -225,24 +225,24 @@ public sealed class HeuristicCombinedPrimeTester
 	private static bool HeuristicTrialDivisionGpuDetectsDivisor(PrimeOrderCalculatorAccelerator gpu, ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
 		var acceleratorIndex = gpu.AcceleratorIndex;
-		var flagView1D = gpu.OutputInt!.View;
+		var flagView1DView = gpu.OutputIntView;
+		var kernelLauncher = gpu.HeuristicCombinedTrialDivisionKernelLauncher;
 		bool compositeDetected;
 		Span<int> compositeFlag = stackalloc int[1];
 		// int compositeFlag = 0;
 
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		flagView1D.MemSetToZero(stream);
+		flagView1DView.MemSetToZero(stream);
 
-		var kernelLauncher = gpu.HeuristicCombinedTrialDivisionKernelLauncher;
 		kernelLauncher(
 				stream,
 				1,
 				nMod10,
-				flagView1D,
+				flagView1DView,
 				n,
 				maxDivisorSquare,
 				gpu.DivisorTables);
-		flagView1D.CopyToCPU(stream, compositeFlag);
+		flagView1DView.CopyToCPU(stream, compositeFlag);
 		stream.Synchronize();
 
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);

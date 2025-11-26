@@ -6,7 +6,7 @@ using PerfectNumbers.Core.Gpu.Kernels;
 
 namespace PerfectNumbers.Core.Gpu;
 
-internal static partial class PrimeOrderGpuHeuristics
+internal static partial class PrimeOrderKernels
 {
 	internal static void CheckFactorsKernel(
 		int count,
@@ -115,15 +115,6 @@ internal static partial class PrimeOrderGpuHeuristics
 		fullyFactoredOut[0] = remainingLocal == 1UL ? (byte)1 : (byte)0;
 	}
 
-	internal enum PrimeOrderKernelStatus : byte
-	{
-		Fallback = 0,
-		Found = 1,
-		HeuristicUnresolved = 2,
-		PollardOverflow = 3,
-		FactoringFailure = 4,
-	}
-
 	private readonly struct CandidateKey
 	{
 		public CandidateKey(int primary, long secondary, long tertiary)
@@ -160,7 +151,7 @@ internal static partial class PrimeOrderGpuHeuristics
 	internal static void CalculateOrderKernel(
 		Index1D index,
 		ulong prime,
-		OrderKernelConfig config,
+		CalculateOrderKernelConfig config,
 		ulong divisorModulus,
 		ulong divisorNPrime,
 		ulong divisorMontgomeryOne,
@@ -189,7 +180,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		ArrayView1D<ulong, Stride1D.Dense> resultOut = buffers.Result;
 		ArrayView1D<byte, Stride1D.Dense> statusOut = buffers.Status;
 
-		uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
+		uint limit = config.SmallFactorLimit;
 		ulong previousOrder = config.PreviousOrder;
 		byte hasPreviousOrder = config.HasPreviousOrder;
 		int maxPowChecks = config.MaxPowChecks;
@@ -589,7 +580,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		SortFactors(workFactors, workExponents, factorCount);
 
 		long candidateCapacity = candidates.Length;
-		int candidateLimit = candidateCapacity < HeuristicCandidateLimit ? (int)candidateCapacity : HeuristicCandidateLimit;
+		int candidateLimit = candidateCapacity < PrimeOrderConstants.HeuristicCandidateLimit ? (int)candidateCapacity : PrimeOrderConstants.HeuristicCandidateLimit;
 		int candidateCount = BuildCandidatesKernel(order, workFactors, workExponents, factorCount, candidates, stackIndex, stackExponent, stackProduct, candidateLimit);
 		if (candidateCount == 0)
 		{
@@ -1328,11 +1319,11 @@ internal static partial class PrimeOrderGpuHeuristics
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static bool ShouldUseSingleBit(GpuUInt128 exponent) => exponent.High == 0UL && exponent.Low <= Pow2WindowFallbackThreshold;
+	private static bool ShouldUseSingleBit(GpuUInt128 exponent) => exponent.High == 0UL && exponent.Low <= PrimeOrderConstants.Pow2WindowFallbackThreshold;
 
 	private static int GetWindowSize(int bitLength)
 	{
-		if (bitLength <= Pow2WindowSizeBits)
+		if (bitLength <= PrimeOrderConstants.Pow2WindowSizeBits)
 		{
 			return Math.Max(bitLength, 1);
 		}
@@ -1357,7 +1348,7 @@ internal static partial class PrimeOrderGpuHeuristics
 			return 7;
 		}
 
-		return Pow2WindowSizeBits;
+		return PrimeOrderConstants.Pow2WindowSizeBits;
 	}
 
 	private static GpuUInt128 Pow2MontgomeryModSingleBit(GpuUInt128 exponent, GpuUInt128 modulus, GpuUInt128 baseValue)

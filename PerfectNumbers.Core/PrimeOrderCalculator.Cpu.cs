@@ -54,7 +54,8 @@ internal static partial class PrimeOrderCalculator
 
 		ulong phi = prime - 1UL;
 
-		if (IsGpuHeuristicDevice && PrimeOrderGpuHeuristics.TryCalculateOrder(gpu, prime, previousOrder, config, divisorData, out ulong gpuOrder))
+		if (PrimeOrderGpuHeuristics.TryCalculateOrder(gpu, prime, previousOrder, config, divisorData, out ulong gpuOrder))
+		// if (IsGpuHeuristicDevice && PrimeOrderGpuHeuristics.TryCalculateOrder(gpu, prime, previousOrder, config, divisorData, out ulong gpuOrder))
 		{
 			return gpuOrder;
 		}
@@ -567,7 +568,6 @@ internal static partial class PrimeOrderCalculator
 
 			// DebugLog(() => $"Checking candidates ({candidateCount} candidates, {powBudget} pow budget)");
 			int index = 0;
-			const int MaxGpuBatchSize = 256;
 			const int StackGpuBatchSize = 64;
 			Span<ulong> stackGpuRemainders = stackalloc ulong[StackGpuBatchSize];
 			ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
@@ -575,7 +575,7 @@ internal static partial class PrimeOrderCalculator
 			{
 				int remaining = candidateCount - index;
 				int budgetRemaining = powBudget - powUsed;
-				int batchSize = Math.Min(remaining, Math.Min(budgetRemaining, MaxGpuBatchSize));
+				int batchSize = Math.Min(remaining, Math.Min(budgetRemaining, PrimeOrderConstants.MaxGpuBatchSize));
 				if (batchSize <= 0)
 				{
 					break;
@@ -593,7 +593,7 @@ internal static partial class PrimeOrderCalculator
 					if (batchSize <= StackGpuBatchSize)
 					{
 						Span<ulong> localRemainders = stackGpuRemainders[..batchSize];
-						status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, localRemainders, divisorData);
+						status = PrimeOrderGpuHeuristics.TryPow2ModBatch(gpu, batch, prime, localRemainders, divisorData);
 						if (status == GpuPow2ModStatus.Success)
 						{
 							gpuSuccess = true;
@@ -604,7 +604,7 @@ internal static partial class PrimeOrderCalculator
 					{
 						gpuPool = pool.Rent(batchSize);
 						Span<ulong> pooledRemainders = gpuPool.AsSpan(0, batchSize);
-						status = PrimeOrderGpuHeuristics.TryPow2ModBatch(batch, prime, pooledRemainders, divisorData);
+						status = PrimeOrderGpuHeuristics.TryPow2ModBatch(gpu, batch, prime, pooledRemainders, divisorData);
 						if (status == GpuPow2ModStatus.Success)
 						{
 							pooledGpuRemainders = pooledRemainders;
@@ -1086,7 +1086,7 @@ internal static partial class PrimeOrderCalculator
 			return PartialFactorResult.Empty;
 		}
 
-		const int FactorSlotCount = GpuSmallPrimeFactorSlots;
+		const int FactorSlotCount = PrimeOrderConstants.GpuSmallPrimeFactorSlots;
 
 		// stackalloc is faster than pooling
 		// ulong[] primeSlotsArray = ThreadStaticPools.UlongPool.Rent(FactorSlotCount);
@@ -1176,7 +1176,7 @@ internal static partial class PrimeOrderCalculator
 					// bool isPrime = HeuristicCombinedPrimeTester.IsPrimeCpu(composite);
 					// bool isPrime = HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
 					bool runOnGpu = RunOnGpu();
-					bool isPrime = !runOnGpu ? PrimeTester.IsPrime(composite) : HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
+					bool isPrime = !runOnGpu ? HeuristicCombinedPrimeTester.IsPrimeCpu(composite) : HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
 					// bool isPrime = PrimeTester.IsPrime(composite);
 					// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
 
@@ -1252,7 +1252,7 @@ internal static partial class PrimeOrderCalculator
 
 				bool isPrime = RunOnGpu()
 					? HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite)
-					: PrimeTester.IsPrime(composite);
+					: HeuristicCombinedPrimeTester.IsPrimeCpu(composite);
 				// bool isPrime = PrimeTester.IsPrime(composite);
 				// bool isPrime = HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, composite);
 				// bool isPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(composite);
@@ -1297,7 +1297,7 @@ internal static partial class PrimeOrderCalculator
 			// cofactorIsPrime = PrimeTester.IsPrimeGpu(gpu, cofactor);
 			cofactorIsPrime = RunOnGpu()
 				? HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, cofactor)
-				: PrimeTester.IsPrime(cofactor);
+				: HeuristicCombinedPrimeTester.IsPrimeCpu(cofactor);
 			// cofactorIsPrime = PrimeTester.IsPrime(cofactor);
 			// cofactorIsPrime = Open.Numeric.Primes.Prime.Numbers.IsPrime(cofactor);
 		}
