@@ -8,72 +8,49 @@ internal static partial class PrimeOrderGpuHeuristics
     internal static void EvaluateSpecialMaxCandidatesKernel(
         Index1D index,
         ulong phi,
-        ArrayView1D<ulong, Stride1D.Dense> factors,
+        ArrayView<ulong> factors,
         int factorCount,
         ulong divisorModulus,
-        ArrayView1D<ulong, Stride1D.Dense> candidates,
-        ArrayView1D<ulong, Stride1D.Dense> resultOut)
+        ArrayView<ulong> resultOut)
     {
-        if (index != 0)
-        {
-            return;
-        }
-
-        int actual = 0;
         for (int i = 0; i < factorCount; i++)
         {
-            ulong factor = factors[i];
-            if (factor <= 1UL)
-            {
-                continue;
-            }
-
-            ulong reduced = phi / factor;
-            if (reduced == 0UL)
-            {
-                continue;
-            }
-
-            candidates[actual] = reduced;
-            actual++;
+            factors[i] = phi / factors[i];
         }
 
-        if (actual == 0)
+        for (int i = 1; i < factorCount; i++)
         {
-            resultOut[0] = 1;
-            return;
-        }
-
-        for (int i = 1; i < actual; i++)
-        {
-            ulong current = candidates[i];
+            ulong current = factors[i];
             int insert = i - 1;
-            while (insert >= 0 && candidates[insert] > current)
+            while (insert >= 0 && factors[insert] > current)
             {
-                candidates[insert + 1] = candidates[insert];
+                factors[insert + 1] = factors[insert];
                 insert--;
             }
 
-            candidates[insert + 1] = current;
+            factors[insert + 1] = current;
         }
 
         var divisorPartial = new GpuDivisorPartialData(divisorModulus);
         var stepper = new ExponentRemainderStepperGpu(divisorPartial);
-        if (stepper.InitializeIsUnityGpu(candidates[0]))
+        if (stepper.InitializeIsUnityGpu(factors[0]))
         {
-			Atomic.Exchange(ref resultOut[0], 0);
+			resultOut[0] = 0UL;
+			// Atomic.Exchange(ref resultOut[0], 0);
             return;
         }
 
-        for (int i = 1; i < actual; i++)
+        for (int i = 1; i < factorCount; i++)
         {
-            if (stepper.ComputeNextIsUnityGpu(candidates[i]))
+            if (stepper.ComputeNextIsUnityGpu(factors[i]))
             {
-				Atomic.Exchange(ref resultOut[0], 0);
+				resultOut[0] = 0UL;
+				// Atomic.Exchange(ref resultOut[0], 0);
                 return;
             }
         }
 
-        Atomic.Exchange(ref resultOut[0], 1);
+        resultOut[0] = 1UL;
+        // Atomic.Exchange(ref resultOut[0], 1);
     }
 }

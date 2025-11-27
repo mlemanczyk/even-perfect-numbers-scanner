@@ -115,7 +115,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public MemoryBuffer1D<ulong, Stride1D.Dense> OutputUlong;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> OutputUlong2;
 	public ArrayView1D<ulong, Stride1D.Dense> OutputUlongView;
-	public readonly ArrayView1D<ulong, Stride1D.Dense> OutputUlongView2;
+	public readonly ArrayView<ulong> OutputUlongView2;
 
 	public MemoryBuffer1D<int, Stride1D.Dense> OutputInt;
 	public readonly MemoryBuffer1D<int, Stride1D.Dense> OutputInt2;	
@@ -159,7 +159,8 @@ public sealed class PrimeOrderCalculatorAccelerator
 
 		public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>> ConvertToStandardKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelConvertToStandard)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>>();
 
-		public readonly Action<AcceleratorStream, Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicCombinedGpuViews> HeuristicCombinedTrialDivisionKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicCombinedGpuViews>(PrimeTesterKernels.HeuristicTrialCombinedDivisionKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicCombinedGpuViews>>();
+		// public readonly Action<AcceleratorStream, Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicCombinedGpuViews> HeuristicCombinedTrialDivisionKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicCombinedGpuViews>(PrimeTesterKernels.HeuristicTrialCombinedDivisionKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicCombinedGpuViews>>();
+		public readonly Action<AcceleratorStream, Index1D, ArrayView<int>, ulong, ulong, ArrayView<ulong>, ArrayView<ulong>> HeuristicCombinedTrialDivisionKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<int>, ulong, ulong, ArrayView<ulong>, ArrayView<ulong>>(PrimeTesterKernels.HeuristicTrialCombinedDivisionKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<int>, ulong, ulong, ArrayView<ulong>, ArrayView<ulong>>>();
 
 		public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>> KeepMontgomeryKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>(Pow2MontgomeryKernels.Pow2MontgomeryKernelKeepMontgomery)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>>>();
 
@@ -173,17 +174,17 @@ public sealed class PrimeOrderCalculatorAccelerator
 
 		// public readonly Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>> SharesFactorKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SharesFactorKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>>>();
 
-		public readonly Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> SmallPrimeFactorKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(SmallPrimeFactorKernels.SmallPrimeFactorKernelScan)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		// public readonly Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> SmallPrimeFactorKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(SmallPrimeFactorKernels.SmallPrimeFactorKernelScan)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
 
-		public readonly Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> SmallPrimeSieveKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>();
+		// public readonly Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> SmallPrimeSieveKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>();
 
-		public readonly Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ulong, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> SpecialMaxKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ulong, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(PrimeOrderGpuHeuristics.EvaluateSpecialMaxCandidatesKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ulong, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		public readonly Action<AcceleratorStream, Index1D, ulong, ArrayView<ulong>, int, ulong, ArrayView<ulong>> SpecialMaxKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView<ulong>, int, ulong, ArrayView<ulong>>(PrimeOrderGpuHeuristics.EvaluateSpecialMaxCandidatesKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView<ulong>, int, ulong, ArrayView<ulong>>>();
 	}
 
 	public readonly Action<AcceleratorStream, Index1D, ulong, CalculateOrderKernelConfig, ulong, ulong, ulong, ulong, ulong, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, OrderKernelBuffers> CalculateOrderKernelLauncher;
 	public readonly Kernel CheckFactorsKernel;
 	public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>> ConvertToStandardKernelLauncher;
-	public readonly Action<AcceleratorStream, Index1D, byte, ArrayView<int>, ulong, ulong, HeuristicCombinedGpuViews> HeuristicCombinedTrialDivisionKernelLauncher;
+	public readonly Action<AcceleratorStream, Index1D, ArrayView<int>, ulong, ulong, ArrayView<ulong>, ArrayView<ulong>> HeuristicCombinedTrialDivisionKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, ArrayView1D<ulong, Stride1D.Dense>, ulong, ulong, ulong, ulong, ulong, ArrayView1D<ulong, Stride1D.Dense>> KeepMontgomeryKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, int, ulong, uint, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<byte, Stride1D.Dense>> PartialFactorKernelLauncher;
 	public readonly Kernel PollardRhoKernel;
@@ -192,7 +193,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public readonly Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>> SharesFactorKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> SmallPrimeFactorKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> SmallPrimeSieveKernelLauncher;
-	public readonly Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ulong, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> SpecialMaxKernelLauncher;
+	public readonly Action<AcceleratorStream, Index1D, ulong, ArrayView<ulong>, int, ulong, ArrayView<ulong>> SpecialMaxKernelLauncher;
 
 	public void EnsureCalculateOrderWideCapacity(int newSize)
 	{
@@ -442,14 +443,14 @@ public sealed class PrimeOrderCalculatorAccelerator
 			CheckFactorsKernel = kernels.CheckFactorsKernel;
 			ConvertToStandardKernelLauncher = kernels.ConvertToStandardKernelLauncher;
 			HeuristicCombinedTrialDivisionKernelLauncher = kernels.HeuristicCombinedTrialDivisionKernelLauncher;
-			KeepMontgomeryKernelLauncher = kernels.KeepMontgomeryKernelLauncher;
+			// KeepMontgomeryKernelLauncher = kernels.KeepMontgomeryKernelLauncher;
 			// PartialFactorKernelLauncher = kernels.PartialFactorKernelLauncher;
 			// PollardRhoKernel = kernels.PollardRhoKernel;
 			Pow2ModKernelLauncher = kernels.Pow2ModKernelLauncher;
 			Pow2ModWideKernelLauncher = kernels.Pow2ModWideKernelLauncher;
 			// SharesFactorKernelLauncher = kernels.SharesFactorKernelLauncher;
-			SmallPrimeFactorKernelLauncher = kernels.SmallPrimeFactorKernelLauncher;
-			SmallPrimeSieveKernelLauncher = kernels.SmallPrimeSieveKernelLauncher;
+			// SmallPrimeFactorKernelLauncher = kernels.SmallPrimeFactorKernelLauncher;
+			// SmallPrimeSieveKernelLauncher = kernels.SmallPrimeSieveKernelLauncher;
 			SpecialMaxKernelLauncher = kernels.SpecialMaxKernelLauncher;
 		// }
 	}

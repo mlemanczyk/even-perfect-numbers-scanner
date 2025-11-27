@@ -80,21 +80,17 @@ internal static class PrimeTesterKernels
 
     public static void HeuristicTrialCombinedDivisionKernel(
         Index1D index,
-		byte nMod10,
+		// byte nMod10,
         ArrayView<int> resultFlag,
         ulong n,
         ulong maxDivisorSquare,
-        HeuristicCombinedGpuViews tables)
+		ArrayView<ulong> divisors,
+		ArrayView<ulong> divisorSquares)
     {
-        var (divisors, divisorSquares) = tables.SelectDivisorsAndSquares(nMod10);
+        // var (divisors, divisorSquares) = tables.SelectDivisorsAndSquares(nMod10);
 
         int threadIndex = index;
-        if (divisorSquares[threadIndex] > maxDivisorSquare)
-        {
-            return;
-        }
-
-        if (n % divisors[threadIndex] == 0UL)
+        if (divisorSquares[threadIndex] <= maxDivisorSquare && (n % divisors[threadIndex] == 0UL))
         {
             Atomic.Exchange(ref resultFlag[0], 1);
         }

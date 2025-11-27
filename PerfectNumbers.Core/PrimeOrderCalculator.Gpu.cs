@@ -41,7 +41,6 @@ internal static partial class PrimeOrderCalculator
 		gpu.EnsureCapacity(entryCount, 1);
 		var pow2ModEntriesToTestOnDeviceView = gpu.Pow2ModEntriesToTestOnDeviceView;
 
-		// GpuPrimeWorkLimiter.Acquire();
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		pow2ModEntriesToTestOnDeviceView.CopyFromCPU(stream, entries);
 
@@ -51,7 +50,6 @@ internal static partial class PrimeOrderCalculator
 		stream.Synchronize();
 
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);
-		// GpuPrimeWorkLimiter.Release();
 		return order;
 	}
 
@@ -133,8 +131,8 @@ internal static partial class PrimeOrderCalculator
 
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		// GpuPrimeWorkLimiter.Acquire();
-		ArrayView1D<ulong, Stride1D.Dense> specialMaxFactorsView = gpu.InputView;
-		ArrayView1D<ulong, Stride1D.Dense> specialMaxResultView = gpu.OutputUlongView2;
+		ArrayView<ulong> specialMaxFactorsView = gpu.InputView;
+		ArrayView<ulong> specialMaxResultView = gpu.OutputUlongView2;
 		var kernelLauncher = gpu.SpecialMaxKernelLauncher;
 
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
@@ -147,7 +145,6 @@ internal static partial class PrimeOrderCalculator
 				specialMaxFactorsView,
 				factorCount,
 				divisorData.Modulus,
-				gpu.OutputUlongView,
 				specialMaxResultView);
 
 		ulong result = 0UL;

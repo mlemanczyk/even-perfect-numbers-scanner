@@ -230,6 +230,7 @@ public sealed class HeuristicCombinedPrimeTester
 		bool compositeDetected;
 		Span<int> compositeFlag = stackalloc int[1];
 		// int compositeFlag = 0;
+		var (divisors, divisorSquares) = gpu.DivisorTables.SelectDivisorsAndSquares(nMod10);
 
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		flagView1DView.MemSetToZero(stream);
@@ -237,11 +238,11 @@ public sealed class HeuristicCombinedPrimeTester
 		kernelLauncher(
 				stream,
 				1,
-				nMod10,
 				flagView1DView,
 				n,
 				maxDivisorSquare,
-				gpu.DivisorTables);
+				divisors,
+				divisorSquares);
 		flagView1DView.CopyToCPU(stream, compositeFlag);
 		stream.Synchronize();
 

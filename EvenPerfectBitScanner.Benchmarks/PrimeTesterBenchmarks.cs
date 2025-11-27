@@ -26,6 +26,8 @@ public class PrimeTesterBenchmarks
             return;
         }
 
+		PerfectNumberConstants.RollingAccelerators = 1;
+
 		PrimeOrderCalculatorAccelerator.WarmUp();
 		// HeuristicGroupABPrimeTesterAccelerator.WarmUp();
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
@@ -53,7 +55,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public int HeuristicGpu()
     {
         ulong[] values = _candidates;
@@ -72,7 +74,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public int HeuristicCombinedGpu()
     {
         ulong[] values = _candidates;
@@ -90,7 +92,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public int HeuristicCombinedCpu()
     {
         ulong[] values = _candidates;
@@ -107,7 +109,7 @@ public class PrimeTesterBenchmarks
         return primeCount;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public int NonHeuristicGpu()
 	{
         ulong[] values = _candidates;
@@ -128,6 +130,23 @@ public class PrimeTesterBenchmarks
 
     [Benchmark(Baseline = true)]
     public int NonHeuristicCpu()
+    {
+        ulong[] values = _candidates;
+        int primeCount = 0;
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (PrimeTester.IsPrime(values[i]))
+            {
+                primeCount++;
+            }
+        }
+
+        return primeCount;
+    }
+
+    [Benchmark]
+    public int ByLastDigitCpu()
     {
         ulong[] values = _candidates;
         int primeCount = 0;

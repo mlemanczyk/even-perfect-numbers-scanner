@@ -16,10 +16,10 @@ public static class AcceleratorStreamPool
 
 	public static AcceleratorStream Rent(int acceleratorIndex)
 	{
-		var streamLock = _locks[acceleratorIndex];
+		// var streamLock = _locks[acceleratorIndex];
 		var queue = _streams[acceleratorIndex];
 
-		streamLock.Wait();
+		// streamLock.Wait();
 
 		return queue.TryDequeue(out var stream)
 			? stream
@@ -28,10 +28,10 @@ public static class AcceleratorStreamPool
 
 	public static void Return(int acceleratorIndex, AcceleratorStream stream)
 	{
-		var streamLock = _locks[acceleratorIndex];
+		// var streamLock = _locks[acceleratorIndex];
 		var queue = _streams[acceleratorIndex];
 		queue.Enqueue(stream);
-		streamLock.Release();
+		// streamLock.Release();
 	}
 
 	public static void WarmUp(int acceleratorIndex)
