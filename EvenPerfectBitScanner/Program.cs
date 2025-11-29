@@ -631,7 +631,7 @@ internal static class Program
 		if (!_cliArguments.UseByDivisor)
 		{
 			if (!(_runPrimesOnCpu
-					? PrimeTester.IsPrime(p)
+					? PrimeTester.IsPrimeCpu(p)
 					: HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, p)))
 			{
 				_lastCompositeP = true;

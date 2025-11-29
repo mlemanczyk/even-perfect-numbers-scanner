@@ -1,68 +1,81 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 
-public sealed class PrimeTester
+public sealed class PrimeTesterByLastDigit
 {
-	public PrimeTester()
+	public PrimeTesterByLastDigit()
 	{
 	}
 
 	[ThreadStatic]
-	private static PrimeTester? _tester;
+	private static PrimeTesterByLastDigit? _tester;
 
-	public static PrimeTester Exclusive => _tester ??= new();
+	public static PrimeTesterByLastDigit Exclusive => _tester ??= new();
 
 	public static bool IsPrimeCpu(ulong n)
 	{
-		if (n <= 1UL)
+		// The below IFs never trigger in production code of EvenPerfectBitScanner on --mersenne=bydivisor path.
+		// if (n <= 1UL)
+		// {
+		// 	throw new InvalidOperationException("PrimeTester.IsPrime encountered the sentinel input 2.");
+		// 	// return false;
+		// }
+
+		// if (n == 2UL)
+		// {
+		// 	throw new InvalidOperationException("PrimeTester.IsPrime encountered the sentinel input 2.");
+		// }
+
+		// EvenPerfectBitScanner streams exponents starting at 136,279,841, so the Mod10/GCD guard never fires on the
+		// production path. Leave the logic commented out as instrumentation for diagnostic builds.
+		// bool sharesMaxExponentFactor = n.Mod10() == 1UL && SharesFactorWithMaxExponent(n);
+		// result &= !sharesMaxExponentFactor;
+
+		uint[] smallPrimeDivisors;
+		ulong[] smallPrimeDivisorsMul;
+
+		ulong nMod10 = n.Mod10();
+		switch (nMod10)
 		{
-			return false;
+			case 1UL:
+				smallPrimeDivisors = PrimesGenerator.SmallPrimesLastOne;
+				smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2LastOne;
+				break;
+			case 3UL:
+				smallPrimeDivisors = DivisorGenerator.SmallPrimesLastThree;
+				smallPrimeDivisorsMul = DivisorGenerator.SmallPrimesPow2LastThree;
+				break;
+			case 7UL:
+				smallPrimeDivisors = PrimesGenerator.SmallPrimesLastSeven;
+				smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2LastSeven;
+				break;
+			default:
+				smallPrimeDivisors = DivisorGenerator.SmallPrimesLastNine;
+				smallPrimeDivisorsMul = DivisorGenerator.SmallPrimesPow2LastNine;
+				break;
 		}
 
-		if (n == 2UL)
+		int smallPrimeDivisorsLength = smallPrimeDivisors.Length;
+		for (int i = 0; i < smallPrimeDivisorsLength; i++)
 		{
-			throw new InvalidOperationException("PrimeTester.IsPrime encountered the sentinel input 2.");
-		}
-
-		bool isOdd = (n & 1UL) != 0UL;
-		bool result = isOdd;
-
-		bool requiresTrialDivision = result && n >= 7UL;
-
-		if (requiresTrialDivision)
-		{
-			// EvenPerfectBitScanner streams exponents starting at 136,279,841, so the Mod10/GCD guard never fires on the
-			// production path. Leave the logic commented out as instrumentation for diagnostic builds.
-			// bool sharesMaxExponentFactor = n.Mod10() == 1UL && SharesFactorWithMaxExponent(n);
-			// result &= !sharesMaxExponentFactor;
-
-			if (result)
+			ulong value = smallPrimeDivisorsMul[i];
+			if (value > n)
 			{
-				uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
-				ulong[] smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2;
-				int smallPrimeDivisorsLength = smallPrimeDivisors.Length;
-				for (int i = 0; i < smallPrimeDivisorsLength; i++)
-				{
-					if (smallPrimeDivisorsMul[i] > n)
-					{
-						break;
-					}
+				break;
+			}
 
-					if (n % smallPrimeDivisors[i] == 0)
-					{
-						result = false;
-						break;
-					}
-				}
+			value = n % smallPrimeDivisors[i];
+			if (value == 0)
+			{
+				return false;
 			}
 		}
 
-		return result;
+		return true;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

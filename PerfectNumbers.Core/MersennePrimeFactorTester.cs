@@ -35,7 +35,7 @@ public static class MersennePrimeFactorTester
 		// Atomic.Add(ref _isPrimeFactorHits, 1UL);
 		// Console.WriteLine($"MersennePrimeFactorTester.IsPrimeFactor hits {Volatile.Read(ref _isPrimeFactorHits)}");
 
-        if (!PrimeTester.IsPrime(q))
+        if (!PrimeTester.IsPrimeCpu(q))
         {
             return false;
         }
@@ -256,7 +256,7 @@ public static class MersennePrimeFactorTester
 			// Console.WriteLine($"MersennePrimeFactorTester.Factor64 hits {Volatile.Read(ref _factor64Hits)}");
 
             // if (HeuristicPrimeTester.Exclusive.IsPrime(m, ct))
-            if (PrimeTester.IsPrime(m))
+            if (PrimeTester.IsPrimeCpu(m))
             {
                 dict[m] = 1;
                 continue;

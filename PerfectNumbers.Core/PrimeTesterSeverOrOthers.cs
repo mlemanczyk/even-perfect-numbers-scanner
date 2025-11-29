@@ -1,27 +1,27 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 
-public sealed class PrimeTester
+public sealed class PrimeTesterSeverOrOthers
 {
-	public PrimeTester()
+	public PrimeTesterSeverOrOthers()
 	{
 	}
 
 	[ThreadStatic]
-	private static PrimeTester? _tester;
+	private static PrimeTesterSeverOrOthers? _tester;
 
-	public static PrimeTester Exclusive => _tester ??= new();
+	public static PrimeTesterSeverOrOthers Exclusive => _tester ??= new();
 
 	public static bool IsPrimeCpu(ulong n)
 	{
 		if (n <= 1UL)
 		{
-			return false;
+			throw new InvalidOperationException("PrimeTester.IsPrime encountered the sentinel input 2.");
+			// return false;
 		}
 
 		if (n == 2UL)
@@ -43,17 +43,32 @@ public sealed class PrimeTester
 
 			if (result)
 			{
-				uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
-				ulong[] smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2;
+				uint[] smallPrimeDivisors;
+				ulong[] smallPrimeDivisorsMul;
+
+				ulong nMod10 = n.Mod10();
+				if (nMod10 == 7)
+				{
+					smallPrimeDivisors = PrimesGenerator.SmallPrimesLastSeven;
+					smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2LastSeven;
+				}
+				else
+				{
+					smallPrimeDivisors = PrimesGenerator.SmallPrimesLastOne;
+					smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2LastOne;
+				}
+
 				int smallPrimeDivisorsLength = smallPrimeDivisors.Length;
 				for (int i = 0; i < smallPrimeDivisorsLength; i++)
 				{
-					if (smallPrimeDivisorsMul[i] > n)
+					ulong value = smallPrimeDivisorsMul[i];
+					if (value > n)
 					{
 						break;
 					}
 
-					if (n % smallPrimeDivisors[i] == 0)
+					value = n % smallPrimeDivisors[i];
+					if (value == 0)
 					{
 						result = false;
 						break;

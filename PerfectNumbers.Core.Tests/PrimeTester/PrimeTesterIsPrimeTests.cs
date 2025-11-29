@@ -27,7 +27,7 @@ public class PrimeTesterIsPrimeTests
 	{
 		var tester = new PrimeTester();
 
-		PrimeTester.IsPrime(n).Should().Be(expected);
+		PrimeTester.IsPrimeCpu(n).Should().Be(expected);
 	}
 
 	[Theory]
@@ -56,8 +56,8 @@ public class PrimeTesterIsPrimeTests
 	public void IsPrimeGpu_falls_back_to_cpu_when_forced()
 	{
 		var tester = new PrimeTester();
-		PrimeTester.IsPrime(137UL).Should().BeTrue();
-		PrimeTester.IsPrime(341UL).Should().BeFalse();
+		PrimeTester.IsPrimeCpu(137UL).Should().BeTrue();
+		PrimeTester.IsPrimeCpu(341UL).Should().BeFalse();
 	}
 
 	[Fact]

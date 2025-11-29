@@ -136,7 +136,7 @@ public class PrimeTesterBenchmarks
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (PrimeTester.IsPrime(values[i]))
+            if (PrimeTester.IsPrimeCpu(values[i]))
             {
                 primeCount++;
             }
@@ -153,7 +153,24 @@ public class PrimeTesterBenchmarks
 
         for (int i = 0; i < values.Length; i++)
         {
-            if (PrimeTester.IsPrime(values[i]))
+            if (PrimeTesterByLastDigit.IsPrimeCpu(values[i]))
+            {
+                primeCount++;
+            }
+        }
+
+        return primeCount;
+    }
+
+    [Benchmark]
+    public int SevenOrOthersCpu()
+    {
+        ulong[] values = _candidates;
+        int primeCount = 0;
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (PrimeTesterSeverOrOthers.IsPrimeCpu(values[i]))
             {
                 primeCount++;
             }
@@ -196,10 +213,52 @@ public class PrimeTesterBenchmarks
             4_096);
 
         yield return PrimeBenchmarkCase.FromRange(
+            "≥16_000_000",
+            "Sampled admissible odd values ≥ 16,000,000 (k ≤ 5, not divisible by 5)",
+            16_000_001UL,
+            16_500_000UL,
+            4_096);
+
+        yield return PrimeBenchmarkCase.FromRange(
+            "≥32_000_000",
+            "Sampled admissible odd values ≥ 32,000,000 (k ≤ 5, not divisible by 5)",
+            32_000_001UL,
+            32_500_000UL,
+            4_096);
+
+        yield return PrimeBenchmarkCase.FromRange(
+            "≥64_000_000",
+            "Sampled admissible odd values ≥ 64,000,000 (k ≤ 5, not divisible by 5)",
+            64_000_001UL,
+            64_500_000UL,
+            4_096);
+
+        yield return PrimeBenchmarkCase.FromRange(
+            "≥100_000_000",
+            "Sampled admissible odd values ≥ 100,000,000 (k ≤ 5, not divisible by 5)",
+            100_000_001UL,
+            100_500_000UL,
+            4_096);
+
+        yield return PrimeBenchmarkCase.FromRange(
             "≥138_000_000",
             "Sampled admissible odd values ≥ 138,000,000 (k ≤ 5, not divisible by 5)",
             138_000_001UL,
             138_500_000UL,
+            4_096);
+
+        yield return PrimeBenchmarkCase.FromRange(
+            "≥276_000_000",
+            "Sampled admissible odd values ≥ 276,000,000 (k ≤ 5, not divisible by 5)",
+            276_000_001UL,
+            276_500_000UL,
+            4_096);
+
+        yield return PrimeBenchmarkCase.FromRange(
+            "≥552_000_000",
+            "Sampled admissible odd values ≥ 552,000,000 (k ≤ 5, not divisible by 5)",
+            552_000_001UL,
+            552_500_000UL,
             4_096);
     }
 
