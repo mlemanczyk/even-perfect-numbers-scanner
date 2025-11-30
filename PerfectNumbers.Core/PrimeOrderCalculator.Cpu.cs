@@ -1427,7 +1427,7 @@ internal static partial class PrimeOrderCalculator
 	private static bool RunOnCpu()
 	{
 		// return false;
-		// return true;
+		return true;
 		// int cpuCount;
 		
 		// lock(_sync)
