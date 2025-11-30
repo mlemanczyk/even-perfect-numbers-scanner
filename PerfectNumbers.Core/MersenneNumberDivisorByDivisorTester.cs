@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
@@ -296,6 +297,7 @@ public static class MersenneNumberDivisorByDivisorTester
 					() =>
 					{
 						startGate.Wait();
+						GpuPrimeWorkLimiter.Acquire();
 						Console.WriteLine($"Task started for range {rangeStart}");
 
 						var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
@@ -307,6 +309,7 @@ public static class MersenneNumberDivisorByDivisorTester
 						PrimeOrderCalculatorAccelerator.Return(gpu);
 						Console.WriteLine($"Task finished for range {rangeStart}");
 						PrimeOrderCalculatorAccelerator.DisposeAll();
+						GpuPrimeWorkLimiter.Acquire();
 					},
 					CancellationToken.None,
 					TaskCreationOptions.DenyChildAttach,
