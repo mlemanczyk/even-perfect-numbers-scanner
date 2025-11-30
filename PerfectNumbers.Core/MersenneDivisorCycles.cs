@@ -415,7 +415,7 @@ public class MersenneDivisorCycles
 		// Console.WriteLine($"MersenneDivisorCycles.TryFactorIntoCountsInternal hits {Volatile.Read(ref _tryFactorIntoCountsInternalHits)}");
 
 		// HeuristicPrimeTester primeTester = _primeTester ??= new();
-		if (PrimeTesterByLastDigit.IsPrimeCpu(remaining))
+		if (HeuristicPrimeTester.IsPrimeCpu(remaining))
 		// if (HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, remaining))
 		// if (PrimeTester.IsPrime(remaining))
 		{
@@ -966,7 +966,7 @@ public class MersenneDivisorCycles
 
 		// HeuristicPrimeTester primeTester = _primeTester ??= new();
 		// if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.Exclusive.IsPrimeCpu(divisor, CancellationToken.None))
-		if (!skipPrimeOrderHeuristic && PrimeTesterByLastDigit.IsPrimeCpu(divisor))
+		if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.IsPrimeCpu(divisor))
 		// if (!skipPrimeOrderHeuristic && HeuristicCombinedPrimeTester.IsPrimeGpu(divisor))
 		{
 			ulong computedOrder = PrimeOrderCalculator.Calculate(
