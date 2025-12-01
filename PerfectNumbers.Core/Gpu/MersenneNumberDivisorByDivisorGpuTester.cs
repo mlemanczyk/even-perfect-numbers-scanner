@@ -43,6 +43,17 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		set => _minK = value < 1UL ? 1UL : value;
 	}
 
+	public string? StateFilePath { get; set; }
+
+	public void ResetStateTracking()
+	{
+	}
+
+	public void ResumeFromState(ulong lastSavedK)
+	{
+		_minK = lastSavedK + 1UL;
+	}
+
 	public void ConfigureFromMaxPrime(ulong maxPrime)
 	{
 		// EvenPerfectBitScanner configures the GPU tester once before scanning and never mutates the configuration afterwards,

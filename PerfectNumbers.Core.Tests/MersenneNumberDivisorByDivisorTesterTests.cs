@@ -48,6 +48,16 @@ public class MersenneNumberDivisorByDivisorTesterTests
 
         public ulong MinK { get; set; }
 
+        public string? StateFilePath { get; set; }
+
+        public void ResetStateTracking()
+        {
+        }
+
+        public void ResumeFromState(ulong lastSavedK)
+        {
+        }
+
         public ulong DivisorLimit => ConfiguredMaxPrime + 100UL;
 
         public void ConfigureFromMaxPrime(ulong maxPrime)

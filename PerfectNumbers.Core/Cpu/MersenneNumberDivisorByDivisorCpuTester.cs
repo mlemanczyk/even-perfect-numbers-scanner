@@ -1,28 +1,23 @@
 using System.Runtime.CompilerServices;
+using System.Globalization;
+using System.IO;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core.Cpu;
 
-public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice orderDevice = ComputationDevice.Hybrid) : IMersenneNumberDivisorByDivisorTester
+public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDivisorByDivisorTester
 {
 	private ulong _divisorLimit;
 	private int _batchSize = 1_024;
 	private ulong _minK = 1UL;
-
-	private readonly TryCycleLengthDelegate _tryCalculateCycleLengthForExponent = orderDevice switch
-	{
-		ComputationDevice.Gpu => TryCalculateCycleLengthForExponentGpu,
-		ComputationDevice.Hybrid => TryCalculateCycleLengthForExponentHybrid,
-		_ => TryCalculateCycleLengthForExponentCpu,
-	};
-
-	private readonly CalculateCycleLengthDelegate _calculateCycleLength = orderDevice switch
-	{
-		ComputationDevice.Gpu => CalculateCycleLengthGpu,
-		ComputationDevice.Hybrid => CalculateCycleLengthHybrid,
-		_ => CalculateCycleLengthCpu,
-	};
+	private readonly ComputationDevice _orderDevice;
+	private readonly TryCycleLengthDelegate _tryCalculateCycleLengthForExponent;
+	private readonly CalculateCycleLengthDelegate _calculateCycleLength;
+	private string? _stateFilePath;
+	private int _stateCounter;
+	private ulong _lastSavedK;
+	public ComputationDevice OrderDevice => _orderDevice;
 
 	private delegate bool TryCycleLengthDelegate(
 		ulong divisor,
@@ -48,6 +43,24 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 		public GpuUInt128 Limit;
 	}
 
+	public MersenneNumberDivisorByDivisorCpuTester(ComputationDevice orderDevice = ComputationDevice.Hybrid)
+	{
+		_orderDevice = orderDevice;
+		_tryCalculateCycleLengthForExponent = orderDevice switch
+		{
+			ComputationDevice.Gpu => TryCalculateCycleLengthForExponentGpu,
+			ComputationDevice.Hybrid => TryCalculateCycleLengthForExponentHybrid,
+			_ => TryCalculateCycleLengthForExponentCpu,
+		};
+
+		_calculateCycleLength = orderDevice switch
+		{
+			ComputationDevice.Gpu => CalculateCycleLengthGpu,
+			ComputationDevice.Hybrid => CalculateCycleLengthHybrid,
+			_ => CalculateCycleLengthCpu,
+		};
+	}
+
 	public int BatchSize
 	{
 		get => _batchSize;
@@ -58,6 +71,24 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 	{
 		get => _minK;
 		set => _minK = value < 1UL ? 1UL : value;
+	}
+
+	public string? StateFilePath
+	{
+		get => _stateFilePath;
+		set => _stateFilePath = value;
+	}
+
+	public void ResetStateTracking()
+	{
+		_stateCounter = 0;
+	}
+
+	public void ResumeFromState(ulong lastSavedK)
+	{
+		_lastSavedK = lastSavedK;
+		_minK = lastSavedK + 1UL;
+		_stateCounter = 0;
 	}
 
 	public void ConfigureFromMaxPrime(ulong maxPrime)
@@ -127,11 +158,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 		
 		if (session is not null)
 		{
-			session.Configure(gpu, orderDevice);
+			session.Configure(gpu, _orderDevice);
 			return session;
 		}
 
-		return new MersenneCpuDivisorScanSession(gpu, orderDevice);
+		return new MersenneCpuDivisorScanSession(gpu, _orderDevice);
 	}
 
 	private bool CheckDivisors(
@@ -144,6 +175,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 	{
 		foundDivisor = 0UL;
 		processedAll = true;
+		ulong currentK = minK < 1UL ? 1UL : minK;
 
 		// The EvenPerfectBitScanner feeds primes >= 138,000,000 here, so allowedMax >= 3 in production runs.
 		// Keeping the guard commented out documents the reasoning for benchmarks and tests.
@@ -242,6 +274,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 					step3,
 					step7,
 					step11,
+					ref currentK,
 					out processedTop,
 					out foundDivisor);
 				if (composite)
@@ -252,9 +285,10 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 			}
 
 			ulong lowerEnd = startK > 1UL ? startK - 1UL : 0UL;
-			if (lowerEnd >= 1UL)
+			if (lowerEnd >= 1UL && startK == 1UL)
 			{
 				lowerEnd = Math.Min(lowerEnd, maxK);
+				currentK = 1UL;
 				composite = CheckDivisors64Range(
 					gpu,
 					prime,
@@ -268,6 +302,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 					step3,
 					step7,
 					step11,
+					ref currentK,
 					out processedBottom,
 					out foundDivisor);
 			}
@@ -317,10 +352,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 				}
 				else
 				{
-					divisorCycle = computedCycle;
+						divisorCycle = computedCycle;
 				}
 
 				divisorPool.Return(divisorData);
+				RecordState(currentK);
 				if (divisorCycle == prime)
 				{
 					// A cycle equal to the tested exponent (which is prime in this path) guarantees that the candidate divides
@@ -337,6 +373,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 			}
 
 			divisor.Add(step);
+			currentK++;
 			remainder10 = AddMod10(remainder10, step10);
 			remainder8 = AddMod8(remainder8, step8);
 			remainder3 = AddMod3(remainder3, step3);
@@ -362,6 +399,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 		byte step3,
 		byte step7,
 		byte step11,
+		ref ulong currentK,
 		out bool processedAll,
 		out ulong foundDivisor)
 	{
@@ -371,6 +409,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 			foundDivisor = 0UL;
 			return false;
 		}
+		currentK = startK;
 
 		UInt128 step128 = step;
 		UInt128 allowedMax128 = allowedMax;
@@ -414,11 +453,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 			remainder3,
 			remainder7,
 			remainder11,
+			ref currentK,
 			out processedAll,
 			out foundDivisor);
 	}
 
-	private bool CheckDivisors64(
+private bool CheckDivisors64(
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong step,
@@ -435,6 +475,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 		byte remainder3,
 		byte remainder7,
 		byte remainder11,
+		ref ulong currentK,
 		out bool processedAll,
 		out ulong foundDivisor)
 	{
@@ -523,6 +564,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 				}
 
 				divisorPool.Return(divisorData);
+				RecordState(currentK);
 				if (divisorCycle == prime)
 				{
 					foundDivisor = divisor;
@@ -545,6 +587,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 			}
 
 			divisor += step;
+			currentK++;
 			remainder10 = AddMod10(remainder10, step10);
 			remainder8 = AddMod8(remainder8, step8);
 			remainder3 = AddMod3(remainder3, step3);
@@ -557,6 +600,38 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice or
 	{
 		ulong residue = prime.Pow2MontgomeryModWithCycleConvertToStandardCpu(divisorCycle, divisorData);
 		return residue == 1UL ? (byte)1 : (byte)0;
+	}
+
+	private void RecordState(ulong k)
+	{
+		string? path = _stateFilePath;
+		if (string.IsNullOrEmpty(path))
+		{
+			return;
+		}
+
+		if (k <= _lastSavedK)
+		{
+			return;
+		}
+
+		int next = _stateCounter + 1;
+		if (next >= PerfectNumberConstants.ByDivisorStateSaveInterval)
+		{
+			string? directory = Path.GetDirectoryName(path);
+			if (!string.IsNullOrEmpty(directory))
+			{
+				Directory.CreateDirectory(directory);
+			}
+
+			File.AppendAllText(path, k.ToString(CultureInfo.InvariantCulture) + Environment.NewLine);
+			_stateCounter = 0;
+			_lastSavedK = k;
+		}
+		else
+		{
+			_stateCounter = next;
+		}
 	}
 
 	private static bool TryCalculateCycleLengthForExponentCpu(

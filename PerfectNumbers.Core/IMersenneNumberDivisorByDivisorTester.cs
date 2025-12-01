@@ -18,6 +18,12 @@ public interface IMersenneNumberDivisorByDivisorTester
 
     IDivisorScanSession CreateDivisorSession(PrimeOrderCalculatorAccelerator gpu);
 
+    string? StateFilePath { get; set; }
+
+    void ResetStateTracking();
+
+    void ResumeFromState(ulong lastSavedK);
+
     void PrepareCandidates(in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues);
 
     public interface IDivisorScanSession

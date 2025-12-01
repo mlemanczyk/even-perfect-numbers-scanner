@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using EvenPerfectBitScanner.Candidates;
 using EvenPerfectBitScanner.IO;
@@ -123,6 +124,8 @@ internal static class Program
 				Console.WriteLine("--mersenne=bydivisor requires --filter-p=<path>.");
 				return;
 			}
+
+			Directory.CreateDirectory(PerfectNumberConstants.ByDivisorStateDirectory);
 
 
 			MersenneDivisorCycles mersenneDivisorCycles = new();

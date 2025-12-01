@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
+using PerfectNumbers.Core.Cpu;
 
 namespace PerfectNumbers.Core;
 
@@ -240,13 +241,67 @@ public static class MersenneNumberDivisorByDivisorTester
 
 		int chunkSize = primesPerTask <= 0 ? 1 : primesPerTask;
 
+		IMersenneNumberDivisorByDivisorTester CreateTester(IMersenneNumberDivisorByDivisorTester prototype)
+		{
+			IMersenneNumberDivisorByDivisorTester tester = prototype switch
+			{
+				MersenneNumberDivisorByDivisorCpuTester cpu => new MersenneNumberDivisorByDivisorCpuTester(cpu.OrderDevice)
+				{
+					BatchSize = prototype.BatchSize,
+					MinK = prototype.MinK,
+				},
+				_ => CreateGpuTester(prototype),
+			};
+
+			tester.ConfigureFromMaxPrime(maxPrime);
+			return tester;
+		}
+
+		static IMersenneNumberDivisorByDivisorTester CreateGpuTester(IMersenneNumberDivisorByDivisorTester prototype)
+		{
+			var gpuTester = new MersenneNumberDivisorByDivisorGpuTester
+			{
+				MinK = prototype.MinK,
+			};
+			((IMersenneNumberDivisorByDivisorTester)gpuTester).BatchSize = prototype.BatchSize;
+			return gpuTester;
+		}
+
 		void ProcessPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime)
 		{
 			Console.WriteLine($"Processing {prime}");
-			bool isPrime = tester.IsPrime(gpu, prime, out bool divisorsExhausted, out ulong divisor);
+			IMersenneNumberDivisorByDivisorTester testerForPrime = CreateTester(tester);
+			string stateFile = Path.Combine(PerfectNumberConstants.ByDivisorStateDirectory, prime.ToString(CultureInfo.InvariantCulture) + ".bin");
+
+			ulong resumeK = tester.MinK;
+			if (File.Exists(stateFile))
+			{
+				ulong lastK = File.ReadLines(stateFile)
+					.Where(static line => !string.IsNullOrWhiteSpace(line))
+					.Select(static line => ulong.Parse(line, NumberStyles.None, CultureInfo.InvariantCulture))
+					.Max();
+
+				resumeK = lastK + 1UL;
+				testerForPrime.ResumeFromState(lastK);
+			}
+			else
+			{
+				testerForPrime.ResumeFromState(0UL);
+			}
+
+			testerForPrime.MinK = resumeK;
+			testerForPrime.StateFilePath = stateFile;
+			testerForPrime.ResetStateTracking();
+
+			bool isPrime = testerForPrime.IsPrime(gpu, prime, out bool divisorsExhausted, out ulong divisor);
 
 			if (!isPrime)
 			{
+				if (!string.IsNullOrEmpty(stateFile) && File.Exists(stateFile))
+				{
+					File.Delete(stateFile);
+				}
+
 				markComposite();
 				printResult(prime, true, true, false, divisor);
 				Console.WriteLine($"Finished processing {prime}");
