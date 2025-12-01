@@ -27,8 +27,8 @@ internal readonly struct CliArguments
     internal readonly bool UseGcdFilter;
     internal readonly bool TestMode;
     internal readonly bool UseGpuCycles;
-    internal readonly bool UseMersenneOnGpu;
-    internal readonly bool UseOrderOnGpu;
+    internal readonly ComputationDevice MersenneDevice;
+    internal readonly ComputationDevice OrderDevice;
     internal readonly int ScanBatchSize;
     internal readonly int SliceSize;
     internal readonly ulong ResidueKMax;
@@ -72,8 +72,8 @@ internal readonly struct CliArguments
             bool useGcdFilter,
             bool testMode,
             bool useGpuCycles,
-            bool useMersenneOnGpu,
-            bool useOrderOnGpu,
+            ComputationDevice mersenneDevice,
+            ComputationDevice orderDevice,
             int scanBatchSize,
             int sliceSize,
             ulong residueKMax,
@@ -116,8 +116,8 @@ internal readonly struct CliArguments
         UseGcdFilter = useGcdFilter;
         TestMode = testMode;
         UseGpuCycles = useGpuCycles;
-        UseMersenneOnGpu = useMersenneOnGpu;
-        UseOrderOnGpu = useOrderOnGpu;
+        MersenneDevice = mersenneDevice;
+        OrderDevice = orderDevice;
         ScanBatchSize = scanBatchSize;
         SliceSize = sliceSize;
         ResidueKMax = residueKMax;
@@ -165,8 +165,8 @@ internal readonly struct CliArguments
         bool useGcdFilter = false;
         bool testMode = false;
         bool useGpuCycles = true;
-        bool useMersenneOnGpu = true;
-        bool useOrderOnGpu = true;
+        ComputationDevice mersenneDevice = ComputationDevice.Gpu;
+        ComputationDevice orderDevice = ComputationDevice.Gpu;
         int scanBatchSize = 2_097_152;
         int sliceSize = 32;
         ulong residueKMax = 5_000_000UL;
@@ -319,7 +319,8 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--mersenne-device=", StringComparison.OrdinalIgnoreCase))
             {
-                useMersenneOnGpu = !argument.AsSpan("--mersenne-device=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                ReadOnlySpan<char> value = argument.AsSpan("--mersenne-device=".Length);
+                mersenneDevice = ParseDevice(value);
                 continue;
             }
 
@@ -389,7 +390,8 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--order-device=", StringComparison.OrdinalIgnoreCase))
             {
-                useOrderOnGpu = !argument.AsSpan("--order-device=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                ReadOnlySpan<char> value = argument.AsSpan("--order-device=".Length);
+                orderDevice = ParseDevice(value);
                 continue;
             }
 
@@ -445,7 +447,7 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--lucas=", StringComparison.OrdinalIgnoreCase))
             {
-                useMersenneOnGpu = !argument.AsSpan("--lucas=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                mersenneDevice = ParseDevice(argument.AsSpan("--lucas=".Length));
                 continue;
             }
 
@@ -565,8 +567,8 @@ internal readonly struct CliArguments
                 useGcdFilter,
                 testMode,
                 useGpuCycles,
-                useMersenneOnGpu,
-                useOrderOnGpu,
+                mersenneDevice,
+                orderDevice,
                 scanBatchSize,
                 sliceSize,
                 residueKMax,
@@ -603,10 +605,10 @@ internal readonly struct CliArguments
         Console.WriteLine("  --block-size=<value>   values processed per thread batch");
         Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
         Console.WriteLine("  --residue-max-k=<value>  max k for residue Mersenne test (q = 2*p*k + 1)");
-        Console.WriteLine("  --mersenne-device=cpu|gpu  Device for Mersenne method (default gpu)");
+        Console.WriteLine("  --mersenne-device=cpu|gpu|hybrid  Device for Mersenne method (default gpu)");
         Console.WriteLine("  --primes-device=cpu|gpu    Device for prime-scan kernels (default gpu)");
         Console.WriteLine("  --gpu-prime-batch=<n>      Batch size for GPU primality sieve (default 262144)");
-        Console.WriteLine("  --order-device=cpu|gpu     Device for order computations (default gpu)");
+        Console.WriteLine("  --order-device=cpu|gpu|hybrid  Device for order computations (default gpu)");
         Console.WriteLine("  --ntt=reference|staged GPU NTT backend (default staged)");
         Console.WriteLine("  --mod-reduction=auto|uint128|mont64|barrett128  staged NTT reduction (default auto)");
         Console.WriteLine("  --gpu-prime-threads=<value>  max concurrent GPU prime checks (default 1)");
@@ -631,5 +633,20 @@ internal readonly struct CliArguments
         Console.WriteLine("  --gcd-filter           enable early sieve based on GCD");
         Console.WriteLine("  --min-k=<value>        starting k for --mersenne=bydivisor divisor scan (default 1)");
         Console.WriteLine("  --help, -help, --?, -?, /?   show this help message");
+    }
+
+    private static ComputationDevice ParseDevice(ReadOnlySpan<char> value)
+    {
+        if (value.Equals("cpu", StringComparison.OrdinalIgnoreCase))
+        {
+            return ComputationDevice.Cpu;
+        }
+
+        if (value.Equals("hybrid", StringComparison.OrdinalIgnoreCase))
+        {
+            return ComputationDevice.Hybrid;
+        }
+
+        return ComputationDevice.Gpu;
     }
 }

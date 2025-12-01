@@ -22,7 +22,7 @@ public class MersenneNumberLucasLehmerCpuTester
 			return false;
 		}
 
-		if ((exponent & 3UL) == 1UL && exponent.SharesFactorWithExponentMinusOne(gpu))
+		if ((exponent & 3UL) == 1UL && exponent.SharesFactorWithExponentMinusOneCpu())
 		{
 			return false;
 		}
@@ -34,7 +34,7 @@ public class MersenneNumberLucasLehmerCpuTester
 		for (UInt128 i = UInt128.Zero; i < limit; i++)
 		{
 			// Lucas–Lehmer squares the evolving residue, so we stay on the Montgomery powmod path rather than the pow2-specific helper.
-			s = s.PowModWithCycle(two, MersenneDivisorCycles.GetCycle(gpu, m)) - two;
+			s = s.PowModWithCycle(two, MersenneDivisorCycles.GetCycleCpu(m)) - two;
 			if (s < UInt128.Zero)
 			{
 				s += m;

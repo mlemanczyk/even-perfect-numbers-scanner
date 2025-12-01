@@ -4,11 +4,39 @@ using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core.Cpu;
 
-public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberDivisorByDivisorTester
+public sealed class MersenneNumberDivisorByDivisorCpuTester(ComputationDevice orderDevice = ComputationDevice.Hybrid) : IMersenneNumberDivisorByDivisorTester
 {
 	private ulong _divisorLimit;
 	private int _batchSize = 1_024;
 	private ulong _minK = 1UL;
+
+	private readonly TryCycleLengthDelegate _tryCalculateCycleLengthForExponent = orderDevice switch
+	{
+		ComputationDevice.Gpu => TryCalculateCycleLengthForExponentGpu,
+		ComputationDevice.Hybrid => TryCalculateCycleLengthForExponentHybrid,
+		_ => TryCalculateCycleLengthForExponentCpu,
+	};
+
+	private readonly CalculateCycleLengthDelegate _calculateCycleLength = orderDevice switch
+	{
+		ComputationDevice.Gpu => CalculateCycleLengthGpu,
+		ComputationDevice.Hybrid => CalculateCycleLengthHybrid,
+		_ => CalculateCycleLengthCpu,
+	};
+
+	private delegate bool TryCycleLengthDelegate(
+		ulong divisor,
+		PrimeOrderCalculatorAccelerator gpu,
+		ulong exponent,
+		in MontgomeryDivisorData divisorData,
+		out ulong cycleLength,
+		out bool primeOrderFailed);
+
+	private delegate ulong CalculateCycleLengthDelegate(
+		ulong divisor,
+		PrimeOrderCalculatorAccelerator gpu,
+		in MontgomeryDivisorData divisorData,
+		bool skipPrimeOrderHeuristic);
 
 	[ThreadStatic]
 	private static GpuUInt128WorkSet _divisorScanGpuWorkSet;
@@ -96,15 +124,17 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 	public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession(PrimeOrderCalculatorAccelerator gpu)
 	{
 		MersenneCpuDivisorScanSession? session = ThreadStaticPools.RentMersenneCpuDivisorSession();
+		
 		if (session is not null)
 		{
+			session.Configure(gpu, orderDevice);
 			return session;
 		}
 
-		return new MersenneCpuDivisorScanSession(gpu);
+		return new MersenneCpuDivisorScanSession(gpu, orderDevice);
 	}
 
-	private static bool CheckDivisors(
+	private bool CheckDivisors(
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong allowedMax,
@@ -269,9 +299,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 				MontgomeryDivisorData divisorData = divisorPool.FromModulus(candidate);
 				ulong divisorCycle;
 				// Divisors generated from 2 * k * p + 1 exceed the small-cycle snapshot when p >= 138,000,000, so the short path below never runs.
-				if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
-						gpu,
+				if (!_tryCalculateCycleLengthForExponent(
 						candidate,
+						gpu,
 						prime,
 						divisorData,
 						out ulong computedCycle,
@@ -279,9 +309,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 				{
 					// Divisors produced by 2 * k * p + 1 always exceed PerfectNumberConstants.MaxQForDivisorCycles
 					// for the exponents scanned here, so skip the unused cache fallback and compute directly.
-					divisorCycle = MersenneDivisorCycles.CalculateCycleLength(
-						gpu,
+					divisorCycle = _calculateCycleLength(
 						candidate,
+						gpu,
 						divisorData,
 						skipPrimeOrderHeuristic: primeOrderFailed);
 				}
@@ -319,7 +349,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 		return false;
 	}
 
-	private static bool CheckDivisors64Range(
+	private bool CheckDivisors64Range(
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong step,
@@ -388,7 +418,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 			out foundDivisor);
 	}
 
-	private static bool CheckDivisors64(
+	private bool CheckDivisors64(
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong step,
@@ -418,17 +448,17 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 				{
 					MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
 					ulong divisorCycle;
-					if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
-							gpu,
+					if (!_tryCalculateCycleLengthForExponent(
 							divisor,
+							gpu,
 							prime,
 							divisorData,
 							out ulong computedCycle,
 							out bool primeOrderFailed) || computedCycle == 0UL)
 					{
-						divisorCycle = MersenneDivisorCycles.CalculateCycleLength(
-							gpu,
+						divisorCycle = _calculateCycleLength(
 							divisor,
+							gpu,
 							divisorData,
 							skipPrimeOrderHeuristic: primeOrderFailed);
 					}
@@ -473,17 +503,17 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 			{
 				MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
 				ulong divisorCycle;
-				if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
-						gpu,
+				if (!_tryCalculateCycleLengthForExponent(
 						divisor,
+						gpu,
 						prime,
 						divisorData,
 						out ulong computedCycle,
 						out bool primeOrderFailed) || computedCycle == 0UL)
 				{
-					divisorCycle = MersenneDivisorCycles.CalculateCycleLength(
-						gpu,
+					divisorCycle = _calculateCycleLength(
 						divisor,
+						gpu,
 						divisorData,
 						skipPrimeOrderHeuristic: primeOrderFailed);
 				}
@@ -525,9 +555,79 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester() : IMersenneNumberD
 
 	private static byte CheckDivisor(ulong prime, ulong divisorCycle, in MontgomeryDivisorData divisorData)
 	{
-		ulong residue = prime.Pow2MontgomeryModWithCycleCpu(divisorCycle, divisorData);
+		ulong residue = prime.Pow2MontgomeryModWithCycleConvertToStandardCpu(divisorCycle, divisorData);
 		return residue == 1UL ? (byte)1 : (byte)0;
 	}
+
+	private static bool TryCalculateCycleLengthForExponentCpu(
+		ulong divisor,
+		PrimeOrderCalculatorAccelerator gpu,
+		ulong exponent,
+		in MontgomeryDivisorData divisorData,
+		out ulong cycleLength,
+		out bool primeOrderFailed) => MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
+			divisor,
+			exponent,
+			divisorData,
+			out cycleLength,
+			out primeOrderFailed);
+
+	private static bool TryCalculateCycleLengthForExponentHybrid(
+		ulong divisor,
+		PrimeOrderCalculatorAccelerator gpu,
+		ulong exponent,
+		in MontgomeryDivisorData divisorData,
+		out ulong cycleLength,
+		out bool primeOrderFailed) => MersenneDivisorCycles.TryCalculateCycleLengthForExponentHybrid(
+			gpu,
+			divisor,
+			exponent,
+			divisorData,
+			out cycleLength,
+			out primeOrderFailed);
+
+	private static bool TryCalculateCycleLengthForExponentGpu(
+		ulong divisor,
+		PrimeOrderCalculatorAccelerator gpu,
+		ulong exponent,
+		in MontgomeryDivisorData divisorData,
+		out ulong cycleLength,
+		out bool primeOrderFailed) => MersenneDivisorCycles.TryCalculateCycleLengthForExponentGpu(
+			gpu,
+			divisor,
+			exponent,
+			divisorData,
+			out cycleLength,
+			out primeOrderFailed);
+
+	private static ulong CalculateCycleLengthCpu(
+		ulong divisor,
+		PrimeOrderCalculatorAccelerator gpu,
+		in MontgomeryDivisorData divisorData,
+		bool skipPrimeOrderHeuristic) => MersenneDivisorCycles.CalculateCycleLengthCpu(
+			divisor,
+			divisorData,
+			skipPrimeOrderHeuristic);
+
+	private static ulong CalculateCycleLengthHybrid(
+		ulong divisor,
+		PrimeOrderCalculatorAccelerator gpu,
+		in MontgomeryDivisorData divisorData,
+		bool skipPrimeOrderHeuristic) => MersenneDivisorCycles.CalculateCycleLengthHybrid(
+			gpu,
+			divisor,
+			divisorData,
+			skipPrimeOrderHeuristic);
+
+	private static ulong CalculateCycleLengthGpu(
+		ulong divisor,
+		PrimeOrderCalculatorAccelerator gpu,
+		in MontgomeryDivisorData divisorData,
+		bool skipPrimeOrderHeuristic) => MersenneDivisorCycles.CalculateCycleLengthGpu(
+			gpu,
+			divisor,
+			divisorData,
+			skipPrimeOrderHeuristic);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static byte AddMod3(byte value, byte delta)

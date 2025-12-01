@@ -75,17 +75,93 @@ public class MersenneDivisorCycles
 			}
 		}
 
-		if (TryCalculateCycleLengthHeuristic(gpu, divisor, divisorData, out ulong heuristicCycle) && heuristicCycle != 0UL)
+		if (TryCalculateCycleLengthHeuristicCpu(divisor, divisorData, out ulong heuristicCycle) && heuristicCycle != 0UL)
 		{
 			return heuristicCycle == exponent;
 		}
 
-		if (TryCalculateCycleLengthForExponentCpu(gpu, divisor, exponent, divisorData, out ulong cycleLength, out bool _) && cycleLength != 0UL)
+		if (TryCalculateCycleLengthForExponentCpu(divisor, exponent, divisorData, out ulong cycleLength, out bool _) && cycleLength != 0UL)
 		{
 			return cycleLength == exponent;
 		}
 
-		return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
+		return exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(divisorData) == 1UL;
+	}
+
+	public static bool CycleEqualsExponentGpu(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
+	{
+		if (CycleEqualsExponentForMersenneCandidate(divisor, divisorData, exponent))
+		{
+			return true;
+		}
+
+		if (exponent <= 1UL || divisor <= 1UL || (divisor & 1UL) == 0UL)
+		{
+			return false;
+		}
+
+		if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
+		{
+			var small = Shared._smallCycles;
+			if (small is not null)
+			{
+				ulong cached = small[(int)divisor];
+				if (cached != 0UL)
+				{
+					return cached == exponent;
+				}
+			}
+		}
+
+		if (TryCalculateCycleLengthHeuristicGpu(gpu, divisor, divisorData, out ulong heuristicCycle) && heuristicCycle != 0UL)
+		{
+			return heuristicCycle == exponent;
+		}
+
+		if (TryCalculateCycleLengthForExponentCpu(divisor, exponent, divisorData, out ulong cycleLength, out bool _) && cycleLength != 0UL)
+		{
+			return cycleLength == exponent;
+		}
+
+		return exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(divisorData) == 1UL;
+	}
+
+	public static bool CycleEqualsExponentHybrid(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
+	{
+		if (CycleEqualsExponentForMersenneCandidate(divisor, divisorData, exponent))
+		{
+			return true;
+		}
+
+		if (exponent <= 1UL || divisor <= 1UL || (divisor & 1UL) == 0UL)
+		{
+			return false;
+		}
+
+		if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
+		{
+			var small = Shared._smallCycles;
+			if (small is not null)
+			{
+				ulong cached = small[(int)divisor];
+				if (cached != 0UL)
+				{
+					return cached == exponent;
+				}
+			}
+		}
+
+		if (TryCalculateCycleLengthHeuristicHybrid(gpu, divisor, divisorData, out ulong heuristicCycle) && heuristicCycle != 0UL)
+		{
+			return heuristicCycle == exponent;
+		}
+
+		if (TryCalculateCycleLengthForExponentCpu(divisor, exponent, divisorData, out ulong cycleLength, out bool _) && cycleLength != 0UL)
+		{
+			return cycleLength == exponent;
+		}
+
+		return exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(divisorData) == 1UL;
 	}
 
 	public static bool CycleEqualsExponentForMersenneCandidate(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
@@ -111,7 +187,7 @@ public class MersenneDivisorCycles
 			}
 		}
 
-		return exponent.Pow2MontgomeryModWindowedCpu(divisorData, keepMontgomery: false) == 1UL;
+		return exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(divisorData) == 1UL;
 	}
 
 	private static bool IsValidMersenneDivisorCandidate(ulong divisor, ulong exponent)
@@ -163,7 +239,7 @@ public class MersenneDivisorCycles
 		}
 	}
 
-	public ulong GetCycle(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData)
+	public ulong GetCycle(ulong divisor, in MontgomeryDivisorData divisorData)
 	{
 		// Fast-path: in-memory array for small divisors
 		if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
@@ -208,10 +284,106 @@ public class MersenneDivisorCycles
 		// TODO: Route this miss to an ephemeral single-cycle computation on the device selected by the current
 		// configuration (and skip persisting the result) when the divisor falls outside the in-memory snapshot
 		// so we respect the large-p memory limits and avoid extra cache locks.
-		return CalculateCycleLength(gpu, divisor, divisorData);
+		return CalculateCycleLengthCpu(divisor, divisorData);
 	}
 
-	public static UInt128 GetCycle(PrimeOrderCalculatorAccelerator gpu, UInt128 divisor)
+	public ulong GetCycleGpu(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData)
+	{
+		// Fast-path: in-memory array for small divisors
+		if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
+		{
+			var arr = _smallCycles;
+			if (arr is not null)
+			{
+				ulong cached = arr[(int)divisor];
+				if (cached != 0UL)
+				{
+					return cached;
+				}
+			}
+		}
+
+		// Binary search for divisor in sorted _table
+		int mid, right, left = 0;
+		ulong d;
+		List<(ulong divisor, ulong cycleLength)> cycles = _table;
+
+		right = cycles.Count - 1;
+		while (left <= right)
+		{
+			mid = left + ((right - left) >> 1);
+			d = cycles[mid].divisor;
+
+			if (d == divisor)
+			{
+				return cycles[mid].cycleLength;
+			}
+
+			if (d < divisor)
+			{
+				left = mid + 1;
+			}
+			else
+			{
+				right = mid - 1;
+			}
+		}
+
+		// TODO: Route this miss to an ephemeral single-cycle computation on the device selected by the current
+		// configuration (and skip persisting the result) when the divisor falls outside the in-memory snapshot
+		// so we respect the large-p memory limits and avoid extra cache locks.
+		return CalculateCycleLengthGpu(gpu, divisor, divisorData);
+	}
+
+	public ulong GetCycleHybrid(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData)
+	{
+		// Fast-path: in-memory array for small divisors
+		if (divisor <= PerfectNumberConstants.MaxQForDivisorCycles)
+		{
+			var arr = _smallCycles;
+			if (arr is not null)
+			{
+				ulong cached = arr[(int)divisor];
+				if (cached != 0UL)
+				{
+					return cached;
+				}
+			}
+		}
+
+		// Binary search for divisor in sorted _table
+		int mid, right, left = 0;
+		ulong d;
+		List<(ulong divisor, ulong cycleLength)> cycles = _table;
+
+		right = cycles.Count - 1;
+		while (left <= right)
+		{
+			mid = left + ((right - left) >> 1);
+			d = cycles[mid].divisor;
+
+			if (d == divisor)
+			{
+				return cycles[mid].cycleLength;
+			}
+
+			if (d < divisor)
+			{
+				left = mid + 1;
+			}
+			else
+			{
+				right = mid - 1;
+			}
+		}
+
+		// TODO: Route this miss to an ephemeral single-cycle computation on the device selected by the current
+		// configuration (and skip persisting the result) when the divisor falls outside the in-memory snapshot
+		// so we respect the large-p memory limits and avoid extra cache locks.
+		return CalculateCycleLengthHybrid(gpu, divisor, divisorData);
+	}
+
+	public static UInt128 GetCycleCpu(UInt128 divisor)
 	{
 		// For divisor = 2^k, cycle is 1
 		if ((divisor & (divisor - UInt128.One)) == UInt128.Zero)
@@ -224,17 +396,111 @@ public class MersenneDivisorCycles
 			ulong divisor64 = (ulong)divisor;
 			Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 			MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor64);
-			ulong cycle = CalculateCycleLength(gpu, divisor64, divisorData);
+			ulong cycle = CalculateCycleLengthCpu(divisor64, divisorData);
 			divisorPool.Return(divisorData);
 			return (UInt128)cycle;
 		}
 
-		UInt128 wideOrder = PrimeOrderCalculator.Calculate(
+		UInt128 wideOrder = PrimeOrderCalculator.CalculateCpu(
+			divisor,
+			previousOrder: null,
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+		if (wideOrder != UInt128.Zero)
+		{
+			return wideOrder;
+		}
+
+		// Otherwise, find order of 2 mod divisor
+		// TODO: Port this UInt128 path to the unrolled-hex cycle calculator so wide
+		// divisors stop relying on the slow shift-and-subtract loop measured in the
+		// GPU benchmarks.
+		UInt128 order = UInt128.One;
+		UInt128 pow = UInt128Numbers.Two;
+		while (pow != UInt128.One)
+		{
+			pow <<= 1;
+			if (pow >= divisor)
+			{
+				pow -= divisor;
+			}
+
+			order++;
+		}
+
+		return order;
+	}
+
+	public static UInt128 GetCycleHybrid(PrimeOrderCalculatorAccelerator gpu, UInt128 divisor)
+	{
+		// For divisor = 2^k, cycle is 1
+		if ((divisor & (divisor - UInt128.One)) == UInt128.Zero)
+		{
+			return UInt128.One;
+		}
+
+		if (divisor <= ulong.MaxValue)
+		{
+			ulong divisor64 = (ulong)divisor;
+			Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+			MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor64);
+			ulong cycle = CalculateCycleLengthHybrid(gpu, divisor64, divisorData);
+			divisorPool.Return(divisorData);
+			return (UInt128)cycle;
+		}
+
+		UInt128 wideOrder = PrimeOrderCalculator.CalculateHybrid(
 			gpu,
 			divisor,
 			previousOrder: null,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+		if (wideOrder != UInt128.Zero)
+		{
+			return wideOrder;
+		}
+
+		// Otherwise, find order of 2 mod divisor
+		// TODO: Port this UInt128 path to the unrolled-hex cycle calculator so wide
+		// divisors stop relying on the slow shift-and-subtract loop measured in the
+		// GPU benchmarks.
+		UInt128 order = UInt128.One;
+		UInt128 pow = UInt128Numbers.Two;
+		while (pow != UInt128.One)
+		{
+			pow <<= 1;
+			if (pow >= divisor)
+			{
+				pow -= divisor;
+			}
+
+			order++;
+		}
+
+		return order;
+	}
+
+	public static UInt128 GetCycleGpu(PrimeOrderCalculatorAccelerator gpu, UInt128 divisor)
+	{
+		// For divisor = 2^k, cycle is 1
+		if ((divisor & (divisor - UInt128.One)) == UInt128.Zero)
+		{
+			return UInt128.One;
+		}
+
+		if (divisor <= ulong.MaxValue)
+		{
+			ulong divisor64 = (ulong)divisor;
+			Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+			MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor64);
+			ulong cycle = CalculateCycleLengthGpu(gpu, divisor64, divisorData);
+			divisorPool.Return(divisorData);
+			return (UInt128)cycle;
+		}
+
+		UInt128 wideOrder = PrimeOrderCalculator.CalculateGpu(
+			gpu,
+			divisor,
+			previousOrder: null,
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 		if (wideOrder != UInt128.Zero)
 		{
 			return wideOrder;
@@ -261,7 +527,6 @@ public class MersenneDivisorCycles
 	}
 
 	public static bool TryCalculateCycleLengthForExponentCpu(
-		PrimeOrderCalculatorAccelerator gpu,
 		ulong divisor,
 		ulong exponent,
 		in MontgomeryDivisorData divisorData,
@@ -285,13 +550,11 @@ public class MersenneDivisorCycles
 		//     return true;
 		// }
 
-		ulong computedOrder = PrimeOrderCalculator.Calculate(
-			gpu,
+		ulong computedOrder = PrimeOrderCalculator.CalculateCpu(
 			divisor,
 			previousOrder: null,
 			divisorData,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 		if (computedOrder != 0UL)
 		{
 			cycleLength = computedOrder;
@@ -331,8 +594,178 @@ public class MersenneDivisorCycles
 			factorCounts[2UL] = twoCount;
 		}
 
-		bool exponentAccumulated = AccumulateFactors(gpu, exponent, factorCounts);
-		bool factorsAccumulated = exponentAccumulated && AccumulateFactors(gpu, k, factorCounts);
+		bool exponentAccumulated = AccumulateFactors(exponent, factorCounts);
+		bool factorsAccumulated = exponentAccumulated && AccumulateFactors(k, factorCounts);
+
+		if (factorsAccumulated)
+		{
+			cycleLength = ReduceOrder(divisorData, phi, factorCounts);
+			success = true;
+			primeOrderFailed = false;
+		}
+
+		factorCounts.Clear();
+		ThreadStaticPools.ReturnFactorCountDictionary(factorCounts);
+		return success;
+	}
+
+	public static bool TryCalculateCycleLengthForExponentHybrid(
+		PrimeOrderCalculatorAccelerator gpu,
+		ulong divisor,
+		ulong exponent,
+		in MontgomeryDivisorData divisorData,
+		out ulong cycleLength,
+		out bool primeOrderFailed)
+	{
+		cycleLength = 0UL;
+		primeOrderFailed = false;
+
+		// EvenPerfectBitScanner never feeds powers of two into this helper, so leave the branch commented out to avoid redundant work.
+		// if ((divisor & (divisor - 1UL)) == 0UL)
+		// {
+		//     cycleLength = 1UL;
+		//     return true;
+		// }
+
+		// The scanner only calls this path with prime exponents greater than one and odd divisors above three, keeping the small-parameter guard unreachable.
+		// if (divisor <= 3UL || exponent <= 1UL)
+		// {
+		//     cycleLength = CalculateCycleLength(divisor, divisorData);
+		//     return true;
+		// }
+
+		ulong computedOrder = PrimeOrderCalculator.CalculateHybrid(
+			gpu,
+			divisor,
+			previousOrder: null,
+			divisorData,
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+		if (computedOrder != 0UL)
+		{
+			cycleLength = computedOrder;
+			return true;
+		}
+
+		primeOrderFailed = true;
+
+		ulong phi = divisor - 1UL;
+		// A zero totient would imply divisor == 0, which never occurs on the tested path. Keep the guard documented without
+		// branching in the hot loop.
+		// if (phi == 0UL)
+		// {
+		//     return false;
+		// }
+
+		int twoCount = BitOperations.TrailingZeroCount(phi);
+		ulong reducedPhi = phi >> twoCount;
+		if (reducedPhi == 0UL || (reducedPhi % exponent) != 0UL)
+		{
+			return false;
+		}
+
+		ulong k = reducedPhi / exponent;
+		// k == 0 would indicate reducedPhi < exponent, which the EvenPerfectBitScanner call flow prevents. Document the
+		// assumption instead of branching.
+		// if (k == 0UL)
+		// {
+		//     return false;
+		// }
+
+		Dictionary<ulong, int> factorCounts = ThreadStaticPools.RentFactorCountDictionary();
+		bool success = false;
+
+		if (twoCount > 0)
+		{
+			factorCounts[2UL] = twoCount;
+		}
+
+		bool exponentAccumulated = AccumulateFactors(exponent, factorCounts);
+		bool factorsAccumulated = exponentAccumulated && AccumulateFactors(k, factorCounts);
+
+		if (factorsAccumulated)
+		{
+			cycleLength = ReduceOrder(divisorData, phi, factorCounts);
+			success = true;
+			primeOrderFailed = false;
+		}
+
+		factorCounts.Clear();
+		ThreadStaticPools.ReturnFactorCountDictionary(factorCounts);
+		return success;
+	}
+
+	public static bool TryCalculateCycleLengthForExponentGpu(
+		PrimeOrderCalculatorAccelerator gpu,
+		ulong divisor,
+		ulong exponent,
+		in MontgomeryDivisorData divisorData,
+		out ulong cycleLength,
+		out bool primeOrderFailed)
+	{
+		cycleLength = 0UL;
+		primeOrderFailed = false;
+
+		// EvenPerfectBitScanner never feeds powers of two into this helper, so leave the branch commented out to avoid redundant work.
+		// if ((divisor & (divisor - 1UL)) == 0UL)
+		// {
+		//     cycleLength = 1UL;
+		//     return true;
+		// }
+
+		// The scanner only calls this path with prime exponents greater than one and odd divisors above three, keeping the small-parameter guard unreachable.
+		// if (divisor <= 3UL || exponent <= 1UL)
+		// {
+		//     cycleLength = CalculateCycleLength(divisor, divisorData);
+		//     return true;
+		// }
+
+		ulong computedOrder = PrimeOrderCalculator.CalculateGpu(
+			gpu,
+			divisor,
+			previousOrder: null,
+			divisorData,
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+		if (computedOrder != 0UL)
+		{
+			cycleLength = computedOrder;
+			return true;
+		}
+
+		primeOrderFailed = true;
+
+		ulong phi = divisor - 1UL;
+		// A zero totient would imply divisor == 0, which never occurs on the tested path. Keep the guard documented without
+		// branching in the hot loop.
+		// if (phi == 0UL)
+		// {
+		//     return false;
+		// }
+
+		int twoCount = BitOperations.TrailingZeroCount(phi);
+		ulong reducedPhi = phi >> twoCount;
+		if (reducedPhi == 0UL || (reducedPhi % exponent) != 0UL)
+		{
+			return false;
+		}
+
+		ulong k = reducedPhi / exponent;
+		// k == 0 would indicate reducedPhi < exponent, which the EvenPerfectBitScanner call flow prevents. Document the
+		// assumption instead of branching.
+		// if (k == 0UL)
+		// {
+		//     return false;
+		// }
+
+		Dictionary<ulong, int> factorCounts = ThreadStaticPools.RentFactorCountDictionary();
+		bool success = false;
+
+		if (twoCount > 0)
+		{
+			factorCounts[2UL] = twoCount;
+		}
+
+		bool exponentAccumulated = AccumulateFactors(exponent, factorCounts);
+		bool factorsAccumulated = exponentAccumulated && AccumulateFactors(k, factorCounts);
 
 		if (factorsAccumulated)
 		{
@@ -347,7 +780,6 @@ public class MersenneDivisorCycles
 	}
 
 	private static bool AccumulateFactors(
-		PrimeOrderCalculatorAccelerator gpu,
 		ulong value,
 		Dictionary<ulong, int> counts)
 	{
@@ -357,7 +789,7 @@ public class MersenneDivisorCycles
 		}
 
 		Dictionary<ulong, int> scratch = ThreadStaticPools.RentFactorScratchDictionary();
-		bool success = TryFactorIntoCountsInternal(gpu, value, scratch);
+		bool success = TryFactorIntoCountsInternal(value, scratch);
 		if (!success)
 		{
 			scratch.Clear();
@@ -379,7 +811,7 @@ public class MersenneDivisorCycles
 	// private static ulong _tryFactorIntoCountsInternalHits;
 	// private static ulong _tryCalculateCycleLengthHeuristicHits;
 
-	private static bool TryFactorIntoCountsInternal(PrimeOrderCalculatorAccelerator gpu, ulong value, Dictionary<ulong, int> counts)
+	private static bool TryFactorIntoCountsInternal(ulong value, Dictionary<ulong, int> counts)
 	{
 		// The EvenPerfectBitScanner only requests factors for values >= 2 here. Leave the guard documented without executing it.
 		// if (value <= 1UL)
@@ -409,15 +841,7 @@ public class MersenneDivisorCycles
 			}
 		}
 
-		// if (HeuristicPrimeTester.Exclusive.IsPrime(remaining, CancellationToken.None))
-
-		// Atomic.Add(ref _tryFactorIntoCountsInternalHits, 1UL);
-		// Console.WriteLine($"MersenneDivisorCycles.TryFactorIntoCountsInternal hits {Volatile.Read(ref _tryFactorIntoCountsInternalHits)}");
-
-		// HeuristicPrimeTester primeTester = _primeTester ??= new();
 		if (HeuristicPrimeTester.IsPrimeCpu(remaining))
-		// if (HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, remaining))
-		// if (PrimeTester.IsPrime(remaining))
 		{
 			AddFactor(counts, remaining);
 			return true;
@@ -441,13 +865,13 @@ public class MersenneDivisorCycles
 		//     return false;
 		// }
 
-		if (!TryFactorIntoCountsInternal(gpu, factor, counts))
+		if (!TryFactorIntoCountsInternal(factor, counts))
 		{
 			return false;
 		}
 
 		// Guard the recursive calls to terminate once Pollard-Rho reduces either branch to 1.
-		if (quotient > 1UL && !TryFactorIntoCountsInternal(gpu, quotient, counts))
+		if (quotient > 1UL && !TryFactorIntoCountsInternal(quotient, counts))
 		{
 			return false;
 		}
@@ -765,7 +1189,7 @@ public class MersenneDivisorCycles
 					// unrolled-hex calculator so the CPU generator matches
 					// the GPU benchmark leader for large divisors.
 					MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
-					ulong cycle = CalculateCycleLength(gpu, divisor, divisorData);
+					ulong cycle = CalculateCycleLengthGpu(gpu, divisor, divisorData);
 					divisorPool.Return(divisorData);
 					localCycles[localCycleIndex++] = (divisor, cycle);
 				}
@@ -933,18 +1357,31 @@ public class MersenneDivisorCycles
 
 	public static ulong CalculateCycleLengthGpu(ulong divisor) => DivisorCycleKernels.CalculateCycleLengthGpu(divisor);
 
-	public static ulong CalculateCycleLength(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData, bool skipPrimeOrderHeuristic = false)
+	public static ulong CalculateCycleLengthCpu(ulong divisor, in MontgomeryDivisorData divisorData, bool skipPrimeOrderHeuristic = false)
 	{
-		if (TryCalculateCycleLengthHeuristic(gpu, divisor, divisorData, out ulong cycleLength, skipPrimeOrderHeuristic))
+		if (TryCalculateCycleLengthHeuristicCpu(divisor, divisorData, out ulong cycleLength, skipPrimeOrderHeuristic))
 			return cycleLength;
 
 		return CalculateCycleLengthFallback(divisor);
 	}
 
-	// [ThreadStatic]
-	// private static HeuristicPrimeTester? _primeTester;
+	public static ulong CalculateCycleLengthGpu(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData, bool skipPrimeOrderHeuristic = false)
+	{
+		if (TryCalculateCycleLengthHeuristicGpu(gpu, divisor, divisorData, out ulong cycleLength, skipPrimeOrderHeuristic))
+			return cycleLength;
 
-	internal static bool TryCalculateCycleLengthHeuristic(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData, out ulong cycleLength, bool skipPrimeOrderHeuristic = false)
+		return CalculateCycleLengthFallback(divisor);
+	}
+
+	public static ulong CalculateCycleLengthHybrid(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData, bool skipPrimeOrderHeuristic = false)
+	{
+		if (TryCalculateCycleLengthHeuristicHybrid(gpu, divisor, divisorData, out ulong cycleLength, skipPrimeOrderHeuristic))
+			return cycleLength;
+
+		return CalculateCycleLengthFallback(divisor);
+	}
+
+	internal static bool TryCalculateCycleLengthHeuristicCpu(ulong divisor, in MontgomeryDivisorData divisorData, out ulong cycleLength, bool skipPrimeOrderHeuristic = false)
 	{
 		if ((divisor & (divisor - 1UL)) == 0UL)
 		{
@@ -958,24 +1395,79 @@ public class MersenneDivisorCycles
 			return true;
 		}
 
-		// if (!skipPrimeOrderHeuristic)
-		// {
-		// 	Atomic.Add(ref _tryCalculateCycleLengthHeuristicHits, 1UL);
-		// 	Console.WriteLine($"MersenneDivisorCycles.CalculateCycleLengthFallback hits {Volatile.Read(ref _tryCalculateCycleLengthHeuristicHits)}");			
-		// }
-
-		// HeuristicPrimeTester primeTester = _primeTester ??= new();
-		// if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.Exclusive.IsPrimeCpu(divisor, CancellationToken.None))
 		if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.IsPrimeCpu(divisor))
-		// if (!skipPrimeOrderHeuristic && HeuristicCombinedPrimeTester.IsPrimeGpu(divisor))
 		{
-			ulong computedOrder = PrimeOrderCalculator.Calculate(
+			ulong computedOrder = PrimeOrderCalculator.CalculateCpu(
+					divisor,
+					previousOrder: null,
+					divisorData,
+					PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			if (computedOrder != 0UL)
+			{
+				cycleLength = computedOrder;
+				return true;
+			}
+		}
+
+		cycleLength = 0UL;
+		return false;
+	}
+
+	internal static bool TryCalculateCycleLengthHeuristicHybrid(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData, out ulong cycleLength, bool skipPrimeOrderHeuristic = false)
+	{
+		if ((divisor & (divisor - 1UL)) == 0UL)
+		{
+			cycleLength = 1UL;
+			return true;
+		}
+
+		if (divisor <= 3UL)
+		{
+			cycleLength = CalculateCycleLengthFallback(divisor);
+			return true;
+		}
+
+		if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.IsPrimeCpu(divisor))
+		{
+			ulong computedOrder = PrimeOrderCalculator.CalculateHybrid(
 					gpu,
 					divisor,
 					previousOrder: null,
 					divisorData,
-					PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-					PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
+					PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			if (computedOrder != 0UL)
+			{
+				cycleLength = computedOrder;
+				return true;
+			}
+		}
+
+		cycleLength = 0UL;
+		return false;
+	}
+
+	internal static bool TryCalculateCycleLengthHeuristicGpu(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData, out ulong cycleLength, bool skipPrimeOrderHeuristic = false)
+	{
+		if ((divisor & (divisor - 1UL)) == 0UL)
+		{
+			cycleLength = 1UL;
+			return true;
+		}
+
+		if (divisor <= 3UL)
+		{
+			cycleLength = CalculateCycleLengthFallback(divisor);
+			return true;
+		}
+
+		if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.IsPrimeGpu(gpu, divisor))
+		{
+			ulong computedOrder = PrimeOrderCalculator.CalculateGpu(
+					gpu,
+					divisor,
+					previousOrder: null,
+					divisorData,
+					PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 			if (computedOrder != 0UL)
 			{
 				cycleLength = computedOrder;

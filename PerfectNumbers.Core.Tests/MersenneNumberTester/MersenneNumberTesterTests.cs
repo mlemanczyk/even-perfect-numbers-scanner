@@ -27,10 +27,27 @@ public class MersenneNumberTesterTests
 
 	[Theory]
 	[InlineData(125UL)]
-	public void WarmUpOrders_populates_cache_without_affecting_results(ulong p)
+	public void WarmUpOrdersCpu_populates_cache_without_affecting_results(ulong p)
 	{
 		var tester = new MersenneNumberTester(useOrderCache: true, useGpuOrder: true);
-		tester.WarmUpOrders(p, 1_000UL);
+		tester.WarmUpOrdersCpu(p, 1_000UL);
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		try
+		{
+			tester.IsMersennePrime(gpu, p).Should().BeFalse();
+		}
+		finally
+		{
+			PrimeOrderCalculatorAccelerator.Return(gpu);
+		}
+	}
+
+	[Theory]
+	[InlineData(125UL)]
+	public void WarmUpOrdersGpu_populates_cache_without_affecting_results(ulong p)
+	{
+		var tester = new MersenneNumberTester(useOrderCache: true, useGpuOrder: true);
+		tester.WarmUpOrdersGpu(p, 1_000UL);
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
@@ -45,12 +62,20 @@ public class MersenneNumberTesterTests
 	[Theory]
 	[InlineData(125UL, true)]
 	[InlineData(127UL, false)]
-	public void SharesFactorWithExponentMinusOne_detects_common_factors(ulong p, bool expected)
+	public void SharesFactorWithExponentMinusOneCpu_detects_common_factors(ulong p, bool expected)
+	{
+		p.SharesFactorWithExponentMinusOneCpu().Should().Be(expected);
+	}
+
+	[Theory]
+	[InlineData(125UL, true)]
+	[InlineData(127UL, false)]
+	public void SharesFactorWithExponentMinusOneGpu_detects_common_factors(ulong p, bool expected)
 	{
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			p.SharesFactorWithExponentMinusOne(gpu).Should().Be(expected);
+			p.SharesFactorWithExponentMinusOneGpu(gpu).Should().Be(expected);
 		}
 		finally
 		{

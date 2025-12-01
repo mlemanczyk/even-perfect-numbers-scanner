@@ -125,7 +125,6 @@ public sealed class MersenneNumberDivisorGpuTester
 		}
 
 		UInt128 kMul2;
-		var divisorCycles = MersenneDivisorCycles.Shared;
 		UInt128 maxK2 = UInt128.MaxValue / ((UInt128)p << 1);
 		ulong limit = divisorCyclesSearchLimit;
 		if ((UInt128)limit > maxK2)
@@ -143,7 +142,7 @@ public sealed class MersenneNumberDivisorGpuTester
 				continue;
 			}
 
-			UInt128 cycle128 = MersenneDivisorCycles.GetCycle(gpu, d);
+			UInt128 cycle128 = MersenneDivisorCycles.GetCycleGpu(gpu, d);
 			if ((UInt128)p % cycle128 != UInt128.Zero)
 			{
 				continue;

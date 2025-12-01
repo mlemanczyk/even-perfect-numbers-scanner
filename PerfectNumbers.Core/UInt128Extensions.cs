@@ -517,7 +517,7 @@ public static class UInt128Extensions
 		return (b1, a1);
 	}
 
-	public static ulong CalculateOrder(this UInt128 q, PrimeOrderCalculatorAccelerator gpu)
+	public static ulong CalculateOrderCpu(this UInt128 q)
 	{
 		if (q <= UInt128Numbers.Two)
 		{
@@ -536,7 +536,107 @@ public static class UInt128Extensions
 		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
 
 		int i = 0, primesLength = smallPrimes.Length;
-		UInt128 cycle = MersenneDivisorCycles.GetCycle(gpu, q);
+		UInt128 cycle = MersenneDivisorCycles.GetCycleCpu(q);
+		// TODO: If the cache lacks this cycle, immediately schedule the configured device
+		// (GPU by default) to compute it on the fly and skip inserting it into the cache so
+		// wide-order factoring can still leverage cycle stepping without breaching the
+		// memory cap or introducing extra synchronization.
+		ulong prime, temp;
+		for (; i < primesLength; i++)
+		{
+			if (smallPrimesPow2[i] > order)
+			{
+				break;
+			}
+
+			prime = smallPrimes[i];
+			while (order % prime == 0UL)
+			{
+				temp = order / prime;
+				if (temp.PowModWithCycle(q, cycle) == one)
+				{
+					order = temp;
+				}
+				else
+				{
+					break;
+				}
+			}
+		}
+
+		return order;
+	}
+
+	public static ulong CalculateOrderGpu(this UInt128 q, PrimeOrderCalculatorAccelerator gpu)
+	{
+		if (q <= UInt128Numbers.Two)
+		{
+			return 0UL;
+		}
+
+		UInt128 one = UInt128.One;
+		UInt128 phi = q - one;
+		if (phi > ulong.MaxValue)
+		{
+			throw new NotImplementedException("Such big values are not yet supported");
+		}
+
+		ulong order = (ulong)phi;
+		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
+		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
+
+		int i = 0, primesLength = smallPrimes.Length;
+		UInt128 cycle = MersenneDivisorCycles.GetCycleGpu(gpu, q);
+		// TODO: If the cache lacks this cycle, immediately schedule the configured device
+		// (GPU by default) to compute it on the fly and skip inserting it into the cache so
+		// wide-order factoring can still leverage cycle stepping without breaching the
+		// memory cap or introducing extra synchronization.
+		ulong prime, temp;
+		for (; i < primesLength; i++)
+		{
+			if (smallPrimesPow2[i] > order)
+			{
+				break;
+			}
+
+			prime = smallPrimes[i];
+			while (order % prime == 0UL)
+			{
+				temp = order / prime;
+				if (temp.PowModWithCycle(q, cycle) == one)
+				{
+					order = temp;
+				}
+				else
+				{
+					break;
+				}
+			}
+		}
+
+		return order;
+	}
+
+	public static ulong CalculateOrderHybrid(this UInt128 q, PrimeOrderCalculatorAccelerator gpu)
+	{
+		if (q <= UInt128Numbers.Two)
+		{
+			return 0UL;
+		}
+
+		UInt128 one = UInt128.One;
+		UInt128 phi = q - one;
+		if (phi > ulong.MaxValue)
+		{
+			throw new NotImplementedException("Such big values are not yet supported");
+		}
+
+		ulong order = (ulong)phi;
+		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
+		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
+
+		int i = 0, primesLength = smallPrimes.Length;
+		UInt128 cycle = MersenneDivisorCycles.GetCycleHybrid(gpu, q);
 		// TODO: If the cache lacks this cycle, immediately schedule the configured device
 		// (GPU by default) to compute it on the fly and skip inserting it into the cache so
 		// wide-order factoring can still leverage cycle stepping without breaching the

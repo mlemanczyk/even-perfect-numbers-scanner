@@ -54,7 +54,7 @@ internal static class CandidatesCalculator
         return trackers.Value!;
     }
 
-    internal static bool IsCompositeByResidues(PrimeOrderCalculatorAccelerator gpu, ulong p)
+    internal static bool IsCompositeByResiduesCpu(ulong p)
     {
         ModResidueTracker tracker = AcquireResidueTracker();
         // Use ModResidueTracker with a small set of primes to pre-filter composite p.
@@ -72,7 +72,57 @@ internal static class CandidatesCalculator
                 break;
             }
 
-            if (tracker.MergeOrAppend(gpu, p, primes[primeIndex], out bool divisible) && divisible)
+            if (tracker.MergeOrAppendCpu(p, primes[primeIndex], out bool divisible) && divisible)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal static bool IsCompositeByResiduesGpu(PrimeOrderCalculatorAccelerator gpu, ulong p)
+    {
+        ModResidueTracker tracker = AcquireResidueTracker();
+        // Use ModResidueTracker with a small set of primes to pre-filter composite p.
+        tracker.BeginMerge(p);
+        // TODO: Integrate the divisor-cycle cache here so the small-prime sweep reuses precomputed remainders instead of
+        // running MergeOrAppend for every candidate and missing the cycle-accelerated early exits.
+        // Use the small prime list from PerfectNumbers.Core to the extent of sqrt(p)
+        var primes = PrimesGenerator.SmallPrimes;
+        var primesPow2 = PrimesGenerator.SmallPrimesPow2;
+        int len = primes.Length;
+        for (int primeIndex = 0; primeIndex < len; primeIndex++)
+        {
+            if (primesPow2[primeIndex] > p)
+            {
+                break;
+            }
+
+            if (tracker.MergeOrAppendGpu(gpu, p, primes[primeIndex], out bool divisible) && divisible)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal static bool IsCompositeByResiduesHybrid(PrimeOrderCalculatorAccelerator gpu, ulong p)
+    {
+        ModResidueTracker tracker = AcquireResidueTracker();
+        tracker.BeginMerge(p);
+        var primes = PrimesGenerator.SmallPrimes;
+        var primesPow2 = PrimesGenerator.SmallPrimesPow2;
+        int len = primes.Length;
+        for (int primeIndex = 0; primeIndex < len; primeIndex++)
+        {
+            if (primesPow2[primeIndex] > p)
+            {
+                break;
+            }
+
+            if (tracker.MergeOrAppendHybrid(gpu, p, primes[primeIndex], out bool divisible) && divisible)
             {
                 return true;
             }

@@ -99,7 +99,7 @@ public static partial class ULongExtensions
 		}
 	}
 
-	public static ulong CalculateOrder(this ulong q, PrimeOrderCalculatorAccelerator gpu)
+	public static ulong CalculateOrderCpu(this ulong q)
 	{
 		if (q <= 2UL)
 		{
@@ -112,7 +112,101 @@ public static partial class ULongExtensions
 
 		int i = 0, primesLength = smallPrimes.Length;
 		UInt128 q128 = q,
-				cycle = MersenneDivisorCycles.GetCycle(gpu, q128);
+				cycle = MersenneDivisorCycles.GetCycleCpu(q128);
+		// TODO: When the shared cycle snapshot cannot serve this divisor, trigger an on-demand
+		// GPU computation (respecting the configured device) without promoting the result into
+		// the cache so the order calculator still benefits from cycle stepping while keeping the
+		// single-block memory plan intact.
+
+		for (; i < primesLength; i++)
+		{
+			if (smallPrimesPow2[i] > order)
+			{
+				break;
+			}
+
+			prime = smallPrimes[i];
+			// TODO: Replace this `%` driven factor peeling with the divisor-cycle aware
+			// factoring helper so large orders reuse the cached remainders highlighted in
+			// the latest divisor-cycle benchmarks instead of recomputing slow modulo checks.
+			while (order % prime == 0UL)
+			{
+				temp = order / prime;
+				if (temp.PowModWithCycle(q128, cycle) == UInt128.One)
+				{
+					order = temp;
+				}
+				else
+				{
+					break;
+				}
+			}
+		}
+
+		return order;
+	}
+
+	public static ulong CalculateOrderGpu(this ulong q, PrimeOrderCalculatorAccelerator gpu)
+	{
+		if (q <= 2UL)
+		{
+			return 0UL;
+		}
+
+		ulong order = q - 1UL, prime, temp;
+		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
+		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
+
+		int i = 0, primesLength = smallPrimes.Length;
+		UInt128 q128 = q,
+				cycle = MersenneDivisorCycles.GetCycleGpu(gpu, q128);
+		// TODO: When the shared cycle snapshot cannot serve this divisor, trigger an on-demand
+		// GPU computation (respecting the configured device) without promoting the result into
+		// the cache so the order calculator still benefits from cycle stepping while keeping the
+		// single-block memory plan intact.
+
+		for (; i < primesLength; i++)
+		{
+			if (smallPrimesPow2[i] > order)
+			{
+				break;
+			}
+
+			prime = smallPrimes[i];
+			// TODO: Replace this `%` driven factor peeling with the divisor-cycle aware
+			// factoring helper so large orders reuse the cached remainders highlighted in
+			// the latest divisor-cycle benchmarks instead of recomputing slow modulo checks.
+			while (order % prime == 0UL)
+			{
+				temp = order / prime;
+				if (temp.PowModWithCycle(q128, cycle) == UInt128.One)
+				{
+					order = temp;
+				}
+				else
+				{
+					break;
+				}
+			}
+		}
+
+		return order;
+	}
+
+	public static ulong CalculateOrderHybrid(this ulong q, PrimeOrderCalculatorAccelerator gpu)
+	{
+		if (q <= 2UL)
+		{
+			return 0UL;
+		}
+
+		ulong order = q - 1UL, prime, temp;
+		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
+		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
+
+		int i = 0, primesLength = smallPrimes.Length;
+		UInt128 q128 = q,
+				cycle = MersenneDivisorCycles.GetCycleHybrid(gpu, q128);
 		// TODO: When the shared cycle snapshot cannot serve this divisor, trigger an on-demand
 		// GPU computation (respecting the configured device) without promoting the result into
 		// the cache so the order calculator still benefits from cycle stepping while keeping the
@@ -542,13 +636,13 @@ public static partial class ULongExtensions
 		return result;
 	}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        // Reuse the direct UInt128 reduction path that dominated MulMod64Benchmarks to avoid
-        // the redundant operand modulo operations in the older fallback.
-        public static ulong MulMod64(this ulong a, ulong b, ulong modulus)
-        {
-                return (ulong)(((UInt128)a * b) % modulus);
-        }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	// Reuse the direct UInt128 reduction path that dominated MulMod64Benchmarks to avoid
+	// the redundant operand modulo operations in the older fallback.
+	public static ulong MulMod64(this ulong a, ulong b, ulong modulus)
+	{
+		return (ulong)(((UInt128)a * b) % modulus);
+	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong MontgomeryMultiplyCpu(this ulong a, ulong b, ulong modulus, ulong nPrime)
@@ -566,8 +660,8 @@ public static partial class ULongExtensions
 		return result;
 	}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong Pow2MontgomeryModSingleBit(ulong exponent, in MontgomeryDivisorData divisor, bool keepMontgomery)
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static ulong Pow2MontgomeryModSingleBitKeepMontgomery(ulong exponent, in MontgomeryDivisorData divisor)
 	{
 		ulong modulus = divisor.Modulus;
 		ulong nPrime = divisor.NPrime;
@@ -591,268 +685,295 @@ public static partial class ULongExtensions
 			baseVal = baseVal.MontgomeryMultiplyCpu(baseVal, modulus, nPrime);
 		}
 
-		return keepMontgomery ? result : result.MontgomeryMultiplyCpu(1UL, modulus, nPrime);
+		return result;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static ulong Pow2MontgomeryModSingleBitConvertToStandard(ulong exponent, in MontgomeryDivisorData divisor)
+	{
+		ulong modulus = divisor.Modulus;
+		ulong nPrime = divisor.NPrime;
+		ulong result = divisor.MontgomeryOne;
+		ulong baseVal = divisor.MontgomeryTwo;
+		ulong remainingExponent = exponent;
+
+		while (remainingExponent != 0UL)
+		{
+			if ((remainingExponent & 1UL) != 0UL)
+			{
+				result = result.MontgomeryMultiplyCpu(baseVal, modulus, nPrime);
+			}
+
+			remainingExponent >>= 1;
+			if (remainingExponent == 0UL)
+			{
+				break;
+			}
+
+			baseVal = baseVal.MontgomeryMultiplyCpu(baseVal, modulus, nPrime);
+		}
+
+		return result.MontgomeryMultiplyCpu(1UL, modulus, nPrime);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static UInt128 PowMod(this ulong exponent, UInt128 modulus)
+	{
+		// EvenPerfectBitScanner starts CPU scans at p >= 138,000,000 (Program.cs),
+		// so production never routes exponent == 0 here. Keep the guard commented out
+		// for targeted micro-benchmarks.
+		// if (exponent == 0UL)
+		// {
+		//         return UInt128.One;
+		// }
+
+		// MersenneResidueAutomaton seeds q = 2 * p * k + 1 (ModuloAutomata.cs),
+		// making modulus >= 2 * p + 1 > 276,000,000 and odd on the CPU path. The
+		// modulus == 1 guard is therefore unreachable during EvenPerfectBitScanner
+		// runs.
+		// if (modulus == UInt128.One)
+		// {
+		//         return UInt128.Zero;
+		// }
+
+		// Production exponents stay above 64 bits and modulus never drops below 4
+		// for admissible divisors, so the classic doubling fallback does not
+		// trigger in scans.
+		// if (exponent < 64 || modulus < 4)
+		// {
+		//         return Pow2ByDoubling(exponent, modulus);
+		// }
+
+		// Every admissible divisor q is odd (2 * p * k + 1), preventing the
+		// power-of-two mask path from activating in production.
+		// if ((modulus & (modulus - 1)) == 0)
+		// {
+		//         UInt128 masked = UInt128.One << (int)(exponent & 127);
+		//         return masked & (modulus - 1);
+		// }
+
+		if (!ShouldUseWindowedPow2(modulus))
+		{
+			return Pow2ByDoubling(exponent, modulus);
+		}
+
+		return exponent.Pow2MontgomeryModWindowed(modulus);
 	}
 
 
+	/// <summary>
+	/// Computes 2^exponent mod modulus using a known cycle length.
+	/// </summary>
+
+	public static UInt128 PowModWithCycle(this ulong exponent, UInt128 modulus, ulong cycleLength)
+	{
+		// EvenPerfectBitScanner keeps exponent >= 138,000,000 on CPU (Program.cs),
+		// so the zero-exponent guard stays disabled outside tests.
+		// if (exponent == 0UL)
+		// {
+		//         return UInt128.One;
+		// }
+
+		// The divisor generator produces odd q = 2 * p * k + 1 (ModuloAutomata.cs),
+		// so modulus never reaches 1 in production.
+		// if (modulus == UInt128.One)
+		// {
+		//         return UInt128.Zero;
+		// }
+
+		// Every admissible divisor is odd, so the power-of-two shortcut cannot
+		// trigger while scanning real candidates.
+		// if ((modulus & (modulus - 1)) == 0)
+		// {
+		//         UInt128 masked = UInt128.One << (int)(exponent & 127);
+		//         return masked & (modulus - 1);
+		// }
+
+		bool hasCycle = cycleLength != 0UL;
+		// TODO: Replace this modulo with the cached cycle remainder produced by the divisor-cycle cache so PowModWithCycle avoids
+		// repeated `%` work, matching the ProcessEightBitWindows wins captured in Pow2MontgomeryModCycleComputationBenchmarks.
+		ulong rotationCount = hasCycle && exponent >= cycleLength ? exponent % cycleLength : exponent;
+
+		// Keep this fast path: valid divisors satisfy cycle | exponent, producing
+		// a zero remainder that means 2^exponent ≡ 1 (mod q).
+		if (hasCycle && rotationCount == 0UL)
+		{
+			return UInt128.One;
+		}
+
+		// FastDiv64 can return tiny divisors (see MersenneNumberIncrementalCpuTester),
+		// so the small-rotation fallback still fires on the CPU path.
+		if (modulus < 4 || rotationCount < 64)
+		{
+			return Pow2ByDoubling(rotationCount, modulus);
+		}
+
+		if (ShouldUseWindowedPow2(modulus))
+		{
+			UInt128 exponent128 = exponent;
+			UInt128 rotationCount128 = rotationCount;
+			return exponent128.Pow2MontgomeryModWindowedWithCycle(modulus, cycleLength, rotationCount128);
+		}
+
+		return Pow2ByDoubling(rotationCount, modulus);
+	}
+
+
+
+
+	/// <summary>
+	/// Computes 2^exponent mod modulus using a known cycle length.
+	/// </summary>
+
+	public static UInt128 PowModWithCycle(this ulong exponent, UInt128 modulus, UInt128 cycleLength)
+	{
+		// CPU scans only feed exponents >= 138,000,000 (Program.cs), so keep the
+		// zero-exponent shortcut commented out for tests.
+		// if (exponent == 0UL)
+		// {
+		//         return UInt128.One;
+		// }
+
+		// Modulus originates from q = 2 * p * k + 1 (ModuloAutomata.cs), therefore
+		// modulus == 1 never occurs outside dedicated benchmarks.
+		// if (modulus == UInt128.One)
+		// {
+		//         return UInt128.Zero;
+		// }
+
+		// Admissible q are odd, rendering the power-of-two shortcut unreachable.
+		// if ((modulus & (modulus - UInt128.One)) == UInt128.Zero)
+		// {
+		//         UInt128 masked = UInt128.One << (int)(exponent & UInt128Numbers.OneHundredTwentySeven);
+		//         return masked & (modulus - UInt128.One);
+		// }
+
+		bool hasCycle = cycleLength != UInt128.Zero;
+		UInt128 exponent128 = exponent;
+		// TODO: Swap this modulo with the upcoming UInt128 cycle remainder helper so large-exponent scans reuse cached
+		// reductions instead of recomputing `%` for every lookup, as demonstrated in Pow2MontgomeryModCycleComputationBenchmarks.
+		UInt128 rotationCount = hasCycle && exponent128 >= cycleLength ? exponent128 % cycleLength : exponent128;
+
+		if (hasCycle && rotationCount == UInt128.Zero)
+		{
+			return UInt128.One;
+		}
+
+		if (modulus < UInt128Numbers.Four || rotationCount < UInt128Numbers.SixtyFour)
+		{
+			return Pow2ByDoubling(rotationCount, modulus);
+		}
+
+		if (ShouldUseWindowedPow2(modulus))
+		{
+			return exponent128.Pow2MontgomeryModWindowedWithCycle(modulus, cycleLength, rotationCount);
+		}
+
+		return Pow2ByDoubling(rotationCount, modulus);
+	}
+
+
+
+
+	/// <summary>
+	/// Computes 2^exponent mod modulus using a known cycle length.
+	/// </summary>
+
+	public static UInt128 PowModWithCycle(this UInt128 exponent, UInt128 modulus, UInt128 cycleLength)
+	{
+		UInt128 one = UInt128.One;
+		UInt128 zero = UInt128.Zero;
+
+		// EvenPerfectBitScanner drives this path with exponents derived from p, phi,
+		// or divisor quotients, none of which are zero on the production scan.
+		// if (exponent == zero)
+		// {
+		//         return one;
+		// }
+
+		// Modulus again comes from q = 2 * p * k + 1, so modulus == 1 is unreachable.
+		// if (modulus == one)
+		// {
+		//         return zero;
+		// }
+
+		// Candidate divisors stay odd, therefore the power-of-two shortcut stays off.
+		// if ((modulus & (modulus - one)) == zero)
+		// {
+		//         UInt128 masked = one << (int)(exponent & UInt128Numbers.OneHundredTwentySeven);
+		//         return masked & (modulus - one);
+		// }
+
+		bool hasCycle = cycleLength != zero;
+		// TODO: Swap this modulo with the shared UInt128 cycle remainder helper once available so CRT powmods reuse cached
+		// reductions in the windowed ladder, avoiding the `%` cost highlighted in Pow2MontgomeryModCycleComputationBenchmarks.
+		UInt128 rotationCount = hasCycle && exponent >= cycleLength ? exponent % cycleLength : exponent;
+
+		if (hasCycle && rotationCount == zero)
+		{
+			return one;
+		}
+
+		if (modulus < UInt128Numbers.Four || rotationCount < UInt128Numbers.SixtyFour)
+		{
+			return Pow2ByDoubling(rotationCount, modulus);
+		}
+
+		if (ShouldUseWindowedPow2(modulus))
+		{
+			return exponent.Pow2MontgomeryModWindowedWithCycle(modulus, cycleLength, rotationCount);
+		}
+
+		return Pow2ByDoubling(rotationCount, modulus);
+	}
+
+
+
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static UInt128 PowMod(this ulong exponent, UInt128 modulus)
-        {
-                // EvenPerfectBitScanner starts CPU scans at p >= 138,000,000 (Program.cs),
-                // so production never routes exponent == 0 here. Keep the guard commented out
-                // for targeted micro-benchmarks.
-                // if (exponent == 0UL)
-                // {
-                //         return UInt128.One;
-                // }
+	private static bool ShouldUseWindowedPow2(UInt128 modulus) => modulus > Pow2WindowedModulusThreshold;
 
-                // MersenneResidueAutomaton seeds q = 2 * p * k + 1 (ModuloAutomata.cs),
-                // making modulus >= 2 * p + 1 > 276,000,000 and odd on the CPU path. The
-                // modulus == 1 guard is therefore unreachable during EvenPerfectBitScanner
-                // runs.
-                // if (modulus == UInt128.One)
-                // {
-                //         return UInt128.Zero;
-                // }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static UInt128 Pow2ByDoubling(ulong exponent, UInt128 modulus)
+	{
+		UInt128 result = UInt128.One;
+		for (ulong i = 0; i < exponent; i++)
+		{
+			result <<= 1;
+			while (result >= modulus)
+			{
+				result -= modulus;
+			}
+		}
 
-                // Production exponents stay above 64 bits and modulus never drops below 4
-                // for admissible divisors, so the classic doubling fallback does not
-                // trigger in scans.
-                // if (exponent < 64 || modulus < 4)
-                // {
-                //         return Pow2ByDoubling(exponent, modulus);
-                // }
+		return result;
+	}
 
-                // Every admissible divisor q is odd (2 * p * k + 1), preventing the
-                // power-of-two mask path from activating in production.
-                // if ((modulus & (modulus - 1)) == 0)
-                // {
-                //         UInt128 masked = UInt128.One << (int)(exponent & 127);
-                //         return masked & (modulus - 1);
-                // }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static UInt128 Pow2ByDoubling(UInt128 exponent, UInt128 modulus)
+	{
+		UInt128 result = UInt128.One;
+		UInt128 index = UInt128.Zero;
 
-                if (!ShouldUseWindowedPow2(modulus))
-                {
-                        return Pow2ByDoubling(exponent, modulus);
-                }
+		while (index < exponent)
+		{
+			result <<= 1;
+			while (result >= modulus)
+			{
+				result -= modulus;
+			}
 
-                return exponent.Pow2MontgomeryModWindowed(modulus);
-        }
+			index += UInt128.One;
+		}
 
-
-	/// <summary>
-	/// Computes 2^exponent mod modulus using a known cycle length.
-	/// </summary>
-        
-        public static UInt128 PowModWithCycle(this ulong exponent, UInt128 modulus, ulong cycleLength)
-        {
-                // EvenPerfectBitScanner keeps exponent >= 138,000,000 on CPU (Program.cs),
-                // so the zero-exponent guard stays disabled outside tests.
-                // if (exponent == 0UL)
-                // {
-                //         return UInt128.One;
-                // }
-
-                // The divisor generator produces odd q = 2 * p * k + 1 (ModuloAutomata.cs),
-                // so modulus never reaches 1 in production.
-                // if (modulus == UInt128.One)
-                // {
-                //         return UInt128.Zero;
-                // }
-
-                // Every admissible divisor is odd, so the power-of-two shortcut cannot
-                // trigger while scanning real candidates.
-                // if ((modulus & (modulus - 1)) == 0)
-                // {
-                //         UInt128 masked = UInt128.One << (int)(exponent & 127);
-                //         return masked & (modulus - 1);
-                // }
-
-                bool hasCycle = cycleLength != 0UL;
-                // TODO: Replace this modulo with the cached cycle remainder produced by the divisor-cycle cache so PowModWithCycle avoids
-                // repeated `%` work, matching the ProcessEightBitWindows wins captured in Pow2MontgomeryModCycleComputationBenchmarks.
-                ulong rotationCount = hasCycle && exponent >= cycleLength ? exponent % cycleLength : exponent;
-
-                // Keep this fast path: valid divisors satisfy cycle | exponent, producing
-                // a zero remainder that means 2^exponent ≡ 1 (mod q).
-                if (hasCycle && rotationCount == 0UL)
-                {
-                        return UInt128.One;
-                }
-
-                // FastDiv64 can return tiny divisors (see MersenneNumberIncrementalCpuTester),
-                // so the small-rotation fallback still fires on the CPU path.
-                if (modulus < 4 || rotationCount < 64)
-                {
-                        return Pow2ByDoubling(rotationCount, modulus);
-                }
-
-                if (ShouldUseWindowedPow2(modulus))
-                {
-                        UInt128 exponent128 = exponent;
-                        UInt128 rotationCount128 = rotationCount;
-                        return exponent128.Pow2MontgomeryModWindowedWithCycle(modulus, cycleLength, rotationCount128);
-                }
-
-                return Pow2ByDoubling(rotationCount, modulus);
-        }
-
-
-
-
-	/// <summary>
-	/// Computes 2^exponent mod modulus using a known cycle length.
-	/// </summary>
-        
-        public static UInt128 PowModWithCycle(this ulong exponent, UInt128 modulus, UInt128 cycleLength)
-        {
-                // CPU scans only feed exponents >= 138,000,000 (Program.cs), so keep the
-                // zero-exponent shortcut commented out for tests.
-                // if (exponent == 0UL)
-                // {
-                //         return UInt128.One;
-                // }
-
-                // Modulus originates from q = 2 * p * k + 1 (ModuloAutomata.cs), therefore
-                // modulus == 1 never occurs outside dedicated benchmarks.
-                // if (modulus == UInt128.One)
-                // {
-                //         return UInt128.Zero;
-                // }
-
-                // Admissible q are odd, rendering the power-of-two shortcut unreachable.
-                // if ((modulus & (modulus - UInt128.One)) == UInt128.Zero)
-                // {
-                //         UInt128 masked = UInt128.One << (int)(exponent & UInt128Numbers.OneHundredTwentySeven);
-                //         return masked & (modulus - UInt128.One);
-                // }
-
-                bool hasCycle = cycleLength != UInt128.Zero;
-                UInt128 exponent128 = exponent;
-                // TODO: Swap this modulo with the upcoming UInt128 cycle remainder helper so large-exponent scans reuse cached
-                // reductions instead of recomputing `%` for every lookup, as demonstrated in Pow2MontgomeryModCycleComputationBenchmarks.
-                UInt128 rotationCount = hasCycle && exponent128 >= cycleLength ? exponent128 % cycleLength : exponent128;
-
-                if (hasCycle && rotationCount == UInt128.Zero)
-                {
-                        return UInt128.One;
-                }
-
-                if (modulus < UInt128Numbers.Four || rotationCount < UInt128Numbers.SixtyFour)
-                {
-                        return Pow2ByDoubling(rotationCount, modulus);
-                }
-
-                if (ShouldUseWindowedPow2(modulus))
-                {
-                        return exponent128.Pow2MontgomeryModWindowedWithCycle(modulus, cycleLength, rotationCount);
-                }
-
-                return Pow2ByDoubling(rotationCount, modulus);
-        }
-
-
-
-
-	/// <summary>
-	/// Computes 2^exponent mod modulus using a known cycle length.
-	/// </summary>
-        
-        public static UInt128 PowModWithCycle(this UInt128 exponent, UInt128 modulus, UInt128 cycleLength)
-        {
-                UInt128 one = UInt128.One;
-                UInt128 zero = UInt128.Zero;
-
-                // EvenPerfectBitScanner drives this path with exponents derived from p, phi,
-                // or divisor quotients, none of which are zero on the production scan.
-                // if (exponent == zero)
-                // {
-                //         return one;
-                // }
-
-                // Modulus again comes from q = 2 * p * k + 1, so modulus == 1 is unreachable.
-                // if (modulus == one)
-                // {
-                //         return zero;
-                // }
-
-                // Candidate divisors stay odd, therefore the power-of-two shortcut stays off.
-                // if ((modulus & (modulus - one)) == zero)
-                // {
-                //         UInt128 masked = one << (int)(exponent & UInt128Numbers.OneHundredTwentySeven);
-                //         return masked & (modulus - one);
-                // }
-
-                bool hasCycle = cycleLength != zero;
-                // TODO: Swap this modulo with the shared UInt128 cycle remainder helper once available so CRT powmods reuse cached
-                // reductions in the windowed ladder, avoiding the `%` cost highlighted in Pow2MontgomeryModCycleComputationBenchmarks.
-                UInt128 rotationCount = hasCycle && exponent >= cycleLength ? exponent % cycleLength : exponent;
-
-                if (hasCycle && rotationCount == zero)
-                {
-                        return one;
-                }
-
-                if (modulus < UInt128Numbers.Four || rotationCount < UInt128Numbers.SixtyFour)
-                {
-                        return Pow2ByDoubling(rotationCount, modulus);
-                }
-
-                if (ShouldUseWindowedPow2(modulus))
-                {
-                        return exponent.Pow2MontgomeryModWindowedWithCycle(modulus, cycleLength, rotationCount);
-                }
-
-                return Pow2ByDoubling(rotationCount, modulus);
-        }
-
-
-
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ShouldUseWindowedPow2(UInt128 modulus) => modulus > Pow2WindowedModulusThreshold;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static UInt128 Pow2ByDoubling(ulong exponent, UInt128 modulus)
-        {
-                UInt128 result = UInt128.One;
-                for (ulong i = 0; i < exponent; i++)
-                {
-                        result <<= 1;
-                        while (result >= modulus)
-                        {
-                                result -= modulus;
-                        }
-                }
-
-                return result;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static UInt128 Pow2ByDoubling(UInt128 exponent, UInt128 modulus)
-        {
-                UInt128 result = UInt128.One;
-                UInt128 index = UInt128.Zero;
-
-                while (index < exponent)
-                {
-                        result <<= 1;
-                        while (result >= modulus)
-                        {
-                                result -= modulus;
-                        }
-
-                        index += UInt128.One;
-                }
-
-                return result;
-        }
+		return result;
+	}
 
 	/// <summary>
 	/// Computes 2^exponent mod modulus using iterative CRT composition from mod 10 up to modulus.
 	/// Only for modulus >= 10 and reasonable size.
 	/// </summary>
-	public static UInt128 PowModCrt(this ulong exponent, PrimeOrderCalculatorAccelerator gpu, UInt128 modulus, MersenneDivisorCycles cycles)
+	public static UInt128 PowModCrtCpu(this ulong exponent, UInt128 modulus)
 	{
 		if (modulus < 10)
 			return PowMod(exponent, modulus); // fallback to classic
@@ -867,7 +988,95 @@ public static partial class ULongExtensions
 
 		for (; modulusCandidate <= modulus; modulusCandidate++)
 		{
-			cycle = MersenneDivisorCycles.GetCycle(gpu, modulusCandidate);
+			cycle = MersenneDivisorCycles.GetCycleCpu(modulusCandidate);
+			remainderForCandidate = cycle > zero
+					? PowModWithCycle(exponent, modulusCandidate, cycle)
+					: PowMod(exponent, modulusCandidate);
+
+			// Solve x ≡ result mod currentModulus
+			//      x ≡ remM   mod m
+			// Find x mod (currentModulus * m)
+			// Since currentModulus and m are coprime, use CRT:
+			// x = result + currentModulus * t, where t ≡ (remM - result) * inv(currentModulus, m) mod m
+
+			// TODO: Replace this `% modulusCandidate` with the cached residue helper derived from Mod10_8_5_3Benchmarks so CRT
+			// composition avoids repeated modulo divisions when combining residues for large divisor sets.
+			result += currentModulus * ((remainderForCandidate + modulusCandidate - (result % modulusCandidate)) * ModInverse(currentModulus, modulusCandidate) % modulusCandidate);
+			currentModulus *= modulusCandidate;
+
+			if (currentModulus >= modulus)
+				break;
+		}
+
+		// TODO: Swap this final `% modulus` with the pooled remainder cache so the CRT result write-back avoids one more division,
+		// aligning with the optimizations captured in Mod10_8_5_3Benchmarks.
+		return result % modulus;
+	}
+
+	/// <summary>
+	/// Computes 2^exponent mod modulus using iterative CRT composition from mod 10 up to modulus.
+	/// Only for modulus >= 10 and reasonable size.
+	/// </summary>
+	public static UInt128 PowModCrtGpu(this ulong exponent, PrimeOrderCalculatorAccelerator gpu, UInt128 modulus)
+	{
+		if (modulus < 10)
+			return PowMod(exponent, modulus); // fallback to classic
+
+		// Use cycle length 4 for mod 10
+		UInt128 currentModulus = 10,
+				cycle,
+				modulusCandidate = 11,
+				remainderForCandidate,
+				result = PowModWithCycle(exponent, 10, 4),
+				zero = UInt128.Zero;
+
+		for (; modulusCandidate <= modulus; modulusCandidate++)
+		{
+			cycle = MersenneDivisorCycles.GetCycleGpu(gpu, modulusCandidate);
+			remainderForCandidate = cycle > zero
+					? PowModWithCycle(exponent, modulusCandidate, cycle)
+					: PowMod(exponent, modulusCandidate);
+
+			// Solve x ≡ result mod currentModulus
+			//      x ≡ remM   mod m
+			// Find x mod (currentModulus * m)
+			// Since currentModulus and m are coprime, use CRT:
+			// x = result + currentModulus * t, where t ≡ (remM - result) * inv(currentModulus, m) mod m
+
+			// TODO: Replace this `% modulusCandidate` with the cached residue helper derived from Mod10_8_5_3Benchmarks so CRT
+			// composition avoids repeated modulo divisions when combining residues for large divisor sets.
+			result += currentModulus * ((remainderForCandidate + modulusCandidate - (result % modulusCandidate)) * ModInverse(currentModulus, modulusCandidate) % modulusCandidate);
+			currentModulus *= modulusCandidate;
+
+			if (currentModulus >= modulus)
+				break;
+		}
+
+		// TODO: Swap this final `% modulus` with the pooled remainder cache so the CRT result write-back avoids one more division,
+		// aligning with the optimizations captured in Mod10_8_5_3Benchmarks.
+		return result % modulus;
+	}
+
+	/// <summary>
+	/// Computes 2^exponent mod modulus using iterative CRT composition from mod 10 up to modulus.
+	/// Only for modulus >= 10 and reasonable size.
+	/// </summary>
+	public static UInt128 PowModCrtHybrid(this ulong exponent, PrimeOrderCalculatorAccelerator gpu, UInt128 modulus)
+	{
+		if (modulus < 10)
+			return PowMod(exponent, modulus); // fallback to classic
+
+		// Use cycle length 4 for mod 10
+		UInt128 currentModulus = 10,
+				cycle,
+				modulusCandidate = 11,
+				remainderForCandidate,
+				result = PowModWithCycle(exponent, 10, 4),
+				zero = UInt128.Zero;
+
+		for (; modulusCandidate <= modulus; modulusCandidate++)
+		{
+			cycle = MersenneDivisorCycles.GetCycleHybrid(gpu, modulusCandidate);
 			remainderForCandidate = cycle > zero
 					? PowModWithCycle(exponent, modulusCandidate, cycle)
 					: PowMod(exponent, modulusCandidate);
@@ -927,7 +1136,7 @@ public static partial class ULongExtensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool SharesFactorWithExponentMinusOne(this ulong exponent, PrimeOrderCalculatorAccelerator gpu)
+	public static bool SharesFactorWithExponentMinusOneCpu(this ulong exponent)
 	{
 		ulong prime, value = exponent - 1UL;
 		value >>= BitOperations.TrailingZeroCount(value);
@@ -943,7 +1152,7 @@ public static partial class ULongExtensions
 				continue;
 			}
 
-			if (exponent % prime.CalculateOrder(gpu) == 0UL)
+			if (exponent % prime.CalculateOrderCpu() == 0UL)
 			{
 				return true;
 			}
@@ -955,7 +1164,81 @@ public static partial class ULongExtensions
 			while (value % prime == 0UL);
 		}
 
-		if (value > 1UL && exponent % value.CalculateOrder(gpu) == 0UL)
+		if (value > 1UL && exponent % value.CalculateOrderCpu() == 0UL)
+		{
+			return true;
+		}
+
+		return false;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool SharesFactorWithExponentMinusOneGpu(this ulong exponent, PrimeOrderCalculatorAccelerator gpu)
+	{
+		ulong prime, value = exponent - 1UL;
+		value >>= BitOperations.TrailingZeroCount(value);
+		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
+		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
+		int i = 1, smallPrimesLength = smallPrimes.Length;
+
+		for (; i < smallPrimesLength && smallPrimesPow2[i] <= value; i++)
+		{
+			prime = smallPrimes[i];
+			if (value % prime != 0UL)
+			{
+				continue;
+			}
+
+			if (exponent % prime.CalculateOrderGpu(gpu) == 0UL)
+			{
+				return true;
+			}
+
+			do
+			{
+				value /= prime;
+			}
+			while (value % prime == 0UL);
+		}
+
+		if (value > 1UL && exponent % value.CalculateOrderGpu(gpu) == 0UL)
+		{
+			return true;
+		}
+
+		return false;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool SharesFactorWithExponentMinusOneHybrid(this ulong exponent, PrimeOrderCalculatorAccelerator gpu)
+	{
+		ulong prime, value = exponent - 1UL;
+		value >>= BitOperations.TrailingZeroCount(value);
+		uint[] smallPrimes = PrimesGenerator.SmallPrimes;
+		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
+		int i = 1, smallPrimesLength = smallPrimes.Length;
+
+		for (; i < smallPrimesLength && smallPrimesPow2[i] <= value; i++)
+		{
+			prime = smallPrimes[i];
+			if (value % prime != 0UL)
+			{
+				continue;
+			}
+
+			if (exponent % prime.CalculateOrderHybrid(gpu) == 0UL)
+			{
+				return true;
+			}
+
+			do
+			{
+				value /= prime;
+			}
+			while (value % prime == 0UL);
+		}
+
+		if (value > 1UL && exponent % value.CalculateOrderHybrid(gpu) == 0UL)
 		{
 			return true;
 		}

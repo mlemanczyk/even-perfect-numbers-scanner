@@ -32,7 +32,7 @@ public class Pow2MontgomeryModWindowedKeepMontgomeryCpuBenchmarks
         for (int i = 0; i < cases.Length; i++)
         {
             ref readonly Pow2MontgomeryModWindowedBenchmarkCase current = ref cases[i];
-            checksum ^= current.Exponent.Pow2MontgomeryModWindowedCpu(current.Divisor, keepMontgomery: false);
+            checksum ^= current.Exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(current.Divisor);
         }
 
         return checksum;
@@ -50,7 +50,7 @@ public class Pow2MontgomeryModWindowedKeepMontgomeryCpuBenchmarks
         for (int i = 0; i < cases.Length; i++)
         {
             ref readonly Pow2MontgomeryModWindowedBenchmarkCase current = ref cases[i];
-            checksum ^= current.Exponent.Pow2MontgomeryModWindowedCpu(current.Divisor, keepMontgomery: true);
+            checksum ^= current.Exponent.Pow2MontgomeryModWindowedKeepMontgomeryCpu(current.Divisor);
         }
 
         return checksum;
@@ -68,7 +68,7 @@ public class Pow2MontgomeryModWindowedKeepMontgomeryCpuBenchmarks
         for (int i = 0; i < cases.Length; i++)
         {
             ref readonly Pow2MontgomeryModWindowedBenchmarkCase current = ref cases[i];
-            checksum ^= current.Exponent.Pow2MontgomeryModWithCycleCpu(current.CycleLength, current.Divisor);
+            checksum ^= current.Exponent.Pow2MontgomeryModWithCycleConvertToStandardCpu(current.CycleLength, current.Divisor);
         }
 
         return checksum;

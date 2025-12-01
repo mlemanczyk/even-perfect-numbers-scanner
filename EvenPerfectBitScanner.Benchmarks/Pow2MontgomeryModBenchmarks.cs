@@ -39,7 +39,7 @@ public class Pow2MontgomeryModBenchmarks
 			ulong smallModulus = NextSmallOddModulus();
 			_smallDivisors[i] = CreateMontgomeryDivisorData(smallModulus);
 			_smallExponents[i] = NextSmallExponent();
-			_smallCycles[i] = MersenneDivisorCycles.CalculateCycleLength(gpu, smallModulus, MontgomeryDivisorDataPool.Shared.FromModulus(smallModulus));
+			_smallCycles[i] = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, smallModulus, MontgomeryDivisorDataPool.Shared.FromModulus(smallModulus));
 
 			Console.WriteLine($"Calculating large cycle {i + 1} with heuristics");
 			(ulong largeModulus, ulong largeCycle) = NextLargeModulusAndCycle();
@@ -62,7 +62,7 @@ public class Pow2MontgomeryModBenchmarks
 
 		for (int i = 0; i < SampleCount; i++)
 		{
-			checksum ^= exponents[i].Pow2MontgomeryModWindowedCpu(divisors[i], keepMontgomery: false);
+			checksum ^= exponents[i].Pow2MontgomeryModWindowedConvertToStandardCpu(divisors[i]);
 		}
 
 		return checksum;
@@ -100,7 +100,7 @@ public class Pow2MontgomeryModBenchmarks
 
 		for (int i = 0; i < SampleCount; i++)
 		{
-			checksum ^= exponents[i].Pow2MontgomeryModWithCycleCpu(cycles[i], divisors[i]);
+			checksum ^= exponents[i].Pow2MontgomeryModWithCycleConvertToStandardCpu(cycles[i], divisors[i]);
 		}
 
 		return checksum;

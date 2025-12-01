@@ -45,13 +45,12 @@ public class PrimeOrderCalculatorTests
 		ulong expected = ComputeOrderByDoubling(prime);
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 
-		ulong result = PrimeOrderCalculator.Calculate(
+		ulong result = PrimeOrderCalculator.CalculateGpu(
 			gpu,
 			prime,
 			previousOrder: null,
 			MontgomeryDivisorDataPool.Shared.FromModulus(prime),
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 
@@ -66,21 +65,19 @@ public class PrimeOrderCalculatorTests
 		ulong previousOrder = ComputeOrderByDoubling(previousPrime);
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		ulong heuristic = PrimeOrderCalculator.Calculate(
+		ulong heuristic = PrimeOrderCalculator.CalculateGpu(
 			gpu,
 			prime,
 			previousOrder,
 			MontgomeryDivisorDataPool.Shared.FromModulus(prime),
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-				  PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
-		ulong strict = PrimeOrderCalculator.Calculate(
+		ulong strict = PrimeOrderCalculator.CalculateGpu(
 			gpu,
 			prime,
 			previousOrder: null,
 			MontgomeryDivisorDataPool.Shared.FromModulus(prime),
-			PrimeOrderCalculator.PrimeOrderSearchConfig.StrictDefault,
-				  PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
+			PrimeOrderCalculator.PrimeOrderSearchConfig.StrictDefault);
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 
@@ -94,13 +91,12 @@ public class PrimeOrderCalculatorTests
 	public void Calculate_handles_trivial_primes(ulong prime, ulong expectedOrder)
 	{
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		ulong result = PrimeOrderCalculator.Calculate(
+		ulong result = PrimeOrderCalculator.CalculateGpu(
 			gpu,
 			prime,
 			previousOrder: null,
 			MontgomeryDivisorDataPool.Shared.FromModulus(prime),
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-				  PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 		result.Should().Be(expectedOrder);
@@ -117,13 +113,12 @@ public class PrimeOrderCalculatorTests
 			mode: PrimeOrderCalculator.PrimeOrderMode.Heuristic);
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		ulong result = PrimeOrderCalculator.Calculate(
+		ulong result = PrimeOrderCalculator.CalculateGpu(
 			gpu,
 			prime: 13UL,
 			previousOrder: null,
 			MontgomeryDivisorDataPool.Shared.FromModulus(13UL),
-			config,
-				  PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
+			config);
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 		result.Should().Be(ComputeOrderByDoubling(13UL));
@@ -143,13 +138,12 @@ public class PrimeOrderCalculatorTests
 		try
 		{
 			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(239UL);
-			ulong heuristic = PrimeOrderCalculator.Calculate(
+			ulong heuristic = PrimeOrderCalculator.CalculateGpu(
 				gpu,
 				prime: 239UL,
 				previousOrder: null,
 				divisorData,
-				heuristicConfig,
-					  PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
+				heuristicConfig);
 
 			heuristic.Should().Be(ComputeOrderByDoubling(239UL));
 
@@ -159,13 +153,12 @@ public class PrimeOrderCalculatorTests
 				maxPowChecks: 1,
 				mode: PrimeOrderCalculator.PrimeOrderMode.Strict);
 
-			ulong strict = PrimeOrderCalculator.Calculate(
+			ulong strict = PrimeOrderCalculator.CalculateGpu(
 				gpu,
 				prime: 239UL,
 				previousOrder: null,
 				divisorData,
-				strictConfig,
-					  PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
+				strictConfig);
 
 			strict.Should().Be(heuristic);
 		}
@@ -182,12 +175,11 @@ public class PrimeOrderCalculatorTests
 		UInt128 prime = UInt128.Parse("18446744073709641691");
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		UInt128 result = PrimeOrderCalculator.Calculate(
+		UInt128 result = PrimeOrderCalculator.CalculateGpu(
 				gpu,
 				prime,
 				previousOrder: null,
-				PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-				PrimeOrderCalculator.PrimeOrderHeuristicDevice.Gpu);
+				PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 		result.Should().Be((UInt128)1229782938247309446UL);
@@ -201,7 +193,7 @@ public class PrimeOrderCalculatorTests
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			var mersenneDivisorCycles = MersenneDivisorCycles.GetCycle(gpu, prime).Should().Be((UInt128)1229782938247309446UL);
+			var mersenneDivisorCycles = MersenneDivisorCycles.GetCycleGpu(gpu, prime).Should().Be((UInt128)1229782938247309446UL);
 		}
 		finally
 		{

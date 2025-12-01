@@ -542,7 +542,7 @@ public class ProgramTests
 
         string output = writer.ToString();
         output.Should().Contain("Usage:");
-        output.Should().Contain("--mersenne-device=cpu|gpu");
+        output.Should().Contain("--mersenne-device=cpu|gpu|hybrid");
         output.Should().Contain("--primes-device=cpu|gpu");
     }
 }

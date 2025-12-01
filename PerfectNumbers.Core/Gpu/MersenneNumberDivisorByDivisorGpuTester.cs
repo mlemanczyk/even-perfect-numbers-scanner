@@ -511,13 +511,12 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		return composite;
 	}
 
-
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static ulong ResolveDivisorCycle(PrimeOrderCalculatorAccelerator gpu, ulong divisor, ulong prime, in MontgomeryDivisorData divisorData)
 	{
-		if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(gpu, divisor, prime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
+		if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentGpu(gpu, divisor, prime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
 		{
-			return MersenneDivisorCycles.CalculateCycleLength(gpu, divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
+			return MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
 		}
 
 		return computedCycle;
@@ -729,9 +728,9 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			var gpu = _primeOrderCalculatorAccelerator;
 			if (cycle == 0UL)
 			{
-				if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(gpu, divisor, firstPrime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
+				if (!MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(divisor, firstPrime, divisorData, out ulong computedCycle, out bool primeOrderFailed) || computedCycle == 0UL)
 				{
-					cycle = MersenneDivisorCycles.CalculateCycleLength(gpu, divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
+					cycle = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
 				}
 				else
 				{

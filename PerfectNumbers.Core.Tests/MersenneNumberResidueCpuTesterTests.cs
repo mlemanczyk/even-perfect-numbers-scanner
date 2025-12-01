@@ -25,15 +25,8 @@ public class MersenneNumberResidueCpuTesterTests
 	private static void RunCase(MersenneNumberResidueCpuTester tester, ulong exponent, ulong maxK, bool expectedPrime)
 	{
 		bool isPrime = true;
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		try
-		{
-			tester.Scan(gpu, exponent, (UInt128)exponent << 1, GetLastDigit(exponent), (UInt128)maxK, ref isPrime);
-			isPrime.Should().Be(expectedPrime);
-		}
-		finally
-		{
-			PrimeOrderCalculatorAccelerator.Return(gpu);
-		}
+		tester.Scan(exponent, (UInt128)exponent << 1, GetLastDigit(exponent), (UInt128)maxK, ref isPrime);
+
+		isPrime.Should().Be(expectedPrime);
 	}
 }

@@ -28,18 +28,18 @@ public class Pow2ModBenchmarks
 	private const long OneShiftedLeft60 = 1L << 60;
 	private const ulong Pow2WindowFallbackThreshold = 32UL;
 
-	private MontgomeryDivisorData[] _smallDivisors = Array.Empty<MontgomeryDivisorData>();
-	private MontgomeryDivisorData[] _largeDivisors = Array.Empty<MontgomeryDivisorData>();
-	private MontgomeryDivisorData[] _veryLargeDivisors = Array.Empty<MontgomeryDivisorData>();
-	private UInt128[] _wideModuli = Array.Empty<UInt128>();
-	private UInt128[] _wideExponents = Array.Empty<UInt128>();
-	private ulong[] _smallExponents = Array.Empty<ulong>();
-	private ulong[] _largeExponents = Array.Empty<ulong>();
-	private ulong[] _veryLargeExponents = Array.Empty<ulong>();
-	private ulong[] _smallCycles = Array.Empty<ulong>();
-	private ulong[] _largeCycles = Array.Empty<ulong>();
-	private ulong[] _veryLargeCycles = Array.Empty<ulong>();
-	private UInt128[] _wideCycles = Array.Empty<UInt128>();
+	private MontgomeryDivisorData[] _smallDivisors = [];
+	private MontgomeryDivisorData[] _largeDivisors = [];
+	private MontgomeryDivisorData[] _veryLargeDivisors = [];
+	private UInt128[] _wideModuli = [];
+	private UInt128[] _wideExponents = [];
+	private ulong[] _smallExponents = [];
+	private ulong[] _largeExponents = [];
+	private ulong[] _veryLargeExponents = [];
+	private ulong[] _smallCycles = [];
+	private ulong[] _largeCycles = [];
+	private ulong[] _veryLargeCycles = [];
+	private UInt128[] _wideCycles = [];
 	private ulong? _previousPrimeOrder;
 	private UInt128? _previousWidePrimeOrder;
 
@@ -82,7 +82,7 @@ public class Pow2ModBenchmarks
 
 		for (int i = 0; i < SampleCount; i++)
 		{
-			checksum ^= exponents[i].Pow2MontgomeryModWindowedCpu(divisors[i], keepMontgomery: false);
+			checksum ^= exponents[i].Pow2MontgomeryModWindowedConvertToStandardCpu(divisors[i]);
 		}
 
 		return checksum;
@@ -120,7 +120,7 @@ public class Pow2ModBenchmarks
 
 		for (int i = 0; i < SampleCount; i++)
 		{
-			checksum ^= exponents[i].Pow2MontgomeryModWithCycleCpu(cycles[i], divisors[i]);
+			checksum ^= exponents[i].Pow2MontgomeryModWithCycleConvertToStandardCpu(cycles[i], divisors[i]);
 		}
 
 		return checksum;
@@ -162,7 +162,7 @@ public class Pow2ModBenchmarks
 		for (int i = 0; i < SampleCount; i++)
 		{
 			ulong cycle = MersenneDivisorCycles.CalculateCycleLengthGpu(divisors[i].Modulus);
-			checksum ^= exponents[i].Pow2MontgomeryModWithCycleCpu(cycle, divisors[i]);
+			checksum ^= exponents[i].Pow2MontgomeryModWithCycleConvertToStandardCpu(cycle, divisors[i]);
 		}
 
 		return checksum;
@@ -200,8 +200,8 @@ public class Pow2ModBenchmarks
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		for (int i = 0; i < SampleCount; i++)
 		{
-			ulong cycle = CalculateCycleLengthWithHeuristics(gpu, divisors[i].Modulus);
-			checksum ^= exponents[i].Pow2MontgomeryModWithCycleCpu(cycle, divisors[i]);
+			ulong cycle = CalculateCycleLengthWithHeuristicsCpu(divisors[i].Modulus);
+			checksum ^= exponents[i].Pow2MontgomeryModWithCycleConvertToStandardCpu(cycle, divisors[i]);
 		}
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
@@ -221,7 +221,7 @@ public class Pow2ModBenchmarks
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		for (int i = 0; i < SampleCount; i++)
 		{
-			ulong cycle = CalculateCycleLengthWithHeuristics(gpu, divisors[i].Modulus);
+			ulong cycle = CalculateCycleLengthWithHeuristicsGpu(gpu, divisors[i].Modulus);
 			checksum ^= exponents[i].Pow2MontgomeryModWithCycleGpu(gpu, cycle, divisors[i]);
 		}
 
@@ -230,14 +230,30 @@ public class Pow2ModBenchmarks
 	}
 
 	[Benchmark]
-	public UInt128 HeuristicWideCycleComputation()
+	public UInt128 HeuristicWideCycleComputationCpu()
 	{
 		UInt128 checksum = UInt128.Zero;
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		for (int i = 0; i < SampleCount; i++)
 		{
-			UInt128 cycle = CalculateCycleLengthWithHeuristics(gpu, _wideModuli[i]);
+			UInt128 cycle = CalculateCycleLengthWithHeuristicsCpu(_wideModuli[i]);
+			checksum ^= cycle;
+		}
+
+		PrimeOrderCalculatorAccelerator.Return(gpu);
+		return checksum;
+	}
+
+	[Benchmark]
+	public UInt128 HeuristicWideCycleComputationGpu()
+	{
+		UInt128 checksum = UInt128.Zero;
+
+		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		for (int i = 0; i < SampleCount; i++)
+		{
+			UInt128 cycle = CalculateCycleLengthWithHeuristicsGpu(gpu, _wideModuli[i]);
 			checksum ^= cycle;
 		}
 
@@ -484,7 +500,7 @@ public class Pow2ModBenchmarks
 				Console.WriteLine($"Calculating small cycle {smallModulus}");
 				smallDivisors[i] = CreateMontgomeryDivisorData(smallModulus);
 				smallExponents[i] = NextSmallExponent(random);
-				smallCycles[i] = MersenneDivisorCycles.CalculateCycleLength(gpu, smallModulus, MontgomeryDivisorDataPool.Shared.FromModulus(smallModulus));
+				smallCycles[i] = MersenneDivisorCycles.CalculateCycleLengthCpu(smallModulus, MontgomeryDivisorDataPool.Shared.FromModulus(smallModulus));
 
 				(ulong largeModulus, ulong largeCycle) = NextLargeModulusAndCycle(random);
 				Console.WriteLine($"Calculating large cycle {largeModulus}");
@@ -496,13 +512,13 @@ public class Pow2ModBenchmarks
 				Console.WriteLine($"Calculating very large cycle {veryLargeModulus} with heuristics");
 				veryLargeDivisors[i] = CreateMontgomeryDivisorData(veryLargeModulus);
 				veryLargeExponents[i] = NextVeryLargeExponent(heuristicRandom);
-				veryLargeCycles[i] = CalculateCycleLengthWithHeuristics(gpu, veryLargeModulus, ref previousPrimeOrder);
+				veryLargeCycles[i] = CalculateCycleLengthWithHeuristicsCpu(veryLargeModulus, ref previousPrimeOrder);
 
 				UInt128 wideModulus = NextWideOddModulus(wideRandom);
 				Console.WriteLine($"Calculating wide cycle {wideModulus} with heuristics");
 				wideModuli[i] = wideModulus;
 				wideExponents[i] = NextWideExponent(wideRandom);
-				wideCycles[i] = CalculateCycleLengthWithHeuristics(gpu, wideModulus, ref previousWidePrimeOrder);
+				wideCycles[i] = CalculateCycleLengthWithHeuristicsCpu(wideModulus, ref previousWidePrimeOrder);
 			}
 
 			SampleCollections collections = new SampleCollections(
@@ -595,21 +611,19 @@ public class Pow2ModBenchmarks
 			return ((UInt128)high << 64) | low;
 		}
 
-		private static ulong CalculateCycleLengthWithHeuristics(PrimeOrderCalculatorAccelerator gpu, ulong modulus, ref ulong? previousPrimeOrder)
+		private static ulong CalculateCycleLengthWithHeuristicsCpu(ulong modulus, ref ulong? previousPrimeOrder)
 		{
 			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(modulus);
 			if (modulus <= 1UL || (modulus & 1UL) == 0UL)
 			{
-				return MersenneDivisorCycles.CalculateCycleLength(gpu, modulus, divisorData);
+				return MersenneDivisorCycles.CalculateCycleLengthCpu(modulus, divisorData);
 			}
 
-			ulong order = PrimeOrderCalculator.Calculate(
-				gpu,
+			ulong order = PrimeOrderCalculator.CalculateCpu(
 				modulus,
 				previousPrimeOrder,
 				divisorData,
-				PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-				PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
+				PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
 			if (order != 0UL)
 			{
@@ -618,22 +632,20 @@ public class Pow2ModBenchmarks
 			}
 
 			previousPrimeOrder = null;
-			return MersenneDivisorCycles.CalculateCycleLength(gpu, modulus, divisorData);
+			return MersenneDivisorCycles.CalculateCycleLengthCpu(modulus, divisorData);
 		}
 
-		private static UInt128 CalculateCycleLengthWithHeuristics(PrimeOrderCalculatorAccelerator gpu, UInt128 modulus, ref UInt128? previousWidePrimeOrder)
+		private static UInt128 CalculateCycleLengthWithHeuristicsCpu(UInt128 modulus, ref UInt128? previousWidePrimeOrder)
 		{
 			if (modulus <= UInt128.One || (modulus & UInt128.One) == UInt128.Zero)
 			{
-				return MersenneDivisorCycles.GetCycle(gpu, modulus);
+				return MersenneDivisorCycles.GetCycleCpu(modulus);
 			}
 
-			UInt128 order = PrimeOrderCalculator.Calculate(
-				gpu,
+			UInt128 order = PrimeOrderCalculator.CalculateCpu(
 				modulus,
 				previousWidePrimeOrder,
-				PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-				PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
+				PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
 			if (order != UInt128.Zero)
 			{
@@ -642,7 +654,7 @@ public class Pow2ModBenchmarks
 			}
 
 			previousWidePrimeOrder = null;
-			return MersenneDivisorCycles.GetCycle(gpu, modulus);
+			return MersenneDivisorCycles.GetCycleCpu(modulus);
 		}
 	}
 
@@ -666,24 +678,22 @@ public class Pow2ModBenchmarks
 			montgomeryTwoSquared);
 	}
 
-	private ulong CalculateCycleLengthWithHeuristics(PrimeOrderCalculatorAccelerator gpu, ulong modulus, ulong fallbackOrder = 0UL)
+	private ulong CalculateCycleLengthWithHeuristicsCpu(ulong modulus, ulong fallbackOrder = 0UL)
 	{
 		MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(modulus);
 		if (modulus <= 1UL || (modulus & 1UL) == 0UL)
 		{
-			return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLength(gpu, modulus, divisorData);
+			return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLengthCpu(modulus, divisorData);
 		}
 
 #if DEBUG
 		Console.WriteLine("Trying heuristic. Prime order calculation");
 #endif
-		ulong order = PrimeOrderCalculator.Calculate(
-			gpu,
+		ulong order = PrimeOrderCalculator.CalculateCpu(
 			modulus,
 			_previousPrimeOrder,
 			divisorData,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
 		if (order != 0UL)
 		{
@@ -694,25 +704,53 @@ public class Pow2ModBenchmarks
 		_previousPrimeOrder = null;
 
 		Console.WriteLine($"Heuristic failed for {modulus}, falling back to full cycle calculation");
-		return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLength(gpu, modulus, divisorData);
+		return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLengthCpu(modulus, divisorData);
 	}
 
-	private UInt128 CalculateCycleLengthWithHeuristics(PrimeOrderCalculatorAccelerator gpu, UInt128 modulus)
+	private ulong CalculateCycleLengthWithHeuristicsGpu(PrimeOrderCalculatorAccelerator gpu, ulong modulus, ulong fallbackOrder = 0UL)
+	{
+		MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(modulus);
+		if (modulus <= 1UL || (modulus & 1UL) == 0UL)
+		{
+			return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, modulus, divisorData);
+		}
+
+#if DEBUG
+		Console.WriteLine("Trying heuristic. Prime order calculation");
+#endif
+		ulong order = PrimeOrderCalculator.CalculateGpu(
+			gpu,
+			modulus,
+			_previousPrimeOrder,
+			divisorData,
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+
+		if (order != 0UL)
+		{
+			_previousPrimeOrder = order;
+			return order;
+		}
+
+		_previousPrimeOrder = null;
+
+		Console.WriteLine($"Heuristic failed for {modulus}, falling back to full cycle calculation");
+		return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, modulus, divisorData);
+	}
+
+	private UInt128 CalculateCycleLengthWithHeuristicsCpu(UInt128 modulus)
 	{
 		if (modulus <= UInt128.One || (modulus & UInt128.One) == UInt128.Zero)
 		{
-			return MersenneDivisorCycles.GetCycle(gpu, modulus);
+			return MersenneDivisorCycles.GetCycleCpu(modulus);
 		}
 
 #if DEBUG
 		Console.WriteLine("Trying heuristic. Wide prime order calculation");
 #endif
-		UInt128 order = PrimeOrderCalculator.Calculate(
-			gpu,
+		UInt128 order = PrimeOrderCalculator.CalculateCpu(
 			modulus,
 			_previousWidePrimeOrder,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault,
-			PrimeOrderCalculator.PrimeOrderHeuristicDevice.Cpu);
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
 
 		if (order != UInt128.Zero)
 		{
@@ -723,7 +761,35 @@ public class Pow2ModBenchmarks
 		_previousWidePrimeOrder = null;
 
 		Console.WriteLine($"Wide heuristic failed for {modulus}, falling back to full cycle calculation");
-		return MersenneDivisorCycles.GetCycle(gpu, modulus);
+		return MersenneDivisorCycles.GetCycleCpu(modulus);
+	}
+
+	private UInt128 CalculateCycleLengthWithHeuristicsGpu(PrimeOrderCalculatorAccelerator gpu, UInt128 modulus)
+	{
+		if (modulus <= UInt128.One || (modulus & UInt128.One) == UInt128.Zero)
+		{
+			return MersenneDivisorCycles.GetCycleGpu(gpu, modulus);
+		}
+
+#if DEBUG
+		Console.WriteLine("Trying heuristic. Wide prime order calculation");
+#endif
+		UInt128 order = PrimeOrderCalculator.CalculateGpu(
+			gpu,
+			modulus,
+			_previousWidePrimeOrder,
+			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+
+		if (order != UInt128.Zero)
+		{
+			_previousWidePrimeOrder = order;
+			return order;
+		}
+
+		_previousWidePrimeOrder = null;
+
+		Console.WriteLine($"Wide heuristic failed for {modulus}, falling back to full cycle calculation");
+		return MersenneDivisorCycles.GetCycleGpu(gpu, modulus);
 	}
 
 	private static ulong ComputeMontgomeryResidue(ulong value, ulong modulus) => (ulong)((UInt128)value * (UInt128.One << 64) % modulus);

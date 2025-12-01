@@ -23,16 +23,14 @@ internal struct ExponentRemainderStepperCpu
         _currentMontgomery = divisor.MontgomeryOne;
     }
 
-    public bool MatchesDivisor(in MontgomeryDivisorData divisor)
-    {
-        return _modulus == divisor.Modulus && _nPrime == divisor.NPrime && _montgomeryOne == divisor.MontgomeryOne;
-    }
+	public readonly bool MatchesDivisor(in MontgomeryDivisorData divisor)
+		=> _modulus == divisor.Modulus && _nPrime == divisor.NPrime && _montgomeryOne == divisor.MontgomeryOne;
 
-    /// <summary>
-    /// Clears the cached Montgomery residue so the stepper can be reused for another divisor.
-    /// Callers must reinitialize the stepper before consuming any residues after a reset.
-    /// </summary>
-    public void Reset()
+	/// <summary>
+	/// Clears the cached Montgomery residue so the stepper can be reused for another divisor.
+	/// Callers must reinitialize the stepper before consuming any residues after a reset.
+	/// </summary>
+	public void Reset()
     {
         PreviousExponent = 0UL;
         _currentMontgomery = _montgomeryOne;
@@ -73,7 +71,7 @@ internal struct ExponentRemainderStepperCpu
         // TODO: Once divisor cycle lengths are mandatory, pull the delta multiplier from the
         // single-block divisor-cycle snapshot so we can skip the powmod entirely and reuse the
         // cached Montgomery residue ladder highlighted in MersenneDivisorCycleLengthGpuBenchmarks.
-        ulong multiplier = delta.Pow2MontgomeryModWindowedCpu(_divisor, keepMontgomery: true);
+        ulong multiplier = delta.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
         _currentMontgomery = _currentMontgomery.MontgomeryMultiplyCpu(multiplier, _modulus, _nPrime);
         PreviousExponent = exponent;
         return ReduceCurrent();
@@ -91,7 +89,7 @@ internal struct ExponentRemainderStepperCpu
         ulong delta = exponent - PreviousExponent;
         // TODO: Reuse the divisor-cycle derived Montgomery delta once the cache exposes single-cycle
         // lookups so this branch also avoids recomputing powmods when the snapshot lacks the divisor.
-        ulong multiplier = delta.Pow2MontgomeryModWindowedCpu(_divisor, keepMontgomery: true);
+        ulong multiplier = delta.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
         _currentMontgomery = _currentMontgomery.MontgomeryMultiplyCpu(multiplier, _modulus, _nPrime);
         PreviousExponent = exponent;
         return _currentMontgomery == _montgomeryOne;
@@ -134,9 +132,9 @@ internal struct ExponentRemainderStepperCpu
 
     private void InitializeCpuState(ulong exponent)
     {
-        _currentMontgomery = exponent.Pow2MontgomeryModWindowedCpu(_divisor, keepMontgomery: true);
+        _currentMontgomery = exponent.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
         PreviousExponent = exponent;
     }
 
-    private ulong ReduceCurrent() => _currentMontgomery.MontgomeryMultiplyCpu(1UL, _modulus, _nPrime);
+    private readonly ulong ReduceCurrent() => _currentMontgomery.MontgomeryMultiplyCpu(1UL, _modulus, _nPrime);
 }

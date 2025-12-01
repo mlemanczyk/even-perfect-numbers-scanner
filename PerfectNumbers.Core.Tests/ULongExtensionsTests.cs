@@ -68,14 +68,27 @@ public class ULongExtensionsTests
 	[InlineData(5UL)]
 	[InlineData(7UL)]
 	[InlineData(11UL)]
-	public void CalculateOrder_matches_naive_algorithm(ulong q)
+	public void CalculateOrderCpu_matches_naive_algorithm(ulong q)
+	{
+		ulong expected = NaiveOrder(q);
+
+		q.CalculateOrderCpu().Should().Be(expected);
+	}
+
+	[Theory]
+	[Trait("Category", "Fast")]
+	[InlineData(3UL)]
+	[InlineData(5UL)]
+	[InlineData(7UL)]
+	[InlineData(11UL)]
+	public void CalculateOrderGpu_matches_naive_algorithm(ulong q)
 	{
 		ulong expected = NaiveOrder(q);
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			q.CalculateOrder(gpu).Should().Be(expected);
+			q.CalculateOrderGpu(gpu).Should().Be(expected);
 		}
 		finally
 		{
@@ -119,12 +132,22 @@ public class ULongExtensionsTests
 	[InlineData(15UL, true)]
 	[InlineData(7UL, false)]
 	[InlineData(9UL, false)]
-	public void SharesFactorWithExponentMinusOne_detects_relationship(ulong exponent, bool expected)
+	public void SharesFactorWithExponentMinusOneCpu_detects_relationship(ulong exponent, bool expected)
+	{
+		exponent.SharesFactorWithExponentMinusOneCpu().Should().Be(expected);
+	}
+
+	[Theory]
+	[Trait("Category", "Fast")]
+	[InlineData(15UL, true)]
+	[InlineData(7UL, false)]
+	[InlineData(9UL, false)]
+	public void SharesFactorWithExponentMinusOneGpu_detects_relationship(ulong exponent, bool expected)
 	{
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			exponent.SharesFactorWithExponentMinusOne(gpu).Should().Be(expected);
+			exponent.SharesFactorWithExponentMinusOneGpu(gpu).Should().Be(expected);
 		}
 		finally
 		{
@@ -213,15 +236,24 @@ public class ULongExtensionsTests
 	[Theory]
 	[Trait("Category", "Fast")]
 	[InlineData(11UL, 13UL)]
-	public void PowModCrt_matches_BigInteger(ulong exponent, ulong modulus)
+	public void PowModCrtCpu_matches_BigInteger(ulong exponent, ulong modulus)
 	{
-		MersenneDivisorCycles cycles = MersenneDivisorCycles.Shared;
+		UInt128 expected = (UInt128)BigInteger.ModPow(2, exponent, modulus);
+
+		exponent.PowModCrtCpu((UInt128)modulus).Should().Be(expected);
+	}
+
+	[Theory]
+	[Trait("Category", "Fast")]
+	[InlineData(11UL, 13UL)]
+	public void PowModCrtGpu_matches_BigInteger(ulong exponent, ulong modulus)
+	{
 		UInt128 expected = (UInt128)BigInteger.ModPow(2, exponent, modulus);
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			exponent.PowModCrt(gpu, (UInt128)modulus, cycles).Should().Be(expected);
+			exponent.PowModCrtGpu(gpu, (UInt128)modulus).Should().Be(expected);
 		}
 		finally
 		{

@@ -46,17 +46,17 @@ public class MersenneNumberDivisorCpuTesterTests
 		var session = tester.CreateDivisorSession(gpu);
 		try
 		{
-			ulong[] primes = { 5UL, 7UL, 11UL, 13UL };
+			ulong[] primes = [5UL, 7UL, 11UL, 13UL];
 			byte[] hits = new byte[primes.Length];
 
-			ulong cycle23 = MersenneDivisorCycles.CalculateCycleLength(gpu, 23UL, MontgomeryDivisorDataPool.Shared.FromModulus(23UL));
+			ulong cycle23 = MersenneDivisorCycles.CalculateCycleLengthCpu(23UL, MontgomeryDivisorDataPool.Shared.FromModulus(23UL));
 			session.CheckDivisor(23UL, MontgomeryDivisorDataPool.Shared.FromModulus(23UL), cycle23, primes, hits);
-			hits.Should().ContainInOrder(new byte[] { 0, 0, 1, 0 });
+			hits.Should().ContainInOrder([0, 0, 1, 0]);
 
 			Array.Fill(hits, (byte)0);
-			ulong cycle31 = MersenneDivisorCycles.CalculateCycleLength(gpu, 31UL, MontgomeryDivisorDataPool.Shared.FromModulus(31UL));
+			ulong cycle31 = MersenneDivisorCycles.CalculateCycleLengthCpu(31UL, MontgomeryDivisorDataPool.Shared.FromModulus(31UL));
 			session.CheckDivisor(31UL, MontgomeryDivisorDataPool.Shared.FromModulus(31UL), cycle31, primes, hits);
-			hits.Should().ContainInOrder(new byte[] { 1, 0, 0, 0 });
+			hits.Should().ContainInOrder([1, 0, 0, 0]);
 		}
 		finally
 		{
@@ -76,14 +76,14 @@ public class MersenneNumberDivisorCpuTesterTests
 		var session = tester.CreateDivisorSession(gpu);
 		try
 		{
-			ulong[] exponents = { 6UL, 7UL, 9UL, 10UL, 12UL };
+			ulong[] exponents = [6UL, 7UL, 9UL, 10UL, 12UL];
 			byte[] hits = new byte[exponents.Length];
 
 			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(7UL);
-			ulong cycle = MersenneDivisorCycles.CalculateCycleLength(gpu, 7UL, divisorData);
+			ulong cycle = MersenneDivisorCycles.CalculateCycleLengthCpu(7UL, divisorData);
 			session.CheckDivisor(7UL, divisorData, cycle, exponents, hits);
 
-			hits.Should().Equal(new byte[] { 1, 0, 1, 0, 1 });
+			hits.Should().Equal([1, 0, 1, 0, 1]);
 		}
 		finally
 		{
@@ -103,14 +103,14 @@ public class MersenneNumberDivisorCpuTesterTests
 		var session = tester.CreateDivisorSession(gpu);
 		try
 		{
-			ulong[] exponents = { 10UL, 11UL, 20UL, 21UL, 30UL };
+			ulong[] exponents = [10UL, 11UL, 20UL, 21UL, 30UL];
 			byte[] hits = new byte[exponents.Length];
 
 			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(11UL);
-			ulong cycle = MersenneDivisorCycles.CalculateCycleLength(gpu, 11UL, divisorData);
+			ulong cycle = MersenneDivisorCycles.CalculateCycleLengthCpu(11UL, divisorData);
 			session.CheckDivisor(11UL, divisorData, cycle, exponents, hits);
 
-			hits.Should().Equal(new byte[] { 1, 0, 1, 0, 1 });
+			hits.Should().Equal([1, 0, 1, 0, 1]);
 		}
 		finally
 		{

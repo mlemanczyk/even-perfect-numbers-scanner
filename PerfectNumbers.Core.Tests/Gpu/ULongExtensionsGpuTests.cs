@@ -19,7 +19,7 @@ public class ULongExtensionsGpuTests
     public void Pow2ModWindowedGpu_matches_montgomery_cpu_for_known_values(ulong exponent, ulong modulus)
     {
         MontgomeryDivisorData divisor = MontgomeryDivisorDataPool.Shared.FromModulus(modulus);
-        ulong expected = exponent.Pow2MontgomeryModWindowedCpu(divisor, keepMontgomery: false);
+        ulong expected = exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(divisor);
 
         exponent.Pow2ModWindowedGpu(modulus).Should().Be(expected);
     }
@@ -55,7 +55,7 @@ public class ULongExtensionsGpuTests
             MontgomeryDivisorData divisor = MontgomeryDivisorDataPool.Shared.FromModulus(modulus);
             foreach (ulong exponent in exponents)
             {
-                ulong expected = exponent.Pow2MontgomeryModWindowedCpu(divisor, keepMontgomery: false);
+                ulong expected = exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(divisor);
                 exponent.Pow2ModWindowedGpu(modulus).Should().Be(expected);
             }
         }

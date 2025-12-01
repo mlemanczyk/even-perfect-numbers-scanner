@@ -69,7 +69,6 @@ namespace PerfectNumbers.Core
             }
 
             _mersenneCpuDivisorSession = null;
-            session.Reset();
             return session;
         }
 

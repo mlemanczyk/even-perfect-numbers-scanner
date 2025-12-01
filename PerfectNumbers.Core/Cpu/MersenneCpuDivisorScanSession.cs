@@ -2,11 +2,24 @@ using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core.Cpu;
 
-internal sealed class MersenneCpuDivisorScanSession(PrimeOrderCalculatorAccelerator gpu) : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
+internal sealed class MersenneCpuDivisorScanSession(PrimeOrderCalculatorAccelerator gpu, ComputationDevice orderDevice) : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
 {
-	public void Reset()
-    {
-    }
+	private Func<ulong, ulong> _getCycleLength = orderDevice switch
+	{
+		ComputationDevice.Gpu => divisor => DivisorCycleCache.Shared.GetCycleLengthGpu(gpu, divisor),
+		ComputationDevice.Hybrid => divisor => DivisorCycleCache.Shared.GetCycleLengthHybrid(gpu, divisor),
+		_ => static (divisor) => DivisorCycleCache.Shared.GetCycleLengthCpu(divisor),
+	};
+
+	public void Configure(PrimeOrderCalculatorAccelerator gpu, ComputationDevice orderDevice)
+	{
+		_getCycleLength = orderDevice switch
+		{
+			ComputationDevice.Gpu => divisor => DivisorCycleCache.Shared.GetCycleLengthGpu(gpu, divisor),
+			ComputationDevice.Hybrid => divisor => DivisorCycleCache.Shared.GetCycleLengthHybrid(gpu, divisor),
+			_ => static (divisor) => DivisorCycleCache.Shared.GetCycleLengthCpu(divisor),
+		};
+	}
 
     public void CheckDivisor(
         ulong divisor,
@@ -29,15 +42,15 @@ internal sealed class MersenneCpuDivisorScanSession(PrimeOrderCalculatorAccelera
             // cachedData = MontgomeryDivisorData.FromModulus(divisor);
         }
 
-        if (divisorCycle == 0UL)
-        {
-            divisorCycle = DivisorCycleCache.Shared.GetCycleLength(gpu, divisor);
-            if (divisorCycle == 0UL)
-            {
-                // DivisorCycleCache guarantees a positive cycle for divisors greater than one.
-                throw new InvalidOperationException($"Divisor cycle solver returned zero for divisor {divisor}.");
-            }
-        }
+		if (divisorCycle == 0UL)
+		{
+			divisorCycle = _getCycleLength(divisor);
+			if (divisorCycle == 0UL)
+			{
+				// DivisorCycleCache guarantees a positive cycle for divisors greater than one.
+				throw new InvalidOperationException($"Divisor cycle solver returned zero for divisor {divisor}.");
+			}
+		}
 
         // Keep these remainder steppers in place so future updates continue reusing the previously computed residues.
         // They are critical for avoiding repeated full Montgomery exponentiation work when scanning divisors.

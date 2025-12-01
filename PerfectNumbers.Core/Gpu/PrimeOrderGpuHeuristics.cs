@@ -248,18 +248,9 @@ internal static partial class PrimeOrderGpuHeuristics
 	{
 		order = 0UL;
 
-		// GpuPrimeWorkLimiter.Acquire();
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		var smallPrimesView = gpu.SmallPrimeFactorPrimes;
 		var smallSquaresView = gpu.SmallPrimeFactorSquares;
-		// var phiFactorBufferView = gpu.PhiFactorBufferView;
-		// var phiExponentBufferView = gpu.PhiExponentBufferView;
-		// var workFactorBufferView = gpu.WorkFactorBufferView;
-		// var workExponentBufferView = gpu.WorkExponentBufferView;
-		// var candidateBufferView = gpu.CandidateBufferView;
-		// var stackIndexBufferView = gpu.StackIndexBufferView;
-		// var stackExponentBufferView = gpu.StackExponentBufferView;
-		// var stackProductBufferView = gpu.StackProductBufferView;
 		var resultBufferView = gpu.OutputUlongView2;
 		var statusBufferView = gpu.OutputByteView;
 
@@ -274,14 +265,6 @@ internal static partial class PrimeOrderGpuHeuristics
 
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		// TODO: Remove the cleaning after the order kernel is modified to always set the result.
-		// phiFactorBufferView.MemSetToZero(stream);
-		// phiExponentBufferView.MemSetToZero(stream);
-		// workFactorBufferView.MemSetToZero(stream);
-		// workExponentBufferView.MemSetToZero(stream);
-		// candidateBufferView.MemSetToZero(stream);
-		// stackIndexBufferView.MemSetToZero(stream);
-		// stackExponentBufferView.MemSetToZero(stream);
-		// stackProductBufferView.MemSetToZero(stream);
 		resultBufferView.MemSetToZero(stream);
 		statusBufferView.MemSetToZero(stream);
 
@@ -307,7 +290,6 @@ internal static partial class PrimeOrderGpuHeuristics
 		stream.Synchronize();
 
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);
-		// GpuPrimeWorkLimiter.Release();
 
 		PrimeOrderKernelStatus kernelStatus = (PrimeOrderKernelStatus)status;
 		if (kernelStatus == PrimeOrderKernelStatus.Fallback)

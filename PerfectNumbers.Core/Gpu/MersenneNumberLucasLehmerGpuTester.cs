@@ -143,7 +143,7 @@ public class MersenneNumberLucasLehmerGpuTester
             return false;
         }
 
-        if ((exponent & 3UL) == 1UL && exponent.SharesFactorWithExponentMinusOne(gpu))
+        if ((exponent & 3UL) == 1UL && exponent.SharesFactorWithExponentMinusOneGpu(gpu))
         {
             return false;
         }

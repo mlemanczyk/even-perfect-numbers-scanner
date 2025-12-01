@@ -41,7 +41,7 @@ public class MersenneDivisorCyclesGenerateGpuTests
 			{
 				expected.Should().Contain(pair.divisor);
 				MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(pair.divisor);
-				pair.cycle.Should().Be(MersenneDivisorCycles.CalculateCycleLength(gpu, pair.divisor, divisorData));
+				pair.cycle.Should().Be(MersenneDivisorCycles.CalculateCycleLengthCpu(pair.divisor, divisorData));
 			}
 		}
 		finally
@@ -59,7 +59,6 @@ public class MersenneDivisorCyclesGenerateGpuTests
 	public void Generate_produces_unique_cycles_for_expected_divisors()
 	{
 		string path = Path.GetTempFileName();
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
 			MersenneDivisorCycles.Generate(path, maxDivisor: 50UL, threads: 4);
@@ -92,7 +91,7 @@ public class MersenneDivisorCyclesGenerateGpuTests
 			{
 				uniqueDivisors.Add(pair.divisor).Should().BeTrue();
 				MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(pair.divisor);
-				pair.cycle.Should().Be(MersenneDivisorCycles.CalculateCycleLength(gpu, pair.divisor, divisorData));
+				pair.cycle.Should().Be(MersenneDivisorCycles.CalculateCycleLengthCpu(pair.divisor, divisorData));
 			}
 
 			uniqueDivisors.Should().BeEquivalentTo(expected);
@@ -102,7 +101,6 @@ public class MersenneDivisorCyclesGenerateGpuTests
 		}
 		finally
 		{
-			PrimeOrderCalculatorAccelerator.Return(gpu);
 			if (File.Exists(path))
 			{
 				File.Delete(path);

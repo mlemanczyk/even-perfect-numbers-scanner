@@ -31,7 +31,7 @@ public class MersenneNumberIncrementalCpuTester(GpuKernelType kernelType)
 		{
 			// TODO: Replace this direct GetCycle call with DivisorCycleCache.Lookup so we reuse the single snapshot block
 			// and compute missing cycles on the configured device without queuing additional block generation.
-			qCycle = MersenneDivisorCycles.GetCycle(gpu, q);
+			qCycle = MersenneDivisorCycles.GetCycleCpu(q);
 			shouldCheck = auto.Mod10R != 5UL;
 			if (shouldCheck)
 			{

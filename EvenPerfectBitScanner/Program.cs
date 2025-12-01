@@ -83,8 +83,11 @@ internal static class Program
 					? PrimeTransformMode.Bit
 					: (useResidue ? PrimeTransformMode.Add : PrimeTransformMode.AddPrimes);
 			CandidatesCalculator.Configure(transformMode);
-			bool mersenneOnGpu = _cliArguments.UseMersenneOnGpu;
-			bool orderOnGpu = _cliArguments.UseOrderOnGpu;
+			ComputationDevice mersenneDevice = _cliArguments.MersenneDevice;
+			ComputationDevice orderDevice = _cliArguments.OrderDevice;
+			bool mersenneOnGpu = mersenneDevice == ComputationDevice.Gpu;
+			bool orderOnGpu = orderDevice == ComputationDevice.Gpu;
+			bool orderOnHybrid = orderDevice == ComputationDevice.Hybrid;
 			int scanBatchSize = Math.Max(1, _cliArguments.ScanBatchSize);
 			int sliceSize = Math.Max(1, _cliArguments.SliceSize);
 			ulong residueKMax = _cliArguments.ResidueKMax;
@@ -165,7 +168,6 @@ internal static class Program
 			}
 
 			DivisorCycleCache.SetDivisorCyclesBatchSize(cyclesBatchSize);
-			DivisorCycleCache.Shared.ConfigureGeneratorDevice(useGpuCycles);
 			// TODO: Keep a single cached block loaded from disk and honor the configured device when
 			// computing ad-hoc cycles for divisors that fall outside that snapshot instead of queuing
 			// generation of additional blocks.
@@ -194,13 +196,25 @@ internal static class Program
 												useOrder: useOrder,
 												useGpuLucas: mersenneOnGpu,
 												useGpuScan: mersenneOnGpu,
-												useGpuOrder: orderOnGpu,
+												useGpuOrder: orderOnGpu || orderOnHybrid,
 												useResidue: useResidue,
-												maxK: residueKMax);
+												maxK: residueKMax,
+												orderDevice: orderDevice);
 					if (!useLucas)
 					{
 						Console.WriteLine("Warming up orders");
-						tester.WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+						if (orderDevice == ComputationDevice.Hybrid)
+						{
+							tester.WarmUpOrdersHybrid(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+						}
+						else if (orderDevice == ComputationDevice.Gpu)
+						{
+							tester.WarmUpOrdersGpu(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+						}
+						else
+						{
+							tester.WarmUpOrdersCpu(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+						}
 					}
 
 					return tester;
@@ -216,7 +230,7 @@ internal static class Program
 			{
 				_byDivisorTester = mersenneOnGpu
 						? new MersenneNumberDivisorByDivisorGpuTester()
-						: new MersenneNumberDivisorByDivisorCpuTester();
+						: new MersenneNumberDivisorByDivisorCpuTester(orderDevice);
 				_byDivisorTester.MinK = _cliArguments.MinK;
 				_byDivisorTester.BatchSize = scanBatchSize;
 			}
@@ -245,6 +259,20 @@ internal static class Program
 
 			Console.WriteLine("Initialization...");
 			// Compose a results file name that encodes configuration (before opening file)
+			string mersenneDeviceLabel = mersenneDevice switch
+			{
+				ComputationDevice.Hybrid => "hybrid",
+				ComputationDevice.Gpu => "gpu",
+				_ => "cpu",
+			};
+
+			string orderDeviceLabel = orderDevice switch
+			{
+				ComputationDevice.Hybrid => "hybrid",
+				ComputationDevice.Gpu => "gpu",
+				_ => "cpu",
+			};
+
 			var builtName = CalculationResultsFile.BuildFileName(
 							useBitTransform,
 							threadCount,
@@ -257,14 +285,14 @@ internal static class Program
 			useOrder,
 			_cliArguments.UseGcdFilter,
 			NttGpuMath.GpuTransformBackend,
-			gpuPrimeThreads,
-			sliceSize,
-			scanBatchSize,
-			orderWarmupLimitOverride ?? 5_000_000UL,
-			NttGpuMath.ReductionMode,
-			mersenneOnGpu ? "gpu" : "cpu",
-			_runPrimesOnCpu ? "cpu" : "gpu",
-			orderOnGpu ? "gpu" : "cpu");
+							gpuPrimeThreads,
+							sliceSize,
+							scanBatchSize,
+							orderWarmupLimitOverride ?? 5_000_000UL,
+							NttGpuMath.ReductionMode,
+							mersenneDeviceLabel,
+							_runPrimesOnCpu ? "cpu" : "gpu",
+							orderDeviceLabel);
 
 			if (!string.IsNullOrEmpty(_cliArguments.ResultsPrefix))
 			{
@@ -447,7 +475,18 @@ internal static class Program
 				if (!useLucas)
 				{
 					Console.WriteLine("Warming up orders...");
-					MersenneTesters.Value!.WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+					if (orderDevice == ComputationDevice.Hybrid)
+					{
+						MersenneTesters.Value!.WarmUpOrdersHybrid(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+					}
+					else if (orderDevice == ComputationDevice.Gpu)
+					{
+						MersenneTesters.Value!.WarmUpOrdersGpu(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+					}
+					else
+					{
+						MersenneTesters.Value!.WarmUpOrdersCpu(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+					}
 				}
 			}
 
@@ -619,7 +658,12 @@ internal static class Program
 		}
 
 		// Fast residue-based composite check for p using small primes
-		if (!_cliArguments.UseDivisor && !_cliArguments.UseByDivisor && CandidatesCalculator.IsCompositeByResidues(gpu, p))
+		if (!_cliArguments.UseDivisor && !_cliArguments.UseByDivisor &&
+			(
+				(_cliArguments.OrderDevice == ComputationDevice.Gpu && CandidatesCalculator.IsCompositeByResiduesGpu(gpu, p)) ||
+				(_cliArguments.OrderDevice == ComputationDevice.Hybrid && CandidatesCalculator.IsCompositeByResiduesHybrid(gpu, p)) ||
+				(_cliArguments.OrderDevice == ComputationDevice.Cpu && CandidatesCalculator.IsCompositeByResiduesCpu(p))
+			))
 		{
 			searchedMersenne = false;
 			detailedCheck = false;

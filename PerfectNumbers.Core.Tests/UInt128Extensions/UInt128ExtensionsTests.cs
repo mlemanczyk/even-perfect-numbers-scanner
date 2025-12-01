@@ -51,14 +51,26 @@ public class UInt128ExtensionsTests
 	[InlineData(3UL)]
 	[InlineData(5UL)]
 	[InlineData(7UL)]
-	public void CalculateOrder_matches_naive(ulong q)
+	public void CalculateOrderCpu_matches_naive(ulong q)
+	{
+		UInt128 q128 = q;
+		ulong expected = NaiveOrder(q);
+		q128.CalculateOrderCpu().Should().Be(expected);
+	}
+
+	[Theory]
+	[Trait("Category", "Fast")]
+	[InlineData(3UL)]
+	[InlineData(5UL)]
+	[InlineData(7UL)]
+	public void CalculateOrderGpu_matches_naive(ulong q)
 	{
 		UInt128 q128 = q;
 		ulong expected = NaiveOrder(q);
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			q128.CalculateOrder(gpu).Should().Be(expected);
+			q128.CalculateOrderGpu(gpu).Should().Be(expected);
 		}
 		finally
 		{
