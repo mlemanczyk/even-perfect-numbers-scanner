@@ -58,19 +58,11 @@ namespace PerfectNumbers.Core.Gpu
 			var device = context.GetPreferredDevice(false);
 			Context = context;
 			Device = device;
-			int acceleratorsInContext = 0;
 			int acceleratorIndex = 0;
 			Accelerators = [.. Enumerable.Range(0, capacity).Select(_ =>
 			{
 				Console.WriteLine($"Preparing accelerator {acceleratorIndex++}");
 				Accelerator accelerator = device.CreateAccelerator(context);
-				acceleratorsInContext++;
-				if (acceleratorsInContext >= 128)
-				{
-					context = Context.CreateDefault();
-					device = context.GetPreferredDevice(false);
-					acceleratorsInContext = 0;
-				}
 
 				return accelerator;
 			})];

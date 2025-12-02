@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using ILGPU;
@@ -8,219 +9,215 @@ namespace PerfectNumbers.Core;
 
 public sealed class PrimeTester
 {
-	public PrimeTester()
-	{
-	}
+    public PrimeTester()
+    {
+    }
 
-	[ThreadStatic]
-	private static PrimeTester? _tester;
+    [ThreadStatic]
+    private static PrimeTester? _tester;
 
-	public static PrimeTester Exclusive => _tester ??= new();
+    public static PrimeTester Exclusive => _tester ??= new();
 
-	public static bool IsPrimeCpu(ulong n)
-	{
-		if (n <= 1UL)
-		{
-			return false;
-		}
+    public static bool IsPrimeCpu(ulong n)
+    {
+        if (n <= 1UL)
+        {
+            return false;
+        }
 
-		if (n == 2UL)
-		{
-			throw new InvalidOperationException("PrimeTester.IsPrime encountered the sentinel input 2.");
-		}
+        if (n == 2UL)
+        {
+            throw new InvalidOperationException("PrimeTester.IsPrime encountered the sentinel input 2.");
+        }
 
-		bool isOdd = (n & 1UL) != 0UL;
-		bool result = isOdd;
+        if ((n & 1UL) == 0UL)
+        {
+            return false;
+        }
 
-		bool requiresTrialDivision = result && n >= 7UL;
+        if (n < 7UL)
+        {
+            return true;
+        }
 
-		if (requiresTrialDivision)
-		{
-			// EvenPerfectBitScanner streams exponents starting at 136,279,841, so the Mod10/GCD guard never fires on the
-			// production path. Leave the logic commented out as instrumentation for diagnostic builds.
-			// bool sharesMaxExponentFactor = n.Mod10() == 1UL && SharesFactorWithMaxExponent(n);
-			// result &= !sharesMaxExponentFactor;
+        var remainderStepper = new AscendingDivisorRemainderStepper(n);
+        uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
+        int smallPrimeDivisorsLength = smallPrimeDivisors.Length;
 
-			if (result)
-			{
-				uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
-				ulong[] smallPrimeDivisorsMul = PrimesGenerator.SmallPrimesPow2;
-				int smallPrimeDivisorsLength = smallPrimeDivisors.Length;
-				for (int i = 0; i < smallPrimeDivisorsLength; i++)
-				{
-					if (smallPrimeDivisorsMul[i] > n)
-					{
-						break;
-					}
+        for (int i = 1; i < smallPrimeDivisorsLength; i++)
+        {
+            uint divisor = smallPrimeDivisors[i];
 
-					if (n % smallPrimeDivisors[i] == 0)
-					{
-						result = false;
-						break;
-					}
-				}
-			}
-		}
+            if (!remainderStepper.ShouldContinue(divisor))
+            {
+                break;
+            }
 
-		return result;
-	}
+            if (remainderStepper.Divides(divisor))
+            {
+                return false;
+            }
+        }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n)
-	{
-		byte flag = 0;
-		var inputView = gpu.InputView;
-		var outputView = gpu.OutputByteView;
+        return true;
+    }
 
-		int acceleratorIndex = gpu.AcceleratorIndex;
-		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		inputView.CopyFromCPU(stream, ref n, 1);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n)
+    {
+        byte flag = 0;
+        var inputView = gpu.InputView;
+        var outputView = gpu.OutputByteView;
 
-		var kernelLauncher = gpu.SmallPrimeSieveKernelLauncher;
-		
-		kernelLauncher(
-						stream,
-						1,
-						inputView,
-						gpu.DevicePrimesLastOne,
-						gpu.DevicePrimesLastSeven,
-						gpu.DevicePrimesLastThree,
-						gpu.DevicePrimesLastNine,
-						gpu.DevicePrimesPow2LastOne,
-						gpu.DevicePrimesPow2LastSeven,
-						gpu.DevicePrimesPow2LastThree,
-						gpu.DevicePrimesPow2LastNine,
-						outputView);
+        int acceleratorIndex = gpu.AcceleratorIndex;
+        AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
+        inputView.CopyFromCPU(stream, ref n, 1);
 
-		outputView.CopyToCPU(stream, ref flag, 1);
-		stream.Synchronize();
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
+        var kernelLauncher = gpu.SmallPrimeSieveKernelLauncher;
+        
+        kernelLauncher(
+                        stream,
+                        1,
+                        inputView,
+                        gpu.DevicePrimesLastOne,
+                        gpu.DevicePrimesLastSeven,
+                        gpu.DevicePrimesLastThree,
+                        gpu.DevicePrimesLastNine,
+                        gpu.DevicePrimesPow2LastOne,
+                        gpu.DevicePrimesPow2LastSeven,
+                        gpu.DevicePrimesPow2LastThree,
+                        gpu.DevicePrimesPow2LastNine,
+                        outputView);
 
-		return flag != 0;
-	}
+        outputView.CopyToCPU(stream, ref flag, 1);
+        stream.Synchronize();
+        AcceleratorStreamPool.Return(acceleratorIndex, stream);
 
-	public static int GpuBatchSize { get; set; } = 262_144;
+        return flag != 0;
+    }
 
-	private static readonly object GpuWarmUpLock = new();
-	private static int WarmedGpuLeaseCount;
+    public static int GpuBatchSize { get; set; } = 262_144;
 
-	public static void WarmUpGpuKernels(int threadCount)
-	{
-		int target = threadCount >> 2;
-		if (target == 0)
-		{
-			target = threadCount;
-		}
+    private static readonly object GpuWarmUpLock = new();
+    private static int WarmedGpuLeaseCount;
 
-		lock (GpuWarmUpLock)
-		{
-			if (target <= WarmedGpuLeaseCount)
-			{
-				return;
-			}
+    public static void WarmUpGpuKernels(int threadCount)
+    {
+        int target = threadCount;
+        if (target == 0)
+        {
+            target = threadCount;
+        }
 
-			PrimeOrderCalculatorAccelerator.WarmUp();
-			WarmedGpuLeaseCount = target;
-		}
-	}
+        lock (GpuWarmUpLock)
+        {
+            if (target <= WarmedGpuLeaseCount)
+            {
+                return;
+            }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void IsPrimeBatchGpu(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> values, Span<byte> results)
-	{
-		// GpuPrimeWorkLimiter.Acquire();
-		int acceleratorIndex = gpu.AcceleratorIndex;
-		int totalLength = values.Length;
-		int batchSize = GpuBatchSize;
+            PrimeOrderCalculatorAccelerator.WarmUp();
+            WarmedGpuLeaseCount = target;
+        }
+    }
 
-		var inputView = gpu.InputView;
-		var outputView = gpu.OutputByteView;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IsPrimeBatchGpu(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> values, Span<byte> results)
+    {
+        // GpuPrimeWorkLimiter.Acquire();
+        int acceleratorIndex = gpu.AcceleratorIndex;
+        int totalLength = values.Length;
+        int batchSize = GpuBatchSize;
 
-		int pos = 0;
-		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		var kernelLauncher = gpu.SmallPrimeSieveKernelLauncher;
+        var inputView = gpu.InputView;
+        var outputView = gpu.OutputByteView;
 
-		while (pos < totalLength)
-		{
-			int remaining = totalLength - pos;
-			int count = remaining > batchSize ? batchSize : remaining;
+        int pos = 0;
+        AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
+        var kernelLauncher = gpu.SmallPrimeSieveKernelLauncher;
 
-			var valueSlice = values.Slice(pos, count);
-			inputView.CopyFromCPU(stream, valueSlice);
+        while (pos < totalLength)
+        {
+            int remaining = totalLength - pos;
+            int count = remaining > batchSize ? batchSize : remaining;
 
-			kernelLauncher(
-					stream,
-					count,
-					inputView,
-					gpu.DevicePrimesLastOne,
-					gpu.DevicePrimesLastSeven,
-					gpu.DevicePrimesLastThree,
-					gpu.DevicePrimesLastNine,
-					gpu.DevicePrimesPow2LastOne,
-					gpu.DevicePrimesPow2LastSeven,
-					gpu.DevicePrimesPow2LastThree,
-					gpu.DevicePrimesPow2LastNine,
-					outputView);
+            var valueSlice = values.Slice(pos, count);
+            inputView.CopyFromCPU(stream, valueSlice);
 
-			var resultSlice = results.Slice(pos, count);
-			outputView.CopyToCPU(stream, resultSlice);
+            kernelLauncher(
+                    stream,
+                    count,
+                    inputView,
+                    gpu.DevicePrimesLastOne,
+                    gpu.DevicePrimesLastSeven,
+                    gpu.DevicePrimesLastThree,
+                    gpu.DevicePrimesLastNine,
+                    gpu.DevicePrimesPow2LastOne,
+                    gpu.DevicePrimesPow2LastSeven,
+                    gpu.DevicePrimesPow2LastThree,
+                    gpu.DevicePrimesPow2LastNine,
+                    outputView);
 
-			pos += count;
-		}
+            var resultSlice = results.Slice(pos, count);
+            outputView.CopyToCPU(stream, resultSlice);
 
-		stream.Synchronize();
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
-		// GpuPrimeWorkLimiter.Release();
-	}
+            pos += count;
+        }
 
-	// Expose cache clearing for accelerator disposal coordination
-	public static void ClearGpuCaches()
-	{
-		PrimeOrderCalculatorAccelerator.Clear();
-	}
+        stream.Synchronize();
+        AcceleratorStreamPool.Return(acceleratorIndex, stream);
+        // GpuPrimeWorkLimiter.Release();
+    }
 
-	internal static void DisposeGpuContexts()
-	{
-		PrimeOrderCalculatorAccelerator.DisposeAll();
-		lock (GpuWarmUpLock)
-		{
-			WarmedGpuLeaseCount = 0;
-		}
-	}
+    // Expose cache clearing for accelerator disposal coordination
+    public static void ClearGpuCaches()
+    {
+        PrimeOrderCalculatorAccelerator.Clear();
+    }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static bool SharesFactorWithMaxExponent(ulong n)
-	{
-		// TODO: Replace this on-the-fly GCD probe with the cached factor table derived from
-		// ResidueComputationBenchmarks so divisor-cycle metadata can short-circuit the test
-		// instead of recomputing binary GCD for every candidate.
-		ulong m = (ulong)BitOperations.Log2(n);
-		return n.BinaryGcd(m) != 1UL;
-	}
+    internal static void DisposeGpuContexts()
+    {
+        PrimeOrderCalculatorAccelerator.DisposeAll();
+        lock (GpuWarmUpLock)
+        {
+            WarmedGpuLeaseCount = 0;
+        }
+    }
 
-	internal static void SharesFactorWithMaxExponentBatch(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> values, Span<byte> results)
-	{
-		// TODO: Route this batch helper through the shared GPU kernel pool from
-		// GpuUInt128BinaryGcdBenchmarks so we reuse cached kernels, pinned host buffers,
-		// and divisor-cycle staging instead of allocating new device buffers per call.
-		// Check in benchmarks, which implementation was the fastest, is compatible with GPU,
-		// and implement it.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool SharesFactorWithMaxExponent(ulong n)
+    {
+        // TODO: Replace this on-the-fly GCD probe with the cached factor table derived from
+        // ResidueComputationBenchmarks so divisor-cycle metadata can short-circuit the test
+        // instead of recomputing binary GCD for every candidate.
+        ulong m = (ulong)BitOperations.Log2(n);
+        return n.BinaryGcd(m) != 1UL;
+    }
 
-		int length = values.Length;
+    internal static void SharesFactorWithMaxExponentBatch(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> values, Span<byte> results)
+    {
+        // TODO: Route this batch helper through the shared GPU kernel pool from
+        // GpuUInt128BinaryGcdBenchmarks so we reuse cached kernels, pinned host buffers,
+        // and divisor-cycle staging instead of allocating new device buffers per call.
+        // Check in benchmarks, which implementation was the fastest, is compatible with GPU,
+        // and implement it.
 
-		int acceleratorIndex = gpu.AcceleratorIndex;
-		gpu.EnsureCapacity(0, length);
-		var inputBufferView = gpu.InputView;
-		var resultBufferView = gpu.OutputByteView;
-		var kernelLauncher = gpu.SharesFactorKernelLauncher;
+        int length = values.Length;
 
-		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
-		inputBufferView.CopyFromCPU(stream, values);
+        int acceleratorIndex = gpu.AcceleratorIndex;
+        gpu.EnsureCapacity(0, length);
+        var inputBufferView = gpu.InputView;
+        var resultBufferView = gpu.OutputByteView;
+        var kernelLauncher = gpu.SharesFactorKernelLauncher;
 
-		kernelLauncher(stream, length, inputBufferView, resultBufferView);
+        AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
+        inputBufferView.CopyFromCPU(stream, values);
 
-		resultBufferView.CopyToCPU(stream, in results);
-		stream.Synchronize();
+        kernelLauncher(stream, length, inputBufferView, resultBufferView);
 
-		AcceleratorStreamPool.Return(acceleratorIndex, stream);
-	}
+        resultBufferView.CopyToCPU(stream, in results);
+        stream.Synchronize();
+
+        AcceleratorStreamPool.Return(acceleratorIndex, stream);
+    }
 }

@@ -29,9 +29,24 @@ internal static class Utf8CliParser
         return result;
     }
 
+    public static uint ParseUInt32(ReadOnlySpan<char> value)
+    {
+        if (!TryParseUInt32(value, out uint result))
+        {
+            ThrowFormatException(value);
+        }
+
+        return result;
+    }
+
     public static bool TryParseUInt64(ReadOnlySpan<char> value, out ulong result)
     {
         return TryParse(value, static (ReadOnlySpan<byte> source, out ulong parsed, out int consumed) => Utf8Parser.TryParse(source, out parsed, out consumed), out result);
+    }
+
+    public static bool TryParseUInt32(ReadOnlySpan<char> value, out uint result)
+    {
+        return TryParse(value, static (ReadOnlySpan<byte> source, out uint parsed, out int consumed) => Utf8Parser.TryParse(source, out parsed, out consumed), out result);
     }
 
     public static bool TryParseInt32(ReadOnlySpan<char> value, out int result)

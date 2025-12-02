@@ -51,22 +51,27 @@ internal static class Program
 				return;
 			}
 
-			NttGpuMath.GpuTransformBackend = _cliArguments.NttBackend;
-			NttGpuMath.ReductionMode = _cliArguments.ModReductionMode;
+			Console.WriteLine("Initializing");
+			int gpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads);
+			int threadCount = Math.Max(1, _cliArguments.ThreadCount);
+			PerfectNumberConstants.GpuRatio = _cliArguments.GpuRatio;
+			PerfectNumberConstants.RollingAccelerators = Math.Min(Math.Min(PerfectNumberConstants.RollingAccelerators, gpuPrimeThreads), threadCount);
+
+			// NttGpuMath.GpuTransformBackend = _cliArguments.NttBackend;
+			// NttGpuMath.ReductionMode = _cliArguments.ModReductionMode;
 			_runPrimesOnCpu = _cliArguments.ForcePrimeKernelsOnCpu;
 
 			ulong currentP = _cliArguments.StartPrime;
 			ulong remainder = currentP % 6UL;
 			bool startPrimeProvided = _cliArguments.StartPrimeProvided;
-			int threadCount = Math.Max(1, _cliArguments.ThreadCount);
 			int gpuPrimeBatch = Math.Max(1, _cliArguments.GpuPrimeBatch);
 			// int gpuPrimeThreads = SharedGpuContext.Device.MaxNumThreads;
-			int gpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads);
+			Console.WriteLine("Setting up parameters");
 			UnboundedTaskScheduler.ConfigureThreadCount(threadCount);
 			PrimeTester.GpuBatchSize = gpuPrimeBatch;
 			GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
 			Console.WriteLine("Warming up GPU kernels");
-			PrimeTester.WarmUpGpuKernels(1024);
+			PrimeTester.WarmUpGpuKernels(PerfectNumberConstants.RollingAccelerators);
 			// PrimeTester.WarmUpGpuKernels(gpuPrimeThreads >> 4);
 			Console.WriteLine("Starting up threads...");
 			_ = UnboundedTaskScheduler.Instance;

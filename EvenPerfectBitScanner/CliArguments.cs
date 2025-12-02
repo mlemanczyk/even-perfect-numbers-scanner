@@ -51,8 +51,9 @@ internal readonly struct CliArguments
     internal readonly double ZeroFractionConjecture;
     internal readonly int MaxZeroConjecture;
     internal readonly ulong MinK;
+	internal readonly int GpuRatio;
 
-    private CliArguments(
+	private CliArguments(
             ulong startPrime,
             bool startPrimeProvided,
             UInt128 maxPrimeLimit,
@@ -95,7 +96,8 @@ internal readonly struct CliArguments
             double zeroFractionHard,
             double zeroFractionConjecture,
             int maxZeroConjecture,
-            ulong minK)
+            ulong minK,
+			int gpuRatio)
     {
         StartPrime = startPrime;
         StartPrimeProvided = startPrimeProvided;
@@ -140,6 +142,7 @@ internal readonly struct CliArguments
         ZeroFractionConjecture = zeroFractionConjecture;
         MaxZeroConjecture = maxZeroConjecture;
         MinK = minK;
+		GpuRatio = gpuRatio;
     }
 
     internal bool UseFilter => !TestMode && !string.IsNullOrEmpty(FilterFile);
@@ -189,6 +192,7 @@ internal readonly struct CliArguments
         double zeroFractionConjecture = -1.0;
         int maxZeroConjecture = -1;
         ulong minK = 1UL;
+		int gpuRatio = PerfectNumberConstants.GpuRatio;
 
         foreach (string argument in args)
         {
@@ -236,6 +240,12 @@ internal readonly struct CliArguments
             if (argument.Equals("--increment=add", StringComparison.OrdinalIgnoreCase))
             {
                 useBitTransform = false;
+                continue;
+            }
+
+            if (argument.StartsWith("--gpu-ratio=", StringComparison.OrdinalIgnoreCase))
+            {
+                gpuRatio = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan("--gpu-ratio=".Length)));
                 continue;
             }
 
@@ -590,7 +600,8 @@ internal readonly struct CliArguments
                 zeroFractionHard,
                 zeroFractionConjecture,
                 maxZeroConjecture,
-                minK);
+                minK,
+				gpuRatio);
     }
 
     internal static void PrintHelp()
@@ -598,22 +609,23 @@ internal readonly struct CliArguments
         Console.WriteLine("Usage: EvenPerfectBitScanner [options]");
         Console.WriteLine();
         Console.WriteLine("Options:");
+        Console.WriteLine("  --block-size=<value>   values processed per thread batch");
         Console.WriteLine("  --prime=<value>        starting exponent (p)");
         Console.WriteLine("  --max-prime=<value>    inclusive upper bound for primes from filter files");
-        Console.WriteLine("  --increment=bit|add    exponent increment method");
+        Console.WriteLine("  --increment=bit|add    exponent increment method (default add)");
         Console.WriteLine("  --threads=<value>      number of worker threads");
-        Console.WriteLine("  --block-size=<value>   values processed per thread batch");
         Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
-        Console.WriteLine("  --residue-max-k=<value>  max k for residue Mersenne test (q = 2*p*k + 1)");
+        Console.WriteLine("  --residue-max-k=<value> max k for residue Mersenne test (q = 2*p*k + 1)");
         Console.WriteLine("  --mersenne-device=cpu|gpu|hybrid  Device for Mersenne method (default gpu)");
-        Console.WriteLine("  --primes-device=cpu|gpu    Device for prime-scan kernels (default gpu)");
-        Console.WriteLine("  --gpu-prime-batch=<n>      Batch size for GPU primality sieve (default 262144)");
-        Console.WriteLine("  --order-device=cpu|gpu|hybrid  Device for order computations (default gpu)");
-        Console.WriteLine("  --ntt=reference|staged GPU NTT backend (default staged)");
-        Console.WriteLine("  --mod-reduction=auto|uint128|mont64|barrett128  staged NTT reduction (default auto)");
+        Console.WriteLine("  --primes-device=cpu|gpu device for prime-scan kernels (default gpu)");
+        Console.WriteLine("  --gpu-prime-batch=<n>   batch size for GPU primality sieve (default 262144)");
+        Console.WriteLine($"  --gpu-ratio=<n>      	ratio of GPU operations vs CPU in hybrid device mode (default {PerfectNumberConstants.GpuRatio})");
         Console.WriteLine("  --gpu-prime-threads=<value>  max concurrent GPU prime checks (default 1)");
-        Console.WriteLine("  --ll-slice=<value>     Lucas–Lehmer iterations per slice (default 32)");
         Console.WriteLine("  --gpu-scan-batch=<value>  GPU q-scan batch size (default 2_097_152)");
+        Console.WriteLine("  --order-device=cpu|gpu|hybrid  Device for order computations (default gpu)");
+        Console.WriteLine("  --ll-slice=<value>     Lucas–Lehmer iterations per slice (default 32)");
+        Console.WriteLine("  --mod-reduction=auto|uint128|mont64|barrett128  staged NTT reduction (default auto)");
+        Console.WriteLine("  --ntt=reference|staged GPU NTT backend (default staged)");
         Console.WriteLine("  --order-warmup-limit=<value>  Warm-up order candidates (default 5_000_000)");
         Console.WriteLine("  --rle-blacklist=<path>  enable RLE blacklist for p (hard filter up to --rle-hard-max)");
         Console.WriteLine("  --rle-hard-max=<p>      apply RLE blacklist only for p <= this (default ulong.MaxValue = no limit)");

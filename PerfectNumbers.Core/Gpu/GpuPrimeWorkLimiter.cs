@@ -4,7 +4,7 @@ namespace PerfectNumbers.Core.Gpu;
 
 public static class GpuPrimeWorkLimiter
 {
-	private static readonly TimeSpan _pauseBetweenChecks = TimeSpan.FromSeconds(2);
+	private static readonly TimeSpan _pauseBetweenChecks = TimeSpan.FromSeconds(10);
 	private static PollingSemaphore _semaphore = new(1, _pauseBetweenChecks);
 	private static int _currentLimit = 1;
 

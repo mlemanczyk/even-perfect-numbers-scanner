@@ -2499,17 +2499,40 @@ internal static partial class PrimeOrderCalculator
 
 	private static bool RunOnCpu()
 	{
-		int cpuCount = Atomic.Add(ref _cpuCount, 1);
-		if (cpuCount == PerfectNumberConstants.GpuFrequency)
+		if (PerfectNumberConstants.GpuRatio == 0)
 		{
-			Atomic.Add(ref _cpuCount, -PerfectNumberConstants.GpuFrequency);
+			return false;
 		}
-		else if (cpuCount > PerfectNumberConstants.GpuFrequency)
+		
+		if (PerfectNumberConstants.GpuRatio == 1)
 		{
-			cpuCount -= PerfectNumberConstants.GpuFrequency;
+			while (true)
+			{
+				if (Atomic.CompareExchange(ref _cpuCount, 0, 1) == 0)
+				{
+					return true;
+				}
+
+				if (Atomic.CompareExchange(ref _cpuCount, 1, 0) == 1)
+				{
+					return false;
+				}
+
+				Thread.Yield();
+			}
 		}
 
-		return cpuCount != PerfectNumberConstants.GpuFrequency;
+		int cpuCount = Atomic.Add(ref _cpuCount, 1);
+		if (cpuCount == PerfectNumberConstants.GpuRatio)
+		{
+			Atomic.Add(ref _cpuCount, -PerfectNumberConstants.GpuRatio);
+		}
+		else if (cpuCount > PerfectNumberConstants.GpuRatio)
+		{
+			cpuCount -= PerfectNumberConstants.GpuRatio;
+		}
+
+		return cpuCount != PerfectNumberConstants.GpuRatio;
 	}
 
 	private static void PopulateSmallPrimeFactorsCpu(
