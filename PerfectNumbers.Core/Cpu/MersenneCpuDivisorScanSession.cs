@@ -21,35 +21,36 @@ internal sealed class MersenneCpuDivisorScanSession(PrimeOrderCalculatorAccelera
 		};
 	}
 
-    public void CheckDivisor(
+    public bool CheckDivisor(
         ulong divisor,
         in MontgomeryDivisorData divisorData,
         ulong divisorCycle,
-        in ReadOnlySpan<ulong> primes,
-        Span<byte> hits)
+        in ReadOnlySpan<ulong> primes)
     {
         int length = primes.Length;
         // EvenPerfectBitScanner always provides at least one exponent on this path.
         // Keep the guard commented out for tests that might reuse the session differently.
         // if (length == 0)
         // {
-        //     return;
+        //     return false;
         // }
 
-        if (divisorData.Modulus != divisor)
-        {
-			throw new InvalidOperationException("Divisor data is for a different modulus");
-            // cachedData = MontgomeryDivisorData.FromModulus(divisor);
-        }
+		// This never kicks off in production code
+        // if (divisorData.Modulus != divisor)
+        // {
+		// 	throw new InvalidOperationException("Divisor data is for a different modulus");
+        //     // cachedData = MontgomeryDivisorData.FromModulus(divisor);
+        // }
 
 		if (divisorCycle == 0UL)
 		{
 			divisorCycle = _getCycleLength(divisor);
-			if (divisorCycle == 0UL)
-			{
-				// DivisorCycleCache guarantees a positive cycle for divisors greater than one.
-				throw new InvalidOperationException($"Divisor cycle solver returned zero for divisor {divisor}.");
-			}
+			// This never kicks off in production code
+			// if (divisorCycle == 0UL)
+			// {
+			// 	// DivisorCycleCache guarantees a positive cycle for divisors greater than one.
+			// 	throw new InvalidOperationException($"Divisor cycle solver returned zero for divisor {divisor}.");
+			// }
 		}
 
         // Keep these remainder steppers in place so future updates continue reusing the previously computed residues.
@@ -60,21 +61,26 @@ internal sealed class MersenneCpuDivisorScanSession(PrimeOrderCalculatorAccelera
 
         bool initialUnity = exponentStepper.InitializeCpuIsUnity(primes[0]);
         ulong remainder = cycleStepper.Initialize(primes[0]);
-        hits[0] = remainder == 0UL
-            ? (initialUnity ? (byte)1 : (byte)0)
-            : (byte)0;
+        if (remainder == 0UL && initialUnity)
+        {
+            return true;
+        }
 
         for (int i = 1; i < length; i++)
         {
             remainder = cycleStepper.ComputeNext(primes[i]);
             if (remainder != 0UL)
             {
-                hits[i] = 0;
                 continue;
             }
 
-            hits[i] = exponentStepper.ComputeNextIsUnity(primes[i]) ? (byte)1 : (byte)0;
+            if (exponentStepper.ComputeNextIsUnity(primes[i]))
+            {
+                return true;
+            }
         }
+
+        return false;
     }
 
     public void Return()

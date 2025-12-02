@@ -717,13 +717,13 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			}
 		}
 
-		public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes, Span<byte> hits)
+		public bool CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes)
 		{
 			int length = primes.Length;
 			// EvenPerfectBitScanner always supplies at least one exponent per divisor check, so the guard stays commented out.
 			// if (length == 0)
 			// {
-			//     return;
+			//     return false;
 			// }
 
 			// The GPU divisor sessions only materialize odd moduli greater than one (q = 2kp + 1),
@@ -792,12 +792,11 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 
 			kernel(stream, new Index1D(1), divisorView, offsetView, countView, exponentView, cycleView, hitView, firstHitView);
 
-			Span<byte> hitSlice = hits.Slice(0, length);
-			ref byte hitRef = ref MemoryMarshal.GetReference(hitSlice);
-			hitView.CopyToCPU(stream, ref hitRef, length);
+			firstHitView.CopyToCPU(stream, ref sentinel, 1);
 			stream.Synchronize();
 
 			// Monitor.Exit(_lease.ExecutionLock);
+			return sentinel == 0;
 		}
 
 		public void Return()

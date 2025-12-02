@@ -231,12 +231,18 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		byte step3;
 		byte step7;
 		byte step11;
+		byte step13;
+		byte step17;
+		byte step19;
 
 		byte remainder10;
 		byte remainder8;
 		byte remainder3;
 		byte remainder7;
 		byte remainder11;
+		byte remainder13;
+		byte remainder17;
+		byte remainder19;
 
 		if (stepHigh == 0UL && limitHigh == 0UL)
 		{
@@ -245,6 +251,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 			step3 = (byte)(stepLow % 3UL);
 			step7 = (byte)(stepLow % 7UL);
 			step11 = (byte)(stepLow % 11UL);
+			step13 = (byte)(stepLow % 13UL);
+			step17 = (byte)(stepLow % 17UL);
+			step19 = (byte)(stepLow % 19UL);
 
 			ulong maxK = allowedMax > 0UL ? (allowedMax - 1UL) / stepLow : 0UL;
 			if (maxK == 0UL)
@@ -274,6 +283,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 					step3,
 					step7,
 					step11,
+					step13,
+					step17,
+					step19,
 					ref currentK,
 					out processedTop,
 					out foundDivisor);
@@ -302,6 +314,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 					step3,
 					step7,
 					step11,
+					step13,
+					step17,
+					step19,
 					ref currentK,
 					out processedBottom,
 					out foundDivisor);
@@ -317,17 +332,23 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		step3 = (byte)(((stepHigh % 3UL) + (stepLow % 3UL)) % 3UL);
 		step7 = (byte)((((stepHigh % 7UL) * 2UL) + (stepLow % 7UL)) % 7UL);
 		step11 = (byte)((((stepHigh % 11UL) * 5UL) + (stepLow % 11UL)) % 11UL);
+		step13 = (byte)((((stepHigh % 13UL) * 3UL) + (stepLow % 13UL)) % 13UL);
+		step17 = (byte)(((stepHigh % 17UL) + (stepLow % 17UL)) % 17UL);
+		step19 = (byte)((((stepHigh % 19UL) * 17UL) + (stepLow % 19UL)) % 19UL);
 
 		remainder10 = (byte)((((divisorHigh % 10UL) * 6UL) + (divisorLow % 10UL)) % 10UL);
 		remainder8 = (byte)(divisorLow % 8UL);
 		remainder3 = (byte)(((divisorHigh % 3UL) + (divisorLow % 3UL)) % 3UL);
 		remainder7 = (byte)((((divisorHigh % 7UL) * 2UL) + (divisorLow % 7UL)) % 7UL);
 		remainder11 = (byte)((((divisorHigh % 11UL) * 5UL) + (divisorLow % 11UL)) % 11UL);
+		remainder13 = (byte)((((divisorHigh % 13UL) * 3UL) + (divisorLow % 13UL)) % 13UL);
+		remainder17 = (byte)(((divisorHigh % 17UL) + (divisorLow % 17UL)) % 17UL);
+		remainder19 = (byte)((((divisorHigh % 19UL) * 17UL) + (divisorLow % 19UL)) % 19UL);
 
 		var divisorPool = MontgomeryDivisorDataPool.Shared;
 		while (divisor.CompareTo(limit) <= 0)
 		{
-			bool passesSmallModuli = remainder3 != 0 && remainder7 != 0 && remainder11 != 0;
+			bool passesSmallModuli = remainder3 != 0 && remainder7 != 0 && remainder11 != 0 && remainder13 != 0 && remainder17 != 0 && remainder19 != 0;
 			if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
 			{
 				ulong candidate = divisor.Low;
@@ -379,6 +400,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 			remainder3 = AddMod3(remainder3, step3);
 			remainder7 = AddMod7(remainder7, step7);
 			remainder11 = AddMod11(remainder11, step11);
+			remainder13 = AddMod13(remainder13, step13);
+			remainder17 = AddMod17(remainder17, step17);
+			remainder19 = AddMod19(remainder19, step19);
 		}
 
 		processedAll = true;
@@ -399,6 +423,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		byte step3,
 		byte step7,
 		byte step11,
+		byte step13,
+		byte step17,
+		byte step19,
 		ref ulong currentK,
 		out bool processedAll,
 		out ulong foundDivisor)
@@ -435,6 +462,9 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		byte remainder3 = (byte)(startDivisor % 3UL);
 		byte remainder7 = (byte)(startDivisor % 7UL);
 		byte remainder11 = (byte)(startDivisor % 11UL);
+		byte remainder13 = (byte)(startDivisor % 13UL);
+		byte remainder17 = (byte)(startDivisor % 17UL);
+		byte remainder19 = (byte)(startDivisor % 19UL);
 
 		return CheckDivisors64(
 			gpu,
@@ -448,11 +478,17 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 			step3,
 			step7,
 			step11,
+			step13,
+			step17,
+			step19,
 			remainder10,
 			remainder8,
 			remainder3,
 			remainder7,
 			remainder11,
+			remainder13,
+			remainder17,
+			remainder19,
 			ref currentK,
 			out processedAll,
 			out foundDivisor);
@@ -470,11 +506,17 @@ private bool CheckDivisors64(
 		byte step3,
 		byte step7,
 		byte step11,
+		byte step13,
+		byte step17,
+		byte step19,
 		byte remainder10,
 		byte remainder8,
 		byte remainder3,
 		byte remainder7,
 		byte remainder11,
+		byte remainder13,
+		byte remainder17,
+		byte remainder19,
 		ref ulong currentK,
 		out bool processedAll,
 		out ulong foundDivisor)
@@ -485,7 +527,7 @@ private bool CheckDivisors64(
 		{
 			if (divisor <= limit)
 			{
-				if (remainder3 != 0 && remainder7 != 0 && remainder11 != 0 && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
+				if (remainder3 != 0 && remainder7 != 0 && remainder11 != 0 && remainder13 != 0 && remainder17 != 0 && remainder19 != 0 && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
 				{
 					MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
 					ulong divisorCycle;
@@ -539,7 +581,7 @@ private bool CheckDivisors64(
 		ulong remainingIterations = ((limit - divisor) / step) + 1UL;
 		while (true)
 		{
-			bool passesSmallModuli = remainder3 != 0 && remainder7 != 0 && remainder11 != 0;
+			bool passesSmallModuli = remainder3 != 0 && remainder7 != 0 && remainder11 != 0 && remainder13 != 0 && remainder17 != 0 && remainder19 != 0;
 			if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
 			{
 				MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
@@ -593,6 +635,9 @@ private bool CheckDivisors64(
 			remainder3 = AddMod3(remainder3, step3);
 			remainder7 = AddMod7(remainder7, step7);
 			remainder11 = AddMod11(remainder11, step11);
+			remainder13 = AddMod13(remainder13, step13);
+			remainder17 = AddMod17(remainder17, step17);
+			remainder19 = AddMod19(remainder19, step19);
 		}
 	}
 
@@ -723,6 +768,48 @@ private bool CheckDivisors64(
 	private static byte AddMod7(byte value, byte delta)
 	{
 		const int Modulus = 7;
+		int sum = value + delta;
+
+		if (sum >= Modulus)
+		{
+			sum -= Modulus;
+		}
+
+		return (byte)sum;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static byte AddMod13(byte value, byte delta)
+	{
+		const int Modulus = 13;
+		int sum = value + delta;
+
+		if (sum >= Modulus)
+		{
+			sum -= Modulus;
+		}
+
+		return (byte)sum;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static byte AddMod17(byte value, byte delta)
+	{
+		const int Modulus = 17;
+		int sum = value + delta;
+
+		if (sum >= Modulus)
+		{
+			sum -= Modulus;
+		}
+
+		return (byte)sum;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static byte AddMod19(byte value, byte delta)
+	{
+		const int Modulus = 19;
 		int sum = value + delta;
 
 		if (sum >= Modulus)

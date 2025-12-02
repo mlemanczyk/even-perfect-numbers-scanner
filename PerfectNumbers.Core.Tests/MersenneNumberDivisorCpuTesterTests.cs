@@ -47,16 +47,18 @@ public class MersenneNumberDivisorCpuTesterTests
 		try
 		{
 			ulong[] primes = [5UL, 7UL, 11UL, 13UL];
-			byte[] hits = new byte[primes.Length];
 
 			ulong cycle23 = MersenneDivisorCycles.CalculateCycleLengthCpu(23UL, MontgomeryDivisorDataPool.Shared.FromModulus(23UL));
-			session.CheckDivisor(23UL, MontgomeryDivisorDataPool.Shared.FromModulus(23UL), cycle23, primes, hits);
-			hits.Should().ContainInOrder([0, 0, 1, 0]);
+			session.CheckDivisor(23UL, MontgomeryDivisorDataPool.Shared.FromModulus(23UL), cycle23, primes).Should().BeTrue();
 
-			Array.Fill(hits, (byte)0);
+			ulong[] primesWithoutHit = [5UL, 7UL, 13UL];
+			session.CheckDivisor(23UL, MontgomeryDivisorDataPool.Shared.FromModulus(23UL), cycle23, primesWithoutHit).Should().BeFalse();
+
 			ulong cycle31 = MersenneDivisorCycles.CalculateCycleLengthCpu(31UL, MontgomeryDivisorDataPool.Shared.FromModulus(31UL));
-			session.CheckDivisor(31UL, MontgomeryDivisorDataPool.Shared.FromModulus(31UL), cycle31, primes, hits);
-			hits.Should().ContainInOrder([1, 0, 0, 0]);
+			session.CheckDivisor(31UL, MontgomeryDivisorDataPool.Shared.FromModulus(31UL), cycle31, primes).Should().BeTrue();
+
+			ulong[] primesBeforeHit = [7UL, 11UL, 13UL];
+			session.CheckDivisor(31UL, MontgomeryDivisorDataPool.Shared.FromModulus(31UL), cycle31, primesBeforeHit).Should().BeFalse();
 		}
 		finally
 		{
@@ -77,13 +79,13 @@ public class MersenneNumberDivisorCpuTesterTests
 		try
 		{
 			ulong[] exponents = [6UL, 7UL, 9UL, 10UL, 12UL];
-			byte[] hits = new byte[exponents.Length];
 
 			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(7UL);
 			ulong cycle = MersenneDivisorCycles.CalculateCycleLengthCpu(7UL, divisorData);
-			session.CheckDivisor(7UL, divisorData, cycle, exponents, hits);
+			session.CheckDivisor(7UL, divisorData, cycle, exponents).Should().BeTrue();
 
-			hits.Should().Equal([1, 0, 1, 0, 1]);
+			ulong[] nonDivisibleExponents = [5UL, 11UL];
+			session.CheckDivisor(7UL, divisorData, cycle, nonDivisibleExponents).Should().BeFalse();
 		}
 		finally
 		{
@@ -104,13 +106,13 @@ public class MersenneNumberDivisorCpuTesterTests
 		try
 		{
 			ulong[] exponents = [10UL, 11UL, 20UL, 21UL, 30UL];
-			byte[] hits = new byte[exponents.Length];
 
 			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(11UL);
 			ulong cycle = MersenneDivisorCycles.CalculateCycleLengthCpu(11UL, divisorData);
-			session.CheckDivisor(11UL, divisorData, cycle, exponents, hits);
+			session.CheckDivisor(11UL, divisorData, cycle, exponents).Should().BeTrue();
 
-			hits.Should().Equal([1, 0, 1, 0, 1]);
+			ulong[] nonDivisibleExponents = [5UL, 17UL];
+			session.CheckDivisor(11UL, divisorData, cycle, nonDivisibleExponents).Should().BeFalse();
 		}
 		finally
 		{

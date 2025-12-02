@@ -28,7 +28,7 @@ public interface IMersenneNumberDivisorByDivisorTester
 
     public interface IDivisorScanSession
     {
-        void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes, Span<byte> hits);
+        bool CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes);
 
         void Return();
     }

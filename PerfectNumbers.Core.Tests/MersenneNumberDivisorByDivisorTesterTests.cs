@@ -104,7 +104,7 @@ public class MersenneNumberDivisorByDivisorTesterTests
 
         private sealed class DummySession : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
         {
-            public void CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes, Span<byte> hits)
+            public bool CheckDivisor(ulong divisor, in MontgomeryDivisorData divisorData, ulong divisorCycle, in ReadOnlySpan<ulong> primes)
             {
                 throw new NotSupportedException();
             }
