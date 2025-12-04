@@ -41,7 +41,7 @@ The source code relays on selected functionality from the following packages:
 * [xunit](https://www.nuget.org/packages/xunit)
 
 # Known factors
-The lists below will contain known factors identified by the scanner.
+The lists below contain known factors identified by the scanner.
 * [138,000,001 - 139,000,000](/factors-138m.csv) - in progress
 
 # Excluded without factors
