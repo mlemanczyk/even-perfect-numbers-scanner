@@ -16,6 +16,15 @@ public sealed class PrimeTester
     [ThreadStatic]
     private static PrimeTester? _tester;
 
+    [ThreadStatic]
+    private static uint[]? _smallPrimeRemainders;
+
+    [ThreadStatic]
+    private static ulong _lastTrackedValue;
+
+    [ThreadStatic]
+    private static ulong _lastRemainderLimit;
+
     public static PrimeTester Exclusive => _tester ??= new();
 
     public static bool IsPrimeCpu(ulong n)
@@ -40,25 +49,59 @@ public sealed class PrimeTester
             return true;
         }
 
-        var remainderStepper = new AscendingDivisorRemainderStepper(n);
         uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
         int smallPrimeDivisorsLength = smallPrimeDivisors.Length;
+        uint[] remainders = _smallPrimeRemainders ??= new uint[smallPrimeDivisorsLength];
+        if (remainders.Length < smallPrimeDivisorsLength)
+        {
+            remainders = _smallPrimeRemainders = new uint[smallPrimeDivisorsLength];
+        }
+        bool canIncrement = _lastTrackedValue != 0UL && n > _lastTrackedValue;
+        ulong delta = canIncrement ? n - _lastTrackedValue : 0UL;
+        ulong maxDivisor = (ulong)Math.Sqrt(n);
+        if ((UInt128)maxDivisor * maxDivisor < n)
+        {
+            maxDivisor++;
+        }
 
         for (int i = 1; i < smallPrimeDivisorsLength; i++)
         {
             uint divisor = smallPrimeDivisors[i];
 
-            if (!remainderStepper.ShouldContinue(divisor))
+            if (divisor > maxDivisor)
             {
                 break;
             }
 
-            if (remainderStepper.Divides(divisor))
+            uint remainder;
+            bool canReuse = canIncrement && divisor <= _lastRemainderLimit;
+            if (!canReuse)
             {
+                remainder = (uint)(n % divisor);
+                remainders[i] = remainder;
+            }
+            else
+            {
+                uint previousRemainder = remainders[i];
+                uint deltaMod = delta >= divisor ? (uint)(delta % divisor) : (uint)delta;
+                remainder = previousRemainder + deltaMod;
+                if (remainder >= divisor)
+                {
+                    remainder -= divisor;
+                }
+                remainders[i] = remainder;
+            }
+
+            if (remainder == 0UL)
+            {
+                _lastTrackedValue = n;
+                _lastRemainderLimit = maxDivisor;
                 return false;
             }
         }
 
+        _lastTrackedValue = n;
+        _lastRemainderLimit = maxDivisor;
         return true;
     }
 
