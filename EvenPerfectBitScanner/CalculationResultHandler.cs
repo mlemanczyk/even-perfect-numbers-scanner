@@ -1,4 +1,7 @@
+using System;
 using System.Buffers.Text;
+using System.Globalization;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using PerfectNumbers.Core;
@@ -93,19 +96,46 @@ internal static class CalculationResultHandler
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void HandleResult(ulong currentP, BigInteger divisor, bool searchedMersenne, bool detailedCheck, bool passedAllTests, bool lastWasComposite)
+        {
+                Span<char> divisorBuffer = stackalloc char[256];
+                if (!divisor.TryFormat(divisorBuffer, out int divisorChars, provider: CultureInfo.InvariantCulture))
+                {
+                        string divisorString = divisor.ToString(CultureInfo.InvariantCulture);
+                        HandleResultInternal(currentP, divisorString.AsSpan(), searchedMersenne, detailedCheck, passedAllTests, lastWasComposite);
+                        return;
+                }
+
+                HandleResultInternal(currentP, divisorBuffer[..divisorChars], searchedMersenne, detailedCheck, passedAllTests, lastWasComposite);
+        }
+
         internal static void HandleResult(ulong currentP, ulong divisor, bool searchedMersenne, bool detailedCheck, bool passedAllTests, bool lastWasComposite)
+        {
+                Span<char> divisorBuffer = stackalloc char[32];
+                if (!divisor.TryFormat(divisorBuffer, out int divisorChars, provider: CultureInfo.InvariantCulture))
+                {
+                        string divisorString = divisor.ToString(CultureInfo.InvariantCulture);
+                        HandleResultInternal(currentP, divisorString.AsSpan(), searchedMersenne, detailedCheck, passedAllTests, lastWasComposite);
+                        return;
+                }
+
+                HandleResultInternal(currentP, divisorBuffer[..divisorChars], searchedMersenne, detailedCheck, passedAllTests, lastWasComposite);
+        }
+
+        private static void HandleResultInternal(ulong currentP, ReadOnlySpan<char> divisorText, bool searchedMersenne, bool detailedCheck, bool passedAllTests, bool lastWasComposite)
         {
                 // Program flow ensures Initialize(...) and InitializeOutputBuffer() ran before this call. Do not add initialization guards here.
 
-                Span<byte> stackBuffer = stackalloc byte[128];
+                Span<byte> stackBuffer = stackalloc byte[256];
                 byte[]? rentedBuffer = null;
                 Span<byte> utf8Span = stackBuffer;
-                int byteCount = TryFormatResultLine(utf8Span, currentP, divisor, searchedMersenne, detailedCheck, passedAllTests);
+                int byteCount = TryFormatResultLine(utf8Span, currentP, divisorText, searchedMersenne, detailedCheck, passedAllTests);
                 if (byteCount < 0)
                 {
-                        rentedBuffer = ThreadStaticPools.BytePool.Rent(256);
+                        int minimumSize = Math.Max((divisorText.Length + 5) * 4, 256);
+                        rentedBuffer = ThreadStaticPools.BytePool.Rent(minimumSize);
                         utf8Span = rentedBuffer;
-                        byteCount = TryFormatResultLine(utf8Span, currentP, divisor, searchedMersenne, detailedCheck, passedAllTests);
+                        byteCount = TryFormatResultLine(utf8Span, currentP, divisorText, searchedMersenne, detailedCheck, passedAllTests);
                         if (byteCount < 0)
                         {
                                 ThreadStaticPools.BytePool.Return(rentedBuffer);
@@ -114,7 +144,7 @@ internal static class CalculationResultHandler
                 }
 
                 ReadOnlySpan<byte> utf8Line = utf8Span[..byteCount];
-                Span<char> charBuffer = stackalloc char[128];
+                Span<char> charBuffer = stackalloc char[256];
                 int charCount = Utf8Encoding.GetChars(utf8Line, charBuffer);
                 ReadOnlySpan<char> recordSpan = charBuffer[..charCount];
 
@@ -229,7 +259,7 @@ internal static class CalculationResultHandler
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int TryFormatResultLine(Span<byte> destination, ulong currentP, ulong divisor, bool searchedMersenne, bool detailedCheck, bool passedAllTests)
+        private static int TryFormatResultLine(Span<byte> destination, ulong currentP, ReadOnlySpan<char> divisorText, bool searchedMersenne, bool detailedCheck, bool passedAllTests)
         {
                 int offset = 0;
 
@@ -246,16 +276,14 @@ internal static class CalculationResultHandler
 
                 destination[offset++] = (byte)',';
 
-                if (!Utf8Formatter.TryFormat(divisor, destination[offset..], out written))
+                int divisorByteCount = Utf8Encoding.GetByteCount(divisorText);
+                if (offset + divisorByteCount >= destination.Length)
                 {
                         return -1;
                 }
 
-                offset += written;
-                if (offset >= destination.Length)
-                {
-                        return -1;
-                }
+                divisorByteCount = Utf8Encoding.GetBytes(divisorText, destination[offset..]);
+                offset += divisorByteCount;
 
                 destination[offset++] = (byte)',';
 

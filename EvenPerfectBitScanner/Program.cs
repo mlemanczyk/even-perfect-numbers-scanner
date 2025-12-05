@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Globalization;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using EvenPerfectBitScanner.Candidates;
 using EvenPerfectBitScanner.IO;
@@ -241,6 +242,11 @@ internal static class Program
 						: new MersenneNumberDivisorByDivisorCpuTester(orderDevice);
 				_byDivisorTester.MinK = _cliArguments.MinK;
 				_byDivisorTester.BatchSize = scanBatchSize;
+				if (_byDivisorTester is MersenneNumberDivisorByDivisorGpuTester && _cliArguments.MinK > ulong.MaxValue)
+				{
+					Console.WriteLine("--min-k values above UInt64 are only supported on the CPU path for --mersenne=bydivisor.");
+					return;
+				}
 			}
 
 			// Load RLE blacklist (optional)

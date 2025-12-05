@@ -537,6 +537,7 @@ public static class UInt128Extensions
 
 		int i = 0, primesLength = smallPrimes.Length;
 		UInt128 cycle = MersenneDivisorCycles.GetCycleCpu(q);
+		
 		// TODO: If the cache lacks this cycle, immediately schedule the configured device
 		// (GPU by default) to compute it on the fly and skip inserting it into the cache so
 		// wide-order factoring can still leverage cycle stepping without breaching the

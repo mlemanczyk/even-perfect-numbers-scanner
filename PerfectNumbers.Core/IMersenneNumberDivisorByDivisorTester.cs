@@ -1,3 +1,4 @@
+using System.Numerics;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
@@ -6,7 +7,7 @@ public interface IMersenneNumberDivisorByDivisorTester
 {
     int BatchSize { get; set; }
 
-    ulong MinK { get; set; }
+    BigInteger MinK { get; set; }
 
     void ConfigureFromMaxPrime(ulong maxPrime);
 
@@ -14,7 +15,7 @@ public interface IMersenneNumberDivisorByDivisorTester
 
     ulong GetAllowedMaxDivisor(ulong prime);
 
-    bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out ulong divisor);
+    bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out BigInteger divisor);
 
     IDivisorScanSession CreateDivisorSession(PrimeOrderCalculatorAccelerator gpu);
 
@@ -22,7 +23,7 @@ public interface IMersenneNumberDivisorByDivisorTester
 
     void ResetStateTracking();
 
-    void ResumeFromState(ulong lastSavedK);
+    void ResumeFromState(BigInteger lastSavedK);
 
     void PrepareCandidates(in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues);
 

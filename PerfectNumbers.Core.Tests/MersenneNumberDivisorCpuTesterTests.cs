@@ -1,3 +1,4 @@
+using System.Numerics;
 using FluentAssertions;
 using PerfectNumbers.Core.Cpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
@@ -17,17 +18,17 @@ public class MersenneNumberDivisorCpuTesterTests
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			tester.IsPrime(gpu, 5UL, out bool divisorsExhausted, out ulong divisor).Should().BeTrue();
-			divisorsExhausted.Should().BeTrue();
-			divisor.Should().Be(0UL);
+            tester.IsPrime(gpu, 5UL, out bool divisorsExhausted, out BigInteger divisor).Should().BeTrue();
+            divisorsExhausted.Should().BeTrue();
+            divisor.Should().Be(BigInteger.Zero);
 
-			tester.IsPrime(gpu, 7UL, out divisorsExhausted, out divisor).Should().BeTrue();
-			divisorsExhausted.Should().BeTrue();
-			divisor.Should().Be(0UL);
+            tester.IsPrime(gpu, 7UL, out divisorsExhausted, out divisor).Should().BeTrue();
+            divisorsExhausted.Should().BeTrue();
+            divisor.Should().Be(BigInteger.Zero);
 
-			tester.IsPrime(gpu, 11UL, out divisorsExhausted, out divisor).Should().BeFalse();
-			divisorsExhausted.Should().BeTrue();
-			divisor.Should().BeGreaterThan(0UL);
+            tester.IsPrime(gpu, 11UL, out divisorsExhausted, out divisor).Should().BeFalse();
+            divisorsExhausted.Should().BeTrue();
+            divisor.Should().BeGreaterThan(BigInteger.Zero);
 		}
 		finally
 		{

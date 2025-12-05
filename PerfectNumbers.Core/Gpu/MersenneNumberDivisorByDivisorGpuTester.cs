@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Concurrent;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ILGPU;
@@ -18,7 +20,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 	// so the synchronization fields from the previous implementation remain commented out here.
 	// private readonly object _sync = new();
 	private ulong _divisorLimit;
-	private ulong _minK = 1UL;
+	private BigInteger _minK = BigInteger.One;
 	// private bool _isConfigured;
 
 	private readonly ConcurrentBag<MersenneNumberDivisorByDivisorAccelerator>[] _resourcePool = [.. AcceleratorPool.Shared.Accelerators.Select(x => new ConcurrentBag<MersenneNumberDivisorByDivisorAccelerator>())];
@@ -37,10 +39,10 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		set => GpuBatchSize = value;
 	}
 
-	public ulong MinK
+	public BigInteger MinK
 	{
 		get => _minK;
-		set => _minK = value < 1UL ? 1UL : value;
+		set => _minK = value < BigInteger.One ? BigInteger.One : value;
 	}
 
 	public string? StateFilePath { get; set; }
@@ -49,9 +51,14 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 	{
 	}
 
-	public void ResumeFromState(ulong lastSavedK)
+	public void ResumeFromState(BigInteger lastSavedK)
 	{
-		_minK = lastSavedK + 1UL;
+		if (lastSavedK > ulong.MaxValue)
+		{
+			throw new NotSupportedException("GPU by-divisor tester does not support MinK above UInt64.");
+		}
+
+		_minK = lastSavedK + BigInteger.One;
 	}
 
 	public void ConfigureFromMaxPrime(ulong maxPrime)
@@ -68,7 +75,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		// _isConfigured = true;
 	}
 
-	public bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out ulong divisor)
+	public bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out BigInteger divisor)
 	{
 		ulong allowedMax;
 		int batchCapacity;
@@ -113,7 +120,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			gpu,
 			prime,
 			allowedMax,
-			_minK,
+			GetMinKOrThrow(),
 			resources.CheckDivisorKernel,
 			resources.DivisorDataBuffer,
 			resources.OffsetBuffer,
@@ -144,8 +151,18 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		}
 
 		divisorsExhausted = coveredRange;
-		divisor = 0UL;
+		divisor = BigInteger.Zero;
 		return true;
+	}
+
+	private ulong GetMinKOrThrow()
+	{
+		if (_minK > ulong.MaxValue)
+		{
+			throw new NotSupportedException("GPU by-divisor tester does not support MinK above UInt64.");
+		}
+
+		return (ulong)_minK;
 	}
 
 	public void PrepareCandidates(in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)

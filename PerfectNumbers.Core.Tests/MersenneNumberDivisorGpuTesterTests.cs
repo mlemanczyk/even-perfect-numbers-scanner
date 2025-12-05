@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Reflection;
 using FluentAssertions;
 using PerfectNumbers.Core.Cpu;
@@ -102,17 +103,17 @@ public class MersenneNumberDivisorGpuTesterTests
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			tester.IsPrime(gpu, 31UL, out bool exhausted, out ulong divisor).Should().BeTrue();
+			tester.IsPrime(gpu, 31UL, out bool exhausted, out BigInteger divisor).Should().BeTrue();
 			exhausted.Should().BeTrue();
-			divisor.Should().Be(0UL);
+			divisor.Should().Be(BigInteger.Zero);
 
 			tester.IsPrime(gpu, 37UL, out exhausted, out divisor).Should().BeFalse();
 			exhausted.Should().BeTrue();
-			divisor.Should().BeGreaterThan(0UL);
+			divisor.Should().BeGreaterThan(BigInteger.Zero);
 
 			tester.IsPrime(gpu, 43UL, out exhausted, out divisor).Should().BeFalse();
 			exhausted.Should().BeTrue();
-			divisor.Should().BeGreaterThan(0UL);
+			divisor.Should().BeGreaterThan(BigInteger.Zero);
 		}
 		finally
 		{
@@ -145,15 +146,15 @@ public class MersenneNumberDivisorGpuTesterTests
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			tester.IsPrime(gpu, 31UL, out _, out ulong divisor).Should().BeTrue();
-			divisor.Should().Be(0UL);
+			tester.IsPrime(gpu, 31UL, out _, out BigInteger divisor).Should().BeTrue();
+			divisor.Should().Be(BigInteger.Zero);
 			tester.IsPrime(gpu, 37UL, out bool exhausted, out divisor).Should().BeFalse();
 			exhausted.Should().BeTrue();
-			divisor.Should().BeGreaterThan(0UL);
+			divisor.Should().BeGreaterThan(BigInteger.Zero);
 
 			tester.IsPrime(gpu, 41UL, out bool divisorsExhausted, out divisor).Should().BeFalse();
 			divisorsExhausted.Should().BeTrue();
-			divisor.Should().BeGreaterThan(0UL);
+			divisor.Should().BeGreaterThan(BigInteger.Zero);
 		}
 		finally
 		{
@@ -175,16 +176,16 @@ public class MersenneNumberDivisorGpuTesterTests
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			tester.IsPrime(gpu, exponent, out bool exhausted, out ulong divisor).Should().Be(expectedPrime);
+			tester.IsPrime(gpu, exponent, out bool exhausted, out BigInteger divisor).Should().Be(expectedPrime);
 
 			exhausted.Should().BeTrue();
 			if (expectedPrime)
 			{
-				divisor.Should().Be(0UL);
+				divisor.Should().Be(BigInteger.Zero);
 			}
 			else
 			{
-				divisor.Should().BeGreaterThan(0UL);
+				divisor.Should().BeGreaterThan(BigInteger.Zero);
 			}
 		}
 		finally
@@ -207,9 +208,9 @@ public class MersenneNumberDivisorGpuTesterTests
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			tester.IsPrime(gpu, 41UL, out bool divisorsExhausted, out ulong divisor).Should().BeFalse();
+			tester.IsPrime(gpu, 41UL, out bool divisorsExhausted, out BigInteger divisor).Should().BeFalse();
 			divisorsExhausted.Should().BeTrue();
-			divisor.Should().BeGreaterThan(0UL);
+			divisor.Should().BeGreaterThan(BigInteger.Zero);
 		}
 		finally
 		{
@@ -397,9 +398,9 @@ public class MersenneNumberDivisorGpuTesterTests
 				.GetField("_divisorLimit", BindingFlags.NonPublic | BindingFlags.Instance)!
 				.SetValue(tester, 200UL);
 
-			tester.IsPrime(gpu, 19UL, out bool divisorsExhausted, out ulong divisor).Should().BeTrue();
+			tester.IsPrime(gpu, 19UL, out bool divisorsExhausted, out BigInteger divisor).Should().BeTrue();
 			divisorsExhausted.Should().BeTrue();
-			divisor.Should().Be(0UL);
+			divisor.Should().Be(BigInteger.Zero);
 		}
 		finally
 		{

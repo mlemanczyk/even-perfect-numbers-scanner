@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 
@@ -50,7 +51,7 @@ internal readonly struct CliArguments
     internal readonly double ZeroFractionHard;
     internal readonly double ZeroFractionConjecture;
     internal readonly int MaxZeroConjecture;
-    internal readonly ulong MinK;
+    internal readonly BigInteger MinK;
 	internal readonly int GpuRatio;
 
 	private CliArguments(
@@ -96,7 +97,7 @@ internal readonly struct CliArguments
             double zeroFractionHard,
             double zeroFractionConjecture,
             int maxZeroConjecture,
-            ulong minK,
+            BigInteger minK,
 			int gpuRatio)
     {
         StartPrime = startPrime;
@@ -191,7 +192,7 @@ internal readonly struct CliArguments
         double zeroFractionHard = -1.0;
         double zeroFractionConjecture = -1.0;
         int maxZeroConjecture = -1;
-        ulong minK = 1UL;
+        BigInteger minK = BigInteger.One;
 		int gpuRatio = PerfectNumberConstants.GpuRatio;
 
         foreach (string argument in args)
@@ -314,14 +315,31 @@ internal readonly struct CliArguments
 
             if (argument.StartsWith("--min-k=", StringComparison.OrdinalIgnoreCase))
             {
-                if (Utf8CliParser.TryParseUInt64(argument.AsSpan("--min-k=".Length), out ulong parsedMinK) && parsedMinK > 0UL)
+                ReadOnlySpan<char> minKSpan = argument.AsSpan("--min-k=".Length);
+                if (Utf8CliParser.TryParseUInt64(minKSpan, out ulong parsedMinK) && parsedMinK > 0UL)
                 {
                     minK = parsedMinK;
                 }
                 else
                 {
-                    Console.WriteLine("Invalid value for --min-k.");
-                    return default;
+                    try
+                    {
+                        BigInteger parsedMinKBig = BigInteger.Parse(minKSpan, CultureInfo.InvariantCulture);
+                        if (parsedMinKBig > BigInteger.Zero)
+                        {
+                            minK = parsedMinKBig;
+                        }
+                        else
+                        {
+                            Console.WriteLine("Invalid value for --min-k.");
+                            return default;
+                        }
+                    }
+                    catch
+                    {
+                        Console.WriteLine("Invalid value for --min-k.");
+                        return default;
+                    }
                 }
 
                 continue;

@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Globalization;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
@@ -13,12 +14,12 @@ public static class MersenneNumberDivisorByDivisorTester
 			List<ulong> candidates,
 			IMersenneNumberDivisorByDivisorTester tester,
 			Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
-			ulong startPrime,
-			Action markComposite,
-			Action clearComposite,
-			Action<ulong, bool, bool, bool, ulong> printResult,
-			int threadCount,
-			int primesPerTask)
+            ulong startPrime,
+            Action markComposite,
+            Action clearComposite,
+            Action<ulong, bool, bool, bool, BigInteger> printResult,
+            int threadCount,
+            int primesPerTask)
 	{
 		if (candidates.Count == 0)
 		{
@@ -243,15 +244,15 @@ public static class MersenneNumberDivisorByDivisorTester
 
 		IMersenneNumberDivisorByDivisorTester CreateTester(IMersenneNumberDivisorByDivisorTester prototype)
 		{
-			IMersenneNumberDivisorByDivisorTester tester = prototype switch
-			{
-				MersenneNumberDivisorByDivisorCpuTester cpu => new MersenneNumberDivisorByDivisorCpuTester(cpu.OrderDevice)
-				{
-					BatchSize = prototype.BatchSize,
-					MinK = prototype.MinK,
-				},
-				_ => CreateGpuTester(prototype),
-			};
+                IMersenneNumberDivisorByDivisorTester tester = prototype switch
+                {
+                    MersenneNumberDivisorByDivisorCpuTester cpu => new MersenneNumberDivisorByDivisorCpuTester(cpu.OrderDevice)
+                    {
+                        BatchSize = prototype.BatchSize,
+                        MinK = prototype.MinK,
+                },
+                _ => CreateGpuTester(prototype),
+            };
 
 			tester.ConfigureFromMaxPrime(maxPrime);
 			return tester;
@@ -275,27 +276,27 @@ public static class MersenneNumberDivisorByDivisorTester
 				IMersenneNumberDivisorByDivisorTester testerForPrime = CreateTester(tester);
 				string stateFile = Path.Combine(PerfectNumberConstants.ByDivisorStateDirectory, prime.ToString(CultureInfo.InvariantCulture) + ".bin");
 
-				ulong resumeK = tester.MinK;
-				if (File.Exists(stateFile))
-				{
-					ulong lastK = File.ReadLines(stateFile)
-						.Where(static line => !string.IsNullOrWhiteSpace(line))
-						.Select(static line => ulong.Parse(line, NumberStyles.None, CultureInfo.InvariantCulture))
-						.Max();
+                BigInteger resumeK = tester.MinK;
+                if (File.Exists(stateFile))
+                {
+                    BigInteger lastK = File.ReadLines(stateFile)
+                        .Where(static line => !string.IsNullOrWhiteSpace(line))
+                        .Select(static line => BigInteger.Parse(line, NumberStyles.None, CultureInfo.InvariantCulture))
+                        .Max();
 
-					resumeK = lastK + 1UL;
-					testerForPrime.ResumeFromState(lastK);
-				}
-				else
-				{
-					testerForPrime.ResumeFromState(0UL);
-				}
+                    resumeK = lastK + BigInteger.One;
+                    testerForPrime.ResumeFromState(lastK);
+                }
+                else
+                {
+                    testerForPrime.ResumeFromState(BigInteger.Zero);
+                }
 
-				testerForPrime.MinK = resumeK;
-				testerForPrime.StateFilePath = stateFile;
-				testerForPrime.ResetStateTracking();
+                testerForPrime.MinK = resumeK;
+                testerForPrime.StateFilePath = stateFile;
+                testerForPrime.ResetStateTracking();
 
-				bool isPrime = testerForPrime.IsPrime(gpu, prime, out bool divisorsExhausted, out ulong divisor);
+                bool isPrime = testerForPrime.IsPrime(gpu, prime, out bool divisorsExhausted, out BigInteger divisor);
 
 				if (!isPrime)
 				{

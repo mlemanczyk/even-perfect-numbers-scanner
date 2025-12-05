@@ -1,3 +1,4 @@
+using System.Numerics;
 using FluentAssertions;
 using PerfectNumbers.Core.Gpu.Accelerators;
 using Xunit;
@@ -12,7 +13,7 @@ public class MersenneNumberDivisorByDivisorTesterTests
     {
         var candidates = new List<ulong> { 5UL, 7UL, 11UL, 13UL };
         var tester = new FakeTester();
-        var results = new List<(ulong Prime, bool Searched, bool Detailed, bool Passed, ulong Divisor)>();
+        var results = new List<(ulong Prime, bool Searched, bool Detailed, bool Passed, BigInteger Divisor)>();
         int compositeMarks = 0;
         int clearedMarks = 0;
 
@@ -31,12 +32,12 @@ public class MersenneNumberDivisorByDivisorTesterTests
         compositeMarks.Should().Be(2);
         clearedMarks.Should().Be(2);
         results.Should().Equal(
-            new[]
+            new (ulong Prime, bool Searched, bool Detailed, bool Passed, BigInteger Divisor)[]
             {
-                (5UL, true, true, true, 0UL),
-                (7UL, true, true, false, 7UL),
-                (11UL, true, true, false, 11UL),
-                (13UL, true, true, true, 0UL),
+                (5UL, true, true, true, BigInteger.Zero),
+                (7UL, true, true, false, new BigInteger(7)),
+                (11UL, true, true, false, new BigInteger(11)),
+                (13UL, true, true, true, BigInteger.Zero),
             });
     }
 
@@ -46,7 +47,7 @@ public class MersenneNumberDivisorByDivisorTesterTests
 
         public int BatchSize { get; set; }
 
-        public ulong MinK { get; set; }
+        public BigInteger MinK { get; set; }
 
         public string? StateFilePath { get; set; }
 
@@ -54,7 +55,7 @@ public class MersenneNumberDivisorByDivisorTesterTests
         {
         }
 
-        public void ResumeFromState(ulong lastSavedK)
+        public void ResumeFromState(BigInteger lastSavedK)
         {
         }
 
@@ -70,7 +71,7 @@ public class MersenneNumberDivisorByDivisorTesterTests
             return DivisorLimit;
         }
 
-        public bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out ulong divisor)
+        public bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out BigInteger divisor)
         {
             divisorsExhausted = true;
             if (prime % 7UL == 0UL)

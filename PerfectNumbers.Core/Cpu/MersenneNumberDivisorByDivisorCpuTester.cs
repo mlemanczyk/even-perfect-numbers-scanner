@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Globalization;
 using System.IO;
@@ -8,15 +9,15 @@ namespace PerfectNumbers.Core.Cpu;
 
 public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDivisorByDivisorTester
 {
-	private ulong _divisorLimit;
-	private int _batchSize = 1_024;
-	private ulong _minK = 1UL;
-	private readonly ComputationDevice _orderDevice;
-	private readonly TryCycleLengthDelegate _tryCalculateCycleLengthForExponent;
-	private readonly CalculateCycleLengthDelegate _calculateCycleLength;
-	private string? _stateFilePath;
-	private int _stateCounter;
-	private ulong _lastSavedK;
+    private BigInteger _divisorLimit;
+    private int _batchSize = 1_024;
+    private BigInteger _minK = BigInteger.One;
+    private readonly ComputationDevice _orderDevice;
+    private readonly TryCycleLengthDelegate _tryCalculateCycleLengthForExponent;
+    private readonly CalculateCycleLengthDelegate _calculateCycleLength;
+    private string? _stateFilePath;
+    private int _stateCounter;
+    private BigInteger _lastSavedK;
 	public ComputationDevice OrderDevice => _orderDevice;
 
 	private delegate bool TryCycleLengthDelegate(
@@ -67,11 +68,11 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		set => _batchSize = Math.Max(1, value);
 	}
 
-	public ulong MinK
-	{
-		get => _minK;
-		set => _minK = value < 1UL ? 1UL : value;
-	}
+    public BigInteger MinK
+    {
+        get => _minK;
+        set => _minK = value < BigInteger.One ? BigInteger.One : value;
+    }
 
 	public string? StateFilePath
 	{
@@ -84,37 +85,42 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		_stateCounter = 0;
 	}
 
-	public void ResumeFromState(ulong lastSavedK)
-	{
-		_lastSavedK = lastSavedK;
-		_minK = lastSavedK + 1UL;
-		_stateCounter = 0;
-	}
+    public void ResumeFromState(BigInteger lastSavedK)
+    {
+        _lastSavedK = lastSavedK;
+        _minK = lastSavedK + BigInteger.One;
+        _stateCounter = 0;
+    }
 
-	public void ConfigureFromMaxPrime(ulong maxPrime)
-	{
-		_divisorLimit = ComputeDivisorLimitFromMaxPrime(maxPrime);
-	}
+    public void ConfigureFromMaxPrime(ulong maxPrime)
+    {
+        _divisorLimit = ComputeDivisorLimitFromMaxPrimeBig(maxPrime);
+    }
 
-	public ulong DivisorLimit
-	{
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		get
-		{
-			return _divisorLimit;
-		}
-	}
+    public ulong DivisorLimit
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            if (_divisorLimit.IsZero)
+            {
+                return ulong.MaxValue;
+            }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public ulong GetAllowedMaxDivisor(ulong prime) => ComputeAllowedMaxDivisor(prime, _divisorLimit);
+            return _divisorLimit > ulong.MaxValue ? ulong.MaxValue : (ulong)_divisorLimit;
+        }
+    }
 
-	public bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out ulong divisor)
-	{
-		ulong allowedMax = ComputeAllowedMaxDivisor(prime, _divisorLimit);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ulong GetAllowedMaxDivisor(ulong prime) => ComputeAllowedMaxDivisor(prime, _divisorLimit);
 
-		// The CPU by-divisor run always hands us primes with enormous divisor limits, so the fallback below never executes.
-		// if (allowedMax < 3UL)
-		// {
+    public bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out BigInteger divisor)
+    {
+        BigInteger allowedMax = ComputeAllowedMaxDivisorBig(prime, _divisorLimit);
+
+        // The CPU by-divisor run always hands us primes with enormous divisor limits, so the fallback below never executes.
+        // if (allowedMax < 3UL)
+        // {
 		//     // EvenPerfectBitScanner routes primes below the small-divisor cutoff to the GPU path, so the CPU path still sees
 		//     // trivial candidates during targeted tests. Short-circuit here to keep those runs aligned with the production flow.
 		//     divisorsExhausted = true;
@@ -123,34 +129,34 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
 		bool processedAll;
 
-		bool composite = CheckDivisors(
-			gpu,
-			prime,
-			allowedMax,
-			_minK,
-			out processedAll,
+        bool composite = CheckDivisors(
+            gpu,
+            prime,
+            allowedMax,
+            _minK,
+            out processedAll,
 			out divisor);
 
 		if (composite)
-		{
-			divisorsExhausted = true;
-			return false;
-		}
+        {
+            divisorsExhausted = true;
+            return false;
+        }
 
-		divisorsExhausted = processedAll || composite;
-		divisor = 0UL;
-		return true;
-	}
+        divisorsExhausted = processedAll || composite;
+        divisor = BigInteger.Zero;
+        return true;
+    }
 
-	public void PrepareCandidates(in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)
-	{
-		ulong divisorLimit = _divisorLimit;
-		int length = primes.Length;
-		for (int index = 0; index < length; index++)
-		{
-			allowedMaxValues[index] = ComputeAllowedMaxDivisor(primes[index], divisorLimit);
-		}
-	}
+    public void PrepareCandidates(in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)
+    {
+        ulong divisorLimit = GetAllowedDivisorLimitForSpan(_divisorLimit);
+        int length = primes.Length;
+        for (int index = 0; index < length; index++)
+        {
+            allowedMaxValues[index] = ComputeAllowedMaxDivisor(primes[index], divisorLimit);
+        }
+    }
 
 	public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession(PrimeOrderCalculatorAccelerator gpu)
 	{
@@ -165,17 +171,84 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		return new MersenneCpuDivisorScanSession(gpu, _orderDevice);
 	}
 
-	private bool CheckDivisors(
-		PrimeOrderCalculatorAccelerator gpu,
-		ulong prime,
-		ulong allowedMax,
-		ulong minK,
-		out bool processedAll,
-		out ulong foundDivisor)
-	{
-		foundDivisor = 0UL;
-		processedAll = true;
-		ulong currentK = minK < 1UL ? 1UL : minK;
+    private bool CheckDivisors(
+        PrimeOrderCalculatorAccelerator gpu,
+        ulong prime,
+        BigInteger allowedMax,
+        BigInteger minK,
+        out bool processedAll,
+        out BigInteger foundDivisor)
+    {
+        BigInteger normalizedMinK = minK < BigInteger.One ? BigInteger.One : minK;
+        BigInteger step = ((BigInteger)prime) << 1;
+        BigInteger firstDivisor = (step * normalizedMinK) + BigInteger.One;
+        bool unlimited = allowedMax.IsZero;
+
+        bool fits64 = normalizedMinK <= ulong.MaxValue && firstDivisor <= ulong.MaxValue;
+        bool limitFits64 = unlimited || allowedMax <= ulong.MaxValue;
+        if (fits64 && limitFits64)
+        {
+            ulong allowedMax64 = unlimited ? ulong.MaxValue : (ulong)allowedMax;
+            bool composite64 = CheckDivisors64Bit(
+                gpu,
+                prime,
+                allowedMax64,
+                (ulong)normalizedMinK,
+                out processedAll,
+                out ulong foundDivisor64);
+            foundDivisor = foundDivisor64;
+            return composite64;
+        }
+
+        if (fits64 && allowedMax > ulong.MaxValue)
+        {
+            ulong allowedMax64 = ulong.MaxValue;
+            bool composite64 = CheckDivisors64Bit(
+                gpu,
+                prime,
+                allowedMax64,
+                (ulong)normalizedMinK,
+                out processedAll,
+                out ulong foundDivisor64);
+            if (composite64)
+            {
+                foundDivisor = foundDivisor64;
+                return true;
+            }
+
+            BigInteger iterations = ((BigInteger)(allowedMax64 - (ulong)firstDivisor) / (ulong)step) + BigInteger.One;
+            BigInteger nextK = normalizedMinK + iterations;
+            return CheckDivisorsLarge(
+                gpu,
+                prime,
+                allowedMax,
+                nextK,
+                step,
+                out processedAll,
+                out foundDivisor);
+        }
+
+        return CheckDivisorsLarge(
+            gpu,
+            prime,
+            allowedMax,
+            normalizedMinK,
+            step,
+            out processedAll,
+            out foundDivisor);
+    }
+
+    private bool CheckDivisors64Bit(
+        PrimeOrderCalculatorAccelerator gpu,
+        ulong prime,
+        ulong allowedMax,
+        ulong minK,
+        out bool processedAll,
+        out ulong foundDivisor)
+    {
+        foundDivisor = 0UL;
+        processedAll = true;
+        ulong currentK = minK < 1UL ? 1UL : minK;
 
 		// The EvenPerfectBitScanner feeds primes >= 138,000,000 here, so allowedMax >= 3 in production runs.
 		// Keeping the guard commented out documents the reasoning for benchmarks and tests.
@@ -405,16 +478,105 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 			remainder19 = AddMod19(remainder19, step19);
 		}
 
-		processedAll = true;
-		foundDivisor = 0UL;
-		return false;
-	}
+        processedAll = true;
+        foundDivisor = 0UL;
+        return false;
+    }
 
-	private bool CheckDivisors64Range(
-		PrimeOrderCalculatorAccelerator gpu,
-		ulong prime,
-		ulong step,
-		ulong allowedMax,
+    private bool CheckDivisorsLarge(
+        PrimeOrderCalculatorAccelerator gpu,
+        ulong prime,
+        BigInteger allowedMax,
+        BigInteger minK,
+        BigInteger step,
+        out bool processedAll,
+        out BigInteger foundDivisor)
+    {
+        processedAll = true;
+        foundDivisor = BigInteger.Zero;
+        BigInteger currentK = minK < BigInteger.One ? BigInteger.One : minK;
+        BigInteger divisor = (step * currentK) + BigInteger.One;
+        _ = gpu;
+        if (allowedMax.IsZero)
+        {
+            processedAll = false;
+            return false;
+        }
+        if (divisor > allowedMax)
+        {
+            return false;
+        }
+
+        LastDigit lastDigit = (prime & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
+        ushort decimalMask = DivisorGenerator.GetDecimalMask(lastDigit);
+
+        byte step10 = (byte)(step % 10);
+        byte step8 = (byte)(step % 8);
+        byte step3 = (byte)(step % 3);
+        byte step7 = (byte)(step % 7);
+        byte step11 = (byte)(step % 11);
+        byte step13 = (byte)(step % 13);
+        byte step17 = (byte)(step % 17);
+        byte step19 = (byte)(step % 19);
+
+        byte remainder10 = (byte)(divisor % 10);
+        byte remainder8 = (byte)(divisor % 8);
+        byte remainder3 = (byte)(divisor % 3);
+        byte remainder7 = (byte)(divisor % 7);
+        byte remainder11 = (byte)(divisor % 11);
+        byte remainder13 = (byte)(divisor % 13);
+        byte remainder17 = (byte)(divisor % 17);
+        byte remainder19 = (byte)(divisor % 19);
+
+        while (divisor <= allowedMax)
+        {
+            bool passesSmallModuli = remainder3 != 0 && remainder7 != 0 && remainder11 != 0 && remainder13 != 0 && remainder17 != 0 && remainder19 != 0;
+            if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
+            {
+                if (IsProbablePrimeBigInteger(divisor))
+                {
+                    BigInteger powResult = BigInteger.ModPow(2, prime, divisor);
+                    RecordState(currentK);
+                    if (powResult.IsOne)
+                    {
+                        foundDivisor = divisor;
+                        processedAll = true;
+                        return true;
+                    }
+                }
+                else
+                {
+                    RecordState(currentK);
+                }
+            }
+
+            currentK += BigInteger.One;
+            divisor += step;
+            remainder10 = AddMod10(remainder10, step10);
+            remainder8 = AddMod8(remainder8, step8);
+            remainder3 = AddMod3(remainder3, step3);
+            remainder7 = AddMod7(remainder7, step7);
+            remainder11 = AddMod11(remainder11, step11);
+            remainder13 = AddMod13(remainder13, step13);
+            remainder17 = AddMod17(remainder17, step17);
+            remainder19 = AddMod19(remainder19, step19);
+
+            if (divisor > allowedMax)
+            {
+                break;
+            }
+        }
+
+        processedAll = true;
+        foundDivisor = BigInteger.Zero;
+        return false;
+    }
+
+    private bool CheckDivisors64Range(
+        PrimeOrderCalculatorAccelerator gpu,
+        ulong prime,
+        ulong step,
+        ulong allowedMax,
 		ulong startK,
 		ulong endK,
 		ushort decimalMask,
@@ -647,18 +809,18 @@ private bool CheckDivisors64(
 		return residue == 1UL ? (byte)1 : (byte)0;
 	}
 
-	private void RecordState(ulong k)
-	{
-		string? path = _stateFilePath;
-		if (string.IsNullOrEmpty(path))
-		{
-			return;
+    private void RecordState(BigInteger k)
+    {
+        string? path = _stateFilePath;
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
 		}
 
-		if (k <= _lastSavedK)
-		{
-			return;
-		}
+        if (k <= _lastSavedK)
+        {
+            return;
+        }
 
 		int next = _stateCounter + 1;
 		if (next >= PerfectNumberConstants.ByDivisorStateSaveInterval)
@@ -674,15 +836,70 @@ private bool CheckDivisors64(
 			_lastSavedK = k;
 		}
 		else
-		{
-			_stateCounter = next;
-		}
-	}
+        {
+            _stateCounter = next;
+        }
+    }
 
-	private static bool TryCalculateCycleLengthForExponentCpu(
-		ulong divisor,
-		PrimeOrderCalculatorAccelerator gpu,
-		ulong exponent,
+    private static bool IsProbablePrimeBigInteger(BigInteger value)
+    {
+        if (value <= 3)
+        {
+            return value >= 2;
+        }
+
+        if (value.IsEven)
+        {
+            return false;
+        }
+
+        BigInteger d = value - 1;
+        int s = 0;
+        while ((d & 1) == 0)
+        {
+            d >>= 1;
+            s++;
+        }
+
+        ReadOnlySpan<int> bases = stackalloc int[] { 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37 };
+        for (int i = 0; i < bases.Length; i++)
+        {
+            int baseValue = bases[i];
+            if ((BigInteger)baseValue >= value)
+            {
+                continue;
+            }
+
+            BigInteger x = BigInteger.ModPow(baseValue, d, value);
+            if (x == 1 || x == value - 1)
+            {
+                continue;
+            }
+
+            bool witnessFound = true;
+            for (int r = 1; r < s; r++)
+            {
+                x = BigInteger.ModPow(x, 2, value);
+                if (x == value - 1)
+                {
+                    witnessFound = false;
+                    break;
+                }
+            }
+
+            if (witnessFound)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryCalculateCycleLengthForExponentCpu(
+        ulong divisor,
+        PrimeOrderCalculatorAccelerator gpu,
+        ulong exponent,
 		in MontgomeryDivisorData divisorData,
 		out ulong cycleLength,
 		out bool primeOrderFailed) => MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
@@ -854,35 +1071,63 @@ private bool CheckDivisors64(
 		return (byte)((value + delta) & 7);
 	}
 
-	private static ulong ComputeDivisorLimitFromMaxPrime(ulong maxPrime)
-	{
-		// The by-divisor CPU configuration only supplies primes greater than 1, so the guard below never trips.
-		// if (maxPrime <= 1UL)
-		// {
-		//     return 0UL;
-		// }
-		if (maxPrime - 1UL >= 64UL)
-		{
-			return ulong.MaxValue;
-		}
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong GetAllowedDivisorLimitForSpan(BigInteger divisorLimit)
+    {
+        if (divisorLimit.IsZero)
+        {
+            return ulong.MaxValue;
+        }
 
-		return (1UL << (int)(maxPrime - 1UL)) - 1UL;
-	}
+        return divisorLimit > ulong.MaxValue ? ulong.MaxValue : (ulong)divisorLimit;
+    }
 
-	private static ulong ComputeAllowedMaxDivisor(ulong prime, ulong divisorLimit)
-	{
-		// Production by-divisor scans only handle primes, so inputs never fall below 2.
-		// if (prime <= 1UL)
-		// {
-		//     return 0UL;
-		// }
-		if (prime - 1UL >= 64UL)
-		{
-			return divisorLimit;
-		}
+    private static BigInteger ComputeDivisorLimitFromMaxPrimeBig(ulong maxPrime)
+    {
+        if (maxPrime <= 1UL)
+        {
+            return BigInteger.Zero;
+        }
 
-		return Math.Min((1UL << (int)(prime - 1UL)) - 1UL, divisorLimit);
-	}
+        if (maxPrime - 1UL >= 64UL)
+        {
+            return (BigInteger.One << 256) - BigInteger.One;
+        }
+
+        return (BigInteger.One << (int)(maxPrime - 1UL)) - BigInteger.One;
+    }
+
+    private static BigInteger ComputeAllowedMaxDivisorBig(ulong prime, BigInteger divisorLimit)
+    {
+        if (prime <= 1UL)
+        {
+            return BigInteger.Zero;
+        }
+
+        if (divisorLimit.IsZero || prime - 1UL >= 64UL)
+        {
+            return divisorLimit;
+        }
+
+        BigInteger candidateLimit = (BigInteger.One << (int)(prime - 1UL)) - BigInteger.One;
+        if (divisorLimit.IsZero)
+        {
+            return candidateLimit;
+        }
+
+        return BigInteger.Min(candidateLimit, divisorLimit);
+    }
+
+    private static ulong ComputeAllowedMaxDivisor(ulong prime, BigInteger divisorLimit)
+    {
+        BigInteger allowed = ComputeAllowedMaxDivisorBig(prime, divisorLimit);
+        if (allowed.IsZero)
+        {
+            return ulong.MaxValue;
+        }
+
+        return allowed > ulong.MaxValue ? ulong.MaxValue : (ulong)allowed;
+    }
 
 
 }
