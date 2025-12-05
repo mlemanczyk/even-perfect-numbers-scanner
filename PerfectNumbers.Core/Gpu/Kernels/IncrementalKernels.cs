@@ -27,7 +27,7 @@ internal static class IncrementalKernels
         ulong idxMod3 = idx % 3UL;
         ulong idxMod5 = idx % 5UL;
         // residue automaton
-        ulong step10 = (exponent.Mod10() << 1).Mod10();
+        ulong step10 = ((ulong)(exponent.Mod10() << 1)).Mod10();
         ulong r10 = q0m10 + (step10 * idx).Mod10();
         r10 -= (r10 >= 10UL) ? 10UL : 0UL;
         bool shouldCheck = r10 != 5UL; // skip q ≡ 5 (mod 10); other residues handled by r8/r3/r5

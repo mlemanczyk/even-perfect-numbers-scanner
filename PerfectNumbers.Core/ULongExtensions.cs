@@ -434,13 +434,13 @@ public static partial class ULongExtensions
 	// Benchmarks (Mod5ULongBenchmarks) show the direct `% 5` is still cheaper (~0.26 ns vs 0.43 ns), so keep the modulo until a faster lookup is proven.
 	// (Mod8/Mod10 stay masked because they win; Mod5 currently does not.)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong Mod10(this ulong value) => (value % 5UL) switch
+	public static byte Mod10(this ulong value) => (byte)(value % 5UL) switch
 	{
-		0UL => 0UL,
-		1UL => 6UL,
-		2UL => 2UL,
-		3UL => 8UL,
-		_ => 4UL,
+		0 => 0,
+		1 => 6,
+		2 => 2,
+		3 => 8,
+		_ => 4,
 	};
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

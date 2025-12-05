@@ -17,7 +17,7 @@ public class ULongExtensionsTests
 	[InlineData(ulong.MaxValue)]
 	public void Mod10_returns_same_as_operator(ulong value)
 	{
-		ulong expected = value % 10UL;
+		byte expected = (byte)(value % 10UL);
 
 		ULongExtensions.Mod10(value).Should().Be(expected);
 	}

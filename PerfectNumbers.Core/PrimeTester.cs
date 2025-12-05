@@ -9,13 +9,6 @@ namespace PerfectNumbers.Core;
 
 public sealed class PrimeTester
 {
-    public PrimeTester()
-    {
-    }
-
-    [ThreadStatic]
-    private static PrimeTester? _tester;
-
     [ThreadStatic]
     private static uint[]? _smallPrimeRemainders;
 
@@ -25,7 +18,6 @@ public sealed class PrimeTester
     [ThreadStatic]
     private static ulong _lastRemainderLimit;
 
-    public static PrimeTester Exclusive => _tester ??= new();
 
     public static bool IsPrimeCpu(ulong n)
     {
@@ -50,58 +42,82 @@ public sealed class PrimeTester
         }
 
         uint[] smallPrimeDivisors = PrimesGenerator.SmallPrimes;
+        ulong[] smallPrimeDivisorsPow2 = PrimesGenerator.SmallPrimesPow2;
         int smallPrimeDivisorsLength = smallPrimeDivisors.Length;
-        uint[] remainders = _smallPrimeRemainders ??= new uint[smallPrimeDivisorsLength];
-        if (remainders.Length < smallPrimeDivisorsLength)
+        uint[]? remainders = _smallPrimeRemainders;
+        if (remainders == null)
         {
-            remainders = _smallPrimeRemainders = new uint[smallPrimeDivisorsLength];
-        }
-        bool canIncrement = _lastTrackedValue != 0UL && n > _lastTrackedValue;
-        ulong delta = canIncrement ? n - _lastTrackedValue : 0UL;
-        ulong maxDivisor = (ulong)Math.Sqrt(n);
-        if ((UInt128)maxDivisor * maxDivisor < n)
-        {
-            maxDivisor++;
+            remainders = _smallPrimeRemainders = new uint[PrimesGenerator.SmallPrimes.Length];
         }
 
-        for (int i = 1; i < smallPrimeDivisorsLength; i++)
+		ref ulong lastTrackedValue = ref _lastTrackedValue;
+		ref ulong lastRemainderLimit = ref _lastRemainderLimit;
+        bool canReusePrevious = lastTrackedValue != 0UL && n > lastTrackedValue;
+        ulong delta = canReusePrevious ? n - lastTrackedValue : 0UL;
+        canReusePrevious = canReusePrevious && lastRemainderLimit != 0UL && n < lastRemainderLimit;
+        ulong nextCutoff = 0UL;
+
+		uint divisor, remainder;
+		ulong divisorSquared;
+		int i;
+        if (canReusePrevious)
         {
-            uint divisor = smallPrimeDivisors[i];
+            for (i = 1; i < smallPrimeDivisorsLength; i++)
+            {
+                divisorSquared = smallPrimeDivisorsPow2[i];
+                if (divisorSquared > n)
+                {
+                    nextCutoff = divisorSquared;
+                    break;
+                }
 
-            if (divisor > maxDivisor)
-            {
-                break;
-            }
-
-            uint remainder;
-            bool canReuse = canIncrement && divisor <= _lastRemainderLimit;
-            if (!canReuse)
-            {
-                remainder = (uint)(n % divisor);
-                remainders[i] = remainder;
-            }
-            else
-            {
-                uint previousRemainder = remainders[i];
+                divisor = smallPrimeDivisors[i];
                 uint deltaMod = delta >= divisor ? (uint)(delta % divisor) : (uint)delta;
-                remainder = previousRemainder + deltaMod;
+                remainder = remainders[i] + deltaMod;
                 if (remainder >= divisor)
                 {
                     remainder -= divisor;
                 }
+
                 remainders[i] = remainder;
+
+                if (remainder == 0UL)
+                {
+                    lastTrackedValue = n;
+                    lastRemainderLimit = nextCutoff == 0UL ? ulong.MaxValue : nextCutoff;
+                    return false;
+                }
             }
+
+            lastTrackedValue = n;
+            lastRemainderLimit = nextCutoff == 0UL ? ulong.MaxValue : nextCutoff;
+            return true;
+        }
+
+        for (i = 1; i < smallPrimeDivisorsLength; i++)
+        {
+            divisorSquared = smallPrimeDivisorsPow2[i];
+
+            if (divisorSquared > n)
+            {
+                nextCutoff = divisorSquared;
+                break;
+            }
+
+            divisor = smallPrimeDivisors[i];
+            remainder = (uint)(n % divisor);
+            remainders[i] = remainder;
 
             if (remainder == 0UL)
             {
-                _lastTrackedValue = n;
-                _lastRemainderLimit = maxDivisor;
+                lastTrackedValue = n;
+                lastRemainderLimit = nextCutoff == 0UL ? ulong.MaxValue : nextCutoff;
                 return false;
             }
         }
 
-        _lastTrackedValue = n;
-        _lastRemainderLimit = maxDivisor;
+        lastTrackedValue = n;
+        lastRemainderLimit = nextCutoff == 0UL ? ulong.MaxValue : nextCutoff;
         return true;
     }
 

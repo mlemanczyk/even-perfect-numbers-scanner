@@ -57,6 +57,8 @@ This document explains **what the program does**, **how it works step-by-step**,
 * `--mersenne=incremental`
 * `--mersenne=lucas`
 * `--mersenne=residue`
+* `--mersenne=divisor`
+* `--mersenne=bydivisor`
 
 # EvenPerfectBitScanner – Configuration and Pipeline
 Please run `EvenPerfectBitScanner.exe /?` to display all command line parameters with a short description. The description below describes `--mersenne=residue` mode.

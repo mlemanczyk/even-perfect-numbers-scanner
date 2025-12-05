@@ -124,13 +124,13 @@ public static class MersenneNumberDivisorByDivisorTester
 		{
 			ulong candidate = primesSpan[index];
 
-		// The by-divisor CPU scan only operates on primes greater than 138,000,000, so the guard below never triggers.
-		// if (candidate <= 1UL)
-		// {
-		//     markComposite();
-		//     printResult(candidate, false, false, false);
-		//     continue;
-		// }
+			// The by-divisor CPU scan only operates on primes greater than 138,000,000, so the guard below never triggers.
+			// if (candidate <= 1UL)
+			// {
+			//     markComposite();
+			//     printResult(candidate, false, false, false);
+			//     continue;
+			// }
 
 			// This implementation is terribly slow, while this method expect prime p given as --filter-p input already.
 			// We don't need to additionally check it.
@@ -206,13 +206,13 @@ public static class MersenneNumberDivisorByDivisorTester
 			ulong prime = primeSpan[i];
 			ulong allowedMax = allowedMaxSpan[i];
 
-		// Primes in the production by-divisor flow yield massive divisor limits, so the short-circuit below never applies.
-		// if (allowedMax < 3UL)
-		// {
-		//     clearComposite();
-		//     printResult(prime, true, true, true);
-		//     continue;
-		// }
+			// Primes in the production by-divisor flow yield massive divisor limits, so the short-circuit below never applies.
+			// if (allowedMax < 3UL)
+			// {
+			//     clearComposite();
+			//     printResult(prime, true, true, true);
+			//     continue;
+			// }
 
 			filteredPrimes.Add(prime);
 		}
@@ -269,48 +269,56 @@ public static class MersenneNumberDivisorByDivisorTester
 
 		void ProcessPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime)
 		{
-			Console.WriteLine($"Processing {prime}");
-			IMersenneNumberDivisorByDivisorTester testerForPrime = CreateTester(tester);
-			string stateFile = Path.Combine(PerfectNumberConstants.ByDivisorStateDirectory, prime.ToString(CultureInfo.InvariantCulture) + ".bin");
-
-			ulong resumeK = tester.MinK;
-			if (File.Exists(stateFile))
+			try
 			{
-				ulong lastK = File.ReadLines(stateFile)
-					.Where(static line => !string.IsNullOrWhiteSpace(line))
-					.Select(static line => ulong.Parse(line, NumberStyles.None, CultureInfo.InvariantCulture))
-					.Max();
+				Console.WriteLine($"Processing {prime}");
+				IMersenneNumberDivisorByDivisorTester testerForPrime = CreateTester(tester);
+				string stateFile = Path.Combine(PerfectNumberConstants.ByDivisorStateDirectory, prime.ToString(CultureInfo.InvariantCulture) + ".bin");
 
-				resumeK = lastK + 1UL;
-				testerForPrime.ResumeFromState(lastK);
-			}
-			else
-			{
-				testerForPrime.ResumeFromState(0UL);
-			}
-
-			testerForPrime.MinK = resumeK;
-			testerForPrime.StateFilePath = stateFile;
-			testerForPrime.ResetStateTracking();
-
-			bool isPrime = testerForPrime.IsPrime(gpu, prime, out bool divisorsExhausted, out ulong divisor);
-
-			if (!isPrime)
-			{
-				if (!string.IsNullOrEmpty(stateFile) && File.Exists(stateFile))
+				ulong resumeK = tester.MinK;
+				if (File.Exists(stateFile))
 				{
-					File.Delete(stateFile);
+					ulong lastK = File.ReadLines(stateFile)
+						.Where(static line => !string.IsNullOrWhiteSpace(line))
+						.Select(static line => ulong.Parse(line, NumberStyles.None, CultureInfo.InvariantCulture))
+						.Max();
+
+					resumeK = lastK + 1UL;
+					testerForPrime.ResumeFromState(lastK);
+				}
+				else
+				{
+					testerForPrime.ResumeFromState(0UL);
 				}
 
-				markComposite();
-				printResult(prime, true, true, false, divisor);
-				Console.WriteLine($"Finished processing {prime}");
-				return;
-			}
+				testerForPrime.MinK = resumeK;
+				testerForPrime.StateFilePath = stateFile;
+				testerForPrime.ResetStateTracking();
 
-			clearComposite();
-			printResult(prime, true, divisorsExhausted, true, divisor);
-			Console.WriteLine($"Finished processing {prime}");
+				bool isPrime = testerForPrime.IsPrime(gpu, prime, out bool divisorsExhausted, out ulong divisor);
+
+				if (!isPrime)
+				{
+					if (!string.IsNullOrEmpty(stateFile) && File.Exists(stateFile))
+					{
+						File.Delete(stateFile);
+					}
+
+					markComposite();
+					printResult(prime, true, true, false, divisor);
+					Console.WriteLine($"Finished processing {prime}");
+					return;
+				}
+
+				clearComposite();
+				printResult(prime, true, divisorsExhausted, true, divisor);
+				Console.WriteLine($"Finished processing {prime}");
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine($"Error processing {ex.StackTrace}");
+				Environment.Exit(1);
+			}
 		}
 
 		if (workerCount == 1)

@@ -30,7 +30,7 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
 		KernelContainer kernels = GpuKernelPool.GetOrAddKernels(acceleratorIndex, stream, KernelType.Pow2ModKernelScan | KernelType.IncrementalKernelScan);
 		var pow2Kernel = kernels.Pow2Mod!;
         var incKernel = kernels.Incremental!;
-        ulong step10 = (exponent.Mod10() << 1).Mod10();
+        ulong step10 = ((ulong)(exponent.Mod10() << 1)).Mod10();
         ulong step8 = ((exponent & 7UL) << 1) & 7UL;
         ulong step3 = ((exponent % 3UL) << 1) % 3UL;
         ulong step5 = ((exponent % 5UL) << 1) % 5UL;

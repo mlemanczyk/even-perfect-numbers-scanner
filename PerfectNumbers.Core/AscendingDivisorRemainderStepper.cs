@@ -4,33 +4,34 @@ namespace PerfectNumbers.Core;
 
 public struct AscendingDivisorRemainderStepper
 {
-    private readonly ulong dividend;
-    private ulong maxDivisor;
+    private readonly ulong _dividend;
+    private ulong _maxDivisor;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public AscendingDivisorRemainderStepper(ulong value)
     {
-        dividend = value;
+        _dividend = value;
         ulong root = (ulong)Math.Sqrt(value);
         if ((UInt128)root * root < value)
         {
             root++;
         }
 
-        maxDivisor = root;
+        _maxDivisor = root;
     }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public readonly bool ShouldContinue(ulong divisor) => divisor <= maxDivisor;
+	public readonly bool ShouldContinue(ulong divisor) => divisor <= _maxDivisor;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Divides(ulong divisor)
     {
-        ulong quotient = dividend / divisor;
-        ulong remainder = dividend - (quotient * divisor);
-        if (quotient < maxDivisor)
+		ulong remainder = _dividend;
+		ulong quotient = remainder / divisor;
+        remainder -= quotient * divisor;
+        if (quotient < _maxDivisor)
         {
-            maxDivisor = quotient;
+            _maxDivisor = quotient;
         }
 
         return remainder == 0UL;
