@@ -12,12 +12,12 @@ namespace PerfectNumbers.Core;
 
 internal static partial class PrimeOrderCalculator
 {
-	internal readonly struct PendingEntry
+	internal struct PendingEntry
 	{
-		public readonly ulong Value;
-		public readonly bool KnownComposite;
-		public readonly bool HasKnownPrimality;
-		public readonly bool IsPrime;
+		public ulong Value;
+		public bool KnownComposite;
+		public bool HasKnownPrimality;
+		public bool IsPrime;
 
 		public PendingEntry(ulong value, bool knownComposite)
 		{
@@ -36,10 +36,11 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public PendingEntry WithPrimality(bool isPrime)
+		public void WithPrimality(bool isPrime)
 		{
-			bool knownComposite = KnownComposite || !isPrime;
-			return new PendingEntry(Value, knownComposite, true, isPrime);
+			KnownComposite = KnownComposite || !isPrime;
+			HasKnownPrimality = true;
+			IsPrime = isPrime;
 		}
 	}
 
@@ -1932,7 +1933,7 @@ internal static partial class PrimeOrderCalculator
 				// Atomic.Add(ref _partialFactorPendingHits, 1UL);
 				// Console.WriteLine($"Partial factor pending hits {Volatile.Read(ref _partialFactorPendingHits)}");
 
-				entry = entry.WithPrimality(isPrime);
+				entry.WithPrimality(isPrime);
 				pending[index] = entry;
 			}
 
@@ -2112,7 +2113,7 @@ internal static partial class PrimeOrderCalculator
 				// Atomic.Add(ref _partialFactorPendingHits, 1UL);
 				// Console.WriteLine($"Partial factor pending hits {Volatile.Read(ref _partialFactorPendingHits)}");
 
-				entry = entry.WithPrimality(isPrime);
+				entry.WithPrimality(isPrime);
 				pending[index] = entry;
 			}
 
@@ -2294,7 +2295,7 @@ internal static partial class PrimeOrderCalculator
 				// Atomic.Add(ref _partialFactorPendingHits, 1UL);
 				// Console.WriteLine($"Partial factor pending hits {Volatile.Read(ref _partialFactorPendingHits)}");
 
-				entry = entry.WithPrimality(isPrime);
+				entry.WithPrimality(isPrime);
 				pending[index] = entry;
 			}
 
