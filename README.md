@@ -40,12 +40,8 @@ The source code relays on selected functionality from the following packages:
 * [PeterO.Numbers](https://www.nuget.org/packages/PeterO.Numbers)
 * [xunit](https://www.nuget.org/packages/xunit)
 
-# Known factors
-The lists below contain known factors identified by the scanner.
-* [138,000,001 - 139,000,000](/factors-138m.csv) - in progress
-
-# Excluded without factors
-The candidates below were excluded without recording the factor.
+# Excluded
+The candidates below were excluded by the scanner.
 * [138,000,001 - 139,000,000](/excluded-138m.csv)
 
 # Description
