@@ -1,28 +1,21 @@
+using System.Runtime.CompilerServices;
+
 namespace PerfectNumbers.Core;
 
 /// <summary>
 /// Tracks successive Montgomery residues for a single divisor while scanning exponent candidates on the CPU path.
 /// Callers are responsible for seeding the stepper once per divisor and then advancing exponents in ascending order.
 /// </summary>
-internal struct ExponentRemainderStepperCpu
+internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor)
 {
-    private readonly MontgomeryDivisorData _divisor;
-    private readonly ulong _modulus;
-    private readonly ulong _nPrime;
-    private readonly ulong _montgomeryOne;
-    public ulong PreviousExponent;
-    private ulong _currentMontgomery;
+private readonly MontgomeryDivisorData _divisor = divisor;
+    private readonly ulong _modulus = divisor.Modulus;
+    private readonly ulong _nPrime = divisor.NPrime;
+    private readonly ulong _montgomeryOne = divisor.MontgomeryOne;
+    private ulong PreviousExponent = 0UL;
+    private ulong _currentMontgomery = divisor.MontgomeryOne;
 
-    public ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor)
-    {
-        _divisor = divisor;
-        _modulus = divisor.Modulus;
-        _nPrime = divisor.NPrime;
-        _montgomeryOne = divisor.MontgomeryOne;
-        PreviousExponent = 0UL;
-        _currentMontgomery = divisor.MontgomeryOne;
-    }
-
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public readonly bool MatchesDivisor(in MontgomeryDivisorData divisor)
 		=> _modulus == divisor.Modulus && _nPrime == divisor.NPrime && _montgomeryOne == divisor.MontgomeryOne;
 
@@ -30,6 +23,7 @@ internal struct ExponentRemainderStepperCpu
 	/// Clears the cached Montgomery residue so the stepper can be reused for another divisor.
 	/// Callers must reinitialize the stepper before consuming any residues after a reset.
 	/// </summary>
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public void Reset()
     {
         PreviousExponent = 0UL;
@@ -42,6 +36,7 @@ internal struct ExponentRemainderStepperCpu
     /// </summary>
     /// <param name="exponent">First exponent evaluated for the current divisor. The caller must reuse the same divisor metadata.</param>
     /// <returns>The canonical residue produced by <c>2^exponent mod divisor</c>.</returns>
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ulong InitializeCpu(ulong exponent)
     {
         InitializeCpuState(exponent);
@@ -53,6 +48,7 @@ internal struct ExponentRemainderStepperCpu
     /// </summary>
     /// <param name="exponent">First exponent evaluated for the current divisor. Must match the divisor passed to the constructor.</param>
     /// <returns><see langword="true"/> when the seed exponent produces a Montgomery residue equal to one.</returns>
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool InitializeCpuIsUnity(ulong exponent)
     {
         InitializeCpuState(exponent);
@@ -65,6 +61,7 @@ internal struct ExponentRemainderStepperCpu
     /// </summary>
     /// <param name="exponent">Next exponent in the ascending sequence. Callers must never move backwards or reuse an older exponent.</param>
     /// <returns>The canonical residue produced by <c>2^exponent mod divisor</c>.</returns>
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ulong ComputeNextCpu(ulong exponent)
     {
         ulong delta = exponent - PreviousExponent;
@@ -84,6 +81,7 @@ internal struct ExponentRemainderStepperCpu
     /// </summary>
     /// <param name="exponent">Next exponent in the ascending sequence.</param>
     /// <returns><see langword="true"/> when the canonical residue equals one.</returns>
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool ComputeNextIsUnity(ulong exponent)
     {
         ulong delta = exponent - PreviousExponent;
@@ -103,6 +101,7 @@ internal struct ExponentRemainderStepperCpu
     /// <param name="montgomeryResult">Residue in Montgomery form produced externally for the configured divisor.</param>
     /// <param name="isUnity">Outputs whether the supplied residue equals Montgomery one.</param>
     /// <returns><see langword="true"/> when the residue is accepted and cached.</returns>
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryInitializeFromMontgomeryResult(ulong exponent, ulong montgomeryResult, out bool isUnity)
     {
         _currentMontgomery = montgomeryResult;
@@ -119,6 +118,7 @@ internal struct ExponentRemainderStepperCpu
     /// <param name="montgomeryDelta">Montgomery residue delta corresponding to the exponent gap.</param>
     /// <param name="isUnity">Outputs whether the resulting residue equals Montgomery one.</param>
     /// <returns><see langword="true"/> when the advance succeeds.</returns>
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryAdvanceWithMontgomeryDelta(ulong exponent, ulong montgomeryDelta, out bool isUnity)
     {
         // TODO: Once the divisor-cycle cache exposes a direct Montgomery delta, multiply it here instead
@@ -130,11 +130,13 @@ internal struct ExponentRemainderStepperCpu
         return true;
     }
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void InitializeCpuState(ulong exponent)
     {
         _currentMontgomery = exponent.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
         PreviousExponent = exponent;
     }
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     private readonly ulong ReduceCurrent() => _currentMontgomery.MontgomeryMultiplyCpu(1UL, _modulus, _nPrime);
 }

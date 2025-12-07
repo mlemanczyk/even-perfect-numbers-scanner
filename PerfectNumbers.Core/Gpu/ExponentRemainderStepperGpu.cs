@@ -11,7 +11,7 @@ internal struct ExponentRemainderStepperGpu
 {
     private readonly ulong _modulus;
     private readonly ReadOnlyGpuUInt128 _modulusWide;
-    public ulong PreviousExponent;
+    private ulong PreviousExponent;
     private GpuUInt128 _currentResidue;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

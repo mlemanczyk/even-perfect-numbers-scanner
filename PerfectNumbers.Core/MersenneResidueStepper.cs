@@ -1,19 +1,17 @@
+using System.Runtime.CompilerServices;
+
 namespace PerfectNumbers.Core;
 
-public class MersenneResidueStepper
+public struct MersenneResidueStepper
 {
-    private UInt128 m;
+    private readonly UInt128 m;
     private ulong p;
     private UInt128 pow2_mod;
     private UInt128 M_mod;
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public MersenneResidueStepper(UInt128 modulus, ulong p0, UInt128 M_mod_m_at_p0)
     {
-        if (modulus == 0)
-        {
-            throw new ArgumentException("Modulus must be positive.");
-        }
-
         m = modulus;
         p = p0;
 
@@ -32,8 +30,10 @@ public class MersenneResidueStepper
 
     // TODO: Inline this accessor into callers so the hot residue path reads the backing fields directly
     // instead of jumping through a wrapper method every iteration.
-    public (ulong, UInt128) State() => (p, M_mod);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public readonly (ulong, UInt128) State() => (p, M_mod);
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public (ulong, UInt128) Step(long delta)
     {
         if (delta == 0)
@@ -67,6 +67,7 @@ public class MersenneResidueStepper
         return State();
     }
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public (ulong, UInt128) To(ulong p_target)
     {
         // TODO: Collapse this wrapper once callers can invoke Step directly; the extra indirection shows up
@@ -76,6 +77,7 @@ public class MersenneResidueStepper
         return Step(delta);
     }
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static UInt128 ModInverse(UInt128 a, UInt128 m)
     {
         UInt128 m0 = m;

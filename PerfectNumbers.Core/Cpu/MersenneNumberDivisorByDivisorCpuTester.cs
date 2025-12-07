@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Globalization;
 using System.IO;
+using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
@@ -294,40 +295,8 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		ulong limitHigh = limit.High;
 		ulong divisorLow = divisor.Low;
 
-		// Keep the divisibility filters aligned with the divisor-cycle generator so the
-		// CPU path never requests cycles that were skipped during cache creation.
-		LastDigit lastDigit = (prime & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
-		ushort decimalMask = DivisorGenerator.GetDecimalMask(lastDigit);
-
-		byte step10;
-		byte step8;
-		byte step3;
-		byte step7;
-		byte step11;
-		byte step13;
-		byte step17;
-		byte step19;
-
-		byte remainder10;
-		byte remainder8;
-		byte remainder3;
-		byte remainder7;
-		byte remainder11;
-		byte remainder13;
-		byte remainder17;
-		byte remainder19;
-
 		if (stepHigh == 0UL && limitHigh == 0UL)
 		{
-			step10 = (byte)(stepLow % 10UL);
-			step8 = (byte)(stepLow & 7UL);
-			step3 = (byte)(stepLow % 3UL);
-			step7 = (byte)(stepLow % 7UL);
-			step11 = (byte)(stepLow % 11UL);
-			step13 = (byte)(stepLow % 13UL);
-			step17 = (byte)(stepLow % 17UL);
-			step19 = (byte)(stepLow % 19UL);
-
 			ulong maxK = allowedMax > 0UL ? (allowedMax - 1UL) / stepLow : 0UL;
 			if (maxK == 0UL)
 			{
@@ -350,15 +319,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 					allowedMax,
 					startK,
 					maxK,
-					decimalMask,
-					step10,
-					step8,
-					step3,
-					step7,
-					step11,
-					step13,
-					step17,
-					step19,
 					ref currentK,
 					out processedTop,
 					out foundDivisor);
@@ -381,15 +341,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 					allowedMax,
 					1UL,
 					lowerEnd,
-					decimalMask,
-					step10,
-					step8,
-					step3,
-					step7,
-					step11,
-					step13,
-					step17,
-					step19,
 					ref currentK,
 					out processedBottom,
 					out foundDivisor);
@@ -400,29 +351,12 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		}
 
 		ulong divisorHigh = divisor.High;
-		step10 = (byte)((((stepHigh % 10UL) * 6UL) + (stepLow % 10UL)) % 10UL);
-		step8 = (byte)(stepLow % 8UL);
-		step3 = (byte)(((stepHigh % 3UL) + (stepLow % 3UL)) % 3UL);
-		step7 = (byte)((((stepHigh % 7UL) * 2UL) + (stepLow % 7UL)) % 7UL);
-		step11 = (byte)((((stepHigh % 11UL) * 5UL) + (stepLow % 11UL)) % 11UL);
-		step13 = (byte)((((stepHigh % 13UL) * 3UL) + (stepLow % 13UL)) % 13UL);
-		step17 = (byte)(((stepHigh % 17UL) + (stepLow % 17UL)) % 17UL);
-		step19 = (byte)((((stepHigh % 19UL) * 17UL) + (stepLow % 19UL)) % 19UL);
-
-		remainder10 = (byte)((((divisorHigh % 10UL) * 6UL) + (divisorLow % 10UL)) % 10UL);
-		remainder8 = (byte)(divisorLow % 8UL);
-		remainder3 = (byte)(((divisorHigh % 3UL) + (divisorLow % 3UL)) % 3UL);
-		remainder7 = (byte)((((divisorHigh % 7UL) * 2UL) + (divisorLow % 7UL)) % 7UL);
-		remainder11 = (byte)((((divisorHigh % 11UL) * 5UL) + (divisorLow % 11UL)) % 11UL);
-		remainder13 = (byte)((((divisorHigh % 13UL) * 3UL) + (divisorLow % 13UL)) % 13UL);
-		remainder17 = (byte)(((divisorHigh % 17UL) + (divisorLow % 17UL)) % 17UL);
-		remainder19 = (byte)((((divisorHigh % 19UL) * 17UL) + (divisorLow % 19UL)) % 19UL);
+		var residueStepper = new MersenneDivisorResidueStepper(prime, step, divisor);
 
 		var divisorPool = MontgomeryDivisorDataPool.Shared;
 		while (divisor.CompareTo(limit) <= 0)
 		{
-			bool passesSmallModuli = remainder3 != 0 && remainder7 != 0 && remainder11 != 0 && remainder13 != 0 && remainder17 != 0 && remainder19 != 0;
-			if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
+			if (residueStepper.IsAdmissible())
 			{
 				ulong candidate = divisor.Low;
 				MontgomeryDivisorData divisorData = divisorPool.FromModulus(candidate);
@@ -468,14 +402,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
 			divisor.Add(step);
 			currentK++;
-			remainder10 = AddMod10(remainder10, step10);
-			remainder8 = AddMod8(remainder8, step8);
-			remainder3 = AddMod3(remainder3, step3);
-			remainder7 = AddMod7(remainder7, step7);
-			remainder11 = AddMod11(remainder11, step11);
-			remainder13 = AddMod13(remainder13, step13);
-			remainder17 = AddMod17(remainder17, step17);
-			remainder19 = AddMod19(remainder19, step19);
+			residueStepper.Advance();
 		}
 
         processedAll = true;
@@ -510,27 +437,29 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         LastDigit lastDigit = (prime & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
         ushort decimalMask = DivisorGenerator.GetDecimalMask(lastDigit);
 
-        byte step10 = (byte)(step % 10);
-        byte step8 = (byte)(step % 8);
-        byte step3 = (byte)(step % 3);
-        byte step7 = (byte)(step % 7);
-        byte step11 = (byte)(step % 11);
-        byte step13 = (byte)(step % 13);
-        byte step17 = (byte)(step % 17);
-        byte step19 = (byte)(step % 19);
+        var rem10 = new BigIntegerCycleRemainderStepper(10);
+        var rem8 = new BigIntegerCycleRemainderStepper(8);
+        var rem5 = new BigIntegerCycleRemainderStepper(5);
+        var rem3 = new BigIntegerCycleRemainderStepper(3);
+        var rem7 = new BigIntegerCycleRemainderStepper(7);
+        var rem11 = new BigIntegerCycleRemainderStepper(11);
+        var rem13 = new BigIntegerCycleRemainderStepper(13);
+        var rem17 = new BigIntegerCycleRemainderStepper(17);
+        var rem19 = new BigIntegerCycleRemainderStepper(19);
 
-        byte remainder10 = (byte)(divisor % 10);
-        byte remainder8 = (byte)(divisor % 8);
-        byte remainder3 = (byte)(divisor % 3);
-        byte remainder7 = (byte)(divisor % 7);
-        byte remainder11 = (byte)(divisor % 11);
-        byte remainder13 = (byte)(divisor % 13);
-        byte remainder17 = (byte)(divisor % 17);
-        byte remainder19 = (byte)(divisor % 19);
+        byte remainder10 = (byte)rem10.Initialize(divisor);
+        byte remainder8 = (byte)rem8.Initialize(divisor);
+        byte remainder5 = (byte)rem5.Initialize(divisor);
+        byte remainder3 = (byte)rem3.Initialize(divisor);
+        byte remainder7 = (byte)rem7.Initialize(divisor);
+        byte remainder11 = (byte)rem11.Initialize(divisor);
+        byte remainder13 = (byte)rem13.Initialize(divisor);
+        byte remainder17 = (byte)rem17.Initialize(divisor);
+        byte remainder19 = (byte)rem19.Initialize(divisor);
 
         while (divisor <= allowedMax)
         {
-            bool passesSmallModuli = remainder3 != 0 && remainder7 != 0 && remainder11 != 0 && remainder13 != 0 && remainder17 != 0 && remainder19 != 0;
+            bool passesSmallModuli = remainder3 != 0 && remainder5 != 0 && remainder7 != 0 && remainder11 != 0 && remainder13 != 0 && remainder17 != 0 && remainder19 != 0;
             if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
             {
                 if (IsProbablePrimeBigInteger(divisor))
@@ -552,14 +481,15 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 
             currentK += BigInteger.One;
             divisor += step;
-            remainder10 = AddMod10(remainder10, step10);
-            remainder8 = AddMod8(remainder8, step8);
-            remainder3 = AddMod3(remainder3, step3);
-            remainder7 = AddMod7(remainder7, step7);
-            remainder11 = AddMod11(remainder11, step11);
-            remainder13 = AddMod13(remainder13, step13);
-            remainder17 = AddMod17(remainder17, step17);
-            remainder19 = AddMod19(remainder19, step19);
+            remainder10 = (byte)rem10.ComputeNext(divisor);
+            remainder8 = (byte)rem8.ComputeNext(divisor);
+            remainder5 = (byte)rem5.ComputeNext(divisor);
+            remainder3 = (byte)rem3.ComputeNext(divisor);
+            remainder7 = (byte)rem7.ComputeNext(divisor);
+            remainder11 = (byte)rem11.ComputeNext(divisor);
+            remainder13 = (byte)rem13.ComputeNext(divisor);
+            remainder17 = (byte)rem17.ComputeNext(divisor);
+            remainder19 = (byte)rem19.ComputeNext(divisor);
 
             if (divisor > allowedMax)
             {
@@ -579,15 +509,6 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         ulong allowedMax,
 		ulong startK,
 		ulong endK,
-		ushort decimalMask,
-		byte step10,
-		byte step8,
-		byte step3,
-		byte step7,
-		byte step11,
-		byte step13,
-		byte step17,
-		byte step19,
 		ref ulong currentK,
 		out bool processedAll,
 		out ulong foundDivisor)
@@ -619,14 +540,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 		ulong startDivisor = (ulong)startDivisor128;
 		ulong rangeLimit = (ulong)rangeLimit128;
 
-		byte remainder10 = (byte)(startDivisor % 10UL);
-		byte remainder8 = (byte)(startDivisor & 7UL);
-		byte remainder3 = (byte)(startDivisor % 3UL);
-		byte remainder7 = (byte)(startDivisor % 7UL);
-		byte remainder11 = (byte)(startDivisor % 11UL);
-		byte remainder13 = (byte)(startDivisor % 13UL);
-		byte remainder17 = (byte)(startDivisor % 17UL);
-		byte remainder19 = (byte)(startDivisor % 19UL);
+		var residueStepper = new MersenneDivisorResidueStepper(prime, (GpuUInt128)step128, (GpuUInt128)startDivisor128);
 
 		return CheckDivisors64(
 			gpu,
@@ -634,23 +548,7 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
 			step,
 			rangeLimit,
 			startDivisor,
-			decimalMask,
-			step10,
-			step8,
-			step3,
-			step7,
-			step11,
-			step13,
-			step17,
-			step19,
-			remainder10,
-			remainder8,
-			remainder3,
-			remainder7,
-			remainder11,
-			remainder13,
-			remainder17,
-			remainder19,
+			ref residueStepper,
 			ref currentK,
 			out processedAll,
 			out foundDivisor);
@@ -662,23 +560,7 @@ private bool CheckDivisors64(
 		ulong step,
 		ulong limit,
 		ulong divisor,
-		ushort decimalMask,
-		byte step10,
-		byte step8,
-		byte step3,
-		byte step7,
-		byte step11,
-		byte step13,
-		byte step17,
-		byte step19,
-		byte remainder10,
-		byte remainder8,
-		byte remainder3,
-		byte remainder7,
-		byte remainder11,
-		byte remainder13,
-		byte remainder17,
-		byte remainder19,
+		ref MersenneDivisorResidueStepper residueStepper,
 		ref ulong currentK,
 		out bool processedAll,
 		out ulong foundDivisor)
@@ -687,44 +569,41 @@ private bool CheckDivisors64(
 		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		if (!canAdvance)
 		{
-			if (divisor <= limit)
+			if (divisor <= limit && residueStepper.IsAdmissible())
 			{
-				if (remainder3 != 0 && remainder7 != 0 && remainder11 != 0 && remainder13 != 0 && remainder17 != 0 && remainder19 != 0 && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
+				MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
+				ulong divisorCycle;
+				if (!_tryCalculateCycleLengthForExponent(
+						divisor,
+						gpu,
+						prime,
+						divisorData,
+						out ulong computedCycle,
+						out bool primeOrderFailed) || computedCycle == 0UL)
 				{
-					MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
-					ulong divisorCycle;
-					if (!_tryCalculateCycleLengthForExponent(
-							divisor,
-							gpu,
-							prime,
-							divisorData,
-							out ulong computedCycle,
-							out bool primeOrderFailed) || computedCycle == 0UL)
-					{
-						divisorCycle = _calculateCycleLength(
-							divisor,
-							gpu,
-							divisorData,
-							skipPrimeOrderHeuristic: primeOrderFailed);
-					}
-					else
-					{
-						divisorCycle = computedCycle;
-					}
+					divisorCycle = _calculateCycleLength(
+						divisor,
+						gpu,
+						divisorData,
+						skipPrimeOrderHeuristic: primeOrderFailed);
+				}
+				else
+				{
+					divisorCycle = computedCycle;
+				}
 
-					divisorPool.Return(divisorData);
+				divisorPool.Return(divisorData);
 
-					if (divisorCycle == prime)
-					{
-						foundDivisor = divisor;
-						processedAll = true;
-						return true;
-					}
+				if (divisorCycle == prime)
+				{
+					foundDivisor = divisor;
+					processedAll = true;
+					return true;
+				}
 
-					if (divisorCycle == 0UL)
-					{
-						Console.WriteLine($"Divisor cycle was not calculated for {prime}");
-					}
+				if (divisorCycle == 0UL)
+				{
+					Console.WriteLine($"Divisor cycle was not calculated for {prime}");
 				}
 			}
 
@@ -743,8 +622,7 @@ private bool CheckDivisors64(
 		ulong remainingIterations = ((limit - divisor) / step) + 1UL;
 		while (true)
 		{
-			bool passesSmallModuli = remainder3 != 0 && remainder7 != 0 && remainder11 != 0 && remainder13 != 0 && remainder17 != 0 && remainder19 != 0;
-			if (passesSmallModuli && (remainder8 == 1 || remainder8 == 7) && ((decimalMask >> remainder10) & 1) != 0)
+			if (residueStepper.IsAdmissible())
 			{
 				MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
 				ulong divisorCycle;
@@ -792,14 +670,7 @@ private bool CheckDivisors64(
 
 			divisor += step;
 			currentK++;
-			remainder10 = AddMod10(remainder10, step10);
-			remainder8 = AddMod8(remainder8, step8);
-			remainder3 = AddMod3(remainder3, step3);
-			remainder7 = AddMod7(remainder7, step7);
-			remainder11 = AddMod11(remainder11, step11);
-			remainder13 = AddMod13(remainder13, step13);
-			remainder17 = AddMod17(remainder17, step17);
-			remainder19 = AddMod19(remainder19, step19);
+			residueStepper.Advance();
 		}
 	}
 
@@ -870,7 +741,8 @@ private bool CheckDivisors64(
                 continue;
             }
 
-            BigInteger x = BigInteger.ModPow(baseValue, d, value);
+            var expStepper = new BigIntegerExponentStepper(value, baseValue);
+            BigInteger x = expStepper.Initialize(d);
             if (x == 1 || x == value - 1)
             {
                 continue;
@@ -879,7 +751,8 @@ private bool CheckDivisors64(
             bool witnessFound = true;
             for (int r = 1; r < s; r++)
             {
-                x = BigInteger.ModPow(x, 2, value);
+                BigInteger targetExponent = d << r;
+                x = expStepper.ComputeNext(targetExponent);
                 if (x == value - 1)
                 {
                     witnessFound = false;

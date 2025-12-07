@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ILGPU;
 using ILGPU.Runtime;
+using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core.Gpu;
@@ -253,16 +254,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		ulong maxK = maxK128 > ulong.MaxValue ? ulong.MaxValue : (ulong)maxK128;
 		ulong startK = minK < 1UL ? 1UL : minK;
 
-		ulong stepValue = (ulong)twoP128;
-		byte step10 = (byte)(stepValue % 10UL);
-		byte step8 = (byte)(stepValue & 7UL);
-		byte step3 = (byte)(stepValue % 3UL);
-		byte step7 = (byte)(stepValue % 7UL);
-		byte step11 = (byte)(stepValue % 11UL);
-
-		LastDigit lastDigit = (prime & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
-		ushort decimalMask = DivisorGenerator.GetDecimalMask(lastDigit);
-
 		Span<ulong> divisorStorage = divisors.AsSpan();
 		Span<ulong> exponentStorage = exponents.AsSpan();
 		Span<GpuDivisorPartialData> divisorDataStorage = divisorData.AsSpan();
@@ -289,12 +280,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			ulong prime,
 			UInt128 twoP128,
 			UInt128 allowedMax128,
-			byte step10,
-			byte step8,
-			byte step3,
-			byte step7,
-			byte step11,
-			ushort decimalMask,
 			ArrayView1D<GpuDivisorPartialData, Stride1D.Dense> divisorDataView,
 			ArrayView1D<int, Stride1D.Dense> offsetView,
 			ArrayView1D<int, Stride1D.Dense> countView,
@@ -329,6 +314,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 				return true;
 			}
 
+			var residueStepper = new MersenneDivisorResidueStepper(prime, (GpuUInt128)twoP128, (GpuUInt128)startDivisor128);
 			UInt128 rangeLimit128 = (twoP128 * rangeEndK) + UInt128.One;
 			if (rangeLimit128 > allowedMax128)
 			{
@@ -338,12 +324,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			UInt128 rangeCount128 = ((rangeLimit128 - startDivisor128) / twoP128) + UInt128.One;
 			ulong rangeRemaining = rangeCount128 > ulong.MaxValue ? ulong.MaxValue : (ulong)rangeCount128;
 			UInt128 currentRangeDivisor128 = startDivisor128;
-			ulong currentRangeDivisorValue = (ulong)currentRangeDivisor128;
-			byte rangeRemainder10 = (byte)(currentRangeDivisorValue % 10UL);
-			byte rangeRemainder8 = (byte)(currentRangeDivisorValue & 7UL);
-			byte rangeRemainder3 = (byte)(currentRangeDivisorValue % 3UL);
-			byte rangeRemainder7 = (byte)(currentRangeDivisorValue % 7UL);
-			byte rangeRemainder11 = (byte)(currentRangeDivisorValue % 11UL);
 
 			while (rangeRemaining > 0UL && !composite)
 			{
@@ -356,16 +336,11 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 				UInt128 nextDivisor128 = currentRangeDivisor128;
 				int admissibleCount = 0;
 
-				byte localRemainder10 = rangeRemainder10;
-				byte localRemainder8 = rangeRemainder8;
-				byte localRemainder3 = rangeRemainder3;
-				byte localRemainder7 = rangeRemainder7;
-				byte localRemainder11 = rangeRemainder11;
+				var localStepper = residueStepper;
 
 				for (int i = 0; i < chunkCount; i++)
 				{
-					bool passesSmallModuli = localRemainder3 != 0 && localRemainder7 != 0 && localRemainder11 != 0;
-					if (passesSmallModuli && (localRemainder8 == 1 || localRemainder8 == 7) && ((decimalMask >> localRemainder10) & 1) != 0)
+					if (localStepper.IsAdmissible())
 					{
 						ulong divisorValue = (ulong)nextDivisor128;
 						MontgomeryDivisorData montgomeryData = divisorPool.FromModulus(divisorValue);
@@ -389,18 +364,10 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 					}
 
 					nextDivisor128 += twoP128;
-					localRemainder10 = AddMod10(localRemainder10, step10);
-					localRemainder8 = AddMod8(localRemainder8, step8);
-					localRemainder3 = AddMod3(localRemainder3, step3);
-					localRemainder7 = AddMod7(localRemainder7, step7);
-					localRemainder11 = AddMod11(localRemainder11, step11);
+					localStepper.Advance();
 				}
 
-				rangeRemainder10 = localRemainder10;
-				rangeRemainder8 = localRemainder8;
-				rangeRemainder3 = localRemainder3;
-				rangeRemainder7 = localRemainder7;
-				rangeRemainder11 = localRemainder11;
+				residueStepper = localStepper;
 
 				processedCountLocal += (ulong)chunkCount;
 
@@ -456,12 +423,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 				prime,
 				twoP128,
 				allowedMax128,
-				step10,
-				step8,
-				step3,
-				step7,
-				step11,
-				decimalMask,
 				divisorDataView,
 				offsetView,
 				countView,
@@ -502,12 +463,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 				prime,
 				twoP128,
 				allowedMax128,
-				step10,
-				step8,
-				step3,
-				step7,
-				step11,
-				decimalMask,
 				divisorDataView,
 				offsetView,
 				countView,
@@ -548,69 +503,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		}
 
 		return computedCycle;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static byte AddMod3(byte value, byte delta)
-	{
-		const int Modulus = 3;
-		int sum = value + delta;
-
-		if (sum >= Modulus)
-		{
-			sum -= Modulus;
-		}
-
-		return (byte)sum;
-	}
-
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static byte AddMod7(byte value, byte delta)
-	{
-		const int Modulus = 7;
-		int sum = value + delta;
-
-		if (sum >= Modulus)
-		{
-			sum -= Modulus;
-		}
-
-		return (byte)sum;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static byte AddMod10(byte value, byte delta)
-	{
-		const int Modulus = 10;
-		int sum = value + delta;
-
-		if (sum >= Modulus)
-		{
-			sum -= Modulus;
-		}
-
-		return (byte)sum;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static byte AddMod11(byte value, byte delta)
-	{
-		const int Modulus = 11;
-		int sum = value + delta;
-
-		if (sum >= Modulus)
-		{
-			sum -= Modulus;
-		}
-
-		return (byte)sum;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static byte AddMod8(byte value, byte delta)
-	{
-		return (byte)((value + delta) & 7);
 	}
 
 
