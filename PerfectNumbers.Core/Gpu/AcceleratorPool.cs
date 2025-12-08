@@ -61,7 +61,7 @@ namespace PerfectNumbers.Core.Gpu
 			int acceleratorIndex = 0;
 			Accelerators = [.. Enumerable.Range(0, capacity).Select(_ =>
 			{
-				Console.WriteLine($"Preparing accelerator {acceleratorIndex++}");
+				Console.WriteLine($"Creating accelerator {acceleratorIndex++}");
 				Accelerator accelerator = device.CreateAccelerator(context);
 
 				return accelerator;
