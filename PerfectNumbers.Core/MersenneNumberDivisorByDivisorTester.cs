@@ -317,7 +317,7 @@ public static class MersenneNumberDivisorByDivisorTester
 			}
 			catch (Exception ex)
 			{
-				Console.WriteLine($"Error processing {ex.StackTrace}");
+				Console.WriteLine($"Error processing {ex.Message} {ex.StackTrace}");
 				Environment.Exit(1);
 			}
 		}
