@@ -12,28 +12,12 @@ namespace PerfectNumbers.Core;
 
 internal static partial class PrimeOrderCalculator
 {
-	internal struct PendingEntry
+	internal struct PendingEntry(ulong value, bool knownComposite)
 	{
-		public ulong Value;
-		public bool KnownComposite;
-		public bool HasKnownPrimality;
-		public bool IsPrime;
-
-		public PendingEntry(ulong value, bool knownComposite)
-		{
-			Value = value;
-			KnownComposite = knownComposite;
-			HasKnownPrimality = knownComposite;
-			IsPrime = false;
-		}
-
-		private PendingEntry(ulong value, bool knownComposite, bool hasKnownPrimality, bool isPrime)
-		{
-			Value = value;
-			KnownComposite = knownComposite;
-			HasKnownPrimality = hasKnownPrimality;
-			IsPrime = isPrime;
-		}
+		public readonly ulong Value = value;
+		public bool KnownComposite = knownComposite;
+		public bool HasKnownPrimality = knownComposite;
+		public bool IsPrime = false;
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void WithPrimality(bool isPrime)
@@ -248,18 +232,24 @@ internal static partial class PrimeOrderCalculator
     private static UInt128 FinishStrictlyWideCpu(in UInt128 prime, in MontgomeryDivisorData? divisorData)
     {
         UInt128 phi = prime - UInt128.One;
-        Dictionary<UInt128, int> counts = new(capacity: 8);
+		Queue<Dictionary<UInt128, int>> uInt128IntDictionaryPool = ThreadStaticPools.UInt128IntDictionaryPool;
+		Dictionary<UInt128, int> counts = uInt128IntDictionaryPool.Rent(capacity: 8);
         FactorCompletelyWide(phi, counts);
-        if (counts.Count == 0)
+        int entryCount = counts.Count;
+        if (entryCount == 0)
         {
+			uInt128IntDictionaryPool.Return(counts);
             return phi;
         }
 
-        List<KeyValuePair<UInt128, int>> entries = new(counts);
-        entries.Sort(static (a, b) => a.Key.CompareTo(b.Key));
+		Queue<List<KeyValuePair<UInt128, int>>> keyValuePairUInt128IntegerPool = ThreadStaticPools.KeyValuePairUInt128IntegerPool;
+		var entries = keyValuePairUInt128IntegerPool.Rent(entryCount);
+		entries.AddRange(counts);
+		uInt128IntDictionaryPool.Return(counts);
+        
+		entries.Sort(static (a, b) => a.Key.CompareTo(b.Key));
 
         UInt128 order = phi;
-        int entryCount = entries.Count;
         for (int i = 0; i < entryCount; i++)
         {
             UInt128 primeFactor = entries[i].Key;
@@ -281,6 +271,7 @@ internal static partial class PrimeOrderCalculator
             }
         }
 
+		keyValuePairUInt128IntegerPool.Return(entries);
         return order;
     }
 
@@ -456,19 +447,23 @@ internal static partial class PrimeOrderCalculator
         }
 
         int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks * 4;
-        List<UInt128> candidates = new(capacity);
+		Queue<List<UInt128>> uInt128ListPool = ThreadStaticPools.UInt128ListPool;
+		List<UInt128> candidates = uInt128ListPool.Rent(capacity);
         FactorEntry128[] factorArray = orderFactors.Factors!;
+
         BuildCandidatesWide(order, factorArray, orderFactors.Count, candidates, capacity);
-        if (candidates.Count == 0)
+
+        int candidateCount = candidates.Count;
+        if (candidateCount == 0)
         {
+			uInt128ListPool.Return(candidates);
             return false;
         }
 
         SortCandidatesWide(prime, previousOrder, candidates);
 
-        int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
+        int powBudget = config.MaxPowChecks <= 0 ? candidateCount : config.MaxPowChecks;
         int powUsed = 0;
-        int candidateCount = candidates.Count;
 
         for (int i = 0; i < candidateCount; i++)
         {
@@ -491,9 +486,11 @@ internal static partial class PrimeOrderCalculator
             }
 
             result = candidate;
+			uInt128ListPool.Return(candidates);
             return true;
         }
 
+		uInt128ListPool.Return(candidates);
         return false;
     }
 
@@ -990,7 +987,8 @@ internal static partial class PrimeOrderCalculator
 			int[] exponentsArray = orderFactors.Exponents!;
 
 			BuildCandidates(order, factorArray, exponentsArray, orderFactors.Count, candidates, capacity);
-			if (candidates.Count == 0)
+			int candidateCount = candidates.Count;
+			if (candidateCount == 0)
 			{
 				ThreadStaticPools.ReturnUlongList(candidates);
 				return false;
@@ -998,9 +996,8 @@ internal static partial class PrimeOrderCalculator
 
 			SortCandidates(prime, previousOrder, candidates);
 
-			int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
+			int powBudget = config.MaxPowChecks <= 0 ? candidateCount : config.MaxPowChecks;
 			int powUsed = 0;
-			int candidateCount = candidates.Count;
 			Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
 			ExponentRemainderStepperCpu powStepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 			bool powStepperInitialized = false;
@@ -1120,7 +1117,8 @@ internal static partial class PrimeOrderCalculator
 			int[] exponentsArray = orderFactors.Exponents!;
 
 			BuildCandidates(order, factorArray, exponentsArray, orderFactors.Count, candidates, capacity);
-			if (candidates.Count == 0)
+			int candidateCount = candidates.Count;
+			if (candidateCount == 0)
 			{
 				ThreadStaticPools.ReturnUlongList(candidates);
 				return false;
@@ -1128,9 +1126,8 @@ internal static partial class PrimeOrderCalculator
 
 			SortCandidates(prime, previousOrder, candidates);
 
-			int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
+			int powBudget = config.MaxPowChecks <= 0 ? candidateCount : config.MaxPowChecks;
 			int powUsed = 0;
-			int candidateCount = candidates.Count;
 			Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
 			ExponentRemainderStepperCpu powStepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 			bool powStepperInitialized = false;
@@ -1252,7 +1249,8 @@ internal static partial class PrimeOrderCalculator
 			int[] exponentsArray = orderFactors.Exponents!;
 
 			BuildCandidates(order, factorArray, exponentsArray, orderFactors.Count, candidates, capacity);
-			if (candidates.Count == 0)
+			int candidateCount = candidates.Count;
+			if (candidateCount == 0)
 			{
 				ThreadStaticPools.ReturnUlongList(candidates);
 				return false;
@@ -1260,9 +1258,8 @@ internal static partial class PrimeOrderCalculator
 
 			SortCandidates(prime, previousOrder, candidates);
 
-			int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
+			int powBudget = config.MaxPowChecks <= 0 ? candidateCount : config.MaxPowChecks;
 			int powUsed = 0;
-			int candidateCount = candidates.Count;
 			bool allowGpuBatch = true;
 			Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
 			ExponentRemainderStepperCpu powStepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
@@ -2877,10 +2874,11 @@ internal static partial class PrimeOrderCalculator
 	private static ulong CalculateByFactorizationCpu(ulong prime, in MontgomeryDivisorData divisorData)
 	{
 		ulong phi = prime - 1UL;
-		Dictionary<ulong, int> counts = new(capacity: 8);
+		Dictionary<ulong, int> counts = ThreadStaticPools.RentFactorCountDictionary();
 		FactorCompletelyCpu(phi, counts, false);
 		if (counts.Count == 0)
 		{
+			ThreadStaticPools.ReturnFactorCountDictionary(counts);
 			return phi;
 		}
 
@@ -2916,6 +2914,7 @@ internal static partial class PrimeOrderCalculator
 			}
 		}
 
+		ThreadStaticPools.ReturnFactorCountDictionary(counts);
 		return order;
 	}
 

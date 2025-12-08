@@ -6,7 +6,7 @@ using PeterO.Numbers;
 
 namespace PerfectNumbers.Core
 {
-    public readonly struct ThreadStaticPools
+    public static class ThreadStaticPools
     {
         [ThreadStatic]
         private static ArrayPool<EInteger>? _eintegerPool;
@@ -21,6 +21,98 @@ namespace PerfectNumbers.Core
         }
 
         [ThreadStatic]
+        private static Queue<List<KeyValuePair<UInt128, int>>>? _keyValuePairUInt128IntegerPool;
+
+        public static Queue<List<KeyValuePair<UInt128, int>>> KeyValuePairUInt128IntegerPool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _keyValuePairUInt128IntegerPool ??= [];
+            }
+        }
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static List<KeyValuePair<UInt128, int>> Rent(this Queue<List<KeyValuePair<UInt128, int>>> pool, int capacity)
+		{
+			if (pool.TryDequeue(out var pooled))
+			{
+				if (capacity > pooled.Capacity)
+				{
+					pooled.Capacity = capacity;				
+				}
+
+				pooled.Clear();
+				return pooled;
+			}
+
+			return new(capacity);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static void Return(this Queue<List<KeyValuePair<UInt128, int>>> pool, List<KeyValuePair<UInt128, int>> list) => pool.Enqueue(list);
+
+        [ThreadStatic]
+        private static Queue<List<UInt128>>? _uint128ListPool;
+
+        public static Queue<List<UInt128>> UInt128ListPool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _uint128ListPool ??= [];
+            }
+        }
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static List<UInt128> Rent(this Queue<List<UInt128>> pool, int capacity)
+		{
+			if (pool.TryDequeue(out var pooled))
+			{
+				if (capacity > pooled.Capacity)
+				{
+					pooled.Capacity = capacity;				
+				}
+
+				pooled.Clear();
+				return pooled;
+			}
+
+			return new(capacity);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static void Return(this Queue<List<UInt128>> pool, List<UInt128> list) => pool.Enqueue(list);
+
+        [ThreadStatic]
+        private static Queue<Dictionary<UInt128, int>>? _uint128IntDictionaryPool;
+
+        public static Queue<Dictionary<UInt128, int>> UInt128IntDictionaryPool
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return _uint128IntDictionaryPool ??= [];
+            }
+        }
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static Dictionary<UInt128, int> Rent(this Queue<Dictionary<UInt128, int>> pool, int capacity)
+		{
+			if (pool.TryDequeue(out var pooled))
+			{
+				pooled.EnsureCapacity(capacity);
+				pooled.Clear();
+				return pooled;
+			}
+
+			return new(capacity);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static void Return(this Queue<Dictionary<UInt128, int>> pool, Dictionary<UInt128, int> dictionary) => pool.Enqueue(dictionary);
+
+		[ThreadStatic]
         private static ArrayPool<FactorEntry>? _factorEntryPool;
 
         public static ArrayPool<FactorEntry> FactorEntryPool
