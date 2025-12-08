@@ -16,9 +16,9 @@ public static class PerfectNumberConstants
     public const int MaxOddPowersCount = 128;
 	public const int PooledArrayThreshold = 64;
 	public const int Pow2WindowSize = 8;
-	public static int RollingAccelerators = 160; //SharedGpuContext.Device.MaxNumThreadsPerGroup;
+	public static int RollingAccelerators = 298; //SharedGpuContext.Device.MaxNumThreadsPerGroup;
 	public const int ThreadsByAccelerator = 1;
-	public const int ByDivisorStateSaveInterval = 1_000_000;
+	public const int ByDivisorStateSaveInterval = 300_000;
 	public const string ByDivisorStateDirectory = "Checks";
     // TODO: Load these limits from the benchmark-driven configuration so CPU and GPU scans stay aligned with the optimal
     // divisor-cycle datasets we generate offline.
