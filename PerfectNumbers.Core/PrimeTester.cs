@@ -1,7 +1,5 @@
-using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
@@ -72,7 +70,7 @@ public sealed class PrimeTester
                 }
 
                 divisor = smallPrimeDivisors[i];
-                uint deltaMod = delta >= divisor ? (uint)(delta % divisor) : (uint)delta;
+                uint deltaMod = delta.ReduceCycleRemainder(divisor);
                 remainder = remainders[i] + deltaMod;
                 if (remainder >= divisor)
                 {
@@ -105,7 +103,7 @@ public sealed class PrimeTester
             }
 
             divisor = smallPrimeDivisors[i];
-            remainder = (uint)(n % divisor);
+            remainder = n.ReduceCycleRemainder(divisor);
             remainders[i] = remainder;
 
             if (remainder == 0UL)

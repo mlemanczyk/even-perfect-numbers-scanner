@@ -307,6 +307,53 @@ public static class UInt128Extensions
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static UInt128 ReduceCycleRemainder(this UInt128 value, UInt128 modulus)
+	{
+		if (modulus == UInt128.Zero || value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		return value % modulus;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static bool ShouldUseSingleBit(UInt128 exponent) => (exponent >> 64) == UInt128.Zero && (ulong)exponent <= Pow2WindowFallbackThreshold;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

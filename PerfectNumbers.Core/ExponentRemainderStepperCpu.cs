@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core;
@@ -6,18 +7,20 @@ namespace PerfectNumbers.Core;
 /// Tracks successive Montgomery residues for a single divisor while scanning exponent candidates on the CPU path.
 /// Callers are responsible for seeding the stepper once per divisor and then advancing exponents in ascending order.
 /// </summary>
-internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor)
+internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ulong cycleLength = 0UL)
 {
-private readonly MontgomeryDivisorData _divisor = divisor;
+    private readonly MontgomeryDivisorData _divisor = divisor;
     private readonly ulong _modulus = divisor.Modulus;
     private readonly ulong _nPrime = divisor.NPrime;
     private readonly ulong _montgomeryOne = divisor.MontgomeryOne;
+    private readonly ulong _cycleLength = cycleLength;
     private ulong PreviousExponent = 0UL;
     private ulong _currentMontgomery = divisor.MontgomeryOne;
+    private static readonly ConcurrentDictionary<(ulong Cycle, ulong Delta), ulong> _cycleDeltaCache = new();
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public readonly bool MatchesDivisor(in MontgomeryDivisorData divisor)
-		=> _modulus == divisor.Modulus && _nPrime == divisor.NPrime && _montgomeryOne == divisor.MontgomeryOne;
+    public readonly bool MatchesDivisor(in MontgomeryDivisorData divisor, ulong cycleLength)
+        => _modulus == divisor.Modulus && _nPrime == divisor.NPrime && _montgomeryOne == divisor.MontgomeryOne && _cycleLength == cycleLength;
 
 	/// <summary>
 	/// Clears the cached Montgomery residue so the stepper can be reused for another divisor.
@@ -61,14 +64,14 @@ private readonly MontgomeryDivisorData _divisor = divisor;
     /// </summary>
     /// <param name="exponent">Next exponent in the ascending sequence. Callers must never move backwards or reuse an older exponent.</param>
     /// <returns>The canonical residue produced by <c>2^exponent mod divisor</c>.</returns>
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ulong ComputeNextCpu(ulong exponent)
     {
         ulong delta = exponent - PreviousExponent;
-        // TODO: Once divisor cycle lengths are mandatory, pull the delta multiplier from the
-        // single-block divisor-cycle snapshot so we can skip the powmod entirely and reuse the
-        // cached Montgomery residue ladder highlighted in MersenneDivisorCycleLengthGpuBenchmarks.
-        ulong multiplier = delta.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
+        ulong reducedDelta = ReduceDelta(delta);
+        ulong multiplier = reducedDelta == 0UL
+            ? _montgomeryOne
+            : reducedDelta.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
         _currentMontgomery = _currentMontgomery.MontgomeryMultiplyCpu(multiplier, _modulus, _nPrime);
         PreviousExponent = exponent;
         return ReduceCurrent();
@@ -85,9 +88,10 @@ private readonly MontgomeryDivisorData _divisor = divisor;
     public bool ComputeNextIsUnity(ulong exponent)
     {
         ulong delta = exponent - PreviousExponent;
-        // TODO: Reuse the divisor-cycle derived Montgomery delta once the cache exposes single-cycle
-        // lookups so this branch also avoids recomputing powmods when the snapshot lacks the divisor.
-        ulong multiplier = delta.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
+        ulong reducedDelta = ReduceDelta(delta);
+        ulong multiplier = reducedDelta == 0UL
+            ? _montgomeryOne
+            : reducedDelta.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
         _currentMontgomery = _currentMontgomery.MontgomeryMultiplyCpu(multiplier, _modulus, _nPrime);
         PreviousExponent = exponent;
         return _currentMontgomery == _montgomeryOne;
@@ -119,24 +123,62 @@ private readonly MontgomeryDivisorData _divisor = divisor;
     /// <param name="isUnity">Outputs whether the resulting residue equals Montgomery one.</param>
     /// <returns><see langword="true"/> when the advance succeeds.</returns>
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryAdvanceWithMontgomeryDelta(ulong exponent, ulong montgomeryDelta, out bool isUnity)
-    {
-        // TODO: Once the divisor-cycle cache exposes a direct Montgomery delta, multiply it here instead
-        // of relying on the caller-provided delta so incremental scans remain in sync with the snapshot
-        // without computing additional cycles or mutating cache state.
-        _currentMontgomery = _currentMontgomery.MontgomeryMultiplyCpu(montgomeryDelta, _modulus, _nPrime);
+	public bool TryAdvanceWithMontgomeryDelta(ulong exponent, ulong montgomeryDelta, out bool isUnity)
+	{
+        ulong delta = exponent - PreviousExponent;
+        ulong reducedDelta = ReduceDelta(delta);
+
+        // Prefer a cycle-reduced powmod so stepping stays aligned with the divisor-cycle cache.
+        ulong multiplier;
+        if (reducedDelta == 0UL)
+        {
+            multiplier = _montgomeryOne;
+        }
+        else if (_cycleLength != 0UL)
+        {
+            multiplier = reducedDelta.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
+        }
+        else
+        {
+            multiplier = montgomeryDelta;
+        }
+
+        _currentMontgomery = _currentMontgomery.MontgomeryMultiplyCpu(multiplier, _modulus, _nPrime);
         PreviousExponent = exponent;
         isUnity = _currentMontgomery == _montgomeryOne;
         return true;
     }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void InitializeCpuState(ulong exponent)
     {
-        _currentMontgomery = exponent.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
+        ulong rotation = ReduceDelta(exponent);
+        _currentMontgomery = rotation == 0UL
+            ? _montgomeryOne
+            : rotation.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
         PreviousExponent = exponent;
     }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     private readonly ulong ReduceCurrent() => _currentMontgomery.MontgomeryMultiplyCpu(1UL, _modulus, _nPrime);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private readonly ulong ReduceDelta(ulong delta)
+    {
+        ulong cycleLength = _cycleLength;
+        if (cycleLength == 0UL)
+        {
+            return delta;
+        }
+
+        var key = (cycleLength, delta);
+        if (_cycleDeltaCache.TryGetValue(key, out ulong cached))
+        {
+            return cached;
+        }
+
+        ulong reduced = delta.ReduceCycleRemainder(cycleLength);
+        _cycleDeltaCache.TryAdd(key, reduced);
+        return reduced;
+    }
 }

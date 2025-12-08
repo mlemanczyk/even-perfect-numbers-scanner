@@ -18,7 +18,7 @@ public struct BigIntegerCycleRemainderStepper(BigInteger cycleLength)
     public BigInteger Initialize(BigInteger value)
     {
         _previousValue = value;
-        _currentRemainder = value % _cycleLength;
+        _currentRemainder = value.ReduceCycleRemainder(_cycleLength);
         return _currentRemainder;
     }
 
@@ -27,11 +27,7 @@ public struct BigIntegerCycleRemainderStepper(BigInteger cycleLength)
     {
         BigInteger delta = value - _previousValue;
         _previousValue = value;
-        _currentRemainder += delta;
-        if (_currentRemainder >= _cycleLength)
-        {
-            _currentRemainder %= _cycleLength;
-        }
+        _currentRemainder = (_currentRemainder + delta).ReduceCycleRemainder(_cycleLength);
 
         return _currentRemainder;
     }

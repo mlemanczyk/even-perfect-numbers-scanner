@@ -55,7 +55,7 @@ internal sealed class MersenneCpuDivisorScanSession(PrimeOrderCalculatorAccelera
 
         // Keep these remainder steppers in place so future updates continue reusing the previously computed residues.
         // They are critical for avoiding repeated full Montgomery exponentiation work when scanning divisors.
-        var exponentStepper = new ExponentRemainderStepperCpu(divisorData);
+        var exponentStepper = new ExponentRemainderStepperCpu(divisorData, divisorCycle);
 
         var cycleStepper = new CycleRemainderStepper(divisorCycle);
 

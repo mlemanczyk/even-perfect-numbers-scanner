@@ -19,14 +19,7 @@ public struct CycleRemainderStepper(ulong cycleLength)
     public ulong Initialize(ulong prime)
     {
         ulong cycleLength = _cycleLength;
-        ulong remainder = prime;
-        if (remainder >= cycleLength)
-        {
-            // TODO: Swap this `%` for the shared divisor-cycle remainder helper so initialization reuses the cached
-            // cycle deltas benchmarked faster than on-the-fly modulo work, matching the
-            // MersenneDivisorCycleLengthGpuBenchmarks winner for both CPU and GPU call sites.
-            remainder %= cycleLength;
-        }
+        ulong remainder = prime.ReduceCycleRemainder(cycleLength);
 
         _previousPrime = prime;
         _currentRemainder = remainder;
@@ -43,9 +36,7 @@ public struct CycleRemainderStepper(ulong cycleLength)
         if (ulong.MaxValue - _currentRemainder < delta)
         {
             UInt128 extended = (UInt128)_currentRemainder + delta;
-            // TODO: Replace this `%` with the UInt128-aware cycle reducer so large deltas use the cached subtraction
-            // ladder instead of falling back to the slower modulo implementation.
-            _currentRemainder = (ulong)(extended % cycleLength);
+            _currentRemainder = ((ulong)(extended % cycleLength)).ReduceCycleRemainder(cycleLength);
             return _currentRemainder;
         }
 
@@ -56,10 +47,7 @@ public struct CycleRemainderStepper(ulong cycleLength)
             _currentRemainder -= cycleLength;
             if (_currentRemainder >= cycleLength)
             {
-                // TODO: Route this `%` through the shared divisor-cycle helper so repeated wrap-arounds avoid
-                // modulo operations and match the benchmarked fast path highlighted in
-                // MersenneDivisorCycleLengthGpuBenchmarks.
-                _currentRemainder %= cycleLength;
+                _currentRemainder = _currentRemainder.ReduceCycleRemainder(cycleLength);
             }
         }
         return _currentRemainder;

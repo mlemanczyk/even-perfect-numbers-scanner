@@ -307,19 +307,19 @@ internal static partial class PrimeOrderCalculator
         {
             UInt128 primeFactor = span[i].Value;
             UInt128 reduced = order;
-            for (int iteration = 0; iteration < span[i].Exponent; iteration++)
-            {
-                if ((reduced % primeFactor) != UInt128.Zero)
-                {
-                    break;
-                }
+			for (int iteration = 0; iteration < span[i].Exponent; iteration++)
+			{
+				if (reduced.ReduceCycleRemainder(primeFactor) != UInt128.Zero)
+				{
+					break;
+				}
 
-                reduced /= primeFactor;
-                if (Pow2ModWideGpu(gpu, reduced, prime, divisorData) == UInt128.One)
-                {
-                    return false;
-                }
-            }
+				reduced /= primeFactor;
+				if (Pow2ModWideGpu(gpu, reduced, prime, divisorData) == UInt128.One)
+				{
+					return false;
+				}
+			}
         }
 
         return true;

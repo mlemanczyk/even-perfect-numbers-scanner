@@ -30,6 +30,23 @@ public sealed class HeuristicPrimeTester
 
 	private static readonly ulong[] HeuristicSmallCycleSnapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
 
+	[ThreadStatic]
+	private static BidirectionalCycleRemainderStepper _mod10Stepper;
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static byte GetMod10Remainder(ulong value)
+	{
+		if (_mod10Stepper.Modulus != 10UL)
+		{
+			_mod10Stepper = new BidirectionalCycleRemainderStepper(10UL);
+			_mod10Stepper.Initialize(value);
+			return (byte)_mod10Stepper.Step(value);
+		}
+
+		// Caller must initialize once per thread before first use.
+		return (byte)_mod10Stepper.Step(value);
+	}
+
 	internal enum HeuristicDivisorGroup : byte
 	{
 		None = 0,
@@ -70,7 +87,7 @@ public sealed class HeuristicPrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool IsPrimeCpu(ulong n)
 	{
-		byte nMod10 = (byte)n.Mod10();
+		byte nMod10 = GetMod10Remainder(n);
 		ulong maxDivisorSquare = ComputeHeuristicDivisorSquareLimit(n);
 
 		if (maxDivisorSquare < 9UL)
@@ -85,7 +102,7 @@ public sealed class HeuristicPrimeTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool IsPrimeGpu(PrimeOrderCalculatorAccelerator gpu, ulong n)
 	{
-		byte nMod10 = (byte)n.Mod10();
+		byte nMod10 = GetMod10Remainder(n);
 		ulong maxDivisorSquare = ComputeHeuristicDivisorSquareLimit(n);
 		return IsPrimeGpu(gpu, n, maxDivisorSquare, nMod10);
 	}
@@ -132,11 +149,11 @@ public sealed class HeuristicPrimeTester
 						break;
 					}
 
-					ulong divisor = groupADivisors[groupAIndex];
-					if (n % divisor == 0UL)
-					{
-						return false;
-					}
+                    ulong divisor = groupADivisors[groupAIndex];
+                    if (n.ReduceCycleRemainder(divisor) == 0UL)
+                    {
+                        return false;
+                    }
 
 					groupAIndex++;
 					processed++;
@@ -186,10 +203,10 @@ public sealed class HeuristicPrimeTester
 					}
 
 					ulong divisor = groupADivisors[groupAIndex];
-					if (n % divisor == 0UL)
-					{
-						return false;
-					}
+                    if (n.ReduceCycleRemainder(divisor) == 0UL)
+                    {
+                        return false;
+                    }
 
 					groupAIndex++;
 					processed++;
@@ -220,7 +237,7 @@ public sealed class HeuristicPrimeTester
 						break;
 					}
 
-					if (n % divisor == 0UL)
+					if (n.ReduceCycleRemainder(divisor) == 0UL)
 					{
 						return false;
 					}
@@ -241,7 +258,6 @@ public sealed class HeuristicPrimeTester
 
 	private static bool HeuristicTrialDivisionGpuDetectsDivisor(PrimeOrderCalculatorAccelerator gpu, ulong n, ulong maxDivisorSquare, byte nMod10)
 	{
-		// GpuPrimeWorkLimiter.Acquire();
 		int acceleratorIndex = gpu.AcceleratorIndex;
 		var kernelLauncher = gpu.HeuristicCombinedTrialDivisionKernelLauncher;
 		bool compositeDetected;
@@ -251,13 +267,6 @@ public sealed class HeuristicPrimeTester
 
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		flagView1DView.CopyFromCPU(stream, ref compositeFlag, 1);
-
-		//         Index1D index,
-        // ArrayView<int> resultFlag,
-        // ulong n,
-        // ulong maxDivisorSquare,
-        // HeuristicGpuDivisorTableKind tableKind,
-        // HeuristicGpuDivisorTables tables)
 
 		kernelLauncher(
 				stream,
@@ -271,48 +280,9 @@ public sealed class HeuristicPrimeTester
 		flagView1DView.CopyToCPU(stream, ref compositeFlag, 1);
 		stream.Synchronize();
 
-		compositeDetected = compositeFlag != 0;
-		// compositeDetected = compositeFlag != 0;
-
-		// if (!compositeDetected)
-		// {
-		// 	ReadOnlySpan<byte> endingOrder = GetGroupBEndingOrder(nMod10);
-		// 	for (int i = 0; i < endingOrder.Length && !compositeDetected; i++)
-		// 	{
-		// 		byte ending = endingOrder[i];
-		// 		HeuristicGpuDivisorTableKind tableKind = ending switch
-		// 		{
-		// 			1 => HeuristicGpuDivisorTableKind.GroupBEnding1,
-		// 			7 => HeuristicGpuDivisorTableKind.GroupBEnding7,
-		// 			9 => HeuristicGpuDivisorTableKind.GroupBEnding9,
-		// 			_ => HeuristicGpuDivisorTableKind.GroupA,
-		// 		};
-
-		// 		if (tableKind == HeuristicGpuDivisorTableKind.GroupA)
-		// 		{
-		// 			continue;
-		// 		}
-
-		// 		int divisorLength = GetGroupBDivisors(ending).Length;
-
-		// 		compositeFlag = 0;
-		// 		flagView1D.CopyFromCPU(stream, ref compositeFlag, 1);
-		// 		kernelLauncher(
-		// 			stream,
-		// 				1,
-		// 				flagView1D,
-		// 				n,
-		// 				maxDivisorSquare,
-		// 				tableKind,
-		// 				gpu.HeuristicGpuTables);
-		// 		flagView1D.CopyToCPU(stream, ref compositeFlag, 1);
-		// 		stream.Synchronize();
-		// 		compositeDetected = compositeFlag != 0;
-		// 	}
-		// }
-
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);
-		// GpuPrimeWorkLimiter.Release();
+		compositeDetected = compositeFlag != 0;
+
 		return compositeDetected;
 	}
 
@@ -556,6 +526,10 @@ public sealed class HeuristicPrimeTester
 		private readonly ReadOnlySpan<ulong> groupADivisorSquares;
 		private int groupAIndex;
 		private Span<HeuristicGroupBSequenceState> groupBStates;
+		private CycleRemainderStepper endingStepper;
+		private CycleRemainderStepper wheelStepper;
+		private bool hasRemainders;
+		private ulong lastDivisor;
 
 		public HeuristicDivisorEnumerator(ulong maxDivisorSquare, byte nMod10, Span<HeuristicGroupBSequenceState> groupBBuffer)
 		{
@@ -566,6 +540,10 @@ public sealed class HeuristicPrimeTester
 
 			int count = InitializeGroupBStates(nMod10, groupBBuffer);
 			groupBStates = count == 0 ? Span<HeuristicGroupBSequenceState>.Empty : groupBBuffer[..count];
+			endingStepper = new CycleRemainderStepper(10UL);
+			wheelStepper = new CycleRemainderStepper(Wheel210);
+			hasRemainders = false;
+			lastDivisor = 0UL;
 		}
 
 		public bool TryGetNext(out HeuristicDivisorCandidate candidate)
@@ -586,13 +564,14 @@ public sealed class HeuristicPrimeTester
 				HeuristicDivisorGroup group = currentIndex < GroupAConstantCount
 					? HeuristicDivisorGroup.GroupAConstant
 					: HeuristicDivisorGroup.GroupAWheel;
+				(byte ending, ushort wheelResidue) = UpdateRemainders(divisor);
 
 				candidate = new HeuristicDivisorCandidate(
 					divisor,
 					group,
-					(byte)(divisor % 10UL),
+					ending,
 					0,
-					(ushort)(divisor % Wheel210));
+					wheelResidue);
 				return true;
 			}
 
@@ -623,13 +602,34 @@ public sealed class HeuristicPrimeTester
 
 			ref HeuristicGroupBSequenceState bestState = ref groupBStates[bestIndex];
 			bestState.Advance();
+			(byte candidateEnding, ushort wheelResidueBest) = UpdateRemainders(bestCandidate);
 			candidate = new HeuristicDivisorCandidate(
 				bestCandidate,
 				HeuristicDivisorGroup.GroupB,
-				bestState.Ending,
+				candidateEnding,
 				bestState.PriorityIndex,
-				(ushort)(bestCandidate % Wheel210));
+				wheelResidueBest);
 			return true;
+		}
+
+		private (byte ending, ushort wheelResidue) UpdateRemainders(ulong divisor)
+		{
+			byte ending;
+			ushort wheelResidue;
+			if (!hasRemainders)
+			{
+				ending = (byte)endingStepper.Initialize(divisor);
+				wheelResidue = (ushort)wheelStepper.Initialize(divisor);
+				hasRemainders = true;
+			}
+			else
+			{
+				ending = (byte)endingStepper.ComputeNext(divisor);
+				wheelResidue = (ushort)wheelStepper.ComputeNext(divisor);
+			}
+
+			lastDivisor = divisor;
+			return (ending, wheelResidue);
 		}
 	}
 
@@ -684,6 +684,10 @@ public sealed class HeuristicPrimeTester
 		private readonly GpuUInt128 step;
 		private readonly GpuUInt128 limit;
 		private GpuUInt128 current;
+		private CycleRemainderStepper endingStepper;
+		private CycleRemainderStepper wheelStepper;
+		private byte currentEnding;
+		private ushort currentWheelResidue;
 		private MersenneDivisorResidueStepper residueStepper;
 		private bool active;
 		private ulong processedCount;
@@ -705,6 +709,21 @@ public sealed class HeuristicPrimeTester
 
 			current = hasCandidates ? firstDivisor : GpuUInt128.Zero;
 			residueStepper = hasCandidates ? new MersenneDivisorResidueStepper(exponent, stepLocal, firstDivisor) : default;
+			if (hasCandidates)
+			{
+				endingStepper = new CycleRemainderStepper(10UL);
+				currentEnding = (byte)endingStepper.Initialize(firstDivisor.Low);
+
+				wheelStepper = new CycleRemainderStepper(Wheel210);
+				currentWheelResidue = (ushort)wheelStepper.Initialize(firstDivisor.Low);
+			}
+			else
+			{
+				endingStepper = default;
+				wheelStepper = default;
+				currentEnding = 0;
+				currentWheelResidue = 0;
+			}
 			active = hasCandidates;
 			processedCount = 0UL;
 			lastDivisor = 0UL;
@@ -724,7 +743,7 @@ public sealed class HeuristicPrimeTester
 
 				if (admissible)
 				{
-					candidate = CreateCandidate(value);
+					candidate = CreateCandidate(value, currentEnding, currentWheelResidue);
 					return true;
 				}
 			}
@@ -746,6 +765,8 @@ public sealed class HeuristicPrimeTester
 
 			current = next;
 			residueStepper.Advance();
+			currentEnding = (byte)endingStepper.ComputeNext(next.Low);
+			currentWheelResidue = (ushort)wheelStepper.ComputeNext(next.Low);
 		}
 
 		public readonly ulong ProcessedCount => processedCount;
@@ -754,9 +775,8 @@ public sealed class HeuristicPrimeTester
 
 		public readonly bool Exhausted => !active;
 
-		private static HeuristicDivisorCandidate CreateCandidate(ulong value)
+		private static HeuristicDivisorCandidate CreateCandidate(ulong value, byte ending, ushort wheelResidue)
 		{
-			byte ending = (byte)(value % 10UL);
 			HeuristicDivisorGroup group;
 
 			if (value == 3UL || value == 7UL || value == 11UL || value == 13UL)
@@ -772,8 +792,7 @@ public sealed class HeuristicPrimeTester
 				group = HeuristicDivisorGroup.GroupB;
 			}
 
-			ushort residue = (ushort)(value % Wheel210);
-			return new HeuristicDivisorCandidate(value, group, ending, 0, residue);
+			return new HeuristicDivisorCandidate(value, group, ending, 0, wheelResidue);
 		}
 	}
 }

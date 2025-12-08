@@ -1,11 +1,29 @@
 using System.Runtime.CompilerServices;
-using ILGPU.Runtime;
-using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 
 public sealed class PrimeTesterByLastDigit
 {
+	[ThreadStatic]
+	private static BidirectionalCycleRemainderStepper _mod10Stepper;
+
+	[ThreadStatic]
+	private static bool _mod10Initialized;
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static byte GetMod10(ulong value)
+	{
+		if (!_mod10Initialized || _mod10Stepper.Modulus != 10UL)
+		{
+			_mod10Stepper = new BidirectionalCycleRemainderStepper(10UL);
+			_mod10Stepper.Initialize(value);
+			_mod10Initialized = true;
+			return (byte)_mod10Stepper.Step(value);
+		}
+
+		return (byte)_mod10Stepper.Step(value);
+	}
+
 	public static bool IsPrimeCpu(ulong n)
 	{
 		// The below IFs never trigger in production code of EvenPerfectBitScanner on --mersenne=bydivisor path.
@@ -27,7 +45,7 @@ public sealed class PrimeTesterByLastDigit
 
 		uint[] smallPrimeDivisors;
 		ulong[] smallPrimeDivisorsMul;
-		byte nMod10 = n.Mod10();
+		byte nMod10 = GetMod10(n);
 
 		switch (nMod10)
 		{

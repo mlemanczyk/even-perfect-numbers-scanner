@@ -7,8 +7,6 @@ namespace PerfectNumbers.Core;
 public static partial class ULongExtensions
 {
 	private const ulong Pow2WindowFallbackThreshold = 32UL;
-	private const int Pow2WindowOddPowerCount = 1 << (PerfectNumberConstants.Pow2WindowSize - 1);
-
 	private static readonly UInt128 Pow2WindowedModulusThreshold = (UInt128)PerfectNumberConstants.MaxQForDivisorCycles;
 
 	private static readonly byte[] BitStatsZeroCount = new byte[256];
@@ -1133,6 +1131,56 @@ public static partial class ULongExtensions
 		}
 
 		return x1;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static ulong ReduceCycleRemainder(this ulong value, ulong modulus)
+	{
+		// BigIntegerExtensions.Track(modulus);
+		// BigIntegerExtensions.DumpCycleRemainderStats();
+
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		return value % modulus;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

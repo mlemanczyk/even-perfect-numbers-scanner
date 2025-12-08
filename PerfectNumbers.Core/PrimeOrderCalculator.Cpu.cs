@@ -266,7 +266,7 @@ internal static partial class PrimeOrderCalculator
             int exponent = entries[i].Value;
             for (int iteration = 0; iteration < exponent; iteration++)
             {
-                if ((order % primeFactor) != UInt128.Zero)
+                if (order.ReduceCycleRemainder(primeFactor) != UInt128.Zero)
                 {
                     UInt128 candidate = order / primeFactor;
                     if (Pow2ModWideCpu(candidate, prime, divisorData) == UInt128.One)
@@ -339,14 +339,13 @@ internal static partial class PrimeOrderCalculator
 
         buffer[..length].Sort(static (a, b) => a.Value.CompareTo(b.Value));
 
-		// TODO: Investigating using stepper to replace modulo operation
         for (int i = 0; i < length; i++)
         {
             UInt128 primeFactor = buffer[i].Value;
             int exponent = buffer[i].Exponent;
             for (int iteration = 0; iteration < exponent; iteration++)
             {
-                if ((order % primeFactor) == UInt128.Zero)
+                if (order.ReduceCycleRemainder(primeFactor) == UInt128.Zero)
                 {
                     UInt128 reduced = order / primeFactor;
                     if (Pow2ModWideCpu(reduced, prime, divisorData) == UInt128.One)
@@ -405,7 +404,7 @@ internal static partial class PrimeOrderCalculator
             UInt128 reduced = order;
             for (int iteration = 0; iteration < span[i].Exponent; iteration++)
             {
-                if ((reduced % primeFactor) != UInt128.Zero)
+                if (reduced.ReduceCycleRemainder(primeFactor) != UInt128.Zero)
                 {
                     break;
                 }
@@ -2583,7 +2582,7 @@ internal static partial class PrimeOrderCalculator
 			// 	continue;
 			// }
 
-			if ((remainingLocal % primeValue) != 0UL)
+			if (remainingLocal.ReduceCycleRemainder(primeValue) != 0UL)
 			{
 				continue;
 			}
@@ -2745,16 +2744,16 @@ internal static partial class PrimeOrderCalculator
 	private static ulong AdvancePolynomialCpu(ulong x, ulong c, ulong modulus)
 	{
 		UInt128 value = (UInt128)x * x + c;
-		return (ulong)(value % modulus);
+		return (ulong)value.ReduceCycleRemainder(modulus);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static ulong AdvancePolynomialTwiceCpu(ulong x, ulong c, ulong modulus)
 	{
 		UInt128 value = (UInt128)x * x + c;
-		var remainder = (ulong)(value % modulus);
+		var remainder = (ulong)value.ReduceCycleRemainder(modulus);
 		value = (UInt128)remainder * remainder + c;
-		return (ulong)(value % modulus);
+		return (ulong)value.ReduceCycleRemainder(modulus);
 	}
 
 	private static ulong BinaryGcd(ulong a, ulong b)
@@ -2897,7 +2896,7 @@ internal static partial class PrimeOrderCalculator
 			int exponent = entries[i].Value;
 			for (int iteration = 0; iteration < exponent; iteration++)
 			{
-				ulong remainder = order % primeFactor;
+				ulong remainder = order.ReduceCycleRemainder(primeFactor);
 				if (remainder != 0UL)
 				{
 					break;
@@ -2951,7 +2950,7 @@ internal static partial class PrimeOrderCalculator
 		{
 			int exponent = 1;
 			ulong remaining = quotient;
-			while ((remaining % factor) == 0UL)
+			while (remaining.ReduceCycleRemainder(factor) == 0UL)
 			{
 				remaining /= factor;
 				exponent++;
@@ -3062,7 +3061,7 @@ internal static partial class PrimeOrderCalculator
             UInt128 reduced = candidate;
             for (int iteration = 0; iteration < span[i].Exponent; iteration++)
             {
-                if ((reduced % primeFactor) != UInt128.Zero)
+                if (reduced.ReduceCycleRemainder(primeFactor) != UInt128.Zero)
                 {
                     break;
                 }

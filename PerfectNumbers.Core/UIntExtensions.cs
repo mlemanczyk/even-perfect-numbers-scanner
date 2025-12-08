@@ -13,9 +13,59 @@ public static class UIntExtensions
     public static uint Mod3(uint value) => value - (uint)((value * Mod3Mask) >> 33) * 3U;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint Mod5(this uint value) => value - (uint)((value * Mod5Mask) >> 34) * 5U;
+	public static uint Mod5(this uint value) => value - (uint)((value * Mod5Mask) >> 34) * 5U;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint Mod8(this uint value) => value & 7U;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static uint Mod8(this uint value) => value & 7U;
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static uint ReduceCycleRemainder(this uint value, uint modulus)
+	{
+		if (modulus == 0U || value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		value -= modulus;
+		if (value < modulus)
+		{
+			return value;
+		}
+
+		return value % modulus;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static uint ReduceCycleRemainder(this ulong value, uint modulus)
+		=> (uint)value.ReduceCycleRemainder((ulong)modulus);
 }
-

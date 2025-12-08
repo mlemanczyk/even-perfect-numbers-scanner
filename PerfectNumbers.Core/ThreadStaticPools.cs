@@ -360,9 +360,9 @@ namespace PerfectNumbers.Core
         private static bool _hasExponentRemainderStepperCpu;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static ExponentRemainderStepperCpu RentExponentStepperCpu(in MontgomeryDivisorData divisorData)
+        internal static ExponentRemainderStepperCpu RentExponentStepperCpu(in MontgomeryDivisorData divisorData, ulong cycleLength = 0UL)
         {
-            if (_hasExponentRemainderStepperCpu && _exponentRemainderStepperCpu.MatchesDivisor(divisorData))
+            if (_hasExponentRemainderStepperCpu && _exponentRemainderStepperCpu.MatchesDivisor(divisorData, cycleLength))
             {
                 ExponentRemainderStepperCpu stepper = _exponentRemainderStepperCpu;
                 _hasExponentRemainderStepperCpu = false;
@@ -370,7 +370,7 @@ namespace PerfectNumbers.Core
                 return stepper;
             }
 
-            return new ExponentRemainderStepperCpu(divisorData);
+            return new ExponentRemainderStepperCpu(divisorData, cycleLength);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
