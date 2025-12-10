@@ -60,6 +60,7 @@ public static class MontgomeryDivisorDataPool
             montgomeryTwoSquared);
     }
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static MontgomeryDivisorData Rent(this Queue<MontgomeryDivisorData> queue, ulong modulus, ulong nPrime, ulong montgomeryOne, ulong montgomeryTwo, ulong montgomeryTwoSquared)
 	{
 		if (queue.TryDequeue(out var pooled))

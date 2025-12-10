@@ -642,7 +642,7 @@ public static partial class ULongExtensions
 		return (ulong)(((UInt128)a * b) % modulus);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong MontgomeryMultiplyCpu(this ulong a, ulong b, ulong modulus, ulong nPrime)
 	{
 		ulong tLow = unchecked(a * b);
@@ -1133,7 +1133,7 @@ public static partial class ULongExtensions
 		return x1;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong ReduceCycleRemainder(this ulong value, ulong modulus)
 	{
 		// BigIntegerExtensions.Track(modulus);

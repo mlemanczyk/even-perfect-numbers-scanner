@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace PerfectNumbers.Core.Cpu;
 
 internal static class DeterministicRandomCpu
@@ -7,6 +9,7 @@ internal static class DeterministicRandomCpu
 
     private static long s_seedCounter;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static ulong NextUInt64()
     {
         ulong state = s_threadState;
@@ -22,6 +25,7 @@ internal static class DeterministicRandomCpu
         return state * 2685821657736338717UL;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static UInt128 NextUInt128()
     {
         UInt128 high = (UInt128)NextUInt64();
@@ -29,6 +33,7 @@ internal static class DeterministicRandomCpu
         return (high << 64) | low;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static ulong InitializeThreadState()
     {
         ulong seed = (ulong)Interlocked.Increment(ref s_seedCounter);

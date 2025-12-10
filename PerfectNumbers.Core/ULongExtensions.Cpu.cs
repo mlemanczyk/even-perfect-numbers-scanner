@@ -5,7 +5,7 @@ namespace PerfectNumbers.Core;
 
 public static partial class ULongExtensions
 {
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong Pow2MontgomeryModWindowedKeepMontgomeryCpu(this ulong exponent, in MontgomeryDivisorData divisor)
 	{
 		ulong modulus = divisor.Modulus;
@@ -75,7 +75,7 @@ public static partial class ULongExtensions
 		return result;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong Pow2MontgomeryModWindowedConvertToStandardCpu(this ulong exponent, in MontgomeryDivisorData divisor)
 	{
 		ulong modulus = divisor.Modulus;
@@ -146,7 +146,7 @@ public static partial class ULongExtensions
 		return result;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static void InitializeMontgomeryOddPowersCpu(in MontgomeryDivisorData divisor, ulong modulus, ulong nPrime, Span<ulong> oddPowers)
 	{
 		oddPowers[0] = divisor.MontgomeryTwo;
@@ -165,20 +165,20 @@ public static partial class ULongExtensions
 		}
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong Pow2MontgomeryModWithCycleConvertToStandardCpu(this ulong exponent, ulong cycleLength, in MontgomeryDivisorData divisor)
 	{
 		ulong rotationCount = exponent % cycleLength;
 		return Pow2MontgomeryModWindowedConvertToStandardCpu(rotationCount, divisor);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong Pow2MontgomeryModFromCycleRemainderCpu(this ulong reducedExponent, in MontgomeryDivisorData divisor)
 	{
 		return Pow2MontgomeryModWindowedConvertToStandardCpu(reducedExponent, divisor);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong CalculateMersenneDivisorCycleLengthUnrolledHexCpu(this ulong divisor)
 	{
 		// EvenPerfectBitScanner only routes odd divisors here; keep the guard commented out for benchmarks.

@@ -30,6 +30,7 @@ internal static partial class PrimeOrderCalculator
 		public readonly uint SmallFactorLimit = smallFactorLimit;
 		public readonly int PollardRhoMilliseconds = pollardRhoMilliseconds;
 		public readonly int MaxPowChecks = maxPowChecks;
+		public readonly int MaxPowChecksCapacity = maxPowChecks << 2;
 		public readonly bool StrictMode = strictMode;
 	}
 

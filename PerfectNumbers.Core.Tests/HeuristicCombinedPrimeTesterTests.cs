@@ -12,10 +12,7 @@ public class HeuristicCombinedPrimeTesterTests
     [InlineData((byte)9)]
     public void Enumerator_uses_one_a_one_b_schedule_by_default(byte lastDigit)
     {
-        Span<HeuristicCombinedPrimeTester.HeuristicGroupBSequenceState> groupBState =
-            stackalloc HeuristicCombinedPrimeTester.HeuristicGroupBSequenceState[4];
-
-        var enumerator = HeuristicCombinedPrimeTester.CreateHeuristicDivisorEnumerator(500UL * 500UL, lastDigit, groupBState);
+        var enumerator = HeuristicCombinedPrimeTester.CreateHeuristicDivisorEnumerator(500UL * 500UL, lastDigit);
         var results = new List<HeuristicCombinedPrimeTester.HeuristicDivisorCandidate>(32);
 
         while (results.Count < 20 && enumerator.TryGetNext(out var candidate))

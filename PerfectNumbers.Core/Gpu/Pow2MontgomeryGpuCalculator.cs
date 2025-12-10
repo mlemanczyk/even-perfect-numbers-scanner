@@ -7,7 +7,7 @@ namespace PerfectNumbers.Core.Gpu;
 
 public static class Pow2MontgomeryGpuCalculator
 {
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong CalculateKeep(PrimeOrderCalculatorAccelerator gpu, ulong exponent, in MontgomeryDivisorData divisor)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
@@ -34,7 +34,7 @@ public static class Pow2MontgomeryGpuCalculator
 		return result;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong CalculateConvert(PrimeOrderCalculatorAccelerator gpu, ulong exponent, in MontgomeryDivisorData divisor)
 	{
 		ulong result = 0UL;

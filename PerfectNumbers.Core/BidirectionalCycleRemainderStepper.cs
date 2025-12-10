@@ -10,21 +10,21 @@ public struct BidirectionalCycleRemainderStepper(ulong modulus)
 
 	public readonly ulong Modulus
 	{
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 		get
 		{
 			return _modulus;
 		}
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public void Initialize(ulong value)
 	{
 		_remainder = value.ReduceCycleRemainder(_modulus);
 		_previous = value;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public ulong Step(ulong value)
 	{
 		long delta = unchecked((long)value - (long)_previous);

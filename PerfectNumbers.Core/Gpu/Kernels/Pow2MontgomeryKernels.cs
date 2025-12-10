@@ -117,7 +117,7 @@ public static class Pow2MontgomeryKernels
 		return sumHigh;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
 	private static void MultiplyPartsGpu(ulong left, ulong right, out ulong high, out ulong low)
 	{
 		ulong leftLow = (uint)left;
@@ -135,13 +135,13 @@ public static class Pow2MontgomeryKernels
 		high = unchecked(highProduct + (cross1 >> 32) + (cross2 >> 32) + (carry >> 32));
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	internal static ulong Pow2MontgomeryModWindowedGpuKeepMontgomery(in MontgomeryDivisorDataGpu divisor, ulong exponent)
 	{
 		return Pow2MontgomeryModWindowedGpuMontgomeryResult(divisor, exponent);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong Pow2MontgomeryModWindowedGpuConvertToStandard(this MontgomeryDivisorDataGpu divisor, ulong exponent)
 	{
 		ulong modulus = divisor.Modulus;
@@ -150,7 +150,7 @@ public static class Pow2MontgomeryKernels
 		return MontgomeryMultiplyGpu(montgomeryResult, 1UL, modulus, nPrime);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static ulong Pow2MontgomeryModWindowedGpuMontgomeryResult(in MontgomeryDivisorDataGpu divisor, ulong exponent)
 	{
 		ulong modulus = divisor.Modulus;

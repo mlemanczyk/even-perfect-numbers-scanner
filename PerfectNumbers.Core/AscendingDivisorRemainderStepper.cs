@@ -7,7 +7,7 @@ public struct AscendingDivisorRemainderStepper
     private readonly ulong _dividend;
     private ulong _maxDivisor;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     public AscendingDivisorRemainderStepper(ulong value)
     {
         _dividend = value;
@@ -20,10 +20,10 @@ public struct AscendingDivisorRemainderStepper
         _maxDivisor = root;
     }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public readonly bool ShouldContinue(ulong divisor) => divisor <= _maxDivisor;
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public bool Divides(ulong divisor)
     {
 		ulong remainder = _dividend;

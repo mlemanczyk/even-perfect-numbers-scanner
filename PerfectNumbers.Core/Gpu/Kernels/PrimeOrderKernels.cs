@@ -1182,6 +1182,7 @@ internal static partial class PrimeOrderKernels
 		return divisor.Pow2MontgomeryModWindowedGpuConvertToStandard(exponent) == 1UL;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static ulong CalculateByDoublingKernel(ulong prime)
 	{
 		ulong order = 1UL;
@@ -1203,6 +1204,7 @@ internal static partial class PrimeOrderKernels
 
 	/// This kernel always sets the result of the corresponding element. Callers don't need to clear the output buffers.
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	internal static void Pow2ModKernel(Index1D index, ArrayView1D<ulong, Stride1D.Dense> exponents, ulong divisorModulus, ulong divisorNPrime, ulong divisorMontgomeryOne, ulong divisorMontgomeryTwo, ulong divisorMontgomeryTwoSquared, ArrayView1D<ulong, Stride1D.Dense> remainders)
 	{
 		ulong exponent = exponents[index];
@@ -1211,12 +1213,14 @@ internal static partial class PrimeOrderKernels
 	}
 
 	/// This kernel always sets the result of the corresponding element. Callers don't need to clear the output buffers.
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	internal static void Pow2ModKernelWide(Index1D index, ArrayView1D<GpuUInt128, Stride1D.Dense> exponents, GpuUInt128 modulus, ArrayView1D<GpuUInt128, Stride1D.Dense> remainders)
 	{
 		GpuUInt128 exponent = exponents[index];
 		remainders[index] = Pow2ModKernelCore(exponent, modulus);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static GpuUInt128[] InitializeOddPowersTable(GpuUInt128 baseValue, GpuUInt128 modulus, int oddPowerCount)
 	{
 		GpuUInt128[] result = new GpuUInt128[PerfectNumberConstants.MaxOddPowersCount];
@@ -1242,6 +1246,7 @@ internal static partial class PrimeOrderKernels
 		return result;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	internal static GpuUInt128 Pow2ModKernelCore(GpuUInt128 exponent, GpuUInt128 modulus)
 	{
 		// This should never happen in production code.

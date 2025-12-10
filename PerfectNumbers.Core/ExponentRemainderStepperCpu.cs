@@ -18,7 +18,7 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
     private ulong _currentMontgomery = divisor.MontgomeryOne;
     private static readonly ConcurrentDictionary<(ulong Cycle, ulong Delta), ulong> _cycleDeltaCache = new();
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public readonly bool MatchesDivisor(in MontgomeryDivisorData divisor, ulong cycleLength)
         => _modulus == divisor.Modulus && _nPrime == divisor.NPrime && _montgomeryOne == divisor.MontgomeryOne && _cycleLength == cycleLength;
 
@@ -26,7 +26,7 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
 	/// Clears the cached Montgomery residue so the stepper can be reused for another divisor.
 	/// Callers must reinitialize the stepper before consuming any residues after a reset.
 	/// </summary>
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public void Reset()
     {
         PreviousExponent = 0UL;
@@ -39,7 +39,7 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
     /// </summary>
     /// <param name="exponent">First exponent evaluated for the current divisor. The caller must reuse the same divisor metadata.</param>
     /// <returns>The canonical residue produced by <c>2^exponent mod divisor</c>.</returns>
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public ulong InitializeCpu(ulong exponent)
     {
         InitializeCpuState(exponent);
@@ -51,7 +51,7 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
     /// </summary>
     /// <param name="exponent">First exponent evaluated for the current divisor. Must match the divisor passed to the constructor.</param>
     /// <returns><see langword="true"/> when the seed exponent produces a Montgomery residue equal to one.</returns>
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public bool InitializeCpuIsUnity(ulong exponent)
     {
         InitializeCpuState(exponent);
@@ -64,7 +64,7 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
     /// </summary>
     /// <param name="exponent">Next exponent in the ascending sequence. Callers must never move backwards or reuse an older exponent.</param>
     /// <returns>The canonical residue produced by <c>2^exponent mod divisor</c>.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public ulong ComputeNextCpu(ulong exponent)
     {
         ulong delta = exponent - PreviousExponent;
@@ -84,7 +84,7 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
     /// </summary>
     /// <param name="exponent">Next exponent in the ascending sequence.</param>
     /// <returns><see langword="true"/> when the canonical residue equals one.</returns>
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public bool ComputeNextIsUnity(ulong exponent)
     {
         ulong delta = exponent - PreviousExponent;
@@ -105,8 +105,8 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
     /// <param name="montgomeryResult">Residue in Montgomery form produced externally for the configured divisor.</param>
     /// <param name="isUnity">Outputs whether the supplied residue equals Montgomery one.</param>
     /// <returns><see langword="true"/> when the residue is accepted and cached.</returns>
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryInitializeFromMontgomeryResult(ulong exponent, ulong montgomeryResult, out bool isUnity)
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public bool TryInitializeFromMontgomeryResult(ulong exponent, ulong montgomeryResult, out bool isUnity)
     {
         _currentMontgomery = montgomeryResult;
         PreviousExponent = exponent;
@@ -122,7 +122,7 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
     /// <param name="montgomeryDelta">Montgomery residue delta corresponding to the exponent gap.</param>
     /// <param name="isUnity">Outputs whether the resulting residue equals Montgomery one.</param>
     /// <returns><see langword="true"/> when the advance succeeds.</returns>
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public bool TryAdvanceWithMontgomeryDelta(ulong exponent, ulong montgomeryDelta, out bool isUnity)
 	{
         ulong delta = exponent - PreviousExponent;
@@ -149,7 +149,7 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
         return true;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private void InitializeCpuState(ulong exponent)
     {
         ulong rotation = ReduceDelta(exponent);
@@ -159,10 +159,10 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
         PreviousExponent = exponent;
     }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private readonly ulong ReduceCurrent() => _currentMontgomery.MontgomeryMultiplyCpu(1UL, _modulus, _nPrime);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private readonly ulong ReduceDelta(ulong delta)
     {
         ulong cycleLength = _cycleLength;

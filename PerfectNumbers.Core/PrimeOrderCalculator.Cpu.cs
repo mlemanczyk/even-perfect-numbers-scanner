@@ -18,7 +18,7 @@ internal static partial class PrimeOrderCalculator
 		private static PendingEntry? _poolHead;
 		private PendingEntry? _next;
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 		public static PendingEntry Rent(ulong value, bool knownComposite)
 		{
 			var poolHead = _poolHead;
@@ -35,7 +35,7 @@ internal static partial class PrimeOrderCalculator
 			return poolHead;
 		}
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 		public static void Return(PendingEntry entry)
 		{
 			entry._next = _poolHead;
@@ -46,8 +46,8 @@ internal static partial class PrimeOrderCalculator
 		public bool KnownComposite = knownComposite;
 		public bool HasKnownPrimality = knownComposite;
 		public bool IsPrime = false;
-		
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 		public void WithPrimality(bool isPrime)
 		{
 			KnownComposite = KnownComposite || !isPrime;
@@ -125,33 +125,35 @@ internal static partial class PrimeOrderCalculator
 		return result;
 	}
 
-    private static UInt128 CalculateWideInternalCpu(in UInt128 prime, in UInt128? previousOrder, in MontgomeryDivisorData? divisorData, in PrimeOrderCalculatorConfig config)
-    {
-        if (prime <= UInt128.One)
-        {
-            return UInt128.One;
-        }
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private static UInt128 CalculateWideInternalCpu(in UInt128 prime, in UInt128? previousOrder, in MontgomeryDivisorData? divisorData, in PrimeOrderCalculatorConfig config)
+	{
+		if (prime <= UInt128.One)
+		{
+			return UInt128.One;
+		}
 
-        if (prime == (UInt128)3UL)
-        {
-            return (UInt128)2UL;
-        }
+		if (prime == (UInt128)3UL)
+		{
+			return (UInt128)2UL;
+		}
 
-        UInt128 phi = prime - UInt128.One;
-        PartialFactorResult128 phiFactors = PartialFactorWide(phi, config);
-        UInt128 result;
-        if (phiFactors.Factors is null)
-        {
-            result = FinishStrictlyWideCpu(prime, divisorData);
-        }
-        else
-        {
-            result = RunHeuristicPipelineWideCpu(prime, previousOrder, divisorData, config, phi, phiFactors);
-        }
+		UInt128 phi = prime - UInt128.One;
+		PartialFactorResult128 phiFactors = PartialFactorWide(phi, config);
+		UInt128 result;
+		if (phiFactors.Factors is null)
+		{
+			result = FinishStrictlyWideCpu(prime, divisorData);
+		}
+		else
+		{
+			result = RunHeuristicPipelineWideCpu(prime, previousOrder, divisorData, config, phi, phiFactors);
+		}
 
-        return result;
-    }
+		return result;
+	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static ulong RunHeuristicPipelineCpu(
 		ulong prime,
 		ulong? previousOrder,
@@ -179,7 +181,7 @@ internal static partial class PrimeOrderCalculator
 			return CalculateByFactorizationCpu(prime, divisorData);
 		}
 
-		if (TryHeuristicFinishCpu(prime, candidateOrder, previousOrder, divisorData, config, phiFactors, orderFactors, out ulong order))
+		if (TryHeuristicFinishCpu(prime, candidateOrder, previousOrder, divisorData, config, orderFactors, out ulong order))
 		{
 			return order;
 		}
@@ -187,6 +189,7 @@ internal static partial class PrimeOrderCalculator
 		return candidateOrder;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static ulong RunHeuristicPipelineHybrid(
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
@@ -223,306 +226,314 @@ internal static partial class PrimeOrderCalculator
 		return candidateOrder;
 	}
 
-    private static UInt128 RunHeuristicPipelineWideCpu(
-        in UInt128 prime,
-        in UInt128? previousOrder,
-        in MontgomeryDivisorData? divisorData,
-        in PrimeOrderCalculatorConfig config,
-        in UInt128 phi,
-        in PartialFactorResult128 phiFactors)
-    {
-        if (phiFactors.FullyFactored && TrySpecialMaxWideCpu(phi, prime, divisorData, phiFactors))
-        {
-            return phi;
-        }
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private static UInt128 RunHeuristicPipelineWideCpu(
+		in UInt128 prime,
+		in UInt128? previousOrder,
+		in MontgomeryDivisorData? divisorData,
+		in PrimeOrderCalculatorConfig config,
+		in UInt128 phi,
+		in PartialFactorResult128 phiFactors)
+	{
+		if (phiFactors.FullyFactored && TrySpecialMaxWideCpu(phi, prime, divisorData, phiFactors))
+		{
+			return phi;
+		}
 
-        UInt128 candidateOrder = InitializeStartingOrderWideCpu(prime, phi, divisorData);
-        candidateOrder = ExponentLoweringWideCpu(candidateOrder, prime, divisorData, phiFactors);
+		UInt128 candidateOrder = InitializeStartingOrderWideCpu(prime, phi, divisorData);
+		candidateOrder = ExponentLoweringWideCpu(candidateOrder, prime, divisorData, phiFactors);
 
-        if (TryConfirmOrderWideCpu(prime, candidateOrder, divisorData, config))
-        {
-            return candidateOrder;
-        }
+		if (TryConfirmOrderWideCpu(prime, candidateOrder, divisorData, config))
+		{
+			return candidateOrder;
+		}
 
-        if (config.StrictMode)
-        {
-            return FinishStrictlyWideCpu(prime, divisorData);
-        }
+		if (config.StrictMode)
+		{
+			return FinishStrictlyWideCpu(prime, divisorData);
+		}
 
-        if (TryHeuristicFinishWideCpu(prime, candidateOrder, previousOrder, divisorData, config, out UInt128 order))
-        {
-            return order;
-        }
+		if (TryHeuristicFinishWideCpu(prime, candidateOrder, previousOrder, divisorData, config, out UInt128 order))
+		{
+			return order;
+		}
 
-        return candidateOrder;
-    }
+		return candidateOrder;
+	}
 
-    private static UInt128 FinishStrictlyWideCpu(in UInt128 prime, in MontgomeryDivisorData? divisorData)
-    {
-        UInt128 phi = prime - UInt128.One;
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private static UInt128 FinishStrictlyWideCpu(in UInt128 prime, in MontgomeryDivisorData? divisorData)
+	{
+		UInt128 phi = prime - UInt128.One;
 		Queue<Dictionary<UInt128, int>> uInt128IntDictionaryPool = ThreadStaticPools.UInt128IntDictionaryPool;
 		Dictionary<UInt128, int> counts = uInt128IntDictionaryPool.Rent(capacity: 8);
-        FactorCompletelyWide(phi, counts);
-        int entryCount = counts.Count;
-        if (entryCount == 0)
-        {
+		FactorCompletelyWide(phi, counts);
+		int entryCount = counts.Count;
+		if (entryCount == 0)
+		{
 			uInt128IntDictionaryPool.Return(counts);
-            return phi;
-        }
+			return phi;
+		}
 
 		Queue<List<KeyValuePair<UInt128, int>>> keyValuePairUInt128IntegerPool = ThreadStaticPools.KeyValuePairUInt128IntegerPool;
 		var entries = keyValuePairUInt128IntegerPool.Rent(entryCount);
 		entries.AddRange(counts);
 		uInt128IntDictionaryPool.Return(counts);
-        
+
 		entries.Sort(static (a, b) => a.Key.CompareTo(b.Key));
 
-        UInt128 order = phi;
-        for (int i = 0; i < entryCount; i++)
-        {
-            UInt128 primeFactor = entries[i].Key;
-            int exponent = entries[i].Value;
-            for (int iteration = 0; iteration < exponent; iteration++)
-            {
-                if (order.ReduceCycleRemainder(primeFactor) != UInt128.Zero)
-                {
-                    UInt128 candidate = order / primeFactor;
-                    if (Pow2ModWideCpu(candidate, prime, divisorData) == UInt128.One)
-                    {
-                        order = candidate;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-            }
-        }
+		UInt128 order = phi;
+		for (int i = 0; i < entryCount; i++)
+		{
+			UInt128 primeFactor = entries[i].Key;
+			int exponent = entries[i].Value;
+			for (int iteration = 0; iteration < exponent; iteration++)
+			{
+				if (order.ReduceCycleRemainder(primeFactor) != UInt128.Zero)
+				{
+					UInt128 candidate = order / primeFactor;
+					if (Pow2ModWideCpu(candidate, prime, divisorData) == UInt128.One)
+					{
+						order = candidate;
+					}
+					else
+					{
+						break;
+					}
+				}
+			}
+		}
 
 		keyValuePairUInt128IntegerPool.Return(entries);
-        return order;
-    }
+		return order;
+	}
 
-    private static bool TrySpecialMaxWideCpu(in UInt128 phi, in UInt128 prime, in MontgomeryDivisorData? divisorData, in PartialFactorResult128 factors)
-    {
-        ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
-        int length = factors.Count;
-        for (int i = 0; i < length; i++)
-        {
-            UInt128 factor = factorSpan[i].Value;
-            UInt128 reduced = phi / factor;
-            if (Pow2ModWideCpu(reduced, prime, divisorData) == UInt128.One)
-            {
-                return false;
-            }
-        }
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private static bool TrySpecialMaxWideCpu(in UInt128 phi, in UInt128 prime, in MontgomeryDivisorData? divisorData, in PartialFactorResult128 factors)
+	{
+		ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
+		int length = factors.Count;
+		for (int i = 0; i < length; i++)
+		{
+			UInt128 factor = factorSpan[i].Value;
+			UInt128 reduced = phi / factor;
+			if (Pow2ModWideCpu(reduced, prime, divisorData) == UInt128.One)
+			{
+				return false;
+			}
+		}
 
-        return true;
-    }
+		return true;
+	}
 
-    private static UInt128 InitializeStartingOrderWideCpu(in UInt128 prime, in UInt128 phi, in MontgomeryDivisorData? divisorData)
-    {
-        UInt128 order = phi;
-        UInt128 mod8 = prime & (UInt128)7UL;
-        if (mod8 == UInt128.One || mod8 == (UInt128)7UL)
-        {
-            UInt128 half = phi >> 1;
-            if (Pow2ModWideCpu(half, prime, divisorData) == UInt128.One)
-            {
-                order = half;
-            }
-        }
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private static UInt128 InitializeStartingOrderWideCpu(in UInt128 prime, in UInt128 phi, in MontgomeryDivisorData? divisorData)
+	{
+		UInt128 order = phi;
+		UInt128 mod8 = prime & (UInt128)7UL;
+		if (mod8 == UInt128.One || mod8 == (UInt128)7UL)
+		{
+			UInt128 half = phi >> 1;
+			if (Pow2ModWideCpu(half, prime, divisorData) == UInt128.One)
+			{
+				order = half;
+			}
+		}
 
-        return order;
-    }
+		return order;
+	}
 
-    private static UInt128 ExponentLoweringWideCpu(UInt128 order, in UInt128 prime, in MontgomeryDivisorData? divisorData, in PartialFactorResult128 factors)
-    {
-        ArrayPool<FactorEntry128> pool = ThreadStaticPools.FactorEntry128Pool;
-        ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
-        int length = factors.Count;
-        // TODO: This should never trigger from production code - check
-        // if (length == 0)
-        // {
-        //     return order;
-        // }
-        FactorEntry128[] tempArray = pool.Rent(length + 1);
-        Span<FactorEntry128> buffer = tempArray.AsSpan(0, length);
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private static UInt128 ExponentLoweringWideCpu(UInt128 order, in UInt128 prime, in MontgomeryDivisorData? divisorData, in PartialFactorResult128 factors)
+	{
+		ArrayPool<FactorEntry128> pool = ThreadStaticPools.FactorEntry128Pool;
+		ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
+		int length = factors.Count;
+		// TODO: This should never trigger from production code - check
+		// if (length == 0)
+		// {
+		//     return order;
+		// }
+		FactorEntry128[] tempArray = pool.Rent(length + 1);
+		Span<FactorEntry128> buffer = tempArray.AsSpan(0, length);
 
-        factorSpan.CopyTo(buffer);
-        if (!factors.FullyFactored && factors.Cofactor > UInt128.One && IsPrimeWide(factors.Cofactor))
-        {
-            buffer[length] = new FactorEntry128(factors.Cofactor, 1);
-            length++;
-        }
+		factorSpan.CopyTo(buffer);
+		if (!factors.FullyFactored && factors.Cofactor > UInt128.One && IsPrimeWide(factors.Cofactor))
+		{
+			buffer[length] = new FactorEntry128(factors.Cofactor, 1);
+			length++;
+		}
 
-        buffer[..length].Sort(static (a, b) => a.Value.CompareTo(b.Value));
+		buffer[..length].Sort(static (a, b) => a.Value.CompareTo(b.Value));
 
-        for (int i = 0; i < length; i++)
-        {
-            UInt128 primeFactor = buffer[i].Value;
-            int exponent = buffer[i].Exponent;
-            for (int iteration = 0; iteration < exponent; iteration++)
-            {
-                if (order.ReduceCycleRemainder(primeFactor) == UInt128.Zero)
-                {
-                    UInt128 reduced = order / primeFactor;
-                    if (Pow2ModWideCpu(reduced, prime, divisorData) == UInt128.One)
-                    {
-                        order = reduced;
-                        continue;
-                    }
-                }
+		for (int i = 0; i < length; i++)
+		{
+			UInt128 primeFactor = buffer[i].Value;
+			int exponent = buffer[i].Exponent;
+			for (int iteration = 0; iteration < exponent; iteration++)
+			{
+				if (order.ReduceCycleRemainder(primeFactor) == UInt128.Zero)
+				{
+					UInt128 reduced = order / primeFactor;
+					if (Pow2ModWideCpu(reduced, prime, divisorData) == UInt128.One)
+					{
+						order = reduced;
+						continue;
+					}
+				}
 
-                break;
-            }
-        }
+				break;
+			}
+		}
 
-        pool.Return(tempArray, clearArray: false);
-        return order;
-    }
+		pool.Return(tempArray, clearArray: false);
+		return order;
+	}
 
-    private static bool TryConfirmOrderWideCpu(in UInt128 prime, in UInt128 order, in MontgomeryDivisorData? divisorData, in PrimeOrderCalculatorConfig config)
-    {
-        if (order == UInt128.Zero)
-        {
-            return false;
-        }
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private static bool TryConfirmOrderWideCpu(in UInt128 prime, in UInt128 order, in MontgomeryDivisorData? divisorData, in PrimeOrderCalculatorConfig config)
+	{
+		if (order == UInt128.Zero)
+		{
+			return false;
+		}
 
-        if (Pow2ModWideCpu(order, prime, divisorData) != UInt128.One)
-        {
-            return false;
-        }
+		if (Pow2ModWideCpu(order, prime, divisorData) != UInt128.One)
+		{
+			return false;
+		}
 
-        PartialFactorResult128 factorization = PartialFactorWide(order, config);
-        if (factorization.Factors is null)
-        {
-            return false;
-        }
+		PartialFactorResult128 factorization = PartialFactorWide(order, config);
+		if (factorization.Factors is null)
+		{
+			return false;
+		}
 
-        if (!factorization.FullyFactored)
-        {
-            if (factorization.Cofactor <= UInt128.One)
-            {
-                return false;
-            }
+		if (!factorization.FullyFactored)
+		{
+			if (factorization.Cofactor <= UInt128.One)
+			{
+				return false;
+			}
 
-            if (!IsPrimeWide(factorization.Cofactor))
-            {
-                return false;
-            }
+			if (!IsPrimeWide(factorization.Cofactor))
+			{
+				return false;
+			}
 
-            factorization = factorization.WithAdditionalPrime(factorization.Cofactor);
-        }
+			factorization = factorization.WithAdditionalPrime(factorization.Cofactor);
+		}
 
-        ReadOnlySpan<FactorEntry128> span = factorization.Factors;
-        int length = factorization.Count;
-        for (int i = 0; i < length; i++)
-        {
-            UInt128 primeFactor = span[i].Value;
-            UInt128 reduced = order;
-            for (int iteration = 0; iteration < span[i].Exponent; iteration++)
-            {
-                if (reduced.ReduceCycleRemainder(primeFactor) != UInt128.Zero)
-                {
-                    break;
-                }
+		ReadOnlySpan<FactorEntry128> span = factorization.Factors;
+		int length = factorization.Count;
+		for (int i = 0; i < length; i++)
+		{
+			UInt128 primeFactor = span[i].Value;
+			UInt128 reduced = order;
+			for (int iteration = 0; iteration < span[i].Exponent; iteration++)
+			{
+				if (reduced.ReduceCycleRemainder(primeFactor) != UInt128.Zero)
+				{
+					break;
+				}
 
-                reduced /= primeFactor;
-                if (Pow2ModWideCpu(reduced, prime, divisorData) == UInt128.One)
-                {
-                    return false;
-                }
-            }
-        }
+				reduced /= primeFactor;
+				if (Pow2ModWideCpu(reduced, prime, divisorData) == UInt128.One)
+				{
+					return false;
+				}
+			}
+		}
 
-        return true;
-    }
+		return true;
+	}
 
-    private static bool TryHeuristicFinishWideCpu(
-        in UInt128 prime,
-        in UInt128 order,
-        in UInt128? previousOrder,
-        in MontgomeryDivisorData? divisorData,
-        in PrimeOrderCalculatorConfig config,
-        out UInt128 result)
-    {
-        result = UInt128.Zero;
-        if (order <= UInt128.One)
-        {
-            return false;
-        }
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private static bool TryHeuristicFinishWideCpu(
+		in UInt128 prime,
+		in UInt128 order,
+		in UInt128? previousOrder,
+		in MontgomeryDivisorData? divisorData,
+		in PrimeOrderCalculatorConfig config,
+		out UInt128 result)
+	{
+		result = UInt128.Zero;
+		if (order <= UInt128.One)
+		{
+			return false;
+		}
 
-        PartialFactorResult128 orderFactors = PartialFactorWide(order, config);
-        if (orderFactors.Factors is null)
-        {
-            return false;
-        }
+		PartialFactorResult128 orderFactors = PartialFactorWide(order, config);
+		if (orderFactors.Factors is null)
+		{
+			return false;
+		}
 
-        if (!orderFactors.FullyFactored)
-        {
-            if (orderFactors.Cofactor <= UInt128.One)
-            {
-                return false;
-            }
+		if (!orderFactors.FullyFactored)
+		{
+			if (orderFactors.Cofactor <= UInt128.One)
+			{
+				return false;
+			}
 
-            if (!IsPrimeWide(orderFactors.Cofactor))
-            {
-                return false;
-            }
+			if (!IsPrimeWide(orderFactors.Cofactor))
+			{
+				return false;
+			}
 
-            orderFactors = orderFactors.WithAdditionalPrime(orderFactors.Cofactor);
-        }
+			orderFactors = orderFactors.WithAdditionalPrime(orderFactors.Cofactor);
+		}
 
-        int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks * 4;
+		int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecksCapacity;
 		Queue<List<UInt128>> uInt128ListPool = ThreadStaticPools.UInt128ListPool;
 		List<UInt128> candidates = uInt128ListPool.Rent(capacity);
-        FactorEntry128[] factorArray = orderFactors.Factors!;
+		FactorEntry128[] factorArray = orderFactors.Factors!;
 
-        BuildCandidatesWide(order, factorArray, orderFactors.Count, candidates, capacity);
+		BuildCandidatesWide(order, factorArray, orderFactors.Count, candidates, capacity);
 
-        int candidateCount = candidates.Count;
-        if (candidateCount == 0)
-        {
+		int candidateCount = candidates.Count;
+		if (candidateCount == 0)
+		{
 			uInt128ListPool.Return(candidates);
-            return false;
-        }
+			return false;
+		}
 
-        SortCandidatesWide(prime, previousOrder, candidates);
+		SortCandidatesWide(prime, previousOrder, candidates);
 
-        int powBudget = config.MaxPowChecks <= 0 ? candidateCount : config.MaxPowChecks;
-        int powUsed = 0;
+		int powBudget = config.MaxPowChecks <= 0 ? candidateCount : config.MaxPowChecks;
+		int powUsed = 0;
 
-        for (int i = 0; i < candidateCount; i++)
-        {
-            if (powUsed >= powBudget && powBudget > 0)
-            {
-                break;
-            }
+		for (int i = 0; i < candidateCount; i++)
+		{
+			if (powUsed >= powBudget && powBudget > 0)
+			{
+				break;
+			}
 
-            UInt128 candidate = candidates[i];
-            powUsed++;
+			UInt128 candidate = candidates[i];
+			powUsed++;
 
-            if (Pow2ModWideCpu(candidate, prime, divisorData) != UInt128.One)
-            {
-                continue;
-            }
+			if (Pow2ModWideCpu(candidate, prime, divisorData) != UInt128.One)
+			{
+				continue;
+			}
 
-            if (!TryConfirmCandidateWideCpu(prime, candidate, config, ref powUsed, powBudget, divisorData))
-            {
-                continue;
-            }
+			if (!TryConfirmCandidateWideCpu(prime, candidate, config, ref powUsed, powBudget, divisorData))
+			{
+				continue;
+			}
 
-            result = candidate;
+			result = candidate;
 			uInt128ListPool.Return(candidates);
-            return true;
-        }
+			return true;
+		}
 
 		uInt128ListPool.Return(candidates);
-        return false;
-    }
+		return false;
+	}
 
 	// private static ulong specialMaxHits;
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool TrySpecialMaxCpu(ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
 	{
 		int length = factors.Count;
@@ -539,6 +550,7 @@ internal static partial class PrimeOrderCalculator
 		return EvaluateSpecialMaxCandidatesCpu(stackBuffer, factorSpan, phi, prime, divisorData);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool TrySpecialMaxHybrid(PrimeOrderCalculatorAccelerator gpu, ulong phi, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
 	{
 		int length = factors.Count;
@@ -560,6 +572,7 @@ internal static partial class PrimeOrderCalculator
 		return EvaluateSpecialMaxCandidatesGpu(gpu, factorSpan, phi, prime, divisorData);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool EvaluateSpecialMaxCandidatesCpu(Span<ulong> buffer, ReadOnlySpan<ulong> factors, ulong phi, ulong prime, in MontgomeryDivisorData divisorData)
 	{
 		int factorCount = factors.Length;
@@ -604,13 +617,14 @@ internal static partial class PrimeOrderCalculator
 		return true;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static ulong InitializeStartingOrderCpu(ulong prime, ulong phi, in MontgomeryDivisorData divisorData)
 	{
 		ulong order = phi;
 		if ((prime & 7UL) == 1UL || (prime & 7UL) == 7UL)
 		{
 			ulong half = phi >> 1;
-			if (Pow2EqualsOneCpu(half, prime, divisorData))
+			if (Pow2EqualsOneCpu(half, divisorData))
 			{
 				order = half;
 			}
@@ -619,6 +633,7 @@ internal static partial class PrimeOrderCalculator
 		return order;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static ulong InitializeStartingOrderHybrid(PrimeOrderCalculatorAccelerator gpu, ulong prime, ulong phi, in MontgomeryDivisorData divisorData)
 	{
 		ulong order = phi;
@@ -634,14 +649,16 @@ internal static partial class PrimeOrderCalculator
 		return order;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static ulong ExponentLoweringCpu(ulong order, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
 	{
 		ReadOnlySpan<ulong> factorSpan = factors.Factors;
 		ReadOnlySpan<int> exponentsSpan = factors.Exponents;
 
 		int length = factors.Count;
-		ulong[] tempFactorsArray = Pools.ExclusiveUlongArray.Rent(length + 1);
-		int[] tempExponentsArray = Pools.ExclusiveIntArray.Rent(length + 1);
+		int newLength = length + 1;
+		ulong[] tempFactorsArray = Pools.ExclusiveUlongArray.Rent(newLength);
+		int[] tempExponentsArray = Pools.ExclusiveIntArray.Rent(newLength);
 
 		Span<ulong> ulongBuffer = tempFactorsArray;
 		factorSpan.CopyTo(ulongBuffer);
@@ -652,7 +669,7 @@ internal static partial class PrimeOrderCalculator
 		{
 			ulongBuffer[length] = factors.Cofactor;
 			intBuffer[length] = 1;
-			length++;
+			length = newLength;
 		}
 
 		Array.Sort(tempFactorsArray, tempExponentsArray, 0, length);
@@ -706,6 +723,7 @@ internal static partial class PrimeOrderCalculator
 		return order;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static void ProcessExponentLoweringPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong primeFactor, int exponent, ref ExponentRemainderStepperCpu stepper)
 	{
 		ulong working = order;
@@ -756,6 +774,7 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static bool TryConfirmOrderCpu(
 		ulong prime,
 		ulong order,
@@ -765,12 +784,8 @@ internal static partial class PrimeOrderCalculator
 	{
 		reusableFactorization = null;
 
-		if (order == 0UL)
-		{
-			return false;
-		}
-
-		if (!Pow2EqualsOneCpu(order, prime, divisorData))
+		ArgumentOutOfRangeException.ThrowIfEqual(order, 0UL);
+		if (!Pow2EqualsOneCpu(order, divisorData))
 		{
 			return false;
 		}
@@ -803,6 +818,7 @@ internal static partial class PrimeOrderCalculator
 		return true;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool TryConfirmOrderHybrid(
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
@@ -851,6 +867,7 @@ internal static partial class PrimeOrderCalculator
 		return true;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool ValidateOrderAgainstFactors(
 		ulong prime,
 		ulong order,
@@ -916,6 +933,7 @@ internal static partial class PrimeOrderCalculator
 		return !violates;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool ValidateOrderForFactor(Span<ulong> buffer, ulong primeFactor, int exponent, ulong order, ref ExponentRemainderStepperCpu stepper)
 	{
 		ulong working = order;
@@ -964,13 +982,13 @@ internal static partial class PrimeOrderCalculator
 		return false;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool TryHeuristicFinishCpu(
 		ulong prime,
 		ulong order,
 		ulong? previousOrder,
 		in MontgomeryDivisorData divisorData,
 		in PrimeOrderCalculatorConfig config,
-		PartialFactorResult phiFactors,
 		PartialFactorResult? cachedOrderFactors,
 		out ulong result)
 	{
@@ -1005,7 +1023,7 @@ internal static partial class PrimeOrderCalculator
 				orderFactors.WithAdditionalPrime(orderFactors.Cofactor);
 			}
 
-			int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks << 2;
+			int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecksCapacity;
 			List<ulong> candidates = ThreadStaticPools.RentUlongList(capacity);
 			candidates.Clear();
 			ulong[] factorArray = orderFactors.Factors!;
@@ -1025,65 +1043,49 @@ internal static partial class PrimeOrderCalculator
 			int powUsed = 0;
 			Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
 			ExponentRemainderStepperCpu powStepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
-			bool powStepperInitialized = false;
 
-			int index = 0;
+			ulong candidate = candidateSpan[0];
+			powUsed++;
+
+			bool equalsOne = powStepper.InitializeCpuIsUnity(candidate);
+			if (equalsOne && TryConfirmCandidateCpu(prime, candidate, divisorData, config, ref powUsed, powBudget))
+			{
+				candidates.Clear();
+				ThreadStaticPools.ReturnUlongList(candidates);
+				ThreadStaticPools.ReturnExponentStepperCpu(powStepper);
+				result = candidate;
+				return true;
+			}
+
+			int index = 1;
 			while (index < candidateCount && powUsed < powBudget)
 			{
-				int remaining = candidateCount - index;
 				int budgetRemaining = powBudget - powUsed;
-				int batchSize = Math.Min(remaining, Math.Min(budgetRemaining, PrimeOrderConstants.MaxGpuBatchSize));
-				if (batchSize <= 0)
+				if (budgetRemaining <= 0)
 				{
 					break;
 				}
 
-				ReadOnlySpan<ulong> batch = candidateSpan.Slice(index, batchSize);
+				candidate = candidateSpan[index++];
+				powUsed++;
 
-				int startIndex = 0;
-				if (!powStepperInitialized)
+				equalsOne = powStepper.ComputeNextIsUnity(candidate);
+				if (!equalsOne)
 				{
-					ulong candidate = batch[0];
-					powUsed++;
-
-					bool equalsOne = powStepper.InitializeCpuIsUnity(candidate);
-					powStepperInitialized = true;
-					if (equalsOne && TryConfirmCandidateCpu(prime, candidate, divisorData, config, ref powUsed, powBudget))
-					{
-						candidates.Clear();
-						ThreadStaticPools.ReturnUlongList(candidates);
-						ThreadStaticPools.ReturnExponentStepperCpu(powStepper);
-						result = candidate;
-						return true;
-					}
-
-					startIndex = 1;
+					continue;
 				}
 
-				for (int i = startIndex; i < batchSize && powUsed < powBudget; i++)
+				if (!TryConfirmCandidateCpu(prime, candidate, divisorData, config, ref powUsed, powBudget))
 				{
-					ulong candidate = batch[i];
-					powUsed++;
-
-					bool equalsOne = powStepper.ComputeNextIsUnity(candidate);
-					if (!equalsOne)
-					{
-						continue;
-					}
-
-					if (!TryConfirmCandidateCpu(prime, candidate, divisorData, config, ref powUsed, powBudget))
-					{
-						continue;
-					}
-
-					candidates.Clear();
-					ThreadStaticPools.ReturnUlongList(candidates);
-					ThreadStaticPools.ReturnExponentStepperCpu(powStepper);
-					result = candidate;
-					return true;
+					continue;
 				}
 
-				index += batchSize;
+				candidates.Clear();
+				ThreadStaticPools.ReturnUlongList(candidates);
+				ThreadStaticPools.ReturnExponentStepperCpu(powStepper);
+				result = candidate;
+				return true;
+
 			}
 
 			candidates.Clear();
@@ -1098,6 +1100,7 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool TryHeuristicFinishHybrid(
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
@@ -1135,7 +1138,7 @@ internal static partial class PrimeOrderCalculator
 				orderFactors.WithAdditionalPrime(orderFactors.Cofactor);
 			}
 
-			int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks << 2;
+			int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecksCapacity;
 			List<ulong> candidates = ThreadStaticPools.RentUlongList(capacity);
 			candidates.Clear();
 			ulong[] factorArray = orderFactors.Factors!;
@@ -1230,6 +1233,7 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool TryHeuristicFinishGpu(
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
@@ -1267,7 +1271,7 @@ internal static partial class PrimeOrderCalculator
 				orderFactors.WithAdditionalPrime(orderFactors.Cofactor);
 			}
 
-			int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks << 2;
+			int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecksCapacity;
 			List<ulong> candidates = ThreadStaticPools.RentUlongList(capacity);
 			candidates.Clear();
 			ulong[] factorArray = orderFactors.Factors!;
@@ -1428,6 +1432,7 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static void SortCandidates(ulong prime, ulong? previousOrder, List<ulong> candidates)
 	{
 		ulong previous = previousOrder ?? 0UL;
@@ -1437,56 +1442,73 @@ internal static partial class PrimeOrderCalculator
 		ulong threshold3 = (prime * 3UL) >> 3;
 		int previousGroup = hasPrevious ? GetGroup(previous, threshold1, threshold2, threshold3) : 1;
 
-		candidates.Sort((x, y) =>
-		{
-			CandidateKey keyX = BuildKey(x, previous, previousGroup, hasPrevious, threshold1, threshold2, threshold3);
-			CandidateKey keyY = BuildKey(y, previous, previousGroup, hasPrevious, threshold1, threshold2, threshold3);
-			int compare = keyX.Primary.CompareTo(keyY.Primary);
-			if (compare != 0)
-			{
-				return compare;
-			}
-
-			compare = keyX.Secondary.CompareTo(keyY.Secondary);
-			if (compare != 0)
-			{
-				return compare;
-			}
-
-			return keyX.Tertiary.CompareTo(keyY.Tertiary);
-		});
+		candidates.Sort((x, y) => CompareCandidates(x, y, previous, previousGroup, hasPrevious, threshold1, threshold2, threshold3));
 	}
 
-	private static CandidateKey BuildKey(ulong value, ulong previous, int previousGroup, bool hasPrevious, ulong threshold1, ulong threshold2, ulong threshold3)
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	private static int CompareCandidates(ulong left, ulong right, ulong previous, int previousGroup, bool hasPrevious, ulong threshold1, ulong threshold2, ulong threshold3)
 	{
-		int group = GetGroup(value, threshold1, threshold2, threshold3);
-		if (group == 0)
+		int leftGroup = GetGroup(left, threshold1, threshold2, threshold3);
+		int rightGroup = GetGroup(right, threshold1, threshold2, threshold3);
+		if (leftGroup == 0)
 		{
-			return CandidateKey.Max;
+			return rightGroup == 0 ? 0 : 1;
 		}
 
-		bool isGe = !hasPrevious || value >= previous;
-		int primary = ComputePrimary(group, isGe, previousGroup);
-		long secondary;
-		long tertiary;
-
-		if (group == 3)
+		if (rightGroup == 0)
 		{
-			secondary = -(long)value;
-			tertiary = -(long)value;
+			return -1;
+		}
+
+		bool leftIsGe = !hasPrevious || left >= previous;
+		bool rightIsGe = !hasPrevious || right >= previous;
+		int leftPrimary = ComputePrimary(leftGroup, leftIsGe, previousGroup);
+		int rightPrimary = ComputePrimary(rightGroup, rightIsGe, previousGroup);
+
+		int compare = leftPrimary.CompareTo(rightPrimary);
+		if (compare != 0)
+		{
+			return compare;
+		}
+
+		long leftSecondary;
+		long leftTertiary;
+		if (leftGroup == 3)
+		{
+			leftSecondary = -(long)left;
+			leftTertiary = -(long)left;
 		}
 		else
 		{
-			ulong reference = hasPrevious ? previous : 0UL;
-			reference = hasPrevious ? (value > reference ? value - reference : reference - value) : value;
-			secondary = (long)reference;
-			tertiary = (long)value;
+			ulong leftReference = hasPrevious ? (left > previous ? left - previous : previous - left) : left;
+			leftSecondary = (long)leftReference;
+			leftTertiary = (long)left;
 		}
 
-		return new CandidateKey(primary, secondary, tertiary);
+		long rightSecondary;
+		long rightTertiary;
+		if (rightGroup == 3)
+		{
+			rightSecondary = -(long)right;
+			rightTertiary = -(long)right;
+		}
+		else
+		{
+			ulong rightReference = hasPrevious ? (right > previous ? right - previous : previous - right) : right;
+			rightSecondary = (long)rightReference;
+			rightTertiary = (long)right;
+		}
+
+		compare = leftSecondary.CompareTo(rightSecondary);
+		if (compare != 0)
+		{
+			return compare;
+		}
+
+		return leftTertiary.CompareTo(rightTertiary);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static int ComputePrimary(int group, bool isGe, int previousGroup)
 	{
 		int groupOffset = group switch
@@ -1510,7 +1532,7 @@ internal static partial class PrimeOrderCalculator
 		return groupOffset + (isGe ? 0 : 1);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static int GetGroup(ulong value, ulong threshold1, ulong threshold2, ulong threshold3)
 	{
 		if (value <= threshold1)
@@ -1531,6 +1553,7 @@ internal static partial class PrimeOrderCalculator
 		return 0;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static void BuildCandidates(ulong order, ulong[] factors, int[] exponents, int count, List<ulong> candidates, int limit)
 	{
 		if (count == 0)
@@ -1542,7 +1565,7 @@ internal static partial class PrimeOrderCalculator
 		BuildCandidatesRecursive(order, factors, exponents, 0, 1UL, candidates, limit);
 	}
 
-	// private static void BuildCandidatesRecursive(ulong order, in ReadOnlySpan<FactorEntry> factors, int index, ulong divisorProduct, List<ulong> candidates, int limit)
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static void BuildCandidatesRecursive(ulong order, in ulong[] factors, in int[] exponents, int index, ulong divisorProduct, List<ulong> candidates, int limit)
 	{
 		if (candidates.Count >= limit)
@@ -1603,6 +1626,7 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool TryConfirmCandidateCpu(ulong prime, ulong candidate, in MontgomeryDivisorData divisorData, in PrimeOrderCalculatorConfig config, ref int powUsed, int powBudget)
 	{
 		PartialFactorResult factorization = PartialFactorCpu(candidate, config);
@@ -1682,6 +1706,7 @@ internal static partial class PrimeOrderCalculator
 		return !violates;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool TryConfirmCandidateHybrid(PrimeOrderCalculatorAccelerator gpu, ulong prime, ulong candidate, in MontgomeryDivisorData divisorData, in PrimeOrderCalculatorConfig config, ref int powUsed, int powBudget)
 	{
 		PartialFactorResult factorization = PartialFactorHybrid(gpu, candidate, config);
@@ -1760,6 +1785,7 @@ internal static partial class PrimeOrderCalculator
 		return !violates;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool CheckCandidateViolation(Span<ulong> buffer, ulong primeFactor, int exponent, ulong candidate, ulong prime, ref int powUsed, int powBudget, ref ExponentRemainderStepperCpu stepper)
 	{
 		ulong working = candidate;
@@ -1841,10 +1867,11 @@ internal static partial class PrimeOrderCalculator
 		return false;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static bool Pow2EqualsOneCpu(ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	private static bool Pow2EqualsOneCpu(ulong exponent, in MontgomeryDivisorData divisorData)
 		=> exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(divisorData) == 1UL;
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static bool Pow2EqualsOneHybrid(PrimeOrderCalculatorAccelerator gpu, ulong exponent, ulong prime, in MontgomeryDivisorData divisorData)
 	{
 		// if (exponent >= PerfectNumberConstants.MaxQForDivisorCycles || prime >= PerfectNumberConstants.MaxQForDivisorCycles)
@@ -1869,6 +1896,7 @@ internal static partial class PrimeOrderCalculator
 	private static readonly ulong[] _emptyUlongArray = [];
 	private static readonly int[] _emptyIntArray = [];
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static PartialFactorResult PartialFactorCpu(ulong value, in PrimeOrderCalculatorConfig config)
 	{
 		if (value <= 1UL)
@@ -1884,8 +1912,8 @@ internal static partial class PrimeOrderCalculator
 		// primeSlots.Clear();
 		// exponentSlots.Clear();
 
+		ArgumentOutOfRangeException.ThrowIfEqual(config.SmallFactorLimit, 0U);
 		uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
-		ulong remaining = value;
 
 		List<PendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(PrimeOrderConstants.GpuSmallPrimeFactorSlots);
 
@@ -1895,7 +1923,7 @@ internal static partial class PrimeOrderCalculator
 			primeSlots,
 			exponentSlots,
 			out int factorCount,
-			out remaining);
+			out ulong remaining);
 
 		bool limitReached;
 		if (remaining > 1UL)
@@ -2033,6 +2061,7 @@ internal static partial class PrimeOrderCalculator
 		return result;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static PartialFactorResult PartialFactorHybrid(PrimeOrderCalculatorAccelerator gpu, ulong value, in PrimeOrderCalculatorConfig config)
 	{
 		if (value <= 1UL)
@@ -2205,6 +2234,7 @@ internal static partial class PrimeOrderCalculator
 		return result;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static PartialFactorResult PartialFactorGpu(PrimeOrderCalculatorAccelerator gpu, ulong value, in PrimeOrderCalculatorConfig config)
 	{
 		if (value <= 1UL)
@@ -2382,7 +2412,7 @@ internal static partial class PrimeOrderCalculator
 		return result;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static void CollectFactorsHybrid(PrimeOrderCalculatorAccelerator gpu, Span<ulong> primeSlots, Span<int> exponentSlots, ref ulong[] primeSlotArray, ref int[] exponentSlotArray, ref int factorCount, List<PendingEntry> pending, Stack<ulong> compositeStack, long deadlineTimestamp, out bool pollardRhoDeadlineReached)
 	{
 		while (compositeStack.Count > 0)
@@ -2417,7 +2447,7 @@ internal static partial class PrimeOrderCalculator
 		pollardRhoDeadlineReached = false;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static void CollectFactorsCpu(Span<ulong> primeSlots, Span<int> exponentSlots, ref int factorCount, List<PendingEntry> pending, Stack<ulong> compositeStack, long deadlineTimestamp, out bool pollardRhoDeadlineReached)
 	{
 		while (compositeStack.Count > 0)
@@ -2452,7 +2482,7 @@ internal static partial class PrimeOrderCalculator
 		pollardRhoDeadlineReached = false;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static void CollectFactorsGpu(PrimeOrderCalculatorAccelerator gpu, ref Span<ulong> primeSlots, ref Span<int> exponentSlots, ref ulong[] primeSlotArray, ref int[] exponentSlotArray, ref int factorCount, List<PendingEntry> pending, Stack<ulong> compositeStack, long deadlineTimestamp, ref bool pollardRhoDeadlineReached)
 	{
 		while (compositeStack.Count > 0)
@@ -2487,13 +2517,14 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool RunOnCpu()
 	{
 		if (PerfectNumberConstants.GpuRatio == 0)
 		{
 			return false;
 		}
-		
+
 		if (PerfectNumberConstants.GpuRatio == 1)
 		{
 			while (true)
@@ -2525,6 +2556,7 @@ internal static partial class PrimeOrderCalculator
 		return cpuCount != PerfectNumberConstants.GpuRatio;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static void PopulateSmallPrimeFactorsCpu(
 				ulong value,
 				uint limit,
@@ -2534,48 +2566,45 @@ internal static partial class PrimeOrderCalculator
 				out ulong remaining)
 	{
 		factorCount = 0;
-		ulong remainingLocal = value;
-
 		if (value <= 1UL)
 		{
-			remaining = remainingLocal;
+			remaining = value;
 			return;
 		}
 
 		uint[] primes = PrimesGenerator.SmallPrimes;
 		ulong[] squares = PrimesGenerator.SmallPrimesPow2;
 		int primeCount = primes.Length;
-		uint effectiveLimit = limit == 0 ? uint.MaxValue : limit;
 
-		for (int i = 0; i < primeCount && remainingLocal > 1UL; i++)
+		for (int i = 0; i < primeCount && value > 1UL; i++)
 		{
 			uint primeCandidate = primes[i];
-			if (primeCandidate > effectiveLimit)
+			if (primeCandidate > limit)
 			{
 				break;
 			}
 
-			ulong primeSquare = squares[i];
+			ulong primeValue = squares[i];
 			// primeSquare will never == 0 in production code
 			// if (primeSquare != 0 && primeSquare > remainingLocal)
-			if (primeSquare > remainingLocal)
+			if (primeValue > value)
 			{
 				break;
 			}
 
-			ulong primeValue = primeCandidate;
+			primeValue = primeCandidate;
 			// primeCandidate will never equal 0 in production code
 			// if (primeCandidate == 0UL)
 			// {
 			// 	continue;
 			// }
 
-			if (remainingLocal.ReduceCycleRemainder(primeValue) != 0UL)
+			if (value.ReduceCycleRemainder(primeValue) != 0UL)
 			{
 				continue;
 			}
 
-			int exponent = ExtractSmallPrimeExponent(ref remainingLocal, primeValue);
+			int exponent = ExtractSmallPrimeExponent(ref value, primeValue);
 			if (exponent == 0)
 			{
 				continue;
@@ -2590,10 +2619,10 @@ internal static partial class PrimeOrderCalculator
 			factorCount++;
 		}
 
-		remaining = remainingLocal;
+		remaining = value;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	// Unroll the initial divisions because small exponents dominate in practice.
 	private static int ExtractSmallPrimeExponent(ref ulong value, ulong primeValue)
 	{
@@ -2658,6 +2687,7 @@ internal static partial class PrimeOrderCalculator
 		return exponent;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static long CreateDeadlineTimestamp(int milliseconds)
 	{
 		if (milliseconds <= 0)
@@ -2665,9 +2695,9 @@ internal static partial class PrimeOrderCalculator
 			return long.MaxValue;
 		}
 
-		long stopwatchTicks = ConvertMillisecondsToStopwatchTicks(milliseconds);
 		long startTimestamp = Stopwatch.GetTimestamp();
-		long deadline = startTimestamp + stopwatchTicks;
+		long deadline = ConvertMillisecondsToStopwatchTicks(milliseconds);
+		deadline += startTimestamp;
 		if (deadline < startTimestamp)
 		{
 			return long.MaxValue;
@@ -2676,7 +2706,7 @@ internal static partial class PrimeOrderCalculator
 		return deadline;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static long ConvertMillisecondsToStopwatchTicks(int milliseconds)
 	{
 		long frequency = Stopwatch.Frequency;
@@ -2685,6 +2715,7 @@ internal static partial class PrimeOrderCalculator
 		return baseTicks + (remainder / 1000L);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool TryPollardRhoCpu(ulong n, long deadlineTimestamp, out ulong factor)
 	{
 		factor = 0UL;
@@ -2724,22 +2755,23 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static ulong AdvancePolynomialCpu(ulong x, ulong c, ulong modulus)
 	{
 		UInt128 value = (UInt128)x * x + c;
 		return (ulong)value.ReduceCycleRemainder(modulus);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static ulong AdvancePolynomialTwiceCpu(ulong x, ulong c, ulong modulus)
 	{
 		UInt128 value = (UInt128)x * x + c;
-		var remainder = (ulong)value.ReduceCycleRemainder(modulus);
-		value = (UInt128)remainder * remainder + c;
+		x = (ulong)value.ReduceCycleRemainder(modulus);
+		value = (UInt128)x * x + c;
 		return (ulong)value.ReduceCycleRemainder(modulus);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static ulong BinaryGcd(ulong a, ulong b)
 	{
 		if (a == 0UL)
@@ -2771,6 +2803,7 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static void AddFactor(Dictionary<ulong, int> counts, ulong prime, int exponent)
 	{
 		if (counts.TryGetValue(prime, out int existing))
@@ -2783,6 +2816,7 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static void AddFactorToCollector(
 				Span<ulong> primes,
 				Span<int> exponents,
@@ -2813,7 +2847,7 @@ internal static partial class PrimeOrderCalculator
 		count++;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static void EnsureCollectorCapacity(
 				Span<ulong> primes,
 				int requiredCapacity)
@@ -2821,6 +2855,7 @@ internal static partial class PrimeOrderCalculator
 		ArgumentOutOfRangeException.ThrowIfGreaterThan(requiredCapacity, primes.Length);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static ulong CalculateByFactorizationCpu(ulong prime, in MontgomeryDivisorData divisorData)
 	{
 		ulong phi = prime - 1UL;
@@ -2868,6 +2903,7 @@ internal static partial class PrimeOrderCalculator
 		return order;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static void FactorCompletelyCpu(ulong value, Dictionary<ulong, int> counts, bool knownComposite)
 	{
 		if (value <= 1UL)
@@ -2927,6 +2963,7 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static ulong PollardRhoStrict(ulong n)
 	{
 		if ((n & 1UL) == 0UL)
@@ -2944,8 +2981,7 @@ internal static partial class PrimeOrderCalculator
 			while (d == 1UL)
 			{
 				x = AdvancePolynomialCpu(x, c, n);
-				y = AdvancePolynomialCpu(y, c, n);
-				y = AdvancePolynomialCpu(y, c, n);
+				y = AdvancePolynomialTwiceCpu(y, c, n);
 				ulong diff = x > y ? x - y : y - x;
 				d = BinaryGcd(diff, n);
 			}
@@ -2957,76 +2993,72 @@ internal static partial class PrimeOrderCalculator
 		}
 	}
 
-    private static UInt128 Pow2ModWideCpu(in UInt128 exponent, in UInt128 modulus, in MontgomeryDivisorData? divisorData)
-    {
-        if (modulus == UInt128.One)
-        {
-            return UInt128.Zero;
-        }
-
-        return exponent.Pow2MontgomeryModWindowed(modulus);
-    }
-
-    private static bool TryConfirmCandidateWideCpu(in UInt128 prime, in UInt128 candidate, in PrimeOrderCalculatorConfig config, ref int powUsed, int powBudget, in MontgomeryDivisorData? divisorData)
-    {
-        PartialFactorResult128 factorization = PartialFactorWide(candidate, config);
-        if (factorization.Factors is null)
-        {
-            return false;
-        }
-
-        if (!factorization.FullyFactored)
-        {
-            if (factorization.Cofactor <= UInt128.One)
-            {
-                return false;
-            }
-
-            if (!IsPrimeWide(factorization.Cofactor))
-            {
-                return false;
-            }
-
-            factorization = factorization.WithAdditionalPrime(factorization.Cofactor);
-        }
-
-        ReadOnlySpan<FactorEntry128> span = factorization.Factors;
-        int length = factorization.Count;
-        for (int i = 0; i < length; i++)
-        {
-            UInt128 primeFactor = span[i].Value;
-            UInt128 reduced = candidate;
-            for (int iteration = 0; iteration < span[i].Exponent; iteration++)
-            {
-                if (reduced.ReduceCycleRemainder(primeFactor) != UInt128.Zero)
-                {
-                    break;
-                }
-
-                reduced /= primeFactor;
-                if (powUsed >= powBudget && powBudget > 0)
-                {
-                    return false;
-                }
-
-                powUsed++;
-                if (Pow2ModWideCpu(reduced, prime, divisorData) == UInt128.One)
-                {
-                    return false;
-                }
-            }
-        }
-
-        return true;
-    }
-
-	private readonly struct CandidateKey(int primary, long secondary, long tertiary)
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private static UInt128 Pow2ModWideCpu(in UInt128 exponent, in UInt128 modulus, in MontgomeryDivisorData? divisorData)
 	{
-		public static readonly CandidateKey Max = new(int.MaxValue, long.MaxValue, long.MaxValue);
+		if (modulus == UInt128.One)
+		{
+			return UInt128.Zero;
+		}
 
-		public readonly int Primary = primary;
-		public readonly long Secondary = secondary;
-		public readonly long Tertiary = tertiary;
+		return exponent.Pow2MontgomeryModWindowed(modulus);
 	}
+
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private static bool TryConfirmCandidateWideCpu(in UInt128 prime, in UInt128 candidate, in PrimeOrderCalculatorConfig config, ref int powUsed, int powBudget, in MontgomeryDivisorData? divisorData)
+	{
+		PartialFactorResult128 factorization = PartialFactorWide(candidate, config);
+		if (factorization.Factors is null)
+		{
+			return false;
+		}
+
+		if (!factorization.FullyFactored)
+		{
+			if (factorization.Cofactor <= UInt128.One)
+			{
+				return false;
+			}
+
+			if (!IsPrimeWide(factorization.Cofactor))
+			{
+				return false;
+			}
+
+			factorization = factorization.WithAdditionalPrime(factorization.Cofactor);
+		}
+
+		ReadOnlySpan<FactorEntry128> span = factorization.Factors;
+		int length = factorization.Count;
+		for (int i = 0; i < length; i++)
+		{
+			UInt128 primeFactor = span[i].Value;
+			UInt128 reduced = candidate;
+			for (int iteration = 0; iteration < span[i].Exponent; iteration++)
+			{
+				if (reduced.ReduceCycleRemainder(primeFactor) != UInt128.Zero)
+				{
+					break;
+				}
+
+				reduced /= primeFactor;
+				if (powUsed >= powBudget && powBudget > 0)
+				{
+					return false;
+				}
+
+				powUsed++;
+				if (Pow2ModWideCpu(reduced, prime, divisorData) == UInt128.One)
+				{
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
 }
+
+
 

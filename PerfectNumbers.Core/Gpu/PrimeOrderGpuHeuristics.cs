@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu.Accelerators;
@@ -16,6 +17,7 @@ internal enum GpuPow2ModStatus
 
 internal static partial class PrimeOrderGpuHeuristics
 {
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	internal static void PreloadStaticTables(AcceleratorStream stream)
 	{
 		// _ = GetSmallPrimeDeviceCache(stream);
@@ -31,16 +33,19 @@ internal static partial class PrimeOrderGpuHeuristics
 	internal static ConcurrentDictionary<ulong, byte> OverflowRegistry => OverflowedPrimes;
 	internal static ConcurrentDictionary<UInt128, byte> OverflowRegistryWide => OverflowedPrimesWide;
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	internal static void OverrideCapabilitiesForTesting(PrimeOrderGpuCapability capability)
 	{
 		s_capability = capability;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	internal static void ResetCapabilitiesForTesting()
 	{
 		s_capability = PrimeOrderGpuCapability.Default;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public static bool TryPartialFactor(
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong value,
@@ -88,6 +93,7 @@ internal static partial class PrimeOrderGpuHeuristics
 
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool TryLaunchPartialFactorKernel(
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong value,
@@ -156,6 +162,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		return true;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public static GpuPow2ModStatus TryPow2Mod(PrimeOrderCalculatorAccelerator gpu, ulong exponent, ulong prime, out ulong remainder, in MontgomeryDivisorData? divisorData)
 	{
 		Span<ulong> exponents = stackalloc ulong[1];
@@ -167,6 +174,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		return status;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public static GpuPow2ModStatus TryPow2ModBatch(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> exponents, ulong prime, Span<ulong> remainders, in MontgomeryDivisorData? divisorData)
 	{
 		// This will never occur in production code
@@ -222,6 +230,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		return computed ? GpuPow2ModStatus.Success : GpuPow2ModStatus.Unavailable;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public static GpuPow2ModStatus TryPow2Mod(PrimeOrderCalculatorAccelerator gpu, in UInt128 exponent, in UInt128 prime, out UInt128 remainder)
 	{
 		Span<UInt128> exponents = stackalloc UInt128[1];
@@ -233,11 +242,13 @@ internal static partial class PrimeOrderGpuHeuristics
 		return status;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public static GpuPow2ModStatus TryPow2ModBatch(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> remainders)
 	{
 		return TryPow2ModBatchInternal(gpu, exponents, prime, remainders);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	internal static bool TryCalculateOrder(
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
@@ -310,6 +321,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		return order != 0UL;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static GpuPow2ModStatus TryPow2ModBatchInternal(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<UInt128> exponents, UInt128 prime, Span<UInt128> remainders)
 	{
 		if (exponents.Length == 0)

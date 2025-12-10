@@ -195,6 +195,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public readonly Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> SmallPrimeSieveKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, ulong, ArrayView<ulong>, int, ulong, ArrayView<ulong>> SpecialMaxKernelLauncher;
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public void EnsureCalculateOrderWideCapacity(int newSize)
 	{
 		if (newSize > Input.Length)
@@ -213,6 +214,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		}
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public void EnsureCapacity(int factorsCount, int primeTesterCapacity)
 	{
 		Accelerator accelerator = Accelerator;
@@ -325,6 +327,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		}
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public void EnsureUlongInputOutputCapacity(int newSize)
 	{
 		var accelerator = Accelerator;

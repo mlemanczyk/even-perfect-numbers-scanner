@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
 
@@ -9,10 +10,13 @@ internal readonly struct HeuristicCombinedGpuTables
 
 	private static readonly HeuristicCombinedGpuTables[] _sharedTables = new HeuristicCombinedGpuTables[PerfectNumberConstants.RollingAccelerators];
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	internal static void WarmUp(int acceleratorIndex, AcceleratorStream stream) => _sharedTables[acceleratorIndex] = new(_accelerators[acceleratorIndex], stream);
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	internal static HeuristicCombinedGpuTables GetStaticTables(int acceleratorIndex) => _sharedTables[acceleratorIndex];
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	internal HeuristicCombinedGpuTables(Accelerator accelerator, AcceleratorStream stream)
 	{
 		var combinedEnding1 = HeuristicCombinedPrimeTester.CombinedDivisorsEnding1;
@@ -45,6 +49,7 @@ internal readonly struct HeuristicCombinedGpuTables
 	internal readonly MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorsEnding9;
 	internal readonly MemoryBuffer1D<ulong, Stride1D.Dense> HeuristicCombinedDivisorSquaresEnding9;
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	internal HeuristicCombinedGpuViews CreateViews() => new(
 			HeuristicCombinedDivisorsEnding1.View,
 			HeuristicCombinedDivisorsEnding3.View,
@@ -55,6 +60,7 @@ internal readonly struct HeuristicCombinedGpuTables
 			HeuristicCombinedDivisorSquaresEnding7.View,
 			HeuristicCombinedDivisorSquaresEnding9.View);
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	internal void Dispose()
 	{
 		HeuristicCombinedDivisorsEnding1.Dispose();

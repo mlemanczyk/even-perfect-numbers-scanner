@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu.Accelerators;
@@ -74,6 +75,7 @@ public class GpuKernelPool
 			});
 		}
 
+		[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 		static void InitPow2ModKernelScan(Accelerator accelerator, KernelContainer kernels)
 		{
 			InitOnce(ref kernels.Pow2Mod, () =>

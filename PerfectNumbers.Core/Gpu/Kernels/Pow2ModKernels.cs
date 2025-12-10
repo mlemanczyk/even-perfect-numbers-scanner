@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
 
@@ -6,6 +7,7 @@ namespace PerfectNumbers.Core.Gpu;
 internal static class Pow2ModKernels
 {
 	/// This kernel always sets the result of the corresponding element. Callers don't need to clear the output buffers.
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public static void Pow2ModKernelScan(
 		Index1D index,
 		ulong exponent,
@@ -107,6 +109,7 @@ internal static class Pow2ModKernels
 
 	/// This kernel doesn't always set the result of the found array. It sets the value only when it needs to. The callers
 	/// must clean the output buffer before the call to get a deterministic result.
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public static void Pow2ModOrderKernelScan(
 		Index1D index,
 		ulong exponent,

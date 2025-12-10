@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
@@ -86,6 +87,7 @@ internal static partial class PrimeOrderCalculator
 		return result;
 	}
 	
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static UInt128 CalculateWideInternalGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128? previousOrder, in MontgomeryDivisorData? divisorData, in PrimeOrderCalculatorConfig config)
     {
         if (prime <= UInt128.One)
@@ -361,7 +363,7 @@ internal static partial class PrimeOrderCalculator
             orderFactors = orderFactors.WithAdditionalPrime(orderFactors.Cofactor);
         }
 
-        int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecks * 4;
+        int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecksCapacity;
         List<UInt128> candidates = new(capacity);
         FactorEntry128[] factorArray = orderFactors.Factors!;
         BuildCandidatesWide(order, factorArray, orderFactors.Count, candidates, capacity);
@@ -403,6 +405,7 @@ internal static partial class PrimeOrderCalculator
         return false;
     }
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static ulong CalculateByFactorizationGpu(PrimeOrderCalculatorAccelerator gpu, ulong prime, in MontgomeryDivisorData divisorData)
 	{
 		ulong phi = prime - 1UL;
@@ -445,6 +448,7 @@ internal static partial class PrimeOrderCalculator
 		return order;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool TryPopulateSmallPrimeFactorsGpu(PrimeOrderCalculatorAccelerator gpu, ulong value, uint limit, Dictionary<ulong, int> counts, out int factorCount, out ulong remaining)
 	{
 		var primeBufferArray = ThreadStaticPools.UlongPool.Rent(GpuSmallPrimeFactorSlots);
@@ -511,6 +515,7 @@ internal static partial class PrimeOrderCalculator
 		return true;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool EvaluateSpecialMaxCandidatesGpu(
 			PrimeOrderCalculatorAccelerator gpu,
 			ReadOnlySpan<ulong> factors,
@@ -548,6 +553,7 @@ internal static partial class PrimeOrderCalculator
 		return result != 0;
 	}
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static UInt128 Pow2ModWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 exponent, in UInt128 modulus, in MontgomeryDivisorData? divisorData)
     {
         if (modulus == UInt128.One)

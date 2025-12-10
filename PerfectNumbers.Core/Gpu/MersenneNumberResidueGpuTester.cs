@@ -23,6 +23,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 	// requested by the caller, skip queuing additional block generation, and keep the snapshot cache untouched.
 
 	// GPU residue variant: check 2^p % q == 1 for q = 2*p*k + 1.
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public void Scan(PrimeOrderCalculatorAccelerator gpu, ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
@@ -114,6 +115,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		// GpuPrimeWorkLimiter.Release();
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> GetPow2ModKernel(Accelerator accelerator)
 	{
 
@@ -128,6 +130,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		return cached;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> CreatePow2ModKernel(Accelerator accelerator)
 	{
 		var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, GpuUInt128, GpuUInt128, byte, ulong, ResidueAutomatonArgs, ArrayView<ulong>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(Pow2ModKernels.Pow2ModKernelScan);
@@ -140,6 +143,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 	}
 
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static ResidueResources RentResources(Accelerator accelerator, int capacity)
 	{
 		var resourcePools = _resourcePools ??= new();
@@ -152,6 +156,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 		return new ResidueResources(accelerator, capacity);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static void ReturnResources(ResidueResources resources)
 	{
 		var resourcePools = _resourcePools ??= new();
@@ -160,6 +165,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 
 	private sealed class ResidueResources
 	{
+		[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 		internal ResidueResources(Accelerator accelerator, int capacity)
 		{
 			Capacity = Math.Max(1, capacity);
@@ -171,6 +177,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 			OrderArray = ThreadStaticPools.UlongPool.Rent(Capacity);
 		}
 
+		[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 		internal void EnsureCapacity(Accelerator accelerator, int capacity)
 		{
 			if (OrderBuffer.Length >= capacity)

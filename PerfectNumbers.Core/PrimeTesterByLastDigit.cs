@@ -10,7 +10,7 @@ public sealed class PrimeTesterByLastDigit
 	[ThreadStatic]
 	private static bool _mod10Initialized;
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static byte GetMod10(ulong value)
 	{
 		if (!_mod10Initialized || _mod10Stepper.Modulus != 10UL)
@@ -24,6 +24,7 @@ public sealed class PrimeTesterByLastDigit
 		return (byte)_mod10Stepper.Step(value);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public static bool IsPrimeCpu(ulong n)
 	{
 		// The below IFs never trigger in production code of EvenPerfectBitScanner on --mersenne=bydivisor path.
