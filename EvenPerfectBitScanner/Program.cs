@@ -448,6 +448,8 @@ internal static class Program
 			// Configure batch size for GPU primality sieve
 			PrimeTester.GpuBatchSize = gpuPrimeBatch;
 
+			_ = AcceleratorPool.Shared;
+
 			Stopwatch? stopwatch = null;
 			if (testMode)
 			{

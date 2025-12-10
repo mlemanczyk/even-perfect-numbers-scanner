@@ -15,7 +15,7 @@ internal static partial class PrimeOrderCalculator
 			ulong prime,
 			ulong? previousOrder,
 			in MontgomeryDivisorData divisorData,
-			in PrimeOrderSearchConfig config)
+			in PrimeOrderCalculatorConfig config)
 	{
 		// TODO: Is this condition ever met on EvenPerfectBitScanner's execution path? If not, we can add a clarification comment and comment out the entire block. We want to support p candidates at least greater or equal to 31.
 		if (prime <= 3UL)
@@ -50,7 +50,7 @@ internal static partial class PrimeOrderCalculator
 			PrimeOrderCalculatorAccelerator gpu,
 			in UInt128 prime,
 			in UInt128? previousOrder,
-			in PrimeOrderSearchConfig config)
+			in PrimeOrderCalculatorConfig config)
 	{
 		MontgomeryDivisorData divisorData;
 		UInt128 result;
@@ -86,7 +86,7 @@ internal static partial class PrimeOrderCalculator
 		return result;
 	}
 	
-    private static UInt128 CalculateWideInternalGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128? previousOrder, in MontgomeryDivisorData? divisorData, in PrimeOrderSearchConfig config)
+    private static UInt128 CalculateWideInternalGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128? previousOrder, in MontgomeryDivisorData? divisorData, in PrimeOrderCalculatorConfig config)
     {
         if (prime <= UInt128.One)
         {
@@ -118,7 +118,7 @@ internal static partial class PrimeOrderCalculator
         in UInt128 prime,
         in UInt128? previousOrder,
         in MontgomeryDivisorData? divisorData,
-        in PrimeOrderSearchConfig config,
+        in PrimeOrderCalculatorConfig config,
         in UInt128 phi,
         in PartialFactorResult128 phiFactors)
     {
@@ -135,7 +135,7 @@ internal static partial class PrimeOrderCalculator
             return candidateOrder;
         }
 
-        if (config.Mode == PrimeOrderMode.Strict)
+        if (config.StrictMode)
         {
             return FinishStrictlyWideGpu(gpu, prime, divisorData);
         }
@@ -268,7 +268,7 @@ internal static partial class PrimeOrderCalculator
         return order;
     }
 
-    private static bool TryConfirmOrderWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128 order, in MontgomeryDivisorData? divisorData, in PrimeOrderSearchConfig config)
+    private static bool TryConfirmOrderWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128 order, in MontgomeryDivisorData? divisorData, in PrimeOrderCalculatorConfig config)
     {
         if (order == UInt128.Zero)
         {
@@ -331,7 +331,7 @@ internal static partial class PrimeOrderCalculator
         in UInt128 order,
         in UInt128? previousOrder,
         in MontgomeryDivisorData? divisorData,
-        in PrimeOrderSearchConfig config,
+        in PrimeOrderCalculatorConfig config,
         out UInt128 result)
     {
         result = UInt128.Zero;
@@ -575,7 +575,7 @@ internal static partial class PrimeOrderCalculator
         return exponent.Pow2MontgomeryModWindowed(modulus);
     }
 
-    private static bool TryConfirmCandidateWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128 candidate, in PrimeOrderSearchConfig config, ref int powUsed, int powBudget, in MontgomeryDivisorData? divisorData)
+    private static bool TryConfirmCandidateWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128 candidate, in PrimeOrderCalculatorConfig config, ref int powUsed, int powBudget, in MontgomeryDivisorData? divisorData)
     {
         PartialFactorResult128 factorization = PartialFactorWide(candidate, config);
         if (factorization.Factors is null)

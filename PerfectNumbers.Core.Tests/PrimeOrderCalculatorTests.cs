@@ -50,7 +50,7 @@ public class PrimeOrderCalculatorTests
 			prime,
 			previousOrder: null,
 			MontgomeryDivisorDataPool.Shared.FromModulus(prime),
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 
@@ -70,14 +70,14 @@ public class PrimeOrderCalculatorTests
 			prime,
 			previousOrder,
 			MontgomeryDivisorDataPool.Shared.FromModulus(prime),
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		ulong strict = PrimeOrderCalculator.CalculateGpu(
 			gpu,
 			prime,
 			previousOrder: null,
 			MontgomeryDivisorDataPool.Shared.FromModulus(prime),
-			PrimeOrderCalculator.PrimeOrderSearchConfig.StrictDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.StrictDefault);
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 
@@ -96,7 +96,7 @@ public class PrimeOrderCalculatorTests
 			prime,
 			previousOrder: null,
 			MontgomeryDivisorDataPool.Shared.FromModulus(prime),
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 		result.Should().Be(expectedOrder);
@@ -106,11 +106,11 @@ public class PrimeOrderCalculatorTests
 	[Trait("Category", "Fast")]
 	public void Calculate_heuristic_mode_returns_unresolved_when_phi_cannot_be_factored()
 	{
-		var config = new PrimeOrderCalculator.PrimeOrderSearchConfig(
+		var config = new PrimeOrderCalculator.PrimeOrderCalculatorConfig(
 			smallFactorLimit: 1,
 			pollardRhoMilliseconds: 0,
 			maxPowChecks: 8,
-			mode: PrimeOrderCalculator.PrimeOrderMode.Heuristic);
+			strictMode: false);
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		ulong result = PrimeOrderCalculator.CalculateGpu(
@@ -128,11 +128,11 @@ public class PrimeOrderCalculatorTests
 	[Trait("Category", "Fast")]
 	public void Calculate_heuristic_mode_attempts_candidates_before_falling_back_to_strict_mode()
 	{
-		var heuristicConfig = new PrimeOrderCalculator.PrimeOrderSearchConfig(
+		var heuristicConfig = new PrimeOrderCalculator.PrimeOrderCalculatorConfig(
 			smallFactorLimit: 2,
 			pollardRhoMilliseconds: 0,
 			maxPowChecks: 1,
-			mode: PrimeOrderCalculator.PrimeOrderMode.Heuristic);
+			strictMode: false);
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
@@ -147,11 +147,11 @@ public class PrimeOrderCalculatorTests
 
 			heuristic.Should().Be(ComputeOrderByDoubling(239UL));
 
-			var strictConfig = new PrimeOrderCalculator.PrimeOrderSearchConfig(
+			var strictConfig = new PrimeOrderCalculator.PrimeOrderCalculatorConfig(
 				smallFactorLimit: 2,
 				pollardRhoMilliseconds: 0,
 				maxPowChecks: 1,
-				mode: PrimeOrderCalculator.PrimeOrderMode.Strict);
+				strictMode: true);
 
 			ulong strict = PrimeOrderCalculator.CalculateGpu(
 				gpu,
@@ -179,7 +179,7 @@ public class PrimeOrderCalculatorTests
 				gpu,
 				prime,
 				previousOrder: null,
-				PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+				PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
 		result.Should().Be((UInt128)1229782938247309446UL);

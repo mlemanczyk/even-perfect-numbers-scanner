@@ -404,7 +404,7 @@ public class MersenneDivisorCycles
 		UInt128 wideOrder = PrimeOrderCalculator.CalculateCpu(
 			divisor,
 			previousOrder: null,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 		if (wideOrder != UInt128.Zero)
 		{
 			return wideOrder;
@@ -452,7 +452,7 @@ public class MersenneDivisorCycles
 			gpu,
 			divisor,
 			previousOrder: null,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 		if (wideOrder != UInt128.Zero)
 		{
 			return wideOrder;
@@ -500,7 +500,7 @@ public class MersenneDivisorCycles
 			gpu,
 			divisor,
 			previousOrder: null,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 		if (wideOrder != UInt128.Zero)
 		{
 			return wideOrder;
@@ -554,7 +554,7 @@ public class MersenneDivisorCycles
 			divisor,
 			previousOrder: null,
 			divisorData,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 		if (computedOrder != 0UL)
 		{
 			cycleLength = computedOrder;
@@ -639,7 +639,7 @@ public class MersenneDivisorCycles
 			divisor,
 			previousOrder: null,
 			divisorData,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 		if (computedOrder != 0UL)
 		{
 			cycleLength = computedOrder;
@@ -724,7 +724,7 @@ public class MersenneDivisorCycles
 			divisor,
 			previousOrder: null,
 			divisorData,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 		if (computedOrder != 0UL)
 		{
 			cycleLength = computedOrder;
@@ -1401,7 +1401,7 @@ public class MersenneDivisorCycles
 					divisor,
 					previousOrder: null,
 					divisorData,
-					PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+					PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 			if (computedOrder != 0UL)
 			{
 				cycleLength = computedOrder;
@@ -1434,7 +1434,7 @@ public class MersenneDivisorCycles
 					divisor,
 					previousOrder: null,
 					divisorData,
-					PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+					PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 			if (computedOrder != 0UL)
 			{
 				cycleLength = computedOrder;
@@ -1467,7 +1467,7 @@ public class MersenneDivisorCycles
 					divisor,
 					previousOrder: null,
 					divisorData,
-					PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+					PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 			if (computedOrder != 0UL)
 			{
 				cycleLength = computedOrder;

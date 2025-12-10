@@ -242,7 +242,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong? previousOrder,
-		PrimeOrderCalculator.PrimeOrderSearchConfig config,
+		PrimeOrderCalculator.PrimeOrderCalculatorConfig config,
 		in MontgomeryDivisorData divisorData,
 		out ulong order)
 	{
@@ -258,7 +258,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		byte hasPrevious = previousOrder.HasValue ? (byte)1 : (byte)0;
 		ulong previousValue = previousOrder ?? 0UL;
 
-		var kernelConfig = new CalculateOrderKernelConfig(previousValue, hasPrevious, limit, config.MaxPowChecks, (int)config.Mode);
+		var kernelConfig = new CalculateOrderKernelConfig(previousValue, hasPrevious, limit, config.MaxPowChecks, config.StrictMode);
 		ref var buffers = ref gpu.CalculateOrderKernelBuffers;
 
 		var kernelLauncher = gpu.CalculateOrderKernelLauncher;

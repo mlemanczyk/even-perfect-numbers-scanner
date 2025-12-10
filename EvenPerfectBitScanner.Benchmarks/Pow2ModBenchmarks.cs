@@ -623,7 +623,7 @@ public class Pow2ModBenchmarks
 				modulus,
 				previousPrimeOrder,
 				divisorData,
-				PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+				PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 
 			if (order != 0UL)
 			{
@@ -645,7 +645,7 @@ public class Pow2ModBenchmarks
 			UInt128 order = PrimeOrderCalculator.CalculateCpu(
 				modulus,
 				previousWidePrimeOrder,
-				PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+				PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 
 			if (order != UInt128.Zero)
 			{
@@ -693,7 +693,7 @@ public class Pow2ModBenchmarks
 			modulus,
 			_previousPrimeOrder,
 			divisorData,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		if (order != 0UL)
 		{
@@ -723,7 +723,7 @@ public class Pow2ModBenchmarks
 			modulus,
 			_previousPrimeOrder,
 			divisorData,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		if (order != 0UL)
 		{
@@ -750,7 +750,7 @@ public class Pow2ModBenchmarks
 		UInt128 order = PrimeOrderCalculator.CalculateCpu(
 			modulus,
 			_previousWidePrimeOrder,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		if (order != UInt128.Zero)
 		{
@@ -778,7 +778,7 @@ public class Pow2ModBenchmarks
 			gpu,
 			modulus,
 			_previousWidePrimeOrder,
-			PrimeOrderCalculator.PrimeOrderSearchConfig.HeuristicDefault);
+			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		if (order != UInt128.Zero)
 		{

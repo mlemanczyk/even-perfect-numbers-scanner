@@ -19,7 +19,7 @@ public sealed class UnboundedTaskScheduler : TaskScheduler
     public static void ConfigureThreadCount(int threadCount)
     {
         _configuredThreadCount = threadCount;
-        PrimeOrderCalculator.PrimeOrderSearchConfig.ConfigureHeuristicDefault(threadCount);
+        PrimeOrderCalculator.PrimeOrderCalculatorConfig.ConfigureHeuristicDefault(threadCount);
 
         // On EvenPerfectBitScanner's execution path the scheduler instance is created after configuration,
         // so updating an existing pool would never run. Leave the update path disabled for now.

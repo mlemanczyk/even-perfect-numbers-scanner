@@ -180,7 +180,7 @@ internal static partial class PrimeOrderCalculator
         }
     }
 
-    private static PartialFactorResult128 PartialFactorWide(in UInt128 value, in PrimeOrderSearchConfig config)
+    private static PartialFactorResult128 PartialFactorWide(in UInt128 value, in PrimeOrderCalculatorConfig config)
     {
         if (value <= UInt128.One)
         {
