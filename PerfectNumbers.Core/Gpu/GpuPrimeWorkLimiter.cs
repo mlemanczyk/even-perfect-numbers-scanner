@@ -1,5 +1,3 @@
-using PerfectNumbers.Core;
-
 namespace PerfectNumbers.Core.Gpu;
 
 public static class GpuPrimeWorkLimiter

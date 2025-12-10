@@ -1,8 +1,6 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Numerics;
-using PerfectNumbers.Core.Gpu;
-using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 

@@ -1,5 +1,4 @@
 using FluentAssertions;
-using PerfectNumbers.Core;
 using Xunit;
 
 namespace PerfectNumbers.Core.Tests;

@@ -1,7 +1,5 @@
 using System.Buffers;
 using System.Diagnostics;
-using System.Globalization;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using EvenPerfectBitScanner.Candidates;
 using EvenPerfectBitScanner.IO;

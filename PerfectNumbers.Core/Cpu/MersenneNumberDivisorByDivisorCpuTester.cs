@@ -1,8 +1,6 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Globalization;
-using System.IO;
-using PerfectNumbers.Core;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
 

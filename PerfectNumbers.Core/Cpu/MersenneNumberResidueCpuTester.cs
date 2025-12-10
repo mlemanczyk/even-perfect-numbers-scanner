@@ -1,5 +1,3 @@
-using PerfectNumbers.Core.Gpu.Accelerators;
-
 namespace PerfectNumbers.Core.Cpu;
 
 public class MersenneNumberResidueCpuTester

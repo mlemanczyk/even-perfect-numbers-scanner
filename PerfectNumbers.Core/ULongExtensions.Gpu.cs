@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using ILGPU.Algorithms;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
