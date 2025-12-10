@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core.Cpu;
@@ -55,21 +56,21 @@ internal sealed class MersenneCpuDivisorScanSession(PrimeOrderCalculatorAccelera
 
         // Keep these remainder steppers in place so future updates continue reusing the previously computed residues.
         // They are critical for avoiding repeated full Montgomery exponentiation work when scanning divisors.
-        var exponentStepper = new ExponentRemainderStepperCpu(divisorData, divisorCycle);
-
         var cycleStepper = new CycleRemainderStepper(divisorCycle);
+        if (cycleStepper.Initialize(primes[0]) == 0UL)
+        {
+            return true;
+        }
 
-        bool initialUnity = exponentStepper.InitializeCpuIsUnity(primes[0]);
-        ulong remainder = cycleStepper.Initialize(primes[0]);
-        if (remainder == 0UL && initialUnity)
+        var exponentStepper = new ExponentRemainderStepperCpu(divisorData, divisorCycle);
+        if (exponentStepper.InitializeCpuIsUnity(primes[0]))
         {
             return true;
         }
 
         for (int i = 1; i < length; i++)
         {
-            remainder = cycleStepper.ComputeNext(primes[i]);
-            if (remainder != 0UL)
+            if (cycleStepper.ComputeNext(primes[i]) != 0UL)
             {
                 continue;
             }
@@ -83,8 +84,6 @@ internal sealed class MersenneCpuDivisorScanSession(PrimeOrderCalculatorAccelera
         return false;
     }
 
-    public void Return()
-    {
-        ThreadStaticPools.ReturnMersenneCpuDivisorSession(this);
-    }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public void Return() => ThreadStaticPools.ReturnMersenneCpuDivisorSession(this);
 }
