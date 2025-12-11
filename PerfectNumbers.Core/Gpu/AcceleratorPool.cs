@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
 
@@ -11,10 +12,11 @@ namespace PerfectNumbers.Core.Gpu
 
 		private int _index;
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 		public int Rent()
 		{
-			Atomic.CompareExchange(ref _index, Capacity, 0);
-			var index = Atomic.Add(ref _index, 1);
+			_ = Interlocked.CompareExchange(ref _index, Capacity, 0);
+			var index = Interlocked.Increment(ref _index);
 			if (index >= Capacity)
 			{
 				index -= Capacity;
@@ -23,6 +25,7 @@ namespace PerfectNumbers.Core.Gpu
 			return index;
 		}
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 		public void Return(int acceleratorIndex)
 		{
 			// Intentionally left empty - there's nothing to do here. We're not really renting anything.

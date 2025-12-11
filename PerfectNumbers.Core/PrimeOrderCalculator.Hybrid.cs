@@ -377,12 +377,12 @@ internal static partial class PrimeOrderCalculator
 		{
 			while (true)
 			{
-				if (Atomic.CompareExchange(ref _cpuCount, 0, 1) == 0)
+				if (Interlocked.CompareExchange(ref _cpuCount, 0, 1) == 0)
 				{
 					return true;
 				}
 
-				if (Atomic.CompareExchange(ref _cpuCount, 1, 0) == 1)
+				if (Interlocked.CompareExchange(ref _cpuCount, 1, 0) == 1)
 				{
 					return false;
 				}
@@ -391,10 +391,10 @@ internal static partial class PrimeOrderCalculator
 			}
 		}
 
-		int cpuCount = Atomic.Add(ref _cpuCount, 1);
+		int cpuCount = Interlocked.Increment(ref _cpuCount);
 		if (cpuCount == PerfectNumberConstants.GpuRatio)
 		{
-			Atomic.Add(ref _cpuCount, -PerfectNumberConstants.GpuRatio);
+			Interlocked.Add(ref _cpuCount, -PerfectNumberConstants.GpuRatio);
 		}
 		else if (cpuCount > PerfectNumberConstants.GpuRatio)
 		{
