@@ -27,9 +27,16 @@ public sealed class FixedCapacityStack<T>(int capacity)
 		}
 	}
 
+	/// <summary>
+	/// Sets the no. of elements on the stack to 0. It doesn't clear the internal memory buffer from unused references.
+	/// </summary>
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public void Clear() => Count = 0;
 
+	/// <summary>
+	/// Pops and returns the first element from the stack. It doesn't clear the internal memory buffer from unused references.
+	/// </summary>
+	/// <returns>The first element on the stack or null / default when the stack is empty.
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public T? Pop() => Count > 0 ? _items[Count--] : default;
 
@@ -37,9 +44,10 @@ public sealed class FixedCapacityStack<T>(int capacity)
 	public void Push(T item)
 	{
 		int newCount = Count + 1;
-		if (newCount < _items.Length)
+		T[] items = _items;
+		if (newCount < items.Length)
 		{
-			_items[newCount] = item;
+			items[newCount] = item;
 			Count = newCount;
 		}
 	}

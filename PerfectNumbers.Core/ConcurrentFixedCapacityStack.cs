@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core;
@@ -29,7 +30,11 @@ public sealed class ConcurrentFixedCapacityStack<T>(int capacity)
 	public T? Pop() => TryPop(out T? item) ? item : default;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-	public bool TryPop(out T? item)
+	/// <summary>
+	/// Tries popping the first element from the stack. It doesn't clear the internal memory buffer from unused references.
+	/// </summary>
+	/// <returns>Returns false when the stack is empty. Returns true otherwise. If the stack was not empty, item contains the first element from the stack.
+	public bool TryPop([NotNullWhen(true)] out T? item)
 	{
 		while (true)
 		{
@@ -43,7 +48,7 @@ public sealed class ConcurrentFixedCapacityStack<T>(int capacity)
 			int next = observed - 1;
 			if (Interlocked.CompareExchange(ref _count, next, observed) == observed)
 			{
-				item = _items[next];
+				item = _items[next]!;
 				return true;
 			}
 		}
@@ -59,8 +64,7 @@ public sealed class ConcurrentFixedCapacityStack<T>(int capacity)
 			return;
 		}
 
-		Interlocked.Decrement(ref _count);
-		throw new InvalidOperationException("Stack is full.");
+		ArgumentOutOfRangeException.ThrowIfGreaterThan(next, _capacity);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]

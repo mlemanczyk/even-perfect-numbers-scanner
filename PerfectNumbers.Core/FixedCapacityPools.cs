@@ -6,7 +6,7 @@ namespace PerfectNumbers.Core
 	{
 		[ThreadStatic]
 		private static FixedCapacityArrayPool<T>? _arrayPool;
-		internal static FixedCapacityArrayPool<T> ExclusiveArray
+		public static FixedCapacityArrayPool<T> ExclusiveArray
 		{
 
 			[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -18,7 +18,7 @@ namespace PerfectNumbers.Core
 	{
 		[ThreadStatic]
 		private static IntArrayPool? _intArrayPool;
-		internal static IntArrayPool ExclusiveIntArray
+		public static IntArrayPool ExclusiveIntArray
 		{
 
 			[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -27,7 +27,7 @@ namespace PerfectNumbers.Core
 
 		[ThreadStatic]
 		private static UlongArrayPool? _ulongArrayPool;
-		internal static UlongArrayPool ExclusiveUlongArray
+		public static UlongArrayPool ExclusiveUlongArray
 		{
 
 			[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
