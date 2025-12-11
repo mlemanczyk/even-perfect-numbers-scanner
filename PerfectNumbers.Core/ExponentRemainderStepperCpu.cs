@@ -16,7 +16,7 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
     private readonly ulong _cycleLength = cycleLength;
     private ulong PreviousExponent = 0UL;
     private ulong _currentMontgomery = divisor.MontgomeryOne;
-    private static readonly ConcurrentDictionary<(ulong Cycle, ulong Delta), ulong> _cycleDeltaCache = new();
+    private static readonly ConcurrentDictionary<int, ulong> _cycleDeltaCache = new(20_480, PerfectNumberConstants.MaxQForDivisorCycles);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public readonly bool MatchesDivisor(in MontgomeryDivisorData divisor, ulong cycleLength)
@@ -68,11 +68,11 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
     public ulong ComputeNextCpu(ulong exponent)
     {
         ulong delta = exponent - PreviousExponent;
-        ulong reducedDelta = ReduceDelta(delta);
-        ulong multiplier = reducedDelta == 0UL
+        delta = ReduceDelta(delta);
+        delta = delta == 0UL
             ? _montgomeryOne
-            : reducedDelta.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
-        _currentMontgomery = _currentMontgomery.MontgomeryMultiplyCpu(multiplier, _modulus, _nPrime);
+            : delta.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
+        _currentMontgomery = _currentMontgomery.MontgomeryMultiplyCpu(delta, _modulus, _nPrime);
         PreviousExponent = exponent;
         return ReduceCurrent();
     }
@@ -88,13 +88,14 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
     public bool ComputeNextIsUnity(ulong exponent)
     {
         ulong delta = exponent - PreviousExponent;
-        ulong reducedDelta = ReduceDelta(delta);
-        ulong multiplier = reducedDelta == 0UL
-            ? _montgomeryOne
-            : reducedDelta.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
-        _currentMontgomery = _currentMontgomery.MontgomeryMultiplyCpu(multiplier, _modulus, _nPrime);
         PreviousExponent = exponent;
-        return _currentMontgomery == _montgomeryOne;
+        delta = ReduceDelta(delta);
+        delta = delta == 0UL
+            ? _montgomeryOne
+            : delta.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
+        delta = _currentMontgomery.MontgomeryMultiplyCpu(delta, _modulus, _nPrime);
+		_currentMontgomery = delta;
+        return delta == _montgomeryOne;
     }
 
     /// <summary>
@@ -126,26 +127,22 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
 	public bool TryAdvanceWithMontgomeryDelta(ulong exponent, ulong montgomeryDelta, out bool isUnity)
 	{
         ulong delta = exponent - PreviousExponent;
-        ulong reducedDelta = ReduceDelta(delta);
+        delta = ReduceDelta(delta);
 
         // Prefer a cycle-reduced powmod so stepping stays aligned with the divisor-cycle cache.
-        ulong multiplier;
-        if (reducedDelta == 0UL)
+        if (delta == 0UL)
         {
-            multiplier = _montgomeryOne;
+            montgomeryDelta = _montgomeryOne;
         }
         else if (_cycleLength != 0UL)
         {
-            multiplier = reducedDelta.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
-        }
-        else
-        {
-            multiplier = montgomeryDelta;
+            montgomeryDelta = delta.Pow2MontgomeryModWindowedKeepMontgomeryCpu(_divisor);
         }
 
-        _currentMontgomery = _currentMontgomery.MontgomeryMultiplyCpu(multiplier, _modulus, _nPrime);
+        delta = _currentMontgomery.MontgomeryMultiplyCpu(montgomeryDelta, _modulus, _nPrime);
         PreviousExponent = exponent;
-        isUnity = _currentMontgomery == _montgomeryOne;
+        isUnity = delta == _montgomeryOne;
+		_currentMontgomery = delta;
         return true;
     }
 
@@ -164,21 +161,29 @@ internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ul
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private readonly ulong ReduceDelta(ulong delta)
-    {
-        ulong cycleLength = _cycleLength;
-        if (cycleLength == 0UL)
-        {
-            return delta;
-        }
+	{
+		ulong cycleLength = _cycleLength;
+		if (cycleLength == 0UL)
+		{
+			return delta;
+		}
 
-        var key = (cycleLength, delta);
-        if (_cycleDeltaCache.TryGetValue(key, out ulong cached))
-        {
-            return cached;
-        }
+		int key = BuildKey(delta, cycleLength);
+		if (_cycleDeltaCache.TryGetValue(key, out ulong cached))
+		{
+			return cached;
+		}
 
-        ulong reduced = delta.ReduceCycleRemainder(cycleLength);
-        _cycleDeltaCache.TryAdd(key, reduced);
-        return reduced;
-    }
+		cycleLength = delta.ReduceCycleRemainder(cycleLength);
+		_ = _cycleDeltaCache.TryAdd(key, cycleLength);
+		return cycleLength;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	private static int BuildKey(ulong delta, ulong cycleLength)
+	{
+		int h1 = delta.GetHashCode();
+		int h2 = cycleLength.GetHashCode();
+		return h1 * 33 ^ h2;
+	}
 }
