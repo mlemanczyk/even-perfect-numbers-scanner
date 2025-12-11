@@ -3,6 +3,7 @@ using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
+using PerfectNumbers.Core.Gpu.Kernels;
 using Xunit;
 
 namespace PerfectNumbers.Core.Tests.Gpu;

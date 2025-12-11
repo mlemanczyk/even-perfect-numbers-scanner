@@ -1,5 +1,6 @@
 using ILGPU;
 using ILGPU.Runtime;
+using PerfectNumbers.Core.Gpu.Kernels;
 
 namespace PerfectNumbers.Core.Gpu.Accelerators;
 
