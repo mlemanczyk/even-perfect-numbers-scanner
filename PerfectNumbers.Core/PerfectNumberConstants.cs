@@ -9,7 +9,7 @@ public static class PerfectNumberConstants
 	public const int DefaultFactorsBuffer = 32;
 	public const int DefaultPoolCapacity = 10_240;
 	public const int DefaultSmallPrimeFactorSlotCount = 64;
-	public const int DefaultThreadPoolCapacity = 131_072;
+	public const int DefaultThreadPoolCapacity = 30_000;
 	public const int DefaultSpecialMaxFactorCapacity = 1024;
     public const ulong ExtraDivisorCycleSearchLimit = 64UL;
 	public static int GpuRatio = 16384 - 1;
