@@ -67,7 +67,7 @@ internal static partial class PrimeOrderCalculator
 			}
 
 			ulong prime64 = (ulong)prime;
-			Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+			FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 			divisorData = divisorPool.FromModulus(prime64);
 			ulong order64 = CalculateHybrid(gpu, prime64, previous, divisorData, config);
 			divisorPool.Return(divisorData);
@@ -83,7 +83,7 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	private static void CollectFactorsHybrid(PrimeOrderCalculatorAccelerator gpu, Span<ulong> primeSlots, Span<int> exponentSlots, ref ulong[] primeSlotArray, ref int[] exponentSlotArray, ref int factorCount, List<PendingEntry> pending, Stack<ulong> compositeStack, long deadlineTimestamp, out bool pollardRhoDeadlineReached)
+	private static void CollectFactorsHybrid(PrimeOrderCalculatorAccelerator gpu, Span<ulong> primeSlots, Span<int> exponentSlots, ref int factorCount, List<PendingEntry> pending, FixedCapacityStack<ulong> compositeStack, long deadlineTimestamp, out bool pollardRhoDeadlineReached)
 	{
 		while (compositeStack.Count > 0)
 		{
@@ -169,10 +169,10 @@ internal static partial class PrimeOrderCalculator
 			if (config.PollardRhoMilliseconds > 0)
 			{
 				long deadlineTimestamp = CreateDeadlineTimestamp(config.PollardRhoMilliseconds);
-				Stack<ulong> compositeStack = ThreadStaticPools.RentUlongStack(4);
+				FixedCapacityStack<ulong> compositeStack = ThreadStaticPools.RentUlongStack(4);
 				compositeStack.Push(remaining);
 
-				CollectFactorsHybrid(gpu, primeSlots, exponentSlots, primeSlotArray: ref primeSlotArray, ref exponentSlotArray, ref factorCount, pending, compositeStack, deadlineTimestamp, out limitReached);
+				CollectFactorsHybrid(gpu, primeSlots, exponentSlots, ref factorCount, pending, compositeStack, deadlineTimestamp, out limitReached);
 
 				if (limitReached)
 				{

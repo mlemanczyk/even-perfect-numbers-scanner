@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace PerfectNumbers.Core
 {
 	public sealed class PartialFactorResult
@@ -77,7 +79,7 @@ namespace PerfectNumbers.Core
 				return;
 			}
 
-			int newSize = sourceCount + 1;
+			int newSize = (int)BitOperations.RoundUpToPowerOf2((uint)sourceCount + 1U);
 			ulong[] extendedFactors = sourceFactors.Length >= newSize
 				? sourceFactors
 				: ResizeFactors(sourceFactors, sourceCount, newSize);
@@ -87,6 +89,7 @@ namespace PerfectNumbers.Core
 				? sourceExponents
 				: ResizeExponents(sourceCount, newSize, sourceExponents);
 
+			newSize = sourceCount + 1;
 			extendedFactors[sourceCount] = prime;
 			extendedExponents[sourceCount] = 1;
 			Array.Sort(extendedFactors, extendedExponents, 0, newSize);
@@ -101,24 +104,24 @@ namespace PerfectNumbers.Core
 
 		private static int[] ResizeExponents(int sourceCount, int newSize, in int[] sourceExponents)
 		{
-			int[] extendedExponents = Pools.ExclusiveIntArray.Rent(newSize);
+			int[] extendedExponents = FixedCapacityPools.ExclusiveIntArray.Rent(newSize);
 			Array.Copy(sourceExponents, 0, extendedExponents, 0, sourceCount);
-			Pools.ExclusiveIntArray.Return(sourceExponents);
+			FixedCapacityPools.ExclusiveIntArray.Return(sourceExponents);
 			return extendedExponents;
 		}
 
 		private static ulong[] ResizeFactors(in ulong[] sourceFactors, int sourceCount, int newSize)
 		{
-			ulong[] extendedFactors = Pools.ExclusiveUlongArray.Rent(newSize);
+			ulong[] extendedFactors = FixedCapacityPools.ExclusiveUlongArray.Rent(newSize);
 			Array.Copy(sourceFactors, 0, extendedFactors, 0, sourceCount);
-			Pools.ExclusiveUlongArray.Return(sourceFactors);
+			FixedCapacityPools.ExclusiveUlongArray.Return(sourceFactors);
 			return extendedFactors;
 		}
 
 		private void InitializeWithPrime(ulong prime)
 		{
-			ulong[] factors = Pools.ExclusiveUlongArray.Rent(1);
-			int[] exponents = Pools.ExclusiveIntArray.Rent(1);
+			ulong[] factors = FixedCapacityPools.ExclusiveUlongArray.Rent(1);
+			int[] exponents = FixedCapacityPools.ExclusiveIntArray.Rent(1);
 			factors[0] = prime;
 			exponents[0] = 1;
 			Factors = factors;
@@ -142,8 +145,8 @@ namespace PerfectNumbers.Core
 					Factors = null;
 					Exponents = null;
 
-					Pools.ExclusiveUlongArray.Return(factors);
-					Pools.ExclusiveIntArray.Return(exponents);
+					FixedCapacityPools.ExclusiveUlongArray.Return(factors);
+					FixedCapacityPools.ExclusiveIntArray.Return(exponents);
 				}
 
 				_next = s_poolHead;

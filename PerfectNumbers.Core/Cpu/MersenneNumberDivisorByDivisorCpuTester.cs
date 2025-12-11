@@ -157,20 +157,10 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
         }
     }
 
-	public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession(PrimeOrderCalculatorAccelerator gpu)
-	{
-		MersenneCpuDivisorScanSession? session = ThreadStaticPools.RentMersenneCpuDivisorSession();
-		
-		if (session is not null)
-		{
-			session.Configure(gpu, _orderDevice);
-			return session;
-		}
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession(PrimeOrderCalculatorAccelerator gpu) => ThreadStaticPools.RentMersenneCpuDivisorSession(gpu, _orderDevice);
 
-		return new MersenneCpuDivisorScanSession(gpu, _orderDevice);
-	}
-
-    private bool CheckDivisors(
+	private bool CheckDivisors(
         PrimeOrderCalculatorAccelerator gpu,
         ulong prime,
         BigInteger allowedMax,
@@ -564,7 +554,7 @@ private bool CheckDivisors64(
 		out ulong foundDivisor)
 	{
 		bool canAdvance = step <= limit;
-		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+		FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		if (!canAdvance)
 		{
 			if (divisor <= limit && residueStepper.IsAdmissible())

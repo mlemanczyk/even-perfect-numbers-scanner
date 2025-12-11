@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
@@ -11,34 +10,31 @@ public sealed class PrimeOrderCalculatorAccelerator
 	#region Pool
 
 	// [ThreadStatic]
-	private static ConcurrentQueue<PrimeOrderCalculatorAccelerator>? _pool;
+	private static ConcurrentFixedCapacityStack<PrimeOrderCalculatorAccelerator>? _pool;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static PrimeOrderCalculatorAccelerator Rent(int primeTesterCapacity)
 	{
-		var pool = _pool ??= [];
-		if (!pool.TryDequeue(out var gpu))
-		{
-			int acceleratorIndex = AcceleratorPool.Shared.Rent();
-			gpu = new(acceleratorIndex, PerfectNumberConstants.DefaultFactorsBuffer, primeTesterCapacity, PerfectNumberConstants.DefaultSmallPrimeFactorSlotCount, PerfectNumberConstants.DefaultSpecialMaxFactorCapacity);
-		}
-		else
+		var pool = _pool ??= new(PerfectNumberConstants.DefaultThreadPoolCapacity);
+		if (pool.Pop() is { } gpu)
 		{
 			gpu.EnsureCapacity(PerfectNumberConstants.DefaultFactorsBuffer, primeTesterCapacity);
+			return gpu;
 		}
 
-		return gpu;
+		int acceleratorIndex = AcceleratorPool.Shared.Rent();
+		return new(acceleratorIndex, PerfectNumberConstants.DefaultFactorsBuffer, primeTesterCapacity, PerfectNumberConstants.DefaultSmallPrimeFactorSlotCount, PerfectNumberConstants.DefaultSpecialMaxFactorCapacity);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void Return(PrimeOrderCalculatorAccelerator gpu) => _pool!.Enqueue(gpu);
+	public static void Return(PrimeOrderCalculatorAccelerator gpu) => _pool!.Push(gpu);
 
 	internal static void Clear()
 	{
 		var pool = _pool;
 		if (pool != null)
 		{
-			while (pool.TryDequeue(out var gpu))
+			while (pool.Pop() is { } gpu)
 			{
 				gpu.Dispose();
 			}
@@ -50,7 +46,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		var pool = _pool;
 		if (pool != null)
 		{
-			while (pool.TryDequeue(out var gpu))
+			while (pool.Pop() is { } gpu)
 			{
 				gpu.Dispose();
 			}

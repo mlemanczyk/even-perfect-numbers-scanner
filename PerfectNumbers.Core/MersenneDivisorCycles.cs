@@ -394,7 +394,7 @@ public class MersenneDivisorCycles
 		if (divisor <= ulong.MaxValue)
 		{
 			ulong divisor64 = (ulong)divisor;
-			Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+			FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 			MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor64);
 			ulong cycle = CalculateCycleLengthCpu(divisor64, divisorData);
 			divisorPool.Return(divisorData);
@@ -441,7 +441,7 @@ public class MersenneDivisorCycles
 		if (divisor <= ulong.MaxValue)
 		{
 			ulong divisor64 = (ulong)divisor;
-			Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+			FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 			MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor64);
 			ulong cycle = CalculateCycleLengthHybrid(gpu, divisor64, divisorData);
 			divisorPool.Return(divisorData);
@@ -489,7 +489,7 @@ public class MersenneDivisorCycles
 		if (divisor <= ulong.MaxValue)
 		{
 			ulong divisor64 = (ulong)divisor;
-			Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+			FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 			MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor64);
 			ulong cycle = CalculateCycleLengthGpu(gpu, divisor64, divisorData);
 			divisorPool.Return(divisorData);
@@ -1161,7 +1161,6 @@ public class MersenneDivisorCycles
 
 			ulong localStart = threadStart;
 			ulong localEnd = threadEnd;
-			Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 			tasks[taskIndex] = Task.Run(() =>
 			{
 				ulong rangeLength = localEnd - localStart + 1UL;
@@ -1169,6 +1168,7 @@ public class MersenneDivisorCycles
 				// (ulong divisor, ulong cycle)[] localCycles = ArrayPool<(ulong, ulong)>.Shared.Rent(checked((int)rangeLength));
 				int localCycleIndex = 0;
 
+				FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 				var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 				for (ulong divisor = localStart; divisor <= localEnd; divisor++)
 				{

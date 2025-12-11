@@ -647,9 +647,8 @@ public static partial class ULongExtensions
 	{
 		ulong tLow = unchecked(a * b);
 		ulong m = unchecked(tLow * nPrime);
-		ulong mTimesModulusLow = unchecked(m * modulus);
-
-		ulong result = unchecked(a.MulHighCpu(b) + m.MulHighCpu(modulus) + (unchecked(tLow + mTimesModulusLow) < tLow ? 1UL : 0UL));
+		ulong result = unchecked(m * modulus);
+		result = unchecked(a.MulHighCpu(b) + m.MulHighCpu(modulus) + (unchecked(tLow + result) < tLow ? 1UL : 0UL));
 		if (result >= modulus)
 		{
 			result -= modulus;

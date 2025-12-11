@@ -1,23 +1,21 @@
-using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace PerfectNumbers.Core;
 
 public static class StringBuilderPool
 {
-    private static readonly ConcurrentQueue<StringBuilder> _stringBuilderPool = new();
+	private static readonly ConcurrentFixedCapacityStack<StringBuilder> _stringBuilderPool = new(PerfectNumberConstants.DefaultPoolCapacity);
 
-    public static StringBuilder Rent()
-    {
-        // TODO: Ensure oversized builders remain eligible for reuse without trimming so call sites keep their full capacity.
-        return _stringBuilderPool.TryDequeue(out var sb) ? sb : new();
-    }
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static StringBuilder Rent() => _stringBuilderPool.Pop() is { } sb ? sb : new(PerfectNumberConstants.DefaultStringBuilderCapacity);
 
-    public static void Return(StringBuilder sb)
-    {
-        _ = sb.Clear();
-        // TODO: Preserve the builder's capacity when returning it so the pool hands the same buffer back without shrinkage.
-        _stringBuilderPool.Enqueue(sb);
-    }
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static void Return(StringBuilder sb)
+	{
+		_ = sb.Clear();
+		// TODO: Preserve the builder's capacity when returning it so the pool hands the same buffer back without shrinkage.
+		_stringBuilderPool.Push(sb);
+	}
 }
 

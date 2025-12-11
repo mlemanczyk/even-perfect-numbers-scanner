@@ -22,9 +22,9 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 	private BigInteger _minK = BigInteger.One;
 	// private bool _isConfigured;
 
-	private readonly ConcurrentBag<MersenneNumberDivisorByDivisorAccelerator>[] _resourcePool = [.. AcceleratorPool.Shared.Accelerators.Select(x => new ConcurrentBag<MersenneNumberDivisorByDivisorAccelerator>())];
+	private readonly ConcurrentFixedCapacityStack<MersenneNumberDivisorByDivisorAccelerator>[] _resourcePool = [.. AcceleratorPool.Shared.Accelerators.Select(x => new ConcurrentFixedCapacityStack<MersenneNumberDivisorByDivisorAccelerator>(PerfectNumberConstants.DefaultPoolCapacity))];
 
-	private readonly ConcurrentBag<DivisorScanSession> _sessionPool = [];
+	private readonly ConcurrentFixedCapacityStack<DivisorScanSession> _sessionPool = new(PerfectNumberConstants.DefaultPoolCapacity);
 
 	public int GpuBatchSize
 	{
@@ -272,7 +272,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		ArrayView1D<ulong, Stride1D.Dense> exponentViewDevice = exponentBuffer.View;
 		ArrayView1D<byte, Stride1D.Dense> hitsView = hitsBuffer.View;
 		ArrayView1D<int, Stride1D.Dense> hitIndexView = hitIndexBuffer.View;
-		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+		FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		static bool ProcessRange(
 			PrimeOrderCalculatorAccelerator gpu,
 			ulong prime,
@@ -291,7 +291,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			Span<int> offsetSpan,
 			Span<int> countSpan,
 			Span<ulong> cycleSpan,
-			Queue<MontgomeryDivisorData> divisorPool,
+			FixedCapacityStack<MontgomeryDivisorData> divisorPool,
 			int chunkCountBaseline,
 			int acceleratorIndex,
 			ref bool composite,
@@ -598,6 +598,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			_kernel = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>(DivisorByDivisorKernels.CheckKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>>>();
 		}
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 		internal void Reset()
 		{
 		}
@@ -613,7 +614,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 				Accelerator accelerator = _accelerator;
 				int desiredCapacity = requiredCapacity > _capacity ? requiredCapacity : _capacity;
 				_capacity = desiredCapacity;
-				
+
 				// lock (accelerator)
 				{
 					_exponentsBuffer = accelerator.Allocate1D<ulong>(desiredCapacity);
@@ -706,15 +707,13 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			return sentinel == 0;
 		}
 
-		public void Return()
-		{
-			_owner._sessionPool.Add(this);
-		}
+		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+		public void Return() => _owner._sessionPool.Push(this);
 	}
-
 
 	public ulong DivisorLimit
 	{
+		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 		get
 		{
 			// The EvenPerfectBitScanner driver configures the GPU tester before exposing it to callers, so the previous synchronization guard remains commented out.
@@ -732,22 +731,22 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		}
 	}
 
-
-
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private MersenneNumberDivisorByDivisorAccelerator RentBatchResources(int acceleratorIndex, int capacity)
 	{
 		var queue = _resourcePool[acceleratorIndex];
 		var accelerator = AcceleratorPool.Shared.Accelerators[acceleratorIndex];
-		if (!queue.TryTake(out MersenneNumberDivisorByDivisorAccelerator? resources))
+		if (queue.Pop() is { } resources)
 		{
-			return new MersenneNumberDivisorByDivisorAccelerator(accelerator, capacity);
+			resources.EnsureCapacity(accelerator, capacity);
+			return resources;
 		}
 
-		resources.EnsureCapacity(accelerator, capacity);
-		return resources;
+		return new MersenneNumberDivisorByDivisorAccelerator(accelerator, capacity);
 	}
 
-	private void ReturnBatchResources(int acceleratorIndex, MersenneNumberDivisorByDivisorAccelerator resources) => _resourcePool[acceleratorIndex].Add(resources);
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	private void ReturnBatchResources(int acceleratorIndex, MersenneNumberDivisorByDivisorAccelerator resources) => _resourcePool[acceleratorIndex].Push(resources);
 
 	private sealed class AcceleratorReferenceComparer : IEqualityComparer<Accelerator>
 	{
@@ -758,6 +757,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		public int GetHashCode(Accelerator obj) => RuntimeHelpers.GetHashCode(obj);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public ulong GetAllowedMaxDivisor(ulong prime)
 	{
 		// The configuration is immutable after setup, so the cached limit can be read without locking.
@@ -774,6 +774,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		return ComputeAllowedMaxDivisorGpu(prime, _divisorLimit);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession(PrimeOrderCalculatorAccelerator gpu)
 	{
 		// The tester is configured once at startup and the session pool relies on thread-safe collections, so the previous synchronization guard stays commented out.
@@ -793,7 +794,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		//     return new DivisorScanSession(this);
 		// }
 
-		if (_sessionPool.TryTake(out DivisorScanSession? session))
+		if (_sessionPool.Pop() is { } session)
 		{
 			session.Reset();
 			return session;

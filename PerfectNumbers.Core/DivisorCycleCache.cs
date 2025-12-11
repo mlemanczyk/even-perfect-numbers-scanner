@@ -55,6 +55,7 @@ public sealed class DivisorCycleCache
 	{
 		if (!skipPrimeOrderHeuristic)
 		{
+			// TODO: Implement array-free version of GetCycleLengthsCpu so that we don't pay the array costs for single checks.
 			Span<ulong> result = stackalloc ulong[1];
 			ReadOnlySpan<ulong> singleDivisor = stackalloc ulong[1] { divisor };
 			GetCycleLengthsCpu(singleDivisor, result);
@@ -82,7 +83,7 @@ public sealed class DivisorCycleCache
 			return cycleLength;
 		}
 
-		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+		FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
 		cycleLength = MersenneDivisorCycles.CalculateCycleLengthCpu(divisor, divisorData, skipPrimeOrderHeuristic: true);
 		divisorPool.Return(divisorData);
@@ -93,6 +94,7 @@ public sealed class DivisorCycleCache
 	{
 		if (!skipPrimeOrderHeuristic)
 		{
+			// TODO: Implement array-free version of GetCycleLengthsHybrid so that we don't pay the array costs for single checks.
 			Span<ulong> result = stackalloc ulong[1];
 			ReadOnlySpan<ulong> singleDivisor = stackalloc ulong[1] { divisor };
 			GetCycleLengthsHybrid(gpu, singleDivisor, result);
@@ -120,7 +122,7 @@ public sealed class DivisorCycleCache
 			return cycleLength;
 		}
 
-		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+		FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
 		cycleLength = MersenneDivisorCycles.CalculateCycleLengthHybrid(gpu, divisor, divisorData, skipPrimeOrderHeuristic: true);
 		divisorPool.Return(divisorData);
@@ -158,7 +160,7 @@ public sealed class DivisorCycleCache
 			return cycleLength;
 		}
 
-		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+		FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
 		cycleLength = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, divisor, divisorData, skipPrimeOrderHeuristic: true);
 		divisorPool.Return(divisorData);
@@ -346,7 +348,7 @@ public sealed class DivisorCycleCache
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void ComputeCyclesCpu(ReadOnlySpan<ulong> divisors, Span<ulong> cycles, ReadOnlySpan<int> indices)
 	{
-		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+		FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		for (int i = 0; i < indices.Length; i++)
 		{
 			int targetIndex = indices[i];
@@ -360,7 +362,7 @@ public sealed class DivisorCycleCache
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void ComputeCyclesHybrid(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> divisors, Span<ulong> cycles, ReadOnlySpan<int> indices)
 	{
-		Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+		FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		for (int i = 0; i < indices.Length; i++)
 		{
 			int targetIndex = indices[i];

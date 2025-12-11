@@ -5,29 +5,34 @@ namespace PerfectNumbers.Core;
 public static class MontgomeryDivisorDataPool
 {
 	[ThreadStatic]
-	private static Queue<MontgomeryDivisorData>? _pool;
-	public static Queue<MontgomeryDivisorData> Shared => _pool ??= new();
+	private static FixedCapacityStack<MontgomeryDivisorData>? _pool;
+	public static FixedCapacityStack<MontgomeryDivisorData> Shared
+	{
+		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+		get => _pool ??= new(PerfectNumberConstants.DefaultPoolCapacity);
+	}
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ComputeMontgomeryResidue(UInt128 value, ulong modulus) => (ulong)(value % modulus);
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	private static ulong ComputeMontgomeryResidue(UInt128 value, ulong modulus) => (ulong)(value % modulus);
 
-    private static ulong ComputeMontgomeryNPrime(ulong modulus)
-    {
-        ulong inv = modulus;
-        inv *= unchecked(2UL - modulus * inv);
-        inv *= unchecked(2UL - modulus * inv);
-        inv *= unchecked(2UL - modulus * inv);
-        inv *= unchecked(2UL - modulus * inv);
-        inv *= unchecked(2UL - modulus * inv);
-        inv *= unchecked(2UL - modulus * inv);
-        inv *= unchecked(2UL - modulus * inv);
-        return unchecked(0UL - inv);
-    }
-	
+	private static ulong ComputeMontgomeryNPrime(ulong modulus)
+	{
+		ulong inv = modulus;
+		inv *= unchecked(2UL - modulus * inv);
+		inv *= unchecked(2UL - modulus * inv);
+		inv *= unchecked(2UL - modulus * inv);
+		inv *= unchecked(2UL - modulus * inv);
+		inv *= unchecked(2UL - modulus * inv);
+		inv *= unchecked(2UL - modulus * inv);
+		inv *= unchecked(2UL - modulus * inv);
+		return unchecked(0UL - inv);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static MontgomeryDivisorData Rent(ulong modulus, ulong nPrime, ulong montgomeryOne, ulong montgomeryTwo, ulong montgomeryTwoSquared)
 	{
-		var pool = _pool ??= new();
-		if (pool.TryDequeue(out var pooled))
+		var pool = _pool ??= new(PerfectNumberConstants.DefaultPoolCapacity);
+		if (pool.Pop() is { } pooled)
 		{
 			pooled.Modulus = modulus;
 			pooled.NPrime = nPrime;
@@ -40,30 +45,30 @@ public static class MontgomeryDivisorDataPool
 		return new(modulus, nPrime, montgomeryOne, montgomeryTwo, montgomeryTwoSquared);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void Return(MontgomeryDivisorData divisorData) => _pool!.Enqueue(divisorData);
-	
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static void Return(MontgomeryDivisorData divisorData) => _pool!.Push(divisorData);
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static MontgomeryDivisorData FromModulus(this Queue<MontgomeryDivisorData> queue, ulong modulus)
-    {
-        ulong nPrime = ComputeMontgomeryNPrime(modulus);
-        ulong montgomeryOne = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64, modulus);
-        ulong montgomeryTwo = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64x2, modulus);
-        ulong montgomeryTwoSquared = ULongExtensions.MontgomeryMultiplyCpu(montgomeryTwo, montgomeryTwo, modulus, nPrime);
 
-        return queue.Rent(
-            modulus,
-            nPrime,
-            montgomeryOne,
-            montgomeryTwo,
-            montgomeryTwoSquared);
-    }
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static MontgomeryDivisorData Rent(this Queue<MontgomeryDivisorData> queue, ulong modulus, ulong nPrime, ulong montgomeryOne, ulong montgomeryTwo, ulong montgomeryTwoSquared)
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static MontgomeryDivisorData FromModulus(this FixedCapacityStack<MontgomeryDivisorData> queue, ulong modulus)
 	{
-		if (queue.TryDequeue(out var pooled))
+		ulong nPrime = ComputeMontgomeryNPrime(modulus);
+		ulong montgomeryOne = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64, modulus);
+		ulong montgomeryTwo = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64x2, modulus);
+		ulong montgomeryTwoSquared = ULongExtensions.MontgomeryMultiplyCpu(montgomeryTwo, montgomeryTwo, modulus, nPrime);
+
+		return queue.Rent(
+			modulus,
+			nPrime,
+			montgomeryOne,
+			montgomeryTwo,
+			montgomeryTwoSquared);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static MontgomeryDivisorData Rent(this FixedCapacityStack<MontgomeryDivisorData> queue, ulong modulus, ulong nPrime, ulong montgomeryOne, ulong montgomeryTwo, ulong montgomeryTwoSquared)
+	{
+		if (queue.Pop() is { } pooled)
 		{
 			pooled.Modulus = modulus;
 			pooled.NPrime = nPrime;
@@ -76,6 +81,6 @@ public static class MontgomeryDivisorDataPool
 		return new(modulus, nPrime, montgomeryOne, montgomeryTwo, montgomeryTwoSquared);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void Return(this Queue<MontgomeryDivisorData> queue, MontgomeryDivisorData divisorData) => queue.Enqueue(divisorData);
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static void Return(this FixedCapacityStack<MontgomeryDivisorData> queue, MontgomeryDivisorData divisorData) => queue.Push(divisorData);
 }

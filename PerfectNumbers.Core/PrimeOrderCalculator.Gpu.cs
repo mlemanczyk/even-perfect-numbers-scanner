@@ -117,7 +117,7 @@ internal static partial class PrimeOrderCalculator
 			}
 
 			ulong prime64 = (ulong)prime;
-			Queue<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+			FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 			divisorData = divisorPool.FromModulus(prime64);
 			ulong order64 = CalculateGpu(gpu, prime64, previous, divisorData, config);
 			divisorPool.Return(divisorData);
@@ -377,7 +377,7 @@ internal static partial class PrimeOrderCalculator
 			if (config.PollardRhoMilliseconds > 0)
 			{
 				long deadlineTimestamp = CreateDeadlineTimestamp(config.PollardRhoMilliseconds);
-				Stack<ulong> compositeStack = ThreadStaticPools.RentUlongStack(4);
+				FixedCapacityStack<ulong> compositeStack = ThreadStaticPools.RentUlongStack(4);
 				compositeStack.Push(remaining);
 
 				CollectFactorsCpu(primeSlots, exponentSlots, ref factorCount, pending, compositeStack, deadlineTimestamp, out limitReached);
