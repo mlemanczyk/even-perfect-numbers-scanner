@@ -10,7 +10,6 @@ namespace EvenPerfectBitScanner.Benchmarks;
 [MemoryDiagnoser]
 public class PrimeTesterBenchmarks
 {
-    private static readonly HeuristicPrimeTester _heuristicTester = new();
     private ulong[] _candidates = [];
 
     [ParamsSource(nameof(GetBenchmarkCases))]
