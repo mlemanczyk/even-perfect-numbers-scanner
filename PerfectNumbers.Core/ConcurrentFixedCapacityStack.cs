@@ -3,14 +3,23 @@ using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core;
 
-public sealed class ConcurrentFixedCapacityStack<T>(int capacity)
+public sealed class ConcurrentFixedCapacityStack<T>
 {
-	private static readonly FixedCapacityArrayPool<T> _arrayPool = FixedCapacityPools<T>.ExclusiveArray;
+	[ThreadStatic]
+	private static FixedCapacityArrayPool<T>? _arrayPool;
 
-	private readonly T[] _items = _arrayPool.Rent(capacity);
-	private readonly int _capacity = capacity;
+	private readonly T[] _items;
+	private readonly int _capacity;
 
 	private int _count = 0;
+
+	public ConcurrentFixedCapacityStack(int capacity)
+	{
+		_arrayPool ??= FixedCapacityPools<T>.ExclusiveArray;
+		_items = _arrayPool.Value.Rent(capacity);
+		_capacity = capacity;
+	}
+
 	public int Count
 	{
 		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -68,13 +77,13 @@ public sealed class ConcurrentFixedCapacityStack<T>(int capacity)
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-	public static void Return(in T[] items) => _arrayPool.Return(items);
+	public static void Return(in T[] items) => _arrayPool!.Value.Return(items);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public T[] ToArray()
 	{
 		int count = Volatile.Read(ref _count);
-		T[] result = _arrayPool.Rent(count);
+		T[] result = _arrayPool!.Value.Rent(count);
 		Array.Copy(_items, result, count);
 		return result;
 	}

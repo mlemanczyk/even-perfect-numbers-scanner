@@ -2,14 +2,23 @@ using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core;
 
-public sealed class FixedCapacityStack<T>(int capacity)
+public sealed class FixedCapacityStack<T>
 {
-	private static readonly FixedCapacityArrayPool<T> _arrayPool = FixedCapacityPools<T>.ExclusiveArray;
+	[ThreadStatic]
+	private static FixedCapacityArrayPool<T>? _arrayPool;
 
 	public int Count = 0;
-	private T[] _items = _arrayPool.Rent(capacity);
+	private T[] _items;
 
-	private int _capacity = capacity;
+	private int _capacity;
+
+	public FixedCapacityStack(int capacity)
+	{
+		_arrayPool ??= new(PerfectNumberConstants.DefaultPoolCapacity);
+		_items = _arrayPool.Value.Rent(capacity);
+		_capacity = capacity;
+	}
+
 	public int Capacity
 	{
 		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -20,8 +29,8 @@ public sealed class FixedCapacityStack<T>(int capacity)
 		{
 			if (value < _capacity)
 			{
-				_arrayPool.Return(_items);
-				_items = _arrayPool.Rent(value);
+				_arrayPool!.Value.Return(_items);
+				_items = _arrayPool.Value.Rent(value);
 				_capacity = value;
 			}
 		}
