@@ -11,17 +11,21 @@ public sealed class PollingSemaphore
 {
 	private readonly int _maximumConcurrency;
 	private readonly TimeSpan _pauseBetweenChecks;
+	private readonly int _attemptsBeforeSleep;
+
 	private readonly bool _hasPause;
 	private int _currentHolders;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-	public PollingSemaphore(int maximumConcurrency, TimeSpan pauseBetweenChecks)
+	public PollingSemaphore(int maximumConcurrency, TimeSpan pauseBetweenChecks, int attemptsBeforeSleep = 10)
 	{
 		ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maximumConcurrency, 0);
 		ArgumentOutOfRangeException.ThrowIfLessThan(pauseBetweenChecks, TimeSpan.Zero);
 
 		_maximumConcurrency = maximumConcurrency;
 		_pauseBetweenChecks = pauseBetweenChecks;
+		_attemptsBeforeSleep = attemptsBeforeSleep;
+
 		_hasPause = pauseBetweenChecks > TimeSpan.Zero;
 	}
 
@@ -45,6 +49,7 @@ public sealed class PollingSemaphore
 
 		bool hasPause = _hasPause;
 		bool hasStopwatch = timeout != Timeout.InfiniteTimeSpan;
+		int attemptsBeforeSleep = _attemptsBeforeSleep;
 		SpinWait spinner = new();
 		TimeSpan pauseBetweenChecks = _pauseBetweenChecks;
 		Stopwatch? stopwatch = hasStopwatch ? Stopwatch.StartNew() : null;
@@ -62,7 +67,7 @@ public sealed class PollingSemaphore
 				return false;
 			}
 
-			if (spinner.Count < 10)
+			if (spinner.Count < attemptsBeforeSleep)
 			{
 				spinner.SpinOnce();
 				continue;

@@ -10,7 +10,7 @@ internal sealed class TaskThreadPool
 		public readonly Task Task = task;
 	}
 
-	private readonly ConcurrentFixedCapacityStack<WorkItem> _pendingTaskQueue = new(PerfectNumberConstants.DefaultThreadPoolCapacity);
+	private readonly ConcurrentFixedCapacityStack<WorkItem> _pendingTaskQueue = new(PerfectNumberConstants.DefaultThreadPoolCapacity << 1);
 	private readonly HashSet<Thread> _runningThreads = [];
 	private readonly object _lock = new();
 	private readonly Action<Task> _taskExecutor;
