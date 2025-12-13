@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core;
 
-internal sealed class PartialFactorPendingEntry(ulong value, bool knownComposite)
+public sealed class PartialFactorPendingEntry(ulong value, bool knownComposite)
 {
 	[ThreadStatic]
 	private static PartialFactorPendingEntry? _poolHead;

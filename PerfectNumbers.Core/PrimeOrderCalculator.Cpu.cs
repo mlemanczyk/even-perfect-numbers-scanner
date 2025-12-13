@@ -1310,7 +1310,8 @@ internal static partial class PrimeOrderCalculator
 		// primeSlots.Clear();
 		// exponentSlots.Clear();
 
-		List<PartialFactorPendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(PrimeOrderConstants.GpuSmallPrimeFactorSlots);
+		List<PartialFactorPendingEntry> pending = result.PendingFactors;
+		pending.Clear();
 
 		PopulateSmallPrimeFactorsCpu(
 			value,
@@ -1325,7 +1326,8 @@ internal static partial class PrimeOrderCalculator
 			if (config.PollardRhoMilliseconds > 0)
 			{
 				long deadlineTimestamp = CreateDeadlineTimestamp(config.PollardRhoMilliseconds);
-				FixedCapacityStack<ulong> compositeStack = ThreadStaticPools.RentUlongStack(PrimeOrderConstants.GpuSmallPrimeFactorSlots);
+				FixedCapacityStack<ulong> compositeStack = result.CompositeStack;
+				compositeStack.Clear();
 				compositeStack.Push(remaining);
 
 				CollectFactorsCpu(primeSlots, exponentSlots, ref factorCount, pending, compositeStack, deadlineTimestamp, out bool limitReached);
@@ -1337,9 +1339,6 @@ internal static partial class PrimeOrderCalculator
 						pending.Add(PartialFactorPendingEntry.Rent(compositeStack.Pop(), knownComposite: false));
 					}
 				}
-
-				compositeStack.Clear();
-				ThreadStaticPools.ReturnUlongStack(compositeStack);
 			}
 			else
 			{
@@ -1351,10 +1350,6 @@ internal static partial class PrimeOrderCalculator
 		bool cofactorContainsComposite = false;
 		int pendingCount = pending.Count;
 		int index = 0;
-		if (pending.Capacity > PrimeOrderConstants.GpuSmallPrimeFactorSlots)
-		{
-			Console.WriteLine($"Initial capacity is too small. Required capacity: {pending.Capacity}");
-		}
 
 		for (; index < pendingCount; index++)
 		{
@@ -1427,8 +1422,6 @@ internal static partial class PrimeOrderCalculator
 		result.Count = factorCount;
 		result.CofactorIsPrime = cofactorIsPrime;
 
-		pending.Clear();
-		ThreadStaticPools.ReturnPrimeOrderPendingEntryList(pending);
 		return result;
 	}
 
