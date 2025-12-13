@@ -1336,13 +1336,15 @@ internal static partial class PrimeOrderCalculator
 				{
 					while (compositeStack.Count > 0)
 					{
-						pending.Add(PartialFactorPendingEntry.Rent(compositeStack.Pop(), knownComposite: false));
+						pending.Add(new(compositeStack.Pop(), knownComposite: false));
+						// pending.Add(PartialFactorPendingEntry.Rent(compositeStack.Pop(), knownComposite: false));
 					}
 				}
 			}
 			else
 			{
-				pending.Add(PartialFactorPendingEntry.Rent(remaining, knownComposite: false));
+				pending.Add(new (remaining, knownComposite: false));
+				// pending.Add(PartialFactorPendingEntry.Rent(remaining, knownComposite: false));
 			}
 		}
 
@@ -1360,7 +1362,6 @@ internal static partial class PrimeOrderCalculator
 			{
 				cofactor = checked(cofactor * composite);
 				cofactorContainsComposite = true;
-				PartialFactorPendingEntry.Return(entry);
 				continue;
 			}
 
@@ -1382,8 +1383,6 @@ internal static partial class PrimeOrderCalculator
 				cofactor = checked(cofactor * composite);
 				cofactorContainsComposite = true;
 			}
-
-			PartialFactorPendingEntry.Return(entry);
 		}
 
 		bool cofactorIsPrime;
@@ -1442,13 +1441,13 @@ internal static partial class PrimeOrderCalculator
 			pollardRhoDeadlineReached = Stopwatch.GetTimestamp() > deadlineTimestamp;
 			if (pollardRhoDeadlineReached)
 			{
-				pending.Add(PartialFactorPendingEntry.Rent(composite, knownComposite: true));
+				pending.Add(new (composite, knownComposite: true));
 				continue;
 			}
 
 			if (!TryPollardRhoCpu(composite, deadlineTimestamp, out ulong factor))
 			{
-				pending.Add(PartialFactorPendingEntry.Rent(composite, knownComposite: true));
+				pending.Add(new (composite, knownComposite: true));
 				continue;
 			}
 
