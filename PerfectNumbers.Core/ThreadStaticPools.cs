@@ -263,12 +263,12 @@ namespace PerfectNumbers.Core
 		public static void Return((ulong, ulong)[] array) => _ulongUlongTupleArrayPool!.Return(array, clearArray: false);
 
 		[ThreadStatic]
-		private static FixedCapacityStack<List<PrimeOrderCalculator.PendingEntry>>? _primeOrderPendingEntryListPool;
+		private static FixedCapacityStack<List<PartialFactorPendingEntry>>? _primeOrderPendingEntryListPool;
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-		internal static List<PrimeOrderCalculator.PendingEntry> RentPrimeOrderPendingEntryList(int capacityHint)
+		internal static List<PartialFactorPendingEntry> RentPrimeOrderPendingEntryList(int capacityHint)
 		{
-			FixedCapacityStack<List<PrimeOrderCalculator.PendingEntry>>? pool = _primeOrderPendingEntryListPool;
+			FixedCapacityStack<List<PartialFactorPendingEntry>>? pool = _primeOrderPendingEntryListPool;
 			if (pool is not null)
 			{
 				if (pool.Pop() is { } list)
@@ -286,11 +286,11 @@ namespace PerfectNumbers.Core
 				_primeOrderPendingEntryListPool = new(PerfectNumberConstants.DefaultPoolCapacity);
 			}
 
-			return new List<PrimeOrderCalculator.PendingEntry>(capacityHint);
+			return new List<PartialFactorPendingEntry>(capacityHint);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-		internal static void ReturnPrimeOrderPendingEntryList(List<PrimeOrderCalculator.PendingEntry> list) => _primeOrderPendingEntryListPool!.Push(list);
+		internal static void ReturnPrimeOrderPendingEntryList(List<PartialFactorPendingEntry> list) => _primeOrderPendingEntryListPool!.Push(list);
 
 		[ThreadStatic]
 		private static FixedCapacityStack<FixedCapacityStack<ulong>>? _ulongStackPool;
