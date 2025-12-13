@@ -1319,20 +1319,21 @@ internal static partial class PrimeOrderCalculator
 			primeSlots,
 			exponentSlots,
 			out int factorCount,
-			out ulong remaining);
+			out value);
 
-		if (remaining > 1UL)
+		bool cofactorContainsComposite;
+		if (value > 1UL)
 		{
 			if (config.PollardRhoMilliseconds > 0)
 			{
-				long deadlineTimestamp = CreateDeadlineTimestamp(config.PollardRhoMilliseconds);
 				FixedCapacityStack<ulong> compositeStack = result.CompositeStack;
 				compositeStack.Clear();
-				compositeStack.Push(remaining);
+				compositeStack.Push(value);
+				long deadlineTimestamp = CreateDeadlineTimestamp(config.PollardRhoMilliseconds);
 
-				CollectFactorsCpu(primeSlots, exponentSlots, ref factorCount, pending, compositeStack, deadlineTimestamp, out bool limitReached);
+				CollectFactorsCpu(primeSlots, exponentSlots, ref factorCount, pending, compositeStack, deadlineTimestamp, out cofactorContainsComposite);
 
-				if (limitReached)
+				if (cofactorContainsComposite)
 				{
 					while (compositeStack.Count > 0)
 					{
@@ -1342,72 +1343,61 @@ internal static partial class PrimeOrderCalculator
 			}
 			else
 			{
-				pending.Add(new (remaining, knownComposite: false));
+				pending.Add(new (value, knownComposite: false));
 			}
 		}
 
 		ulong cofactor = 1UL;
-		bool cofactorContainsComposite = false;
+		bool isPrime;
 		int pendingCount = pending.Count;
-		int index = 0;
+		cofactorContainsComposite = false;
 
-		for (; index < pendingCount; index++)
+		for (int index = 0; index < pendingCount; index++)
 		{
 			PartialFactorPendingEntry entry = pending[index];
-			ulong composite = entry.Value;
+			// Reuse "value" parameter for testing if a number is composite to limit registry pressure.
+			value = entry.Value;
 
 			if (entry.KnownComposite)
 			{
-				cofactor = checked(cofactor * composite);
+				cofactor = checked(cofactor * value);
 				cofactorContainsComposite = true;
 				continue;
 			}
 
 			if (!entry.HasKnownPrimality)
 			{
-				bool isPrime = PrimeTesterByLastDigit.IsPrimeCpu(composite);
+				isPrime = PrimeTesterByLastDigit.IsPrimeCpu(value);
 
 				entry.WithPrimality(isPrime);
 			}
 
 			if (entry.IsPrime)
 			{
-				AddFactorToCollector(primeSlots, exponentSlots, ref factorCount, composite, 1);
+				AddFactorToCollector(primeSlots, exponentSlots, ref factorCount, value);
 			}
 			// composite is never smaller on the execution path
 			// else if (composite > 1UL)
 			else
 			{
-				cofactor = checked(cofactor * composite);
+				cofactor = checked(cofactor * value);
 				cofactorContainsComposite = true;
 			}
 		}
 
-		bool cofactorIsPrime;
-		if (cofactor <= 1UL)
+		if (cofactorContainsComposite || cofactor <= 1UL)
 		{
-			cofactorIsPrime = false;
-		}
-		else if (cofactorContainsComposite)
-		{
-			cofactorIsPrime = false;
+			isPrime = false;
 		}
 		else
 		{
-			cofactorIsPrime = PrimeTesterByLastDigit.IsPrimeCpu(cofactor);
+			isPrime = PrimeTesterByLastDigit.IsPrimeCpu(cofactor);
 		}
 
 		// This will never happen in production code. We'll always get at least 1 factor
 		// if (factorCount == 0)
 		// {
-		// 	if (cofactor == value)
-		// 	{
-		// 		result = PartialFactorResult.Rent(null, value, false, 0);
-		// 		goto ReturnResult;
-		// 	}
-
-		// 	result = PartialFactorResult.Rent(null, cofactor, cofactor == 1UL, 0);
-		// 	goto ReturnResult;
+		// 		(...)
 		// }
 
 		Array.Sort(factors, exponents, 0, factorCount);
@@ -1417,7 +1407,7 @@ internal static partial class PrimeOrderCalculator
 		result.Cofactor = cofactor;
 		result.FullyFactored = cofactor == 1UL;
 		result.Count = factorCount;
-		result.CofactorIsPrime = cofactorIsPrime;
+		result.CofactorIsPrime = isPrime;
 
 		return result;
 	}
@@ -1432,7 +1422,7 @@ internal static partial class PrimeOrderCalculator
 
 			if (isPrime)
 			{
-				AddFactorToCollector(primeSlots, exponentSlots, ref factorCount, composite, 1);
+				AddFactorToCollector(primeSlots, exponentSlots, ref factorCount, composite);
 				continue;
 			}
 
@@ -1510,10 +1500,6 @@ internal static partial class PrimeOrderCalculator
 			{
 				continue;
 			}
-
-			EnsureCollectorCapacity(
-				primeTargets,
-				factorCount + 1);
 
 			primeTargets[factorCount] = primeValue;
 			exponentTargets[factorCount] = exponent;
@@ -1722,38 +1708,20 @@ internal static partial class PrimeOrderCalculator
 				Span<ulong> primes,
 				Span<int> exponents,
 				ref int count,
-				ulong prime,
-				int exponent)
+				ulong prime)
 	{
-		if (exponent <= 0)
-		{
-			return;
-		}
-
 		for (int i = 0; i < count; i++)
 		{
 			if (primes[i] == prime)
 			{
-				exponents[i] += exponent;
+				exponents[i]++;
 				return;
 			}
 		}
 
-		EnsureCollectorCapacity(
-			primes,
-			count + 1);
-
 		primes[count] = prime;
-		exponents[count] = exponent;
+		exponents[count] = 1;
 		count++;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-	private static void EnsureCollectorCapacity(
-				Span<ulong> primes,
-				int requiredCapacity)
-	{
-		ArgumentOutOfRangeException.ThrowIfGreaterThan(requiredCapacity, primes.Length);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]

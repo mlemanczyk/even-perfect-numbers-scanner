@@ -170,7 +170,7 @@ internal static partial class PrimeOrderCalculator
 
 			if (isPrime)
 			{
-				AddFactorToCollector(primeSlots, exponentSlots, ref factorCount, composite, 1);
+				AddFactorToCollector(primeSlots, exponentSlots, ref factorCount, composite);
 				continue;
 			}
 
@@ -426,7 +426,7 @@ internal static partial class PrimeOrderCalculator
 
 			if (entry.IsPrime)
 			{
-				AddFactorToCollector(primeSlots, exponentSlots, ref factorCount, composite, 1);
+				AddFactorToCollector(primeSlots, exponentSlots, ref factorCount, composite);
 			}
 			// composite is never smaller on the execution path
 			// else if (composite > 1UL)

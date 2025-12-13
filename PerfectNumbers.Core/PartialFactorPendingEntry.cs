@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core;
 
+[method: MethodImpl(MethodImplOptions.AggressiveInlining)]
 public struct PartialFactorPendingEntry(ulong value, bool knownComposite)
 {
 	public readonly ulong Value = value;
