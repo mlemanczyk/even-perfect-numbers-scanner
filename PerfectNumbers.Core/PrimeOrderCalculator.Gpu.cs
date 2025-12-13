@@ -76,12 +76,12 @@ internal static partial class PrimeOrderCalculator
 			return gpuOrder;
 		}
 
-		PartialFactorResult phiFactors = PartialFactorGpu(gpu, divisorData, phi, config);
+		PartialFactorResult phiFactors = PartialFactorGpu(gpu, phi, config);
 
 		ulong result;
-		if (phiFactors.Count == 0)
+		if (phiFactors.Factors is null)
 		{
-			result = CalculateByFactorizationCpu(prime, divisorData, phiFactors);
+			result = CalculateByFactorizationCpu(prime, divisorData);
 
 			phiFactors.Dispose();
 			return result;
@@ -147,28 +147,21 @@ internal static partial class PrimeOrderCalculator
 
         UInt128 phi = prime - UInt128.One;
         PartialFactorResult128 phiFactors = PartialFactorWide(phi, config);
-        try
+        UInt128 result;
+        if (phiFactors.Factors is null)
         {
-            UInt128 result;
-            if (phiFactors.Count == 0)
-            {
-                result = FinishStrictlyWideGpu(gpu, prime, divisorData);
-            }
-            else
-            {
-                result = RunHeuristicPipelineWideGpu(gpu, prime, previousOrder, divisorData, config, phi, phiFactors);
-            }
+            result = FinishStrictlyWideGpu(gpu, prime, divisorData);
+        }
+        else
+        {
+            result = RunHeuristicPipelineWideGpu(gpu, prime, previousOrder, divisorData, config, phi, phiFactors);
+        }
 
-            return result;
-        }
-        finally
-        {
-            phiFactors.Dispose();
-        }
+        return result;
     }
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	private static void CollectFactorsGpu(PrimeOrderCalculatorAccelerator gpu, ref Span<ulong> primeSlots, ref Span<int> exponentSlots, ref int factorCount, List<PartialFactorPendingEntry> pending, Stack<ulong> compositeStack, long deadlineTimestamp, ref bool pollardRhoDeadlineReached)
+	private static void CollectFactorsGpu(PrimeOrderCalculatorAccelerator gpu, ref Span<ulong> primeSlots, ref Span<int> exponentSlots, ref ulong[] primeSlotArray, ref int[] exponentSlotArray, ref int factorCount, List<PendingEntry> pending, Stack<ulong> compositeStack, long deadlineTimestamp, ref bool pollardRhoDeadlineReached)
 	{
 		while (compositeStack.Count > 0)
 		{
@@ -177,7 +170,7 @@ internal static partial class PrimeOrderCalculator
 
 			if (isPrime)
 			{
-				AddFactorToCollector(primeSlots, exponentSlots, ref factorCount, composite);
+				AddFactorToCollector(primeSlots, exponentSlots, ref factorCount, composite, 1);
 				continue;
 			}
 
@@ -185,14 +178,14 @@ internal static partial class PrimeOrderCalculator
 			if (currentTimestamp > deadlineTimestamp)
 			{
 				pollardRhoDeadlineReached = true;
-				pending.Add(new PartialFactorPendingEntry(composite, knownComposite: true));
+				pending.Add(new PendingEntry(composite, knownComposite: true));
 				continue;
 			}
 
 			// if (!TryPollardRhoGpu(gpu, composite, out ulong factor))
 			if (!TryPollardRhoCpu(composite, deadlineTimestamp, out ulong factor))
 			{
-				pending.Add(new PartialFactorPendingEntry(composite, knownComposite: true));
+				pending.Add(new PendingEntry(composite, knownComposite: true));
 				continue;
 			}
 
@@ -207,6 +200,7 @@ internal static partial class PrimeOrderCalculator
 			PrimeOrderCalculatorAccelerator gpu,
 			ReadOnlySpan<ulong> factors,
 			ulong phi,
+			ulong prime,
 			in MontgomeryDivisorData divisorData)
 	{
 		int factorCount = factors.Length;
@@ -241,6 +235,7 @@ internal static partial class PrimeOrderCalculator
 
     private static UInt128 ExponentLoweringWideGpu(PrimeOrderCalculatorAccelerator gpu, UInt128 order, in UInt128 prime, in MontgomeryDivisorData? divisorData, in PartialFactorResult128 factors)
     {
+        ArrayPool<FactorEntry128> pool = ThreadStaticPools.FactorEntry128Pool;
         ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
         int length = factors.Count;
         // TODO: This should never trigger from production code - check
@@ -248,7 +243,9 @@ internal static partial class PrimeOrderCalculator
         // {
         //     return order;
         // }
-        Span<FactorEntry128> buffer = factors.TempFactors.AsSpan(0, length + 1);
+        FactorEntry128[] tempArray = pool.Rent(length + 1);
+
+        Span<FactorEntry128> buffer = tempArray.AsSpan(0, length);
         factorSpan.CopyTo(buffer);
 
         if (!factors.FullyFactored && factors.Cofactor > UInt128.One && IsPrimeWide(factors.Cofactor))
@@ -266,7 +263,7 @@ internal static partial class PrimeOrderCalculator
             int exponent = buffer[i].Exponent;
             for (int iteration = 0; iteration < exponent; iteration++)
             {
-                if (order.ReduceCycleRemainder(primeFactor) == UInt128.Zero)
+                if ((order % primeFactor) == UInt128.Zero)
                 {
                     UInt128 reduced = order / primeFactor;
                     if (Pow2ModWideGpu(gpu, reduced, prime, divisorData) == UInt128.One)
@@ -280,6 +277,7 @@ internal static partial class PrimeOrderCalculator
             }
         }
 
+        pool.Return(tempArray, clearArray: false);
         return order;
     }
 
@@ -304,7 +302,7 @@ internal static partial class PrimeOrderCalculator
             int exponent = entries[i].Value;
             for (int iteration = 0; iteration < exponent; iteration++)
             {
-                if (order.ReduceCycleRemainder(primeFactor) != UInt128.Zero)
+                if ((order % primeFactor) != UInt128.Zero)
                 {
                     UInt128 candidate = order / primeFactor;
                     if (Pow2ModWideGpu(gpu, candidate, prime, divisorData) == UInt128.One)
@@ -339,26 +337,28 @@ internal static partial class PrimeOrderCalculator
     }
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	private static PartialFactorResult PartialFactorGpu(PrimeOrderCalculatorAccelerator gpu, in MontgomeryDivisorData divisorData, ulong value, in PrimeOrderCalculatorConfig config)
+	private static PartialFactorResult PartialFactorGpu(PrimeOrderCalculatorAccelerator gpu, ulong value, in PrimeOrderCalculatorConfig config)
 	{
 		if (value <= 1UL)
-			{
+		{
 			return PartialFactorResult.Empty;
 		}
 
 		// stackalloc is faster than pooling
-		PartialFactorResult result = PartialFactorResult.Rent(divisorData);
-		Span<ulong> primeSlots = new(result.Factors);
-		Span<int> exponentSlots = new (result.Exponents);
+		Span<ulong> primeSlots = stackalloc ulong[PrimeOrderConstants.GpuSmallPrimeFactorSlots];
+		Span<int> exponentSlots = stackalloc int[PrimeOrderConstants.GpuSmallPrimeFactorSlots];
+		ulong[] primeSlotArray = [];
+		int[] exponentSlotArray = [];
 		// We don't need to worry about leftovers, because we always use indexes within the calculated counts
 		// primeSlots.Clear();
 		// exponentSlots.Clear();
 
-		uint limit = config.SmallFactorLimit;
-		bool gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(gpu, value, limit, primeSlots, exponentSlots, out int factorCount, out ulong remaining);
+		uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
+		ulong remaining = value;
 
-		List<PartialFactorPendingEntry> pending = result.Pending;
-		pending.Clear();
+		bool gpuFactored = PrimeOrderGpuHeuristics.TryPartialFactor(gpu, value, limit, primeSlots, exponentSlots, out int factorCount, out remaining);
+
+		List<PendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(2);
 
 		if (!gpuFactored)
 		{
@@ -371,28 +371,31 @@ internal static partial class PrimeOrderCalculator
 				out remaining);
 		}
 
+		bool limitReached;
 		if (remaining > 1UL)
 		{
 			if (config.PollardRhoMilliseconds > 0)
 			{
 				long deadlineTimestamp = CreateDeadlineTimestamp(config.PollardRhoMilliseconds);
-				FixedCapacityStack<ulong> compositeStack = result.CompositeStack;
-				compositeStack.Clear();
+				FixedCapacityStack<ulong> compositeStack = ThreadStaticPools.RentUlongStack(4);
 				compositeStack.Push(remaining);
 
-				CollectFactorsCpu(primeSlots, exponentSlots, ref factorCount, pending, compositeStack, deadlineTimestamp, out bool limitReached);
+				CollectFactorsCpu(primeSlots, exponentSlots, ref factorCount, pending, compositeStack, deadlineTimestamp, out limitReached);
 
 				if (limitReached)
 				{
 					while (compositeStack.Count > 0)
 					{
-						pending.Add(PartialFactorPendingEntry.Rent(compositeStack.Pop(), knownComposite: false));
+						pending.Add(new PendingEntry(compositeStack.Pop(), knownComposite: false));
 					}
 				}
+
+				compositeStack.Clear();
+				ThreadStaticPools.ReturnUlongStack(compositeStack);
 			}
 			else
 			{
-				pending.Add(PartialFactorPendingEntry.Rent(remaining, knownComposite: false));
+				pending.Add(new PendingEntry(remaining, knownComposite: false));
 			}
 		}
 
@@ -402,14 +405,13 @@ internal static partial class PrimeOrderCalculator
 		int index = 0;
 		for (; index < pendingCount; index++)
 		{
-			PartialFactorPendingEntry entry = pending[index];
+			PendingEntry entry = pending[index];
 			ulong composite = entry.Value;
 
 			if (entry.KnownComposite)
 			{
 				cofactor = checked(cofactor * composite);
 				cofactorContainsComposite = true;
-				PartialFactorPendingEntry.Return(entry);
 				continue;
 			}
 
@@ -423,7 +425,7 @@ internal static partial class PrimeOrderCalculator
 
 			if (entry.IsPrime)
 			{
-				AddFactorToCollector(primeSlots, exponentSlots, ref factorCount, composite);
+				AddFactorToCollector(primeSlots, exponentSlots, ref factorCount, composite, 1);
 			}
 			// composite is never smaller on the execution path
 			// else if (composite > 1UL)
@@ -432,8 +434,6 @@ internal static partial class PrimeOrderCalculator
 				cofactor = checked(cofactor * composite);
 				cofactorContainsComposite = true;
 			}
-
-			PartialFactorPendingEntry.Return(entry);
 		}
 
 		bool cofactorIsPrime;
@@ -450,6 +450,19 @@ internal static partial class PrimeOrderCalculator
 			cofactorIsPrime = PrimeTesterByLastDigit.IsPrimeCpu(cofactor);
 		}
 
+		PartialFactorResult result;
+		if (factorCount == 0)
+		{
+			if (cofactor == value)
+			{
+				result = PartialFactorResult.Rent(cofactor, false, 0, cofactorIsPrime);
+				goto ReturnResult;
+			}
+
+			result = PartialFactorResult.Rent(cofactor, cofactor == 1UL, 0, cofactorIsPrime);
+			goto ReturnResult;
+		}
+
 		// This will never happen in production code. We'll always get at least 1 factor
 		// if (factorCount == 0)
 		// {
@@ -463,13 +476,41 @@ internal static partial class PrimeOrderCalculator
 		// 	goto ReturnResult;
 		// }
 
-		Array.Sort(result.Factors, result.Exponents, 0, factorCount);
+		ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
+		ArrayPool<int> intPool = ThreadStaticPools.IntPool;
+
+		ulong[] factorsArray = ulongPool.Rent(factorCount);
+		int[] exponentsArray = intPool.Rent(factorCount);
+
+		for (int i = 0; i < factorCount; i++)
+		{
+			factorsArray[i] = primeSlots[i];
+			exponentsArray[i] = exponentSlots[i];
+
+			// This will never happen on the execution path from production code
+			// if (primeValue == 0UL || exponentValue == 0)
+			// {
+			// 	throw new Exception("Prime value or exponent equals zero");
+			// 	continue;
+			// }
+		}
+
+		Array.Sort(factorsArray, exponentsArray, 0, factorCount);
 
 		// Check if it was factored completely
-		result.Cofactor = cofactor;
-		result.FullyFactored = cofactor == 1UL;
-		result.Count = factorCount;
-		result.CofactorIsPrime = cofactorIsPrime;
+		limitReached = cofactor == 1UL;
+
+		result = PartialFactorResult.Rent(factorsArray, exponentsArray, cofactor, limitReached, factorCount, cofactorIsPrime);
+
+	ReturnResult:
+		if (primeSlotArray.Length > 0)
+		{
+			ThreadStaticPools.UlongPool.Return(primeSlotArray, clearArray: false);
+			ThreadStaticPools.IntPool.Return(exponentSlotArray!, clearArray: false);
+		}
+
+		pending.Clear();
+		ThreadStaticPools.ReturnPrimeOrderPendingEntryList(pending);
 		return result;
 	}
 
@@ -539,9 +580,8 @@ internal static partial class PrimeOrderCalculator
     private static bool TryConfirmCandidateWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128 candidate, in PrimeOrderCalculatorConfig config, ref int powUsed, int powBudget, in MontgomeryDivisorData? divisorData)
     {
         PartialFactorResult128 factorization = PartialFactorWide(candidate, config);
-        if (factorization.Count == 0)
+        if (factorization.Factors is null)
         {
-            factorization.Dispose();
             return false;
         }
 
@@ -549,54 +589,45 @@ internal static partial class PrimeOrderCalculator
         {
             if (factorization.Cofactor <= UInt128.One)
             {
-                factorization.Dispose();
                 return false;
             }
 
             if (!IsPrimeWide(factorization.Cofactor))
             {
-                factorization.Dispose();
                 return false;
             }
 
-            factorization.WithAdditionalPrime(factorization.Cofactor);
+            factorization = factorization.WithAdditionalPrime(factorization.Cofactor);
         }
 
         ReadOnlySpan<FactorEntry128> span = factorization.Factors;
         int length = factorization.Count;
-        try
+        for (int i = 0; i < length; i++)
         {
-            for (int i = 0; i < length; i++)
+            UInt128 primeFactor = span[i].Value;
+            UInt128 reduced = candidate;
+            for (int iteration = 0; iteration < span[i].Exponent; iteration++)
             {
-                UInt128 primeFactor = span[i].Value;
-                UInt128 reduced = candidate;
-                for (int iteration = 0; iteration < span[i].Exponent; iteration++)
+                if ((reduced % primeFactor) != UInt128.Zero)
                 {
-                    if (reduced.ReduceCycleRemainder(primeFactor) != UInt128.Zero)
-                    {
-                        break;
-                    }
+                    break;
+                }
 
-                    reduced /= primeFactor;
-                    if (powUsed >= powBudget && powBudget > 0)
-                    {
-                        return false;
-                    }
+                reduced /= primeFactor;
+                if (powUsed >= powBudget && powBudget > 0)
+                {
+                    return false;
+                }
 
-                    powUsed++;
-                    if (Pow2ModWideGpu(gpu, reduced, prime, divisorData) == UInt128.One)
-                    {
-                        return false;
-                    }
+                powUsed++;
+                if (Pow2ModWideGpu(gpu, reduced, prime, divisorData) == UInt128.One)
+                {
+                    return false;
                 }
             }
+        }
 
-            return true;
-        }
-        finally
-        {
-            factorization.Dispose();
-        }
+        return true;
     }
 
     private static bool TryConfirmOrderWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128 order, in MontgomeryDivisorData? divisorData, in PrimeOrderCalculatorConfig config)
@@ -612,9 +643,8 @@ internal static partial class PrimeOrderCalculator
         }
 
         PartialFactorResult128 factorization = PartialFactorWide(order, config);
-        if (factorization.Count == 0)
+        if (factorization.Factors is null)
         {
-            factorization.Dispose();
             return false;
         }
 
@@ -622,17 +652,15 @@ internal static partial class PrimeOrderCalculator
         {
             if (factorization.Cofactor <= UInt128.One)
             {
-                factorization.Dispose();
                 return false;
             }
 
             if (!IsPrimeWide(factorization.Cofactor))
             {
-                factorization.Dispose();
                 return false;
             }
 
-            factorization.WithAdditionalPrime(factorization.Cofactor);
+            factorization = factorization.WithAdditionalPrime(factorization.Cofactor);
         }
 
         ReadOnlySpan<FactorEntry128> span = factorization.Factors;
@@ -651,13 +679,11 @@ internal static partial class PrimeOrderCalculator
 				reduced /= primeFactor;
 				if (Pow2ModWideGpu(gpu, reduced, prime, divisorData) == UInt128.One)
 				{
-					factorization.Dispose();
 					return false;
 				}
 			}
         }
 
-        factorization.Dispose();
         return true;
     }
 
@@ -669,6 +695,7 @@ internal static partial class PrimeOrderCalculator
 		ulong? previousOrder,
 		in MontgomeryDivisorData divisorData,
 		in PrimeOrderCalculatorConfig config,
+		PartialFactorResult phiFactors,
 		PartialFactorResult? cachedOrderFactors,
 		out ulong result)
 	{
@@ -680,10 +707,10 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		// Reuse the partial factorization from TryConfirmOrderCpu when available.
-		PartialFactorResult orderFactors = cachedOrderFactors ?? PartialFactorGpu(gpu, divisorData, order, config);
+		PartialFactorResult orderFactors = cachedOrderFactors ?? PartialFactorGpu(gpu, order, config);
 		try
 		{
-			if (orderFactors.Count == 0)
+			if (orderFactors.Factors is null)
 			{
 				return false;
 			}
@@ -699,13 +726,16 @@ internal static partial class PrimeOrderCalculator
 			}
 
 			int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecksCapacity;
-			List<ulong> candidates = orderFactors.FactorCandidatesList;
+			List<ulong> candidates = ThreadStaticPools.RentUlongList(capacity);
 			candidates.Clear();
+			ulong[] factorArray = orderFactors.Factors!;
+			int[] exponentsArray = orderFactors.Exponents!;
 
-			BuildCandidates(order, orderFactors, orderFactors.Count, candidates, capacity);
+			BuildCandidates(order, factorArray, exponentsArray, orderFactors.Count, candidates, capacity);
 			int candidateCount = candidates.Count;
 			if (candidateCount == 0)
 			{
+				ThreadStaticPools.ReturnUlongList(candidates);
 				return false;
 			}
 
@@ -715,12 +745,11 @@ internal static partial class PrimeOrderCalculator
 			int powUsed = 0;
 			bool allowGpuBatch = true;
 			Span<ulong> candidateSpan = CollectionsMarshal.AsSpan(candidates);
-			ExponentRemainderStepperCpu powStepper = orderFactors.ExponentRemainderStepper;
-			powStepper.Reset();
+			ExponentRemainderStepperCpu powStepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 			bool powStepperInitialized = false;
 
 			int index = 0;
-			Span<ulong> stackGpuRemainders = new(orderFactors.SpecialMaxBuffer, 0, PerfectNumberConstants.DefaultSmallPrimeFactorSlotCount);
+			Span<ulong> stackGpuRemainders = stackalloc ulong[PerfectNumberConstants.DefaultSmallPrimeFactorSlotCount];
 			ArrayPool<ulong> pool = ThreadStaticPools.UlongPool;
 			while (index < candidateCount && powUsed < powBudget)
 			{
@@ -790,6 +819,9 @@ internal static partial class PrimeOrderCalculator
 							pool.Return(gpuPool, clearArray: false);
 						}
 
+						candidates.Clear();
+						ThreadStaticPools.ReturnUlongList(candidates);
+						ThreadStaticPools.ReturnExponentStepperCpu(powStepper);
 						result = candidate;
 						return true;
 					}
@@ -827,6 +859,9 @@ internal static partial class PrimeOrderCalculator
 						pool.Return(gpuPool, clearArray: false);
 					}
 
+					candidates.Clear();
+					ThreadStaticPools.ReturnUlongList(candidates);
+					ThreadStaticPools.ReturnExponentStepperCpu(powStepper);
 					result = candidate;
 					return true;
 				}
@@ -839,6 +874,9 @@ internal static partial class PrimeOrderCalculator
 				index += batchSize;
 			}
 
+			candidates.Clear();
+			ThreadStaticPools.ReturnUlongList(candidates);
+			ThreadStaticPools.ReturnExponentStepperCpu(powStepper);
 			// DebugLog("No candidate confirmed");
 			return false;
 		}
@@ -864,75 +902,66 @@ internal static partial class PrimeOrderCalculator
         }
 
         PartialFactorResult128 orderFactors = PartialFactorWide(order, config);
-        if (orderFactors.Count == 0)
+        if (orderFactors.Factors is null)
         {
-            orderFactors.Dispose();
             return false;
         }
 
-        try
+        if (!orderFactors.FullyFactored)
         {
-            if (!orderFactors.FullyFactored)
-            {
-                if (orderFactors.Cofactor <= UInt128.One)
-                {
-                    return false;
-                }
-
-                if (!IsPrimeWide(orderFactors.Cofactor))
-                {
-                    return false;
-                }
-
-                orderFactors.WithAdditionalPrime(orderFactors.Cofactor);
-            }
-
-            int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecksCapacity;
-            List<UInt128> candidates = orderFactors.FactorCandidatesList;
-            candidates.Clear();
-            FactorEntry128[] factorArray = orderFactors.Factors!;
-            BuildCandidatesWide(order, factorArray, orderFactors.Count, candidates, capacity);
-            if (candidates.Count == 0)
+            if (orderFactors.Cofactor <= UInt128.One)
             {
                 return false;
             }
 
-            SortCandidatesWide(prime, previousOrder, candidates);
-
-            int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
-            int powUsed = 0;
-            int candidateCount = candidates.Count;
-
-            for (int i = 0; i < candidateCount; i++)
+            if (!IsPrimeWide(orderFactors.Cofactor))
             {
-                if (powUsed >= powBudget && powBudget > 0)
-                {
-                    break;
-                }
-
-                UInt128 candidate = candidates[i];
-                powUsed++;
-
-                if (Pow2ModWideGpu(gpu, candidate, prime, divisorData) != UInt128.One)
-                {
-                    continue;
-                }
-
-                if (!TryConfirmCandidateWideGpu(gpu, prime, candidate, config, ref powUsed, powBudget, divisorData))
-                {
-                    continue;
-                }
-
-                result = candidate;
-                return true;
+                return false;
             }
 
+            orderFactors = orderFactors.WithAdditionalPrime(orderFactors.Cofactor);
+        }
+
+        int capacity = config.MaxPowChecks <= 0 ? 64 : config.MaxPowChecksCapacity;
+        List<UInt128> candidates = new(capacity);
+        FactorEntry128[] factorArray = orderFactors.Factors!;
+        BuildCandidatesWide(order, factorArray, orderFactors.Count, candidates, capacity);
+        if (candidates.Count == 0)
+        {
             return false;
         }
-        finally
+
+        SortCandidatesWide(prime, previousOrder, candidates);
+
+        int powBudget = config.MaxPowChecks <= 0 ? candidates.Count : config.MaxPowChecks;
+        int powUsed = 0;
+        int candidateCount = candidates.Count;
+
+        for (int i = 0; i < candidateCount; i++)
         {
-            orderFactors.Dispose();
+            if (powUsed >= powBudget && powBudget > 0)
+            {
+                break;
+            }
+
+            UInt128 candidate = candidates[i];
+            powUsed++;
+
+            if (Pow2ModWideGpu(gpu, candidate, prime, divisorData) != UInt128.One)
+            {
+                continue;
+            }
+
+            if (!TryConfirmCandidateWideGpu(gpu, prime, candidate, config, ref powUsed, powBudget, divisorData))
+            {
+                continue;
+            }
+
+            result = candidate;
+            return true;
         }
+
+        return false;
     }
 
 	private static bool TryPollardRhoGpu(PrimeOrderCalculatorAccelerator gpu, ulong n, out ulong factor)
@@ -1048,3 +1077,4 @@ internal static partial class PrimeOrderCalculator
         return true;
     }
 }
+
