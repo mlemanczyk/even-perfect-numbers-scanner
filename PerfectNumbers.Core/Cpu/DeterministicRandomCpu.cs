@@ -13,11 +13,6 @@ internal static class DeterministicRandomCpu
     public static ulong NextUInt64()
     {
         ulong state = s_threadState;
-        if (state == 0UL)
-        {
-            state = InitializeThreadState();
-        }
-
         state ^= state >> 12;
         state ^= state << 25;
         state ^= state >> 27;
@@ -34,7 +29,7 @@ internal static class DeterministicRandomCpu
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    private static ulong InitializeThreadState()
+    public static ulong Initialize()
     {
         ulong seed = (ulong)Interlocked.Increment(ref s_seedCounter);
         seed += 0x9E3779B97F4A7C15UL;

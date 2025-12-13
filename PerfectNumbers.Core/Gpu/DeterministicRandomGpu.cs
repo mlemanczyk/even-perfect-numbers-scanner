@@ -14,33 +14,25 @@ internal struct DeterministicRandomGpu
 {
 	private static long s_seedCounter;
 
-	private ulong _state;
-	public readonly ulong State
-	{
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		get
-		{
-			return _state;
-		}
-	}
+	public ulong State;
 
 	public DeterministicRandomGpu()
 	{
-		_state = CreateThreadState();
+		State = CreateThreadState();
 	}
 
 	public DeterministicRandomGpu(ulong initialState)
 	{
-		_state = initialState;
+		State = initialState;
 	}
 
 	public ulong NextUInt64()
 	{
-		ulong state = _state;
+		ulong state = State;
 		state ^= state >> 12;
 		state ^= state << 25;
 		state ^= state >> 27;
-		_state = state;
+		State = state;
 		return state * 2685821657736338717UL;
 	}
 
@@ -55,7 +47,7 @@ internal struct DeterministicRandomGpu
 
 	public void SetState(ulong state)
 	{
-		_state = state;
+		State = state;
 	}
 
 	private static ulong CreateThreadState()

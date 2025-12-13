@@ -324,6 +324,7 @@ public static class MersenneNumberDivisorByDivisorTester
 
 		if (workerCount == 1)
 		{
+			DeterministicRandomCpu.Initialize();
 			var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 			foreach (ulong prime in filteredPrimes)
 			{
@@ -360,6 +361,7 @@ public static class MersenneNumberDivisorByDivisorTester
 				tasks[taskIndex++] = Task.Factory.StartNew(
 					() =>
 					{
+						DeterministicRandomCpu.Initialize();
 						startGate.Wait();
 						GpuPrimeWorkLimiter.Acquire();
 						Console.WriteLine($"Task started for range {rangeStart}");
