@@ -9,7 +9,7 @@ public sealed class BTree<TKey, TValue>()
     private const int DefaultCapacity = 64;
     private const int SmallBufferCapacity = 4;
     private const int RootInlineThreshold = 2048;
-    private const int RootInlineInitialCapacity = 64;
+    private const int RootInlineInitialCapacity = 32;
     private const int ShallowTreeThreshold = 1024;
     private const int ShallowHashByteCount = 1;
     private const int LeafInitialCapacity = 8;
