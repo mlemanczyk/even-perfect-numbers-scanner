@@ -1,4 +1,4 @@
-using System.Numerics;
+using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core
 {
@@ -7,8 +7,8 @@ namespace PerfectNumbers.Core
 		[ThreadStatic]
 		private static PartialFactorResult? s_poolHead;
 
-		public ulong[]? Factors;
-		public int[]? Exponents;
+		public readonly ulong[] Factors = new ulong[PrimeOrderConstants.GpuSmallPrimeFactorSlots];
+		public readonly int[] Exponents = new int[PrimeOrderConstants.GpuSmallPrimeFactorSlots];
 		private PartialFactorResult? _next;
 		public ulong Cofactor;
 		public bool FullyFactored;
@@ -19,7 +19,7 @@ namespace PerfectNumbers.Core
 		{
 		}
 
-		public static PartialFactorResult Rent(in ulong[]? factors, in int[]? exponents, ulong cofactor, bool fullyFactored, int count, bool cofactorIsPrime)
+		public static PartialFactorResult Rent()
 		{
 			PartialFactorResult? instance = s_poolHead;
 			if (instance is null)
@@ -32,34 +32,10 @@ namespace PerfectNumbers.Core
 			}
 
 			instance._next = null;
-			instance.Factors = factors;
-			instance.Exponents = exponents;
-			instance.Cofactor = cofactor;
-			instance.FullyFactored = fullyFactored;
-			instance.Count = count;
-			instance.CofactorIsPrime = cofactorIsPrime;
-			return instance;
-		}
-
-		public static PartialFactorResult Rent(ulong cofactor, bool fullyFactored, int count, bool cofactorIsPrime)
-		{
-			PartialFactorResult? instance = s_poolHead;
-			if (instance is null)
-			{
-				instance = new PartialFactorResult();
-			}
-			else
-			{
-				s_poolHead = instance._next;
-			}
-
-			instance._next = null;
-			instance.Factors = null;
-			instance.Exponents = null;
-			instance.Cofactor = cofactor;
-			instance.FullyFactored = fullyFactored;
-			instance.Count = count;
-			instance.CofactorIsPrime = cofactorIsPrime;
+			instance.Cofactor = 0UL;
+			instance.FullyFactored = false;
+			instance.Count = 0;
+			instance.CofactorIsPrime = false;
 			return instance;
 		}
 
@@ -73,59 +49,29 @@ namespace PerfectNumbers.Core
 		{
 			ulong[]? sourceFactors = Factors;
 			int sourceCount = Count;
-			if (sourceFactors is null || sourceCount == 0)
+			if (sourceCount == 0)
 			{
 				InitializeWithPrime(prime);
 				return;
 			}
 
-			int newSize = (int)BitOperations.RoundUpToPowerOf2((uint)sourceCount + 1U);
-			ulong[] extendedFactors = sourceFactors.Length >= newSize
-				? sourceFactors
-				: ResizeFactors(sourceFactors, sourceCount, newSize);
-
 			int[] sourceExponents = Exponents!;
-			int[] extendedExponents = sourceExponents.Length >= newSize
-				? sourceExponents
-				: ResizeExponents(sourceCount, newSize, sourceExponents);
 
-			newSize = sourceCount + 1;
-			extendedFactors[sourceCount] = prime;
-			extendedExponents[sourceCount] = 1;
-			Array.Sort(extendedFactors, extendedExponents, 0, newSize);
+			int newSize = sourceCount + 1;
+			sourceFactors[sourceCount] = prime;
+			sourceExponents[sourceCount] = 1;
+			Array.Sort(sourceFactors, sourceExponents, 0, newSize);
 
-			Factors = extendedFactors;
-			Exponents = extendedExponents;
 			Cofactor = 1UL;
 			FullyFactored = true;
 			Count = newSize;
 			CofactorIsPrime = false;
 		}
 
-		private static int[] ResizeExponents(int sourceCount, int newSize, in int[] sourceExponents)
-		{
-			int[] extendedExponents = FixedCapacityPools.ExclusiveIntArray.Rent(newSize);
-			Array.Copy(sourceExponents, 0, extendedExponents, 0, sourceCount);
-			FixedCapacityPools.ExclusiveIntArray.Return(sourceExponents);
-			return extendedExponents;
-		}
-
-		private static ulong[] ResizeFactors(in ulong[] sourceFactors, int sourceCount, int newSize)
-		{
-			ulong[] extendedFactors = FixedCapacityPools.ExclusiveUlongArray.Rent(newSize);
-			Array.Copy(sourceFactors, 0, extendedFactors, 0, sourceCount);
-			FixedCapacityPools.ExclusiveUlongArray.Return(sourceFactors);
-			return extendedFactors;
-		}
-
 		private void InitializeWithPrime(ulong prime)
 		{
-			ulong[] factors = FixedCapacityPools.ExclusiveUlongArray.Rent(1);
-			int[] exponents = FixedCapacityPools.ExclusiveIntArray.Rent(1);
-			factors[0] = prime;
-			exponents[0] = 1;
-			Factors = factors;
-			Exponents = exponents;
+			Factors[0] = prime;
+			Exponents[0] = 1;
 			Cofactor = 1UL;
 			FullyFactored = true;
 			Count = 1;
@@ -136,19 +82,6 @@ namespace PerfectNumbers.Core
 		{
 			if (this != Empty)
 			{
-
-				ulong[]? factors = Factors;
-
-				if (factors is not null)
-				{
-					int[] exponents = Exponents!;
-					Factors = null;
-					Exponents = null;
-
-					FixedCapacityPools.ExclusiveUlongArray.Return(factors);
-					FixedCapacityPools.ExclusiveIntArray.Return(exponents);
-				}
-
 				_next = s_poolHead;
 				s_poolHead = this;
 			}

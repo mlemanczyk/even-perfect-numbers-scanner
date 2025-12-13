@@ -10,50 +10,6 @@ namespace PerfectNumbers.Core;
 
 internal static partial class PrimeOrderCalculator
 {
-	internal sealed class PendingEntry(ulong value, bool knownComposite)
-	{
-		[ThreadStatic]
-		private static PendingEntry? _poolHead;
-		private PendingEntry? _next;
-
-		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-		public static PendingEntry Rent(ulong value, bool knownComposite)
-		{
-			var poolHead = _poolHead;
-			if (poolHead == null)
-			{
-				return new(value, knownComposite);
-			}
-
-			_poolHead = poolHead._next;
-			poolHead.Value = value;
-			poolHead.KnownComposite = knownComposite;
-			poolHead.HasKnownPrimality = knownComposite;
-			poolHead.IsPrime = false;
-			return poolHead;
-		}
-
-		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-		public static void Return(PendingEntry entry)
-		{
-			entry._next = _poolHead;
-			_poolHead = entry;
-		}
-
-		public ulong Value = value;
-		public bool KnownComposite = knownComposite;
-		public bool HasKnownPrimality = knownComposite;
-		public bool IsPrime = false;
-
-		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-		public void WithPrimality(bool isPrime)
-		{
-			KnownComposite = KnownComposite || !isPrime;
-			HasKnownPrimality = true;
-			IsPrime = isPrime;
-		}
-	}
-
 	public static ulong CalculateCpu(
 		ulong prime,
 		ulong? previousOrder,
@@ -575,10 +531,10 @@ internal static partial class PrimeOrderCalculator
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static ulong ExponentLoweringCpu(ulong order, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
 	{
-		ReadOnlySpan<ulong> factorSpan = factors.Factors;
-		ReadOnlySpan<int> exponentsSpan = factors.Exponents;
-
 		int length = factors.Count;
+		ReadOnlySpan<ulong> factorSpan = factors.Factors.AsSpan(0, length);
+		ReadOnlySpan<int> exponentsSpan = factors.Exponents.AsSpan(0, length);
+
 		int newLength = length + 1;
 		ulong[] tempFactorsArray = FixedCapacityPools.ExclusiveUlongArray.Rent(newLength);
 		int[] tempExponentsArray = FixedCapacityPools.ExclusiveIntArray.Rent(newLength);
@@ -1343,14 +1299,18 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		// stackalloc is faster than pooling
-		Span<ulong> primeSlots = stackalloc ulong[PrimeOrderConstants.GpuSmallPrimeFactorSlots];
-		Span<int> exponentSlots = stackalloc int[PrimeOrderConstants.GpuSmallPrimeFactorSlots];
+
+		var result = PartialFactorResult.Rent();
+		ulong[] factors = result.Factors;
+		Span<ulong> primeSlots = new(factors);
+		int[] exponents = result.Exponents;
+		Span<int> exponentSlots = new(exponents);
 
 		// We don't need to worry about leftovers, because we always use indexes within the calculated counts
 		// primeSlots.Clear();
 		// exponentSlots.Clear();
 
-		List<PendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(PrimeOrderConstants.GpuSmallPrimeFactorSlots);
+		List<PartialFactorPendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(PrimeOrderConstants.GpuSmallPrimeFactorSlots);
 
 		PopulateSmallPrimeFactorsCpu(
 			value,
@@ -1360,7 +1320,6 @@ internal static partial class PrimeOrderCalculator
 			out int factorCount,
 			out ulong remaining);
 
-		bool limitReached;
 		if (remaining > 1UL)
 		{
 			if (config.PollardRhoMilliseconds > 0)
@@ -1369,13 +1328,13 @@ internal static partial class PrimeOrderCalculator
 				FixedCapacityStack<ulong> compositeStack = ThreadStaticPools.RentUlongStack(PrimeOrderConstants.GpuSmallPrimeFactorSlots);
 				compositeStack.Push(remaining);
 
-				CollectFactorsCpu(primeSlots, exponentSlots, ref factorCount, pending, compositeStack, deadlineTimestamp, out limitReached);
+				CollectFactorsCpu(primeSlots, exponentSlots, ref factorCount, pending, compositeStack, deadlineTimestamp, out bool limitReached);
 
 				if (limitReached)
 				{
 					while (compositeStack.Count > 0)
 					{
-						pending.Add(PendingEntry.Rent(compositeStack.Pop(), knownComposite: false));
+						pending.Add(PartialFactorPendingEntry.Rent(compositeStack.Pop(), knownComposite: false));
 					}
 				}
 
@@ -1384,7 +1343,7 @@ internal static partial class PrimeOrderCalculator
 			}
 			else
 			{
-				pending.Add(PendingEntry.Rent(remaining, knownComposite: false));
+				pending.Add(PartialFactorPendingEntry.Rent(remaining, knownComposite: false));
 			}
 		}
 
@@ -1399,14 +1358,14 @@ internal static partial class PrimeOrderCalculator
 
 		for (; index < pendingCount; index++)
 		{
-			PendingEntry entry = pending[index];
+			PartialFactorPendingEntry entry = pending[index];
 			ulong composite = entry.Value;
 
 			if (entry.KnownComposite)
 			{
 				cofactor = checked(cofactor * composite);
 				cofactorContainsComposite = true;
-				PendingEntry.Return(entry);
+				PartialFactorPendingEntry.Return(entry);
 				continue;
 			}
 
@@ -1429,7 +1388,7 @@ internal static partial class PrimeOrderCalculator
 				cofactorContainsComposite = true;
 			}
 
-			PendingEntry.Return(entry);
+			PartialFactorPendingEntry.Return(entry);
 		}
 
 		bool cofactorIsPrime;
@@ -1446,19 +1405,6 @@ internal static partial class PrimeOrderCalculator
 			cofactorIsPrime = PrimeTesterByLastDigit.IsPrimeCpu(cofactor);
 		}
 
-		PartialFactorResult result;
-		if (factorCount == 0)
-		{
-			if (cofactor == value)
-			{
-				result = PartialFactorResult.Rent(cofactor, false, 0, cofactorIsPrime);
-				goto ReturnResult;
-			}
-
-			result = PartialFactorResult.Rent(cofactor, cofactor == 1UL, 0, cofactorIsPrime);
-			goto ReturnResult;
-		}
-
 		// This will never happen in production code. We'll always get at least 1 factor
 		// if (factorCount == 0)
 		// {
@@ -1472,37 +1418,22 @@ internal static partial class PrimeOrderCalculator
 		// 	goto ReturnResult;
 		// }
 
-		ulong[] factorsArray = FixedCapacityPools.ExclusiveUlongArray.Rent(factorCount);
-		int[] exponentsArray = FixedCapacityPools.ExclusiveIntArray.Rent(factorCount);
-
-		for (int i = 0; i < factorCount; i++)
-		{
-			factorsArray[i] = primeSlots[i];
-			exponentsArray[i] = exponentSlots[i];
-
-			// This will never happen on the execution path from production code
-			// if (primeValue == 0UL || exponentValue == 0)
-			// {
-			// 	throw new Exception("Prime value or exponent equals zero");
-			// 	continue;
-			// }
-		}
-
-		Array.Sort(factorsArray, exponentsArray, 0, factorCount);
+		Array.Sort(factors, exponents, 0, factorCount);
 
 		// Check if it was it factored completely
-		limitReached = cofactor == 1UL;
 
-		result = PartialFactorResult.Rent(factorsArray, exponentsArray, cofactor, limitReached, factorCount, cofactorIsPrime);
+		result.Cofactor = cofactor;
+		result.FullyFactored = cofactor == 1UL;
+		result.Count = factorCount;
+		result.CofactorIsPrime = cofactorIsPrime;
 
-	ReturnResult:
 		pending.Clear();
 		ThreadStaticPools.ReturnPrimeOrderPendingEntryList(pending);
 		return result;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	private static void CollectFactorsCpu(Span<ulong> primeSlots, Span<int> exponentSlots, ref int factorCount, List<PendingEntry> pending, FixedCapacityStack<ulong> compositeStack, long deadlineTimestamp, out bool pollardRhoDeadlineReached)
+	private static void CollectFactorsCpu(Span<ulong> primeSlots, Span<int> exponentSlots, ref int factorCount, List<PartialFactorPendingEntry> pending, FixedCapacityStack<ulong> compositeStack, long deadlineTimestamp, out bool pollardRhoDeadlineReached)
 	{
 		while (compositeStack.Count > 0)
 		{
@@ -1518,13 +1449,13 @@ internal static partial class PrimeOrderCalculator
 			pollardRhoDeadlineReached = Stopwatch.GetTimestamp() > deadlineTimestamp;
 			if (pollardRhoDeadlineReached)
 			{
-				pending.Add(PendingEntry.Rent(composite, knownComposite: true));
+				pending.Add(PartialFactorPendingEntry.Rent(composite, knownComposite: true));
 				continue;
 			}
 
 			if (!TryPollardRhoCpu(composite, deadlineTimestamp, out ulong factor))
 			{
-				pending.Add(PendingEntry.Rent(composite, knownComposite: true));
+				pending.Add(PartialFactorPendingEntry.Rent(composite, knownComposite: true));
 				continue;
 			}
 

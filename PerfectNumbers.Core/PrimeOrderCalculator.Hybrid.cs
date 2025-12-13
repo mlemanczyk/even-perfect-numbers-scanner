@@ -83,7 +83,7 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	private static void CollectFactorsHybrid(PrimeOrderCalculatorAccelerator gpu, Span<ulong> primeSlots, Span<int> exponentSlots, ref int factorCount, List<PendingEntry> pending, FixedCapacityStack<ulong> compositeStack, long deadlineTimestamp, out bool pollardRhoDeadlineReached)
+	private static void CollectFactorsHybrid(PrimeOrderCalculatorAccelerator gpu, Span<ulong> primeSlots, Span<int> exponentSlots, ref int factorCount, List<PartialFactorPendingEntry> pending, FixedCapacityStack<ulong> compositeStack, long deadlineTimestamp, out bool pollardRhoDeadlineReached)
 	{
 		while (compositeStack.Count > 0)
 		{
@@ -99,13 +99,13 @@ internal static partial class PrimeOrderCalculator
 			pollardRhoDeadlineReached = Stopwatch.GetTimestamp() > deadlineTimestamp;
 			if (pollardRhoDeadlineReached)
 			{
-				pending.Add(new PendingEntry(composite, knownComposite: true));
+				pending.Add(new PartialFactorPendingEntry(composite, knownComposite: true));
 				continue;
 			}
 
 			if (!TryPollardRhoCpu(composite, deadlineTimestamp, out ulong factor))
 			{
-				pending.Add(new PendingEntry(composite, knownComposite: true));
+				pending.Add(new PartialFactorPendingEntry(composite, knownComposite: true));
 				continue;
 			}
 
@@ -142,18 +142,19 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		// stackalloc is faster than pooling
-		Span<ulong> primeSlots = stackalloc ulong[PrimeOrderConstants.GpuSmallPrimeFactorSlots];
-		Span<int> exponentSlots = stackalloc int[PrimeOrderConstants.GpuSmallPrimeFactorSlots];
-		ulong[] primeSlotArray = [];
-		int[] exponentSlotArray = [];
+
+		var result = PartialFactorResult.Rent();
+		ulong[] factors = result.Factors;
+		Span<ulong> primeSlots = new(factors);
+		int[] exponents = result.Exponents;
+		Span<int> exponentSlots = new(exponents);
 		// We don't need to worry about leftovers, because we always use indexes within the calculated counts
 		// primeSlots.Clear();
 		// exponentSlots.Clear();
 
 		uint limit = config.SmallFactorLimit == 0 ? uint.MaxValue : config.SmallFactorLimit;
-		ulong remaining = value;
 
-		List<PendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(2);
+		List<PartialFactorPendingEntry> pending = ThreadStaticPools.RentPrimeOrderPendingEntryList(2);
 
 		PopulateSmallPrimeFactorsCpu(
 			value,
@@ -161,7 +162,7 @@ internal static partial class PrimeOrderCalculator
 			primeSlots,
 			exponentSlots,
 			out int factorCount,
-			out remaining);
+			out ulong remaining);
 
 		bool limitReached;
 		if (remaining > 1UL)
@@ -178,7 +179,7 @@ internal static partial class PrimeOrderCalculator
 				{
 					while (compositeStack.Count > 0)
 					{
-						pending.Add(new PendingEntry(compositeStack.Pop(), knownComposite: false));
+						pending.Add(new PartialFactorPendingEntry(compositeStack.Pop(), knownComposite: false));
 					}
 				}
 
@@ -187,7 +188,7 @@ internal static partial class PrimeOrderCalculator
 			}
 			else
 			{
-				pending.Add(new PendingEntry(remaining, knownComposite: false));
+				pending.Add(new PartialFactorPendingEntry(remaining, knownComposite: false));
 			}
 		}
 
@@ -197,7 +198,7 @@ internal static partial class PrimeOrderCalculator
 		int index = 0;
 		for (; index < pendingCount; index++)
 		{
-			PendingEntry entry = pending[index];
+			PartialFactorPendingEntry entry = pending[index];
 			ulong composite = entry.Value;
 
 			if (entry.KnownComposite)
@@ -242,19 +243,6 @@ internal static partial class PrimeOrderCalculator
 			cofactorIsPrime = RunOnCpu() ? PrimeTesterByLastDigit.IsPrimeCpu(cofactor) : HeuristicCombinedPrimeTester.IsPrimeGpu(gpu, cofactor);
 		}
 
-		PartialFactorResult result;
-		if (factorCount == 0)
-		{
-			if (cofactor == value)
-			{
-				result = PartialFactorResult.Rent(cofactor, false, 0, cofactorIsPrime);
-				goto ReturnResult;
-			}
-
-			result = PartialFactorResult.Rent(cofactor, cofactor == 1UL, 0, cofactorIsPrime);
-			goto ReturnResult;
-		}
-
 		// This will never happen in production code. We'll always get at least 1 factor
 		// if (factorCount == 0)
 		// {
@@ -268,38 +256,12 @@ internal static partial class PrimeOrderCalculator
 		// 	goto ReturnResult;
 		// }
 
-		ArrayPool<ulong> ulongPool = ThreadStaticPools.UlongPool;
-		ArrayPool<int> intPool = ThreadStaticPools.IntPool;
+		Array.Sort(factors, exponents, 0, factorCount);
 
-		ulong[] factorsArray = ulongPool.Rent(factorCount);
-		int[] exponentsArray = intPool.Rent(factorCount);
-
-		for (int i = 0; i < factorCount; i++)
-		{
-			factorsArray[i] = primeSlots[i];
-			exponentsArray[i] = exponentSlots[i];
-
-			// This will never happen on the execution path from production code
-			// if (primeValue == 0UL || exponentValue == 0)
-			// {
-			// 	throw new Exception("Prime value or exponent equals zero");
-			// 	continue;
-			// }
-		}
-
-		Array.Sort(factorsArray, exponentsArray, 0, factorCount);
-
-		// Check if it was factored completely
-		limitReached = cofactor == 1UL;
-
-		result = PartialFactorResult.Rent(factorsArray, exponentsArray, cofactor, limitReached, factorCount, cofactorIsPrime);
-
-	ReturnResult:
-		if (primeSlotArray.Length > 0)
-		{
-			ThreadStaticPools.UlongPool.Return(primeSlotArray, clearArray: false);
-			ThreadStaticPools.IntPool.Return(exponentSlotArray!, clearArray: false);
-		}
+		result.Cofactor = cofactor;
+		result.FullyFactored = cofactor == 1UL;
+		result.Count = factorCount;
+		result.CofactorIsPrime = cofactorIsPrime;
 
 		pending.Clear();
 		ThreadStaticPools.ReturnPrimeOrderPendingEntryList(pending);
