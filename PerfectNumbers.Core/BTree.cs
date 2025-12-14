@@ -39,7 +39,10 @@ public sealed class BTree<TKey, TValue>()
             return;
         }
 
-        EnsureRoot();
+        if (_nodeCount == 0)
+        {
+        	EnsureRoot();
+        }
 
 		Node[] nodes = _nodes;
         if (smallCount > 0)
@@ -116,24 +119,19 @@ public sealed class BTree<TKey, TValue>()
             : 0u;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
     private void EnsureRoot()
     {
-        if (_nodeCount != 0)
-        {
-            return;
-        }
-
         _nodes = new Node[DefaultCapacity];
         _nodes[0] = new Node();
         _nodeCount = 1;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private void InsertIntoTree(uint hash, TKey key, TValue value, int currentCount)
     {
-        var nodes = _nodes;
-        var currentIndex = 0;
+        Node[]? nodes = _nodes;
+        int currentIndex = 0;
         int depth = currentCount < ShallowTreeThreshold ? ShallowHashByteCount : HashByteCount;
 
         int nodeCount = _nodeCount;
