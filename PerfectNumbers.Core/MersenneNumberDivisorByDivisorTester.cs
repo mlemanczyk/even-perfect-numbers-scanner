@@ -366,7 +366,7 @@ public static class MersenneNumberDivisorByDivisorTester
 						GpuPrimeWorkLimiter.Acquire();
 						Console.WriteLine($"Task started for range {rangeStart}");
 
-						var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+						PrimeOrderCalculatorAccelerator gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 						for (int index = rangeStart; index < rangeEnd; index++)
 						{
 							ProcessPrime(gpu, filteredPrimes[index]);
