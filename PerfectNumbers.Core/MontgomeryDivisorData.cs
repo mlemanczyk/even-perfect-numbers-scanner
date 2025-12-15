@@ -1,24 +1,46 @@
+using System.Runtime.CompilerServices;
+
 namespace PerfectNumbers.Core;
 
-public sealed class MontgomeryDivisorData
+public readonly struct MontgomeryDivisorData(ulong modulus, ulong nPrime, ulong montgomeryOne, ulong montgomeryTwo, ulong montgomeryTwoSquared)
 {
 	public static readonly MontgomeryDivisorData Empty = new();
-    public ulong Modulus;
-	public ulong NPrime;
-	public ulong MontgomeryOne;
-	public ulong MontgomeryTwo;
-	public ulong MontgomeryTwoSquared;
 
-	public MontgomeryDivisorData()
-	{	
-	}
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	private static ulong ComputeMontgomeryResidue(UInt128 value, ulong modulus) => (ulong)(value % modulus);
 
-	public MontgomeryDivisorData(ulong modulus, ulong nPrime, ulong montgomeryOne, ulong montgomeryTwo, ulong montgomeryTwoSquared)
+	private static ulong ComputeMontgomeryNPrime(ulong modulus)
 	{
-		Modulus = modulus;
-		NPrime = nPrime;
-		MontgomeryOne = montgomeryOne;
-		MontgomeryTwo = montgomeryTwo;
-		MontgomeryTwoSquared = montgomeryTwoSquared;
+		ulong inv = modulus;
+		inv *= unchecked(2UL - modulus * inv);
+		inv *= unchecked(2UL - modulus * inv);
+		inv *= unchecked(2UL - modulus * inv);
+		inv *= unchecked(2UL - modulus * inv);
+		inv *= unchecked(2UL - modulus * inv);
+		inv *= unchecked(2UL - modulus * inv);
+		inv *= unchecked(2UL - modulus * inv);
+		return unchecked(0UL - inv);
 	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static MontgomeryDivisorData FromModulus(ulong modulus)
+	{
+		ulong nPrime = ComputeMontgomeryNPrime(modulus);
+		ulong montgomeryOne = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64, modulus);
+		ulong montgomeryTwo = ComputeMontgomeryResidue(UInt128Numbers.OneShiftedLeft64x2, modulus);
+		ulong montgomeryTwoSquared = ULongExtensions.MontgomeryMultiplyCpu(montgomeryTwo, montgomeryTwo, modulus, nPrime);
+
+		return new(
+			modulus,
+			nPrime,
+			montgomeryOne,
+			montgomeryTwo,
+			montgomeryTwoSquared);
+	}
+
+    public readonly ulong Modulus = modulus;
+	public readonly ulong NPrime = nPrime;
+	public readonly ulong MontgomeryOne = montgomeryOne;
+	public readonly ulong MontgomeryTwo = montgomeryTwo;
+	public readonly ulong MontgomeryTwoSquared = montgomeryTwoSquared;
 }

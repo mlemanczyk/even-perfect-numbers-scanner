@@ -19,21 +19,17 @@ public sealed class DivisorCycleCache
 	private static int _sharedDivisorCyclesBatchSize = GpuConstants.GpuCycleStepsPerInvocation;
 
 	private const int CycleCacheTrackingLimit = 500_000;
-	private static readonly HashSet<ulong> CycleCacheTrackedDivisors = new();
+	private static readonly HashSet<ulong> CycleCacheTrackedDivisors = [];
 	private static readonly object CycleCacheTrackingLock = new();
-	private static ulong CycleCacheHitCount;
-	private static bool CycleCacheTrackingDisabled;
 
 	public static void SetDivisorCyclesBatchSize(int divisorCyclesBatchSize)
 	{
 		_sharedDivisorCyclesBatchSize = Math.Max(1, divisorCyclesBatchSize);
 	}
 
-	public static DivisorCycleCache Shared { get; } = new DivisorCycleCache(_sharedDivisorCyclesBatchSize);
+	public static readonly DivisorCycleCache Shared = new(_sharedDivisorCyclesBatchSize);
 
 	public int PreferredBatchSize => _divisorCyclesBatchSize;
-
-	// private static readonly Accelerator[] _accelerators;
 
 	private DivisorCycleCache(int divisorCyclesBatchSize)
 	{
@@ -51,54 +47,28 @@ public sealed class DivisorCycleCache
 		_snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
 	}
 
-	public ulong GetCycleLengthCpu(ulong divisor, bool skipPrimeOrderHeuristic = false)
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public ulong GetCycleLengthCpu(ulong divisor, in MontgomeryDivisorData divisorData)
 	{
-		if (!skipPrimeOrderHeuristic)
-		{
-			// TODO: Implement array-free version of GetCycleLengthsCpu so that we don't pay the array costs for single checks.
-			Span<ulong> result = stackalloc ulong[1];
-			ReadOnlySpan<ulong> singleDivisor = stackalloc ulong[1] { divisor };
-			GetCycleLengthsCpu(singleDivisor, result);
-			return result[0];
-		}
-
-		// The skipPrimeOrderHeuristic path is only used for divisors produced by the CPU by-divisor scanner,
-		// which always generates values greater than one. Keep this guard disabled here to avoid repeating the
-		// validation already performed by the general GetCycleLengths path.
-		// if (divisor <= 1UL)
-		// {
-		//     throw new InvalidDataException("Divisor must be > 1");
-		// }
-
 		ulong[] snapshot = _snapshot;
-		ulong cycleLength;
+
 		if (divisor < (ulong)snapshot.Length)
 		{
-			cycleLength = snapshot[divisor];
-			if (cycleLength == 0UL)
-			{
-				throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
-			}
+			ulong cached = snapshot[divisor];
+			ArgumentOutOfRangeException.ThrowIfZero(cached);
 
-			return cycleLength;
+			return cached;
 		}
 
-		FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
-		MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
-		cycleLength = MersenneDivisorCycles.CalculateCycleLengthCpu(divisor, divisorData, skipPrimeOrderHeuristic: true);
-		divisorPool.Return(divisorData);
-		return cycleLength;
+		return MersenneDivisorCycles.CalculateCycleLengthCpu(divisor, divisorData);
 	}
 
-	public ulong GetCycleLengthHybrid(PrimeOrderCalculatorAccelerator gpu, ulong divisor, bool skipPrimeOrderHeuristic = false)
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public ulong GetCycleLengthHybrid(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData, bool skipPrimeOrderHeuristic = false)
 	{
 		if (!skipPrimeOrderHeuristic)
 		{
-			// TODO: Implement array-free version of GetCycleLengthsHybrid so that we don't pay the array costs for single checks.
-			Span<ulong> result = stackalloc ulong[1];
-			ReadOnlySpan<ulong> singleDivisor = stackalloc ulong[1] { divisor };
-			GetCycleLengthsHybrid(gpu, singleDivisor, result);
-			return result[0];
+			return GetCycleLengthHybrid(gpu, divisor, divisorData);
 		}
 
 		// The skipPrimeOrderHeuristic path is only used for divisors produced by the CPU by-divisor scanner,
@@ -114,22 +84,17 @@ public sealed class DivisorCycleCache
 		if (divisor < (ulong)snapshot.Length)
 		{
 			cycleLength = snapshot[divisor];
-			if (cycleLength == 0UL)
-			{
-				throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
-			}
+			ArgumentOutOfRangeException.ThrowIfZero(cycleLength);
 
 			return cycleLength;
 		}
 
-		FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
-		MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
 		cycleLength = MersenneDivisorCycles.CalculateCycleLengthHybrid(gpu, divisor, divisorData, skipPrimeOrderHeuristic: true);
-		divisorPool.Return(divisorData);
 		return cycleLength;
 	}
 
-	public ulong GetCycleLengthGpu(PrimeOrderCalculatorAccelerator gpu, ulong divisor, bool skipPrimeOrderHeuristic = false)
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public ulong GetCycleLengthGpu(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData	divisorData, bool skipPrimeOrderHeuristic = false)
 	{
 		if (!skipPrimeOrderHeuristic)
 		{
@@ -152,18 +117,12 @@ public sealed class DivisorCycleCache
 		if (divisor < (ulong)snapshot.Length)
 		{
 			cycleLength = snapshot[divisor];
-			if (cycleLength == 0UL)
-			{
-				throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
-			}
+			ArgumentOutOfRangeException.ThrowIfZero(cycleLength);
 
 			return cycleLength;
 		}
 
-		FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
-		MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
 		cycleLength = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, divisor, divisorData, skipPrimeOrderHeuristic: true);
-		divisorPool.Return(divisorData);
 		return cycleLength;
 	}
 
@@ -181,18 +140,11 @@ public sealed class DivisorCycleCache
 		for (int i = 0; i < length; i++)
 		{
 			ulong divisor = divisors[i];
-			if (divisor <= 1UL)
-			{
-				throw new InvalidDataException("Divisor must be > 1");
-			}
 
 			if (divisor < (ulong)snapshot.Length)
 			{
 				ulong cached = snapshot[divisor];
-				if (cached == 0UL)
-				{
-					throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
-				}
+				ArgumentOutOfRangeException.ThrowIfZero(cached);
 
 				cycles[i] = cached;
 			}
@@ -214,6 +166,22 @@ public sealed class DivisorCycleCache
 		}
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public ulong GetCycleLengthHybrid(PrimeOrderCalculatorAccelerator gpu, ulong divisor, in MontgomeryDivisorData divisorData)
+	{
+		ulong[] snapshot = _snapshot;
+
+		if (divisor < (ulong)snapshot.Length)
+		{
+			ulong cached = snapshot[divisor];
+			ArgumentOutOfRangeException.ThrowIfZero(cached);
+
+			return cached;
+		}
+
+		return MersenneDivisorCycles.CalculateCycleLengthHybrid(gpu, divisor, divisorData);
+	}
+
 	public void GetCycleLengthsHybrid(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> divisors, Span<ulong> cycles)
 	{
 		ulong[] snapshot = _snapshot;
@@ -228,18 +196,11 @@ public sealed class DivisorCycleCache
 		for (int i = 0; i < length; i++)
 		{
 			ulong divisor = divisors[i];
-			if (divisor <= 1UL)
-			{
-				throw new InvalidDataException("Divisor must be > 1");
-			}
 
 			if (divisor < (ulong)snapshot.Length)
 			{
 				ulong cached = snapshot[divisor];
-				if (cached == 0UL)
-				{
-					throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
-				}
+				ArgumentOutOfRangeException.ThrowIfZero(cached);
 
 				cycles[i] = cached;
 			}
@@ -275,18 +236,11 @@ public sealed class DivisorCycleCache
 		for (int i = 0; i < length; i++)
 		{
 			ulong divisor = divisors[i];
-			if (divisor <= 1UL)
-			{
-				throw new InvalidDataException("Divisor must be > 1");
-			}
 
 			if (divisor < (ulong)snapshot.Length)
 			{
 				ulong cached = snapshot[divisor];
-				if (cached == 0UL)
-				{
-					throw new InvalidDataException($"Divisor cycle is missing for {divisor}");
-				}
+				ArgumentOutOfRangeException.ThrowIfZero(cached);
 
 				cycles[i] = cached;
 			}
@@ -308,68 +262,27 @@ public sealed class DivisorCycleCache
 		}
 	}
 
-	private static void ObserveCycleCacheDivisor(ulong divisor)
-	{
-		bool logHit = false;
-		ulong hitNumber = 0UL;
-		bool trackingDisabledNow = false;
-
-		lock (CycleCacheTrackingLock)
-		{
-			if (CycleCacheTrackingDisabled)
-			{
-				return;
-			}
-
-			if (!CycleCacheTrackedDivisors.Add(divisor))
-			{
-				CycleCacheHitCount++;
-				hitNumber = CycleCacheHitCount;
-				logHit = true;
-			}
-			else if (CycleCacheTrackedDivisors.Count >= CycleCacheTrackingLimit)
-			{
-				CycleCacheTrackingDisabled = true;
-				CycleCacheTrackedDivisors.Clear();
-				trackingDisabledNow = true;
-			}
-		}
-
-		if (logHit)
-		{
-			Console.WriteLine($"Cycle cache hit for divisor {divisor} ({hitNumber})");
-		}
-		else if (trackingDisabledNow)
-		{
-			Console.WriteLine("Cycle cache hit tracking disabled after exceeding the tracking limit.");
-		}
-	}
-
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void ComputeCyclesCpu(ReadOnlySpan<ulong> divisors, Span<ulong> cycles, ReadOnlySpan<int> indices)
 	{
-		FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		for (int i = 0; i < indices.Length; i++)
 		{
 			int targetIndex = indices[i];
 			ulong divisor = divisors[targetIndex];
-			MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
+			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
 			cycles[targetIndex] = MersenneDivisorCycles.CalculateCycleLengthCpu(divisor, divisorData);
-			divisorPool.Return(divisorData);
 		}
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void ComputeCyclesHybrid(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> divisors, Span<ulong> cycles, ReadOnlySpan<int> indices)
 	{
-		FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
 		for (int i = 0; i < indices.Length; i++)
 		{
 			int targetIndex = indices[i];
 			ulong divisor = divisors[targetIndex];
-			MontgomeryDivisorData divisorData = divisorPool.FromModulus(divisor);
+			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
 			cycles[targetIndex] = MersenneDivisorCycles.CalculateCycleLengthHybrid(gpu, divisor, divisorData);
-			divisorPool.Return(divisorData);
 		}
 	}
 
@@ -408,44 +321,44 @@ public sealed class DivisorCycleCache
 	private const int DefaultCapacity = 128;
 
 	[ThreadStatic]
-	private static MemoryBuffer1D<ulong, Stride1D.Dense>? divisorBuffer;
+	private static MemoryBuffer1D<ulong, Stride1D.Dense>? _divisorBuffer;
 
 	[ThreadStatic]
-	private static MemoryBuffer1D<ulong, Stride1D.Dense>? powBuffer;
+	private static MemoryBuffer1D<ulong, Stride1D.Dense>? _powBuffer;
 
 	[ThreadStatic]
-	private static MemoryBuffer1D<ulong, Stride1D.Dense>? orderBuffer;
+	private static MemoryBuffer1D<ulong, Stride1D.Dense>? _orderBuffer;
 
 	[ThreadStatic]
-	private static MemoryBuffer1D<ulong, Stride1D.Dense>? resultBuffer;
+	private static MemoryBuffer1D<ulong, Stride1D.Dense>? _resultBuffer;
 
 	[ThreadStatic]
-	private static MemoryBuffer1D<byte, Stride1D.Dense>? statusBuffer;
+	private static MemoryBuffer1D<byte, Stride1D.Dense>? _statusBuffer;
 
 	private void EnsureCapacity(int requiredCapacity)
 	{
-		if (requiredCapacity <= (divisorBuffer?.Length ?? 0))
+		if (_divisorBuffer is not null && requiredCapacity <= _divisorBuffer.Length)
 		{
 			return;
 		}
 
-		if (divisorBuffer != null)
+		if (_divisorBuffer != null)
 		{
-			divisorBuffer.Dispose();
-			powBuffer!.Dispose();
-			orderBuffer!.Dispose();
-			resultBuffer!.Dispose();
-			statusBuffer!.Dispose();
+			_divisorBuffer.Dispose();
+			_powBuffer!.Dispose();
+			_orderBuffer!.Dispose();
+			_resultBuffer!.Dispose();
+			_statusBuffer!.Dispose();
 		}
 
 		Accelerator accelerator = _accelerator;
 		// lock (accelerator)
 		{
-			divisorBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
-			powBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
-			orderBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
-			resultBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
-			statusBuffer = accelerator.Allocate1D<byte>(requiredCapacity);
+			_divisorBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+			_powBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+			_orderBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+			_resultBuffer = accelerator.Allocate1D<ulong>(requiredCapacity);
+			_statusBuffer = accelerator.Allocate1D<byte>(requiredCapacity);
 		}
 	}
 
@@ -496,17 +409,17 @@ public sealed class DivisorCycleCache
 		var acceleratorIndex = _acceleratorIndex;
 		var stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 
-		divisorBuffer!.View.CopyFromCPU(stream, divisors);
-		powBuffer!.View.CopyFromCPU(stream, powSpan);
-		orderBuffer!.View.CopyFromCPU(stream, orderSpan);
-		resultBuffer!.View.CopyFromCPU(stream, resultSpan);
-		statusBuffer!.View.CopyFromCPU(stream, statusSpan);
+		_divisorBuffer!.View.CopyFromCPU(stream, divisors);
+		_powBuffer!.View.CopyFromCPU(stream, powSpan);
+		_orderBuffer!.View.CopyFromCPU(stream, orderSpan);
+		_resultBuffer!.View.CopyFromCPU(stream, resultSpan);
+		_statusBuffer!.View.CopyFromCPU(stream, statusSpan);
 
 		do
 		{
-			kernel(stream, length, _divisorCyclesBatchSize, divisorBuffer.View, powBuffer.View, orderBuffer.View, resultBuffer.View, statusBuffer.View);
+			kernel(stream, length, _divisorCyclesBatchSize, _divisorBuffer.View, _powBuffer.View, _orderBuffer.View, _resultBuffer.View, _statusBuffer.View);
 
-			statusBuffer.View.CopyToCPU(stream, statusSpan);
+			_statusBuffer.View.CopyToCPU(stream, statusSpan);
 			stream.Synchronize();
 
 			pending = 0;
@@ -520,7 +433,7 @@ public sealed class DivisorCycleCache
 		}
 		while (pending > 0);
 
-		resultBuffer.View.CopyToCPU(stream, resultSpan);
+		_resultBuffer.View.CopyToCPU(stream, resultSpan);
 		stream.Synchronize();
 		AcceleratorStreamPool.Return(acceleratorIndex, stream);
 

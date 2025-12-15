@@ -500,7 +500,7 @@ public class Pow2ModBenchmarks
 				Console.WriteLine($"Calculating small cycle {smallModulus}");
 				smallDivisors[i] = CreateMontgomeryDivisorData(smallModulus);
 				smallExponents[i] = NextSmallExponent(random);
-				smallCycles[i] = MersenneDivisorCycles.CalculateCycleLengthCpu(smallModulus, MontgomeryDivisorDataPool.Shared.FromModulus(smallModulus));
+				smallCycles[i] = MersenneDivisorCycles.CalculateCycleLengthCpu(smallModulus, MontgomeryDivisorData.FromModulus(smallModulus));
 
 				(ulong largeModulus, ulong largeCycle) = NextLargeModulusAndCycle(random);
 				Console.WriteLine($"Calculating large cycle {largeModulus}");
@@ -613,7 +613,7 @@ public class Pow2ModBenchmarks
 
 		private static ulong CalculateCycleLengthWithHeuristicsCpu(ulong modulus, ref ulong? previousPrimeOrder)
 		{
-			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(modulus);
+			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(modulus);
 			if (modulus <= 1UL || (modulus & 1UL) == 0UL)
 			{
 				return MersenneDivisorCycles.CalculateCycleLengthCpu(modulus, divisorData);
@@ -680,7 +680,7 @@ public class Pow2ModBenchmarks
 
 	private ulong CalculateCycleLengthWithHeuristicsCpu(ulong modulus, ulong fallbackOrder = 0UL)
 	{
-		MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(modulus);
+		MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(modulus);
 		if (modulus <= 1UL || (modulus & 1UL) == 0UL)
 		{
 			return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLengthCpu(modulus, divisorData);
@@ -709,7 +709,7 @@ public class Pow2ModBenchmarks
 
 	private ulong CalculateCycleLengthWithHeuristicsGpu(PrimeOrderCalculatorAccelerator gpu, ulong modulus, ulong fallbackOrder = 0UL)
 	{
-		MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(modulus);
+		MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(modulus);
 		if (modulus <= 1UL || (modulus & 1UL) == 0UL)
 		{
 			return fallbackOrder != 0UL ? fallbackOrder : MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, modulus, divisorData);

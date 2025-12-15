@@ -66,7 +66,7 @@ internal static class Pow2MontgomeryModWindowedBenchmarkInputsProvider
         {
             Pow2MontgomeryModWindowedBenchmarkSeed seed = seeds[i];
             ulong modulus = 2UL * seed.Multiplier * seed.Exponent + 1UL;
-            MontgomeryDivisorData divisor = MontgomeryDivisorDataPool.Shared.FromModulus(modulus);
+            MontgomeryDivisorData divisor = MontgomeryDivisorData.FromModulus(modulus);
             ulong cycleLength = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, modulus, divisor);
             ulong reducedExponent = seed.Exponent % cycleLength;
             cases[i] = new Pow2MontgomeryModWindowedBenchmarkCase(

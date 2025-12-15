@@ -5,20 +5,20 @@ namespace PerfectNumbers.Core.Cpu;
 
 internal sealed class MersenneCpuDivisorScanSession(PrimeOrderCalculatorAccelerator gpu, ComputationDevice orderDevice) : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
 {
-	private Func<ulong, ulong> _getCycleLength = orderDevice switch
+	private Func<ulong, MontgomeryDivisorData, ulong> _getCycleLength = orderDevice switch
 	{
-		ComputationDevice.Gpu => divisor => DivisorCycleCache.Shared.GetCycleLengthGpu(gpu, divisor),
-		ComputationDevice.Hybrid => divisor => DivisorCycleCache.Shared.GetCycleLengthHybrid(gpu, divisor),
-		_ => static (divisor) => DivisorCycleCache.Shared.GetCycleLengthCpu(divisor),
+		ComputationDevice.Gpu => (divisor, divisorData) => DivisorCycleCache.Shared.GetCycleLengthGpu(gpu, divisor, divisorData),
+		ComputationDevice.Hybrid => (divisor, divisorData) => DivisorCycleCache.Shared.GetCycleLengthHybrid(gpu, divisor, divisorData),
+		_ => static (divisor, divisorData) => DivisorCycleCache.Shared.GetCycleLengthCpu(divisor, divisorData),
 	};
 
 	public void Configure(PrimeOrderCalculatorAccelerator gpu, ComputationDevice orderDevice)
 	{
 		_getCycleLength = orderDevice switch
 		{
-			ComputationDevice.Gpu => divisor => DivisorCycleCache.Shared.GetCycleLengthGpu(gpu, divisor),
-			ComputationDevice.Hybrid => divisor => DivisorCycleCache.Shared.GetCycleLengthHybrid(gpu, divisor),
-			_ => static (divisor) => DivisorCycleCache.Shared.GetCycleLengthCpu(divisor),
+			ComputationDevice.Gpu => (divisor, divisorData) => DivisorCycleCache.Shared.GetCycleLengthGpu(gpu, divisor, divisorData),
+			ComputationDevice.Hybrid => (divisor, divisorData) => DivisorCycleCache.Shared.GetCycleLengthHybrid(gpu, divisor, divisorData),
+			_ => static (divisor, divisorData) => DivisorCycleCache.Shared.GetCycleLengthCpu(divisor, divisorData),
 		};
 	}
 
@@ -45,7 +45,7 @@ internal sealed class MersenneCpuDivisorScanSession(PrimeOrderCalculatorAccelera
 
 		if (divisorCycle == 0UL)
 		{
-			divisorCycle = _getCycleLength(divisor);
+			divisorCycle = _getCycleLength(divisor, divisorData);
 			// This never kicks off in production code
 			// if (divisorCycle == 0UL)
 			// {

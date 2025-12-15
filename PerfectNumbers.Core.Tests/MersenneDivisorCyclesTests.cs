@@ -22,7 +22,7 @@ public class MersenneDivisorCyclesTests
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(divisor);
+			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
 			MersenneDivisorCycles.CalculateCycleLengthCpu(divisor, divisorData).Should().Be(expected);
 			MersenneDivisorCycles.CalculateCycleLengthGpu(divisor).Should().Be(expected);
 		}

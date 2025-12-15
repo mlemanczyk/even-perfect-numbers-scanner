@@ -17,10 +17,8 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 	private int _gpuBatchSize = GpuConstants.ScanBatchSize;
 	// EvenPerfectBitScanner configures the GPU tester once before scanning and never mutates the configuration afterwards,
 	// so the synchronization fields from the previous implementation remain commented out here.
-	// private readonly object _sync = new();
 	private ulong _divisorLimit;
 	private BigInteger _minK = BigInteger.One;
-	// private bool _isConfigured;
 
 	private readonly ConcurrentFixedCapacityStack<MersenneNumberDivisorByDivisorAccelerator>[] _resourcePool = [.. AcceleratorPool.Shared.Accelerators.Select(x => new ConcurrentFixedCapacityStack<MersenneNumberDivisorByDivisorAccelerator>(PerfectNumberConstants.DefaultPoolCapacity))];
 
@@ -64,14 +62,8 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 	{
 		// EvenPerfectBitScanner configures the GPU tester once before scanning and never mutates the configuration afterwards,
 		// so synchronization and runtime configuration guards are unnecessary here.
-		// lock (_sync)
-		// {
-		//     _divisorLimit = ComputeDivisorLimitFromMaxPrimeGpu(maxPrime);
-		//     _isConfigured = true;
-		// }
 
 		_divisorLimit = ComputeDivisorLimitFromMaxPrimeGpu(maxPrime);
-		// _isConfigured = true;
 	}
 
 	public bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out BigInteger divisor)
@@ -80,16 +72,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		int batchCapacity;
 
 		// EvenPerfectBitScanner only calls into this tester after configuring it once, so we can read the cached values without locking.
-		// lock (_sync)
-		// {
-		//     if (!_isConfigured)
-		//     {
-		//         throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-		//     }
-
-		//     allowedMax = ComputeAllowedMaxDivisorGpu(prime, _divisorLimit);
-		//     batchCapacity = _gpuBatchSize;
-		// }
 
 		allowedMax = ComputeAllowedMaxDivisorGpu(prime, _divisorLimit);
 		batchCapacity = _gpuBatchSize;
@@ -103,7 +85,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 
 		bool composite;
 		bool coveredRange;
-		ulong processedCount;
 		ulong lastProcessed;
 
 		// GpuPrimeWorkLimiter();
@@ -135,8 +116,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			resources.Counts,
 			resources.Cycles,
 			out lastProcessed,
-			out coveredRange,
-			out processedCount);
+			out coveredRange);
 
 		ReturnBatchResources(acceleratorIndex, resources);
 		// Monitor.Exit(gpuLease.ExecutionLock);
@@ -213,8 +193,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		int[] counts,
 		ulong[] cycles,
 		out ulong lastProcessed,
-		out bool coveredRange,
-		out ulong processedCount)
+		out bool coveredRange)
 	{
 		int batchCapacity = (int)divisorDataBuffer.Length;
 		bool composite = false;
@@ -244,7 +223,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		if (!hasCandidates)
 		{
 			coveredRange = true;
-			processedCount = processedCountLocal;
 			lastProcessed = lastProcessedLocal;
 			return false;
 		}
@@ -272,7 +250,7 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		ArrayView1D<ulong, Stride1D.Dense> exponentViewDevice = exponentBuffer.View;
 		ArrayView1D<byte, Stride1D.Dense> hitsView = hitsBuffer.View;
 		ArrayView1D<int, Stride1D.Dense> hitIndexView = hitIndexBuffer.View;
-		FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
+
 		static bool ProcessRange(
 			PrimeOrderCalculatorAccelerator gpu,
 			ulong prime,
@@ -291,7 +269,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			Span<int> offsetSpan,
 			Span<int> countSpan,
 			Span<ulong> cycleSpan,
-			FixedCapacityStack<MontgomeryDivisorData> divisorPool,
 			int chunkCountBaseline,
 			int acceleratorIndex,
 			ref bool composite,
@@ -341,8 +318,8 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 					if (localStepper.IsAdmissible())
 					{
 						ulong divisorValue = (ulong)nextDivisor128;
-						MontgomeryDivisorData montgomeryData = divisorPool.FromModulus(divisorValue);
-						ulong divisorCycle = ResolveDivisorCycle(gpu, divisorValue, prime, in montgomeryData);
+						MontgomeryDivisorData montgomeryData = MontgomeryDivisorData.FromModulus(divisorValue);
+						ulong divisorCycle = ResolveDivisorCycle(gpu, divisorValue, prime, montgomeryData);
 						if (divisorCycle == prime)
 						{
 							processedCountLocal += (ulong)(i + 1);
@@ -351,7 +328,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 							return false;
 						}
 
-						divisorPool.Return(montgomeryData);
 						divisorSpan[admissibleCount] = divisorValue;
 						divisorDataSpan[admissibleCount] = new GpuDivisorPartialData(divisorValue);
 						offsetSpan[admissibleCount] = admissibleCount;
@@ -434,7 +410,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 				offsetSpan,
 				countSpan,
 				cycleSpan,
-				divisorPool,
 				chunkCountBaseline,
 				acceleratorIndex,
 				ref composite,
@@ -446,7 +421,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			if (composite)
 			{
 				coveredRange = true;
-				processedCount = processedCountLocal;
 				lastProcessed = lastProcessedLocal;
 				return true;
 			}
@@ -474,7 +448,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 				offsetSpan,
 				countSpan,
 				cycleSpan,
-				divisorPool,
 				chunkCountBaseline,
 				acceleratorIndex,
 				ref composite,
@@ -487,7 +460,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 
 		processedAll = processedTop && processedBottom;
 		coveredRange = composite || processedAll;
-		processedCount = processedCountLocal;
 		lastProcessed = lastProcessedLocal;
 		return composite;
 	}

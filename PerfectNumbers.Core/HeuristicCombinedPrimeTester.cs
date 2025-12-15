@@ -483,7 +483,7 @@ public sealed class HeuristicCombinedPrimeTester
 	internal static HeuristicDivisorPreparation PrepareHeuristicDivisor(in HeuristicDivisorCandidate candidate)
 	{
 		ulong divisor = candidate.Value;
-		MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(divisor);
+		MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
 		bool hasCycleHint = TryGetCycleLengthHint(divisor, out ulong cycleLength);
 		return new(candidate, divisorData, cycleLength, hasCycleHint);
 	}

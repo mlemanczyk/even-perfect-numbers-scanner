@@ -183,15 +183,6 @@ namespace PerfectNumbers.Core
 		}
 
 		[ThreadStatic]
-		private static ArrayPool<MontgomeryDivisorData>? _montgomeryDivisorDataPool;
-
-		public static ArrayPool<MontgomeryDivisorData> MontgomeryDivisorDataPool
-		{
-			[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-			get => _montgomeryDivisorDataPool ??= ArrayPool<MontgomeryDivisorData>.Create();
-		}
-
-		[ThreadStatic]
 		private static ArrayPool<GpuDivisorPartialData>? _gpuDivisorPartialDataPool;
 
 		internal static ArrayPool<GpuDivisorPartialData> GpuDivisorPartialDataPool

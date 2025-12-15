@@ -25,7 +25,7 @@ internal static partial class PrimeOrderCalculator
 
 		ulong phi = prime - 1UL;
 
-		PartialFactorResult phiFactors = PartialFactorCpu(phi, config);
+		PartialFactorResult phiFactors = PartialFactorCpu(phi, divisorData, config);
 
 		ulong result;
 		if (phiFactors.Factors is null)
@@ -45,8 +45,7 @@ internal static partial class PrimeOrderCalculator
 			in UInt128 prime,
 			in UInt128? previousOrder,
 			in PrimeOrderCalculatorConfig config)
-	{
-		MontgomeryDivisorData divisorData;
+	{		
 		UInt128 result;
 		if (prime <= ulong.MaxValue)
 		{
@@ -65,16 +64,13 @@ internal static partial class PrimeOrderCalculator
 			}
 
 			ulong prime64 = (ulong)prime;
-			FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
-			divisorData = divisorPool.FromModulus(prime64);
+			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(prime64);
 			ulong order64 = CalculateCpu(prime64, previous, divisorData, config);
-			divisorPool.Return(divisorData);
 			result = order64 == 0UL ? UInt128.Zero : (UInt128)order64;
 		}
 		else
 		{
-			divisorData = MontgomeryDivisorData.Empty;
-			result = CalculateWideInternalCpu(prime, previousOrder, divisorData, config);
+			result = CalculateWideInternalCpu(prime, previousOrder, MontgomeryDivisorData.Empty, config);
 		}
 
 		return result;
@@ -561,7 +557,7 @@ internal static partial class PrimeOrderCalculator
 
 		SortFactorExponentSpans(factorsSpan, exponentsSpan, factorCount);
 
-		ExponentRemainderStepperCpu stepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
+		ExponentRemainderStepperCpu stepper = factors.ExponentRemainderStepper;
 
 		Span<ulong> stackCandidates = new(factors.StackCandidates);
 		Span<bool> stackEvaluations = new(factors.StackEvaluations);
@@ -579,7 +575,6 @@ internal static partial class PrimeOrderCalculator
 			ProcessExponentLoweringPrime(stackCandidates[..exponent], stackEvaluations[..exponent], ref order, primeFactor, exponent, ref stepper);
 		}
 
-		ThreadStaticPools.ReturnExponentStepperCpu(stepper);
 		return order;
 	}
 
@@ -673,7 +668,7 @@ internal static partial class PrimeOrderCalculator
 			return false;
 		}
 
-		PartialFactorResult factorization = PartialFactorCpu(order, config);
+		PartialFactorResult factorization = PartialFactorCpu(order, divisorData, config);
 		if (factorization.Factors is null)
 		{
 			factorization.Dispose();
@@ -810,7 +805,7 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		// Reuse the partial factorization from TryConfirmOrderCpu when available.
-		PartialFactorResult orderFactors = cachedOrderFactors ?? PartialFactorCpu(order, config);
+		PartialFactorResult orderFactors = cachedOrderFactors ?? PartialFactorCpu(order, divisorData, config);
 		try
 		{
 			if (orderFactors.Factors is null)
@@ -1106,7 +1101,7 @@ internal static partial class PrimeOrderCalculator
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool TryConfirmCandidateCpu(ulong prime, ulong candidate, in MontgomeryDivisorData divisorData, in PrimeOrderCalculatorConfig config, ref int powUsed, int powBudget)
 	{
-		PartialFactorResult factorization = PartialFactorCpu(candidate, config);
+		PartialFactorResult factorization = PartialFactorCpu(candidate, divisorData, config);
 
 		if (factorization.Factors is null)
 		{
@@ -1270,7 +1265,7 @@ internal static partial class PrimeOrderCalculator
 		=> exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(divisorData) == 1UL;
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	private static PartialFactorResult PartialFactorCpu(ulong value, in PrimeOrderCalculatorConfig config)
+	private static PartialFactorResult PartialFactorCpu(ulong value, in MontgomeryDivisorData divisorData, in PrimeOrderCalculatorConfig config)
 	{
 		if (value <= 1UL)
 		{
@@ -1279,7 +1274,7 @@ internal static partial class PrimeOrderCalculator
 
 		// stackalloc is faster than pooling
 
-		var result = PartialFactorResult.Rent();
+		var result = PartialFactorResult.Rent(divisorData);
 		ulong[] factors = result.Factors;
 		Span<ulong> primeSlots = new(factors);
 		int[] exponents = result.Exponents;

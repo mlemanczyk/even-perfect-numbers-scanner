@@ -510,38 +510,38 @@ public static class UInt128Extensions
 		ulong rightLow = (ulong)right;
 		ulong rightHigh = (ulong)(right >> 64);
 
-		var partial0 = Multiply64(leftLow, rightLow);
-		var partial1 = Multiply64(leftLow, rightHigh);
-		var partial2 = Multiply64(leftHigh, rightLow);
-		var partial3 = Multiply64(leftHigh, rightHigh);
+		(ulong carry, p0) = Multiply64(leftLow, rightLow);
+		(ulong partial1High, ulong partial1Low) = Multiply64(leftLow, rightHigh);
 
-		p0 = partial0.Low;
-		ulong carry = partial0.High;
-		ulong sum = carry + partial1.Low;
-		ulong carryMid = sum < partial1.Low ? 1UL : 0UL;
-		sum += partial2.Low;
-		if (sum < partial2.Low)
+		ulong sum = carry + partial1Low;
+		carry = sum < partial1Low ? 1UL : 0UL;
+
+		(ulong partial2High, ulong partial2Low) = Multiply64(leftHigh, rightLow);
+		sum += partial2Low;
+		if (sum < partial2Low)
 		{
-			carryMid++;
+			carry++;
 		}
 
 		p1 = sum;
-		sum = partial1.High + partial2.High;
-		ulong carryHigh = sum < partial2.High ? 1UL : 0UL;
-		sum += partial3.Low;
-		if (sum < partial3.Low)
+		sum = partial1High + partial2High;
+		partial2High = sum < partial2High ? 1UL : 0UL;
+
+		(partial1High, partial1Low) = Multiply64(leftHigh, rightHigh);
+		sum += partial1Low;
+		if (sum < partial1Low)
 		{
-			carryHigh++;
+			partial2High++;
 		}
 
-		sum += carryMid;
-		if (sum < carryMid)
+		sum += carry;
+		if (sum < carry)
 		{
-			carryHigh++;
+			partial2High++;
 		}
 
 		p2 = sum;
-		p3 = partial3.High + carryHigh;
+		p3 = partial1High + partial2High;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

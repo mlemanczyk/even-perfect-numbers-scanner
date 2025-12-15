@@ -49,7 +49,7 @@ public class PrimeOrderCalculatorTests
 			gpu,
 			prime,
 			previousOrder: null,
-			MontgomeryDivisorDataPool.Shared.FromModulus(prime),
+			MontgomeryDivisorData.FromModulus(prime),
 			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
@@ -69,14 +69,14 @@ public class PrimeOrderCalculatorTests
 			gpu,
 			prime,
 			previousOrder,
-			MontgomeryDivisorDataPool.Shared.FromModulus(prime),
+			MontgomeryDivisorData.FromModulus(prime),
 			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		ulong strict = PrimeOrderCalculator.CalculateGpu(
 			gpu,
 			prime,
 			previousOrder: null,
-			MontgomeryDivisorDataPool.Shared.FromModulus(prime),
+			MontgomeryDivisorData.FromModulus(prime),
 			PrimeOrderCalculator.PrimeOrderCalculatorConfig.StrictDefault);
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
@@ -95,7 +95,7 @@ public class PrimeOrderCalculatorTests
 			gpu,
 			prime,
 			previousOrder: null,
-			MontgomeryDivisorDataPool.Shared.FromModulus(prime),
+			MontgomeryDivisorData.FromModulus(prime),
 			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
@@ -117,7 +117,7 @@ public class PrimeOrderCalculatorTests
 			gpu,
 			prime: 13UL,
 			previousOrder: null,
-			MontgomeryDivisorDataPool.Shared.FromModulus(13UL),
+			MontgomeryDivisorData.FromModulus(13UL),
 			config);
 
 		PrimeOrderCalculatorAccelerator.Return(gpu);
@@ -137,7 +137,7 @@ public class PrimeOrderCalculatorTests
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			MontgomeryDivisorData divisorData = MontgomeryDivisorDataPool.Shared.FromModulus(239UL);
+			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(239UL);
 			ulong heuristic = PrimeOrderCalculator.CalculateGpu(
 				gpu,
 				prime: 239UL,

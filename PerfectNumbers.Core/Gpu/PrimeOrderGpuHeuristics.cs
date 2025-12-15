@@ -163,7 +163,7 @@ internal static partial class PrimeOrderGpuHeuristics
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	public static GpuPow2ModStatus TryPow2Mod(PrimeOrderCalculatorAccelerator gpu, ulong exponent, ulong prime, out ulong remainder, in MontgomeryDivisorData? divisorData)
+	public static GpuPow2ModStatus TryPow2Mod(PrimeOrderCalculatorAccelerator gpu, ulong exponent, ulong prime, out ulong remainder, in MontgomeryDivisorData divisorData)
 	{
 		Span<ulong> exponents = stackalloc ulong[1];
 		Span<ulong> remainders = stackalloc ulong[1];
@@ -175,7 +175,7 @@ internal static partial class PrimeOrderGpuHeuristics
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	public static GpuPow2ModStatus TryPow2ModBatch(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> exponents, ulong prime, Span<ulong> remainders, in MontgomeryDivisorData? divisorData)
+	public static GpuPow2ModStatus TryPow2ModBatch(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> exponents, ulong prime, Span<ulong> remainders, in MontgomeryDivisorData divisorData)
 	{
 		// This will never occur in production code
 		// if (exponents.Length == 0)
@@ -364,7 +364,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		return GpuPow2ModStatus.Success;
 	}
 
-	private static bool TryComputeOnGpu(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> exponents, ulong prime, MontgomeryDivisorData? divisorData, Span<ulong> results)
+	private static bool TryComputeOnGpu(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> exponents, ulong prime, MontgomeryDivisorData divisorData, Span<ulong> results)
 	{
 		// GpuPrimeWorkLimiter.Acquire();
 		int acceleratorIndex = gpu.AcceleratorIndex;
@@ -379,10 +379,11 @@ internal static partial class PrimeOrderGpuHeuristics
 		var exponentBufferView = gpu.InputView;
 		var remainderBufferView = gpu.OutputUlongView;
 
-		if (divisorData is null)
-		{
-			divisorData = MontgomeryDivisorData.Empty;
-		}
+		// if (divisorData.Equals(MontgomeryDivisorData.Empty) is null)
+		// if (divisorData is null)
+		// {
+		// 	divisorData = MontgomeryDivisorData.Empty;
+		// }
 
 		AcceleratorStream? stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		exponentBufferView.CopyFromCPU(stream, exponents);

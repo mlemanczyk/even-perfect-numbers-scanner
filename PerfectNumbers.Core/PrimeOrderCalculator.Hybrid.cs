@@ -25,7 +25,7 @@ internal static partial class PrimeOrderCalculator
 
 		ulong phi = prime - 1UL;
 
-		PartialFactorResult phiFactors = PartialFactorHybrid(gpu, phi, config);
+		PartialFactorResult phiFactors = PartialFactorHybrid(gpu, phi, divisorData, config);
 
 		ulong result;
 		if (phiFactors.Factors is null)
@@ -67,10 +67,8 @@ internal static partial class PrimeOrderCalculator
 			}
 
 			ulong prime64 = (ulong)prime;
-			FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
-			divisorData = divisorPool.FromModulus(prime64);
+			divisorData = MontgomeryDivisorData.FromModulus(prime64);
 			ulong order64 = CalculateHybrid(gpu, prime64, previous, divisorData, config);
-			divisorPool.Return(divisorData);
 			result = order64 == 0UL ? UInt128.Zero : (UInt128)order64;
 		}
 		else
@@ -134,7 +132,7 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	private static PartialFactorResult PartialFactorHybrid(PrimeOrderCalculatorAccelerator gpu, ulong value, in PrimeOrderCalculatorConfig config)
+	private static PartialFactorResult PartialFactorHybrid(PrimeOrderCalculatorAccelerator gpu, ulong value, in MontgomeryDivisorData divisorData, in PrimeOrderCalculatorConfig config)
 	{
 		if (value <= 1UL)
 		{
@@ -143,7 +141,7 @@ internal static partial class PrimeOrderCalculator
 
 		// stackalloc is faster than pooling
 
-		var result = PartialFactorResult.Rent();
+		var result = PartialFactorResult.Rent(divisorData);
 		ulong[] factors = result.Factors;
 		Span<ulong> primeSlots = new(factors);
 		int[] exponents = result.Exponents;
@@ -369,7 +367,7 @@ internal static partial class PrimeOrderCalculator
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool TryConfirmCandidateHybrid(PrimeOrderCalculatorAccelerator gpu, ulong prime, ulong candidate, in MontgomeryDivisorData divisorData, in PrimeOrderCalculatorConfig config, ref int powUsed, int powBudget)
 	{
-		PartialFactorResult factorization = PartialFactorHybrid(gpu, candidate, config);
+		PartialFactorResult factorization = PartialFactorHybrid(gpu, candidate, divisorData, config);
 
 		if (factorization.Factors is null)
 		{
@@ -466,7 +464,7 @@ internal static partial class PrimeOrderCalculator
 			return false;
 		}
 
-		PartialFactorResult factorization = PartialFactorHybrid(gpu, order, config);
+		PartialFactorResult factorization = PartialFactorHybrid(gpu, order, divisorData, config);
 		if (factorization.Factors is null)
 		{
 			factorization.Dispose();
@@ -514,7 +512,7 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		// Reuse the partial factorization from TryConfirmOrderCpu when available.
-		PartialFactorResult orderFactors = cachedOrderFactors ?? PartialFactorHybrid(gpu, order, config);
+		PartialFactorResult orderFactors = cachedOrderFactors ?? PartialFactorHybrid(gpu, order, divisorData, config);
 		try
 		{
 			if (orderFactors.Factors is null)

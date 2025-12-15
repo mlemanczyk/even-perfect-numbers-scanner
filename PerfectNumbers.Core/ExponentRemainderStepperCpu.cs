@@ -7,7 +7,7 @@ namespace PerfectNumbers.Core;
 /// Tracks successive Montgomery residues for a single divisor while scanning exponent candidates on the CPU path.
 /// Callers are responsible for seeding the stepper once per divisor and then advancing exponents in ascending order.
 /// </summary>
-internal struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ulong cycleLength = 0UL)
+public struct ExponentRemainderStepperCpu(in MontgomeryDivisorData divisor, ulong cycleLength = 0UL)
 {
     private readonly MontgomeryDivisorData _divisor = divisor;
     private readonly ulong _modulus = divisor.Modulus;

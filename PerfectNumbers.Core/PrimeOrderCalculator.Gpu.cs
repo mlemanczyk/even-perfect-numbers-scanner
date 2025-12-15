@@ -76,7 +76,7 @@ internal static partial class PrimeOrderCalculator
 			return gpuOrder;
 		}
 
-		PartialFactorResult phiFactors = PartialFactorGpu(gpu, phi, config);
+		PartialFactorResult phiFactors = PartialFactorGpu(gpu, phi, divisorData, config);
 
 		ulong result;
 		if (phiFactors.Factors is null)
@@ -117,10 +117,8 @@ internal static partial class PrimeOrderCalculator
 			}
 
 			ulong prime64 = (ulong)prime;
-			FixedCapacityStack<MontgomeryDivisorData> divisorPool = MontgomeryDivisorDataPool.Shared;
-			divisorData = divisorPool.FromModulus(prime64);
+			divisorData = MontgomeryDivisorData.FromModulus(prime64);
 			ulong order64 = CalculateGpu(gpu, prime64, previous, divisorData, config);
-			divisorPool.Return(divisorData);
 			result = order64 == 0UL ? UInt128.Zero : (UInt128)order64;
 		}
 		else
@@ -133,7 +131,7 @@ internal static partial class PrimeOrderCalculator
 	}
 	
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static UInt128 CalculateWideInternalGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128? previousOrder, in MontgomeryDivisorData? divisorData, in PrimeOrderCalculatorConfig config)
+    private static UInt128 CalculateWideInternalGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128? previousOrder, in MontgomeryDivisorData divisorData, in PrimeOrderCalculatorConfig config)
     {
         if (prime <= UInt128.One)
         {
@@ -233,7 +231,7 @@ internal static partial class PrimeOrderCalculator
 		return result != 0;
 	}
 
-    private static UInt128 ExponentLoweringWideGpu(PrimeOrderCalculatorAccelerator gpu, UInt128 order, in UInt128 prime, in MontgomeryDivisorData? divisorData, in PartialFactorResult128 factors)
+    private static UInt128 ExponentLoweringWideGpu(PrimeOrderCalculatorAccelerator gpu, UInt128 order, in UInt128 prime, in MontgomeryDivisorData divisorData, in PartialFactorResult128 factors)
     {
         ArrayPool<FactorEntry128> pool = ThreadStaticPools.FactorEntry128Pool;
         ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
@@ -281,7 +279,7 @@ internal static partial class PrimeOrderCalculator
         return order;
     }
 
-    private static UInt128 FinishStrictlyWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in MontgomeryDivisorData? divisorData)
+    private static UInt128 FinishStrictlyWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in MontgomeryDivisorData divisorData)
     {
         UInt128 phi = prime - UInt128.One;
         Dictionary<UInt128, int> counts = new(capacity: 8);
@@ -320,7 +318,7 @@ internal static partial class PrimeOrderCalculator
         return order;
     }
 
-    private static UInt128 InitializeStartingOrderWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128 phi, in MontgomeryDivisorData? divisorData)
+    private static UInt128 InitializeStartingOrderWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128 phi, in MontgomeryDivisorData divisorData)
     {
         UInt128 order = phi;
         UInt128 mod8 = prime & (UInt128)7UL;
@@ -337,7 +335,7 @@ internal static partial class PrimeOrderCalculator
     }
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	private static PartialFactorResult PartialFactorGpu(PrimeOrderCalculatorAccelerator gpu, ulong value, in PrimeOrderCalculatorConfig config)
+	private static PartialFactorResult PartialFactorGpu(PrimeOrderCalculatorAccelerator gpu, ulong value, in MontgomeryDivisorData divisorData, in PrimeOrderCalculatorConfig config)
 	{
 		if (value <= 1UL)
 		{
@@ -345,7 +343,7 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		// stackalloc is faster than pooling
-		var result = PartialFactorResult.Rent();
+		var result = PartialFactorResult.Rent(divisorData);
 		ulong[] factors = result.Factors;
 		Span<ulong> primeSlots = new (factors);
 		int[] exponents = result.Exponents;
@@ -478,7 +476,7 @@ internal static partial class PrimeOrderCalculator
 	}
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static UInt128 Pow2ModWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 exponent, in UInt128 modulus, in MontgomeryDivisorData? divisorData)
+    private static UInt128 Pow2ModWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 exponent, in UInt128 modulus, in MontgomeryDivisorData divisorData)
     {
         if (modulus == UInt128.One)
         {
@@ -509,7 +507,7 @@ internal static partial class PrimeOrderCalculator
 		PrimeOrderCalculatorAccelerator gpu,
         in UInt128 prime,
         in UInt128? previousOrder,
-        in MontgomeryDivisorData? divisorData,
+        in MontgomeryDivisorData divisorData,
         in PrimeOrderCalculatorConfig config,
         in UInt128 phi,
         in PartialFactorResult128 phiFactors)
@@ -540,7 +538,7 @@ internal static partial class PrimeOrderCalculator
         return candidateOrder;
     }
 
-    private static bool TryConfirmCandidateWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128 candidate, in PrimeOrderCalculatorConfig config, ref int powUsed, int powBudget, in MontgomeryDivisorData? divisorData)
+    private static bool TryConfirmCandidateWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128 candidate, in PrimeOrderCalculatorConfig config, ref int powUsed, int powBudget, in MontgomeryDivisorData divisorData)
     {
         PartialFactorResult128 factorization = PartialFactorWide(candidate, config);
         if (factorization.Factors is null)
@@ -593,7 +591,7 @@ internal static partial class PrimeOrderCalculator
         return true;
     }
 
-    private static bool TryConfirmOrderWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128 order, in MontgomeryDivisorData? divisorData, in PrimeOrderCalculatorConfig config)
+    private static bool TryConfirmOrderWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 prime, in UInt128 order, in MontgomeryDivisorData divisorData, in PrimeOrderCalculatorConfig config)
     {
         if (order == UInt128.Zero)
         {
@@ -670,7 +668,7 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		// Reuse the partial factorization from TryConfirmOrderCpu when available.
-		PartialFactorResult orderFactors = cachedOrderFactors ?? PartialFactorGpu(gpu, order, config);
+		PartialFactorResult orderFactors = cachedOrderFactors ?? PartialFactorGpu(gpu, order, divisorData, config);
 		try
 		{
 			if (orderFactors.Factors is null)
@@ -854,7 +852,7 @@ internal static partial class PrimeOrderCalculator
         in UInt128 prime,
         in UInt128 order,
         in UInt128? previousOrder,
-        in MontgomeryDivisorData? divisorData,
+        in MontgomeryDivisorData divisorData,
         in PrimeOrderCalculatorConfig config,
         out UInt128 result)
     {
@@ -1023,7 +1021,7 @@ internal static partial class PrimeOrderCalculator
 		return true;
 	}
 
-    private static bool TrySpecialMaxWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 phi, in UInt128 prime, in MontgomeryDivisorData? divisorData, in PartialFactorResult128 factors)
+    private static bool TrySpecialMaxWideGpu(PrimeOrderCalculatorAccelerator gpu, in UInt128 phi, in UInt128 prime, in MontgomeryDivisorData divisorData, in PartialFactorResult128 factors)
     {
         ReadOnlySpan<FactorEntry128> factorSpan = factors.Factors;
         int length = factors.Count;

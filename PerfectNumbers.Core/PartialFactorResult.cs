@@ -2,7 +2,7 @@ using PerfectNumbers.Core.Gpu;
 
 namespace PerfectNumbers.Core
 {
-	public sealed class PartialFactorResult
+	public sealed class PartialFactorResult(in MontgomeryDivisorData divisorData)
 	{
 		[ThreadStatic]
 		private static PartialFactorResult? s_poolHead;
@@ -13,26 +13,27 @@ namespace PerfectNumbers.Core
 		public readonly List<PartialFactorPendingEntry> PendingFactors = new (PrimeOrderConstants.GpuSmallPrimeFactorSlots);
 		public readonly ulong[] StackCandidates = new ulong[PrimeOrderConstants.GpuSmallPrimeFactorSlots << 3];
 		public readonly bool[] StackEvaluations = new bool[PrimeOrderConstants.GpuSmallPrimeFactorSlots << 3];
+		public ExponentRemainderStepperCpu ExponentRemainderStepper = new(divisorData);
 		private PartialFactorResult? _next;
 		public ulong Cofactor;
 		public bool FullyFactored;
 		public int Count;
 		public bool CofactorIsPrime;
 
-		private PartialFactorResult()
-		{
-		}
-
-		public static PartialFactorResult Rent()
+		public static PartialFactorResult Rent(in MontgomeryDivisorData divisorData)
 		{
 			PartialFactorResult? instance = s_poolHead;
 			if (instance is null)
 			{
-				instance = new PartialFactorResult();
+				instance = new PartialFactorResult(divisorData);
 			}
 			else
 			{
 				s_poolHead = instance._next;
+				if (!instance.ExponentRemainderStepper.MatchesDivisor(divisorData, 0UL))
+				{
+					instance.ExponentRemainderStepper = new(divisorData, 0UL);
+				}
 			}
 
 			instance._next = null;
@@ -43,7 +44,7 @@ namespace PerfectNumbers.Core
 			return instance;
 		}
 
-		public static readonly PartialFactorResult Empty = new()
+		public static readonly PartialFactorResult Empty = new(MontgomeryDivisorData.Empty)
 		{
 			Cofactor = 1UL,
 			FullyFactored = true

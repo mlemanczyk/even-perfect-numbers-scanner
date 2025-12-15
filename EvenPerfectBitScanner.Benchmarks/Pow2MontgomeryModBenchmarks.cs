@@ -39,7 +39,7 @@ public class Pow2MontgomeryModBenchmarks
 			ulong smallModulus = NextSmallOddModulus();
 			_smallDivisors[i] = CreateMontgomeryDivisorData(smallModulus);
 			_smallExponents[i] = NextSmallExponent();
-			_smallCycles[i] = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, smallModulus, MontgomeryDivisorDataPool.Shared.FromModulus(smallModulus));
+			_smallCycles[i] = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, smallModulus, MontgomeryDivisorData.FromModulus(smallModulus));
 
 			Console.WriteLine($"Calculating large cycle {i + 1} with heuristics");
 			(ulong largeModulus, ulong largeCycle) = NextLargeModulusAndCycle();
