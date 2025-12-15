@@ -117,23 +117,22 @@ public sealed class MersenneNumberDivisorByDivisorCpuTester : IMersenneNumberDiv
     {
         BigInteger allowedMax = ComputeAllowedMaxDivisorBig(prime, _divisorLimit);
 
-        // The CPU by-divisor run always hands us primes with enormous divisor limits, so the fallback below never executes.
-        // if (allowedMax < 3UL)
-        // {
+		// The CPU by-divisor run always hands us primes with enormous divisor limits, so the fallback below never executes.
+		// if (allowedMax < 3UL)
+		// {
 		//     // EvenPerfectBitScanner routes primes below the small-divisor cutoff to the GPU path, so the CPU path still sees
 		//     // trivial candidates during targeted tests. Short-circuit here to keep those runs aligned with the production flow.
 		//     divisorsExhausted = true;
 		//     return true;
 		// }
 
-		bool processedAll;
 
-        bool composite = CheckDivisors(
-            gpu,
-            prime,
-            allowedMax,
-            _minK,
-            out processedAll,
+		bool composite = CheckDivisors(
+			gpu,
+			prime,
+			allowedMax,
+			_minK,
+			out bool processedAll,
 			out divisor);
 
 		if (composite)
