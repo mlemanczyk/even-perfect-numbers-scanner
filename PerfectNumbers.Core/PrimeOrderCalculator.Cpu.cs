@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -178,6 +179,17 @@ internal static partial class PrimeOrderCalculator
 		return candidateOrder;
 	}
 
+	private static readonly ConcurrentDictionary<int, ulong> _dictionaryStats = new(20_480, 64);
+	private static void PrintStats(int count)
+	{
+		_dictionaryStats.AddOrUpdate(count, 1UL, (index, item) => item + 1UL);
+		Console.WriteLine("Current stats:");
+		foreach(var (key, value) in _dictionaryStats)
+		{
+			Console.WriteLine($"Count {key} = {value}");
+		}
+	}
+
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static UInt128 FinishStrictlyWideCpu(in UInt128 prime, in MontgomeryDivisorData? divisorData)
 	{
@@ -186,6 +198,7 @@ internal static partial class PrimeOrderCalculator
 		Dictionary<UInt128, int> counts = uInt128IntDictionaryPool.Rent(capacity: 8);
 		FactorCompletelyWide(phi, counts);
 		int entryCount = counts.Count;
+		PrintStats(entryCount);
 		if (entryCount == 0)
 		{
 			uInt128IntDictionaryPool.Return(counts);
@@ -1470,36 +1483,33 @@ internal static partial class PrimeOrderCalculator
 		for (int i = 0; i < primeCount && value > 1UL; i++)
 		{
 			uint primeCandidate = primes[i];
-			if (primeCandidate > limit)
+			if (primeCandidate > limit || squares[i] > value)
 			{
 				break;
 			}
 
-			ulong primeValue = squares[i];
 			// primeSquare will never == 0 in production code
 			// if (primeSquare != 0 && primeSquare > remainingLocal)
-			if (primeValue > value)
-			{
-				break;
-			}
-
-			primeValue = primeCandidate;
+			ulong primeValue = primeCandidate;
 			// primeCandidate will never equal 0 in production code
 			// if (primeCandidate == 0UL)
 			// {
 			// 	continue;
 			// }
 
-			if (value.ReduceCycleRemainder(primeValue) != 0UL)
+			if (value != 0UL && value < primeValue)
 			{
 				continue;
 			}
 
-			int exponent = ExtractSmallPrimeExponent(ref value, primeValue);
-			if (exponent == 0)
+			// This is cheap early exclusion of the candidate. We skip the candidate here in the most cases.
+			ulong quotient = value / primeValue;
+			if (value - (quotient * primeValue) != 0UL)
 			{
 				continue;
 			}
+
+			int exponent = ExtractSmallPrimeExponent(ref value, primeValue, quotient);
 
 			primeTargets[factorCount] = primeValue;
 			exponentTargets[factorCount] = exponent;
@@ -1510,63 +1520,67 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-	// Unroll the initial divisions because small exponents dominate in practice.
-	private static int ExtractSmallPrimeExponent(ref ulong value, ulong primeValue)
+	// Unroll the initial divisions because small exponents dominate in practice. Mostly we get exponent = 0-6 from this method.
+	private static int ExtractSmallPrimeExponent(ref ulong value, ulong primeValue, ulong quotient)
 	{
-		ulong dividend = value;
-		ulong quotient = dividend / primeValue;
-		ulong remainder = dividend - (quotient * primeValue);
-		if (remainder != 0UL)
-		{
-			return 0;
-		}
-
-		dividend = quotient;
-		int exponent = 1;
-
+		ulong dividend = quotient;
 		quotient = dividend / primeValue;
-		remainder = dividend - (quotient * primeValue);
-		if (remainder != 0UL)
+		if (dividend - (quotient * primeValue) != 0UL)
 		{
 			value = dividend;
-			return exponent;
+			return 1;
 		}
 
 		dividend = quotient;
-		exponent++;
-
 		quotient = dividend / primeValue;
-		remainder = dividend - (quotient * primeValue);
-		if (remainder != 0UL)
+		if (dividend - (quotient * primeValue) != 0UL)
 		{
 			value = dividend;
-			return exponent;
+			return 2;
 		}
 
 		dividend = quotient;
-		exponent++;
-
 		quotient = dividend / primeValue;
-		remainder = dividend - (quotient * primeValue);
-		if (remainder != 0UL)
+		if (dividend - (quotient * primeValue) != 0UL)
 		{
 			value = dividend;
-			return exponent;
+			return 3;
 		}
 
 		dividend = quotient;
-		exponent++;
+		quotient = dividend / primeValue;
+		if (dividend - (quotient * primeValue) != 0UL)
+		{
+			value = dividend;
+			return 4;
+		}
 
+		dividend = quotient;
+		quotient = dividend / primeValue;
+		if (dividend - (quotient * primeValue) != 0UL)
+		{
+			value = dividend;
+			return 5;
+		}
+
+		dividend = quotient;
+		quotient = dividend / primeValue;
+		if (dividend - (quotient * primeValue) != 0UL)
+		{
+			value = dividend;
+			return 6;
+		}
+
+		int exponent = 7;
 		while (true)
 		{
+			dividend = quotient;
 			quotient = dividend / primeValue;
-			remainder = dividend - (quotient * primeValue);
-			if (remainder != 0UL)
+			if (dividend - (quotient * primeValue) != 0UL)
 			{
 				break;
 			}
 
-			dividend = quotient;
 			exponent++;
 		}
 
@@ -1730,6 +1744,7 @@ internal static partial class PrimeOrderCalculator
 		ulong phi = prime - 1UL;
 		Dictionary<ulong, int> counts = ThreadStaticPools.RentFactorCountDictionary();
 		FactorCompletelyCpu(phi, counts, false);
+		PrintStats(counts.Count);
 		if (counts.Count == 0)
 		{
 			ThreadStaticPools.ReturnFactorCountDictionary(counts);

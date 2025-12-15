@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using PerfectNumbers.Core.Gpu.Accelerators;
@@ -1132,52 +1133,67 @@ public static partial class ULongExtensions
 		return x1;
 	}
 
+	private static readonly ConcurrentDictionary<int, ulong> _dictionaryStats = new(20_480, 64);
+	private static void PrintStats(int count)
+	{
+		_dictionaryStats.AddOrUpdate(count, 1UL, (index, item) => item + 1UL);
+		Console.WriteLine("Current stats:");
+		foreach(var (key, value) in _dictionaryStats)
+		{
+			Console.WriteLine($"Count {key} = {value}");
+		}
+	}
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong ReduceCycleRemainder(this ulong value, ulong modulus)
 	{
-		// BigIntegerExtensions.Track(modulus);
-		// BigIntegerExtensions.DumpCycleRemainderStats();
-
 		if (value < modulus)
 		{
 			return value;
 		}
 
-		value -= modulus;
-		if (value < modulus)
-		{
-			return value;
-		}
+		// We always hit only the first if in EvenPerfectBitScanner --mersenne=bydivisor execution paths.
+		// value -= modulus;
+		// if (value < modulus)
+		// {
+		// 	PrintStats(2);
+		// 	return value;
+		// }
 
-		value -= modulus;
-		if (value < modulus)
-		{
-			return value;
-		}
+		// value -= modulus;
+		// if (value < modulus)
+		// {
+		// 	PrintStats(3);
+		// 	return value;
+		// }
 
-		value -= modulus;
-		if (value < modulus)
-		{
-			return value;
-		}
+		// value -= modulus;
+		// if (value < modulus)
+		// {
+		// 	PrintStats(4);
+		// 	return value;
+		// }
 
-		value -= modulus;
-		if (value < modulus)
-		{
-			return value;
-		}
+		// value -= modulus;
+		// if (value < modulus)
+		// {
+		// 	PrintStats(5);
+		// 	return value;
+		// }
 
-		value -= modulus;
-		if (value < modulus)
-		{
-			return value;
-		}
+		// value -= modulus;
+		// if (value < modulus)
+		// {
+		// 	PrintStats(6);
+		// 	return value;
+		// }
 
-		value -= modulus;
-		if (value < modulus)
-		{
-			return value;
-		}
+		// value -= modulus;
+		// if (value < modulus)
+		// {
+		// 	PrintStats(7);
+		// 	return value;
+		// }
 
 		return value % modulus;
 	}
