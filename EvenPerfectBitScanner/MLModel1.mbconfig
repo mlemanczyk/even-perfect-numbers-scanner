@@ -1,0 +1,337 @@
+﻿{
+  "Scenario": "Regression",
+  "DataSource": {
+    "Version": 3,
+    "EscapeCharacter": "\"",
+    "ReadMultiLines": false,
+    "KeepDiacritics": false,
+    "KeepPunctuations": false,
+    "AllowQuoting": false,
+    "Type": "TabularFile",
+    "FilePath": "C:\\Users\\marek\\source\\repos\\even-perfect-numbers-scanner\\BuildDivisorTransitions\\bin\\Release\\net8.0\\NextKForecastTraning.csv",
+    "Delimiter": ",",
+    "DecimalMarker": ".",
+    "HasHeader": true,
+    "ColumnProperties": [
+      {
+        "ColumnName": "p",
+        "ColumnPurpose": "Feature",
+        "ColumnDataFormat": "Single",
+        "IsCategorical": false,
+        "Type": "Column",
+        "Version": 5
+      },
+      {
+        "ColumnName": "divisor",
+        "ColumnPurpose": "Feature",
+        "ColumnDataFormat": "Single",
+        "IsCategorical": false,
+        "Type": "Column",
+        "Version": 5
+      },
+      {
+        "ColumnName": "lastDigit",
+        "ColumnPurpose": "Feature",
+        "ColumnDataFormat": "Single",
+        "IsCategorical": true,
+        "Type": "Column",
+        "Version": 5
+      },
+      {
+        "ColumnName": "k",
+        "ColumnPurpose": "Feature",
+        "ColumnDataFormat": "Single",
+        "IsCategorical": false,
+        "Type": "Column",
+        "Version": 5
+      },
+      {
+        "ColumnName": "lastMersenneDigit",
+        "ColumnPurpose": "Feature",
+        "ColumnDataFormat": "Single",
+        "IsCategorical": true,
+        "Type": "Column",
+        "Version": 5
+      },
+      {
+        "ColumnName": "isNextKHigher",
+        "ColumnPurpose": "Label",
+        "ColumnDataFormat": "Single",
+        "IsCategorical": true,
+        "Type": "Column",
+        "Version": 5
+      }
+    ]
+  },
+  "Environment": {
+    "Type": "LocalCPU",
+    "Version": 1
+  },
+  "RunHistory": {
+    "Version": 3,
+    "Type": "Result",
+    "Trials": [
+      {
+        "Version": 1,
+        "Type": "Trial",
+        "TrainerName": "FastTreeRegression",
+        "Score": 0.30006118613190746,
+        "RuntimeInSeconds": 1.489,
+        "Parameter": {
+          "_SCHEMA_": "e0 * e1 * e2",
+          "e0": {
+            "OutputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ],
+            "InputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ]
+          },
+          "e1": {
+            "InputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ],
+            "OutputColumnName": "Features"
+          },
+          "e2": {
+            "NumberOfLeaves": 4,
+            "MinimumExampleCountPerLeaf": 9,
+            "NumberOfTrees": 8,
+            "MaximumBinCountPerFeature": 317,
+            "FeatureFraction": 0.98434331463123226,
+            "LearningRate": 0.3857390791447961,
+            "LabelColumnName": "isNextKHigher",
+            "FeatureColumnName": "Features",
+            "DiskTranspose": false
+          }
+        }
+      },
+      {
+        "Version": 1,
+        "Type": "Trial",
+        "TrainerName": "FastTreeRegression",
+        "Score": 0.299969238277351,
+        "RuntimeInSeconds": 1.496,
+        "Parameter": {
+          "_SCHEMA_": "e0 * e1 * e2",
+          "e0": {
+            "OutputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ],
+            "InputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ]
+          },
+          "e1": {
+            "InputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ],
+            "OutputColumnName": "Features"
+          },
+          "e2": {
+            "NumberOfLeaves": 4,
+            "MinimumExampleCountPerLeaf": 9,
+            "NumberOfTrees": 8,
+            "MaximumBinCountPerFeature": 317,
+            "FeatureFraction": 0.98444606904931908,
+            "LearningRate": 0.38567641892007121,
+            "LabelColumnName": "isNextKHigher",
+            "FeatureColumnName": "Features",
+            "DiskTranspose": false
+          }
+        }
+      },
+      {
+        "Version": 1,
+        "Type": "Trial",
+        "TrainerName": "FastTreeRegression",
+        "Score": 0.29992424440705012,
+        "RuntimeInSeconds": 0.993,
+        "Parameter": {
+          "_SCHEMA_": "e0 * e1 * e2",
+          "e0": {
+            "OutputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ],
+            "InputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ]
+          },
+          "e1": {
+            "InputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ],
+            "OutputColumnName": "Features"
+          },
+          "e2": {
+            "NumberOfLeaves": 4,
+            "MinimumExampleCountPerLeaf": 9,
+            "NumberOfTrees": 8,
+            "MaximumBinCountPerFeature": 317,
+            "FeatureFraction": 0.98445819026817927,
+            "LearningRate": 0.38613186537816252,
+            "LabelColumnName": "isNextKHigher",
+            "FeatureColumnName": "Features",
+            "DiskTranspose": false
+          }
+        }
+      },
+      {
+        "Version": 1,
+        "Type": "Trial",
+        "TrainerName": "FastTreeRegression",
+        "Score": 0.29992046748552242,
+        "RuntimeInSeconds": 1.389,
+        "Parameter": {
+          "_SCHEMA_": "e0 * e1 * e2",
+          "e0": {
+            "OutputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ],
+            "InputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ]
+          },
+          "e1": {
+            "InputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ],
+            "OutputColumnName": "Features"
+          },
+          "e2": {
+            "NumberOfLeaves": 4,
+            "MinimumExampleCountPerLeaf": 9,
+            "NumberOfTrees": 8,
+            "MaximumBinCountPerFeature": 317,
+            "FeatureFraction": 0.984395476164661,
+            "LearningRate": 0.3858463322510558,
+            "LabelColumnName": "isNextKHigher",
+            "FeatureColumnName": "Features",
+            "DiskTranspose": false
+          }
+        }
+      },
+      {
+        "Version": 1,
+        "Type": "Trial",
+        "TrainerName": "FastTreeRegression",
+        "Score": 0.29984566377505206,
+        "RuntimeInSeconds": 1.512,
+        "Parameter": {
+          "_SCHEMA_": "e0 * e1 * e2",
+          "e0": {
+            "OutputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ],
+            "InputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ]
+          },
+          "e1": {
+            "InputColumnNames": [
+              "p",
+              "divisor",
+              "lastDigit",
+              "k",
+              "lastMersenneDigit"
+            ],
+            "OutputColumnName": "Features"
+          },
+          "e2": {
+            "NumberOfLeaves": 4,
+            "MinimumExampleCountPerLeaf": 8,
+            "NumberOfTrees": 8,
+            "MaximumBinCountPerFeature": 317,
+            "FeatureFraction": 0.98439134546037266,
+            "LearningRate": 0.38521733136295422,
+            "LabelColumnName": "isNextKHigher",
+            "FeatureColumnName": "Features",
+            "DiskTranspose": false
+          }
+        }
+      }
+    ],
+    "Estimators": {
+      "e0": "ReplaceMissingValues",
+      "e1": "Concatenate",
+      "e2": "FastTreeRegression",
+      "e3": "FastForestRegression",
+      "e4": "LightGbmRegression",
+      "e5": "LbfgsPoissonRegressionRegression",
+      "e6": "SdcaRegression"
+    },
+    "Schema": "e0 * e1 * (e2 + e3 + e4 + e5 + e6)",
+    "MetricName": "RSquared",
+    "ModelFilePath": "C:\\Users\\marek\\source\\repos\\even-perfect-numbers-scanner\\EvenPerfectBitScanner\\MLModel1.mlnet"
+  },
+  "Type": "TrainingConfig",
+  "Version": 5,
+  "TrainingOption": {
+    "Version": 2,
+    "Subsampling": false,
+    "Type": "RegressionTrainingOption",
+    "TrainingTime": 3600,
+    "LabelColumn": "isNextKHigher",
+    "ValidationOption": {
+      "Version": 0,
+      "Type": "CrossValidationValidationOption",
+      "NumberOfFolds": 10
+    }
+  }
+}

@@ -95,6 +95,36 @@
                         "problemMatcher": "$msCompile"
                 },
                 {
+                        "label": "Build BuildDivisorTransitions Debug",
+                        "command": "dotnet",
+                        "type": "process",
+                        "args": [
+                                "build",
+                                "${workspaceFolder}/BuildDivisorTransitions/BuildDivisorTransitions.csproj",
+                                "--configuration",
+                                "Debug",
+                                "--framework",
+                                "net8.0"
+                        ],
+                        "group": "build",
+                        "problemMatcher": "$msCompile"
+                },
+                {
+                        "label": "Build BuildDivisorTransitions Release",
+                        "command": "dotnet",
+                        "type": "process",
+                        "args": [
+                                "build",
+                                "${workspaceFolder}/BuildDivisorTransitions/BuildDivisorTransitions.csproj",
+                                "--configuration",
+                                "Release",
+                                "--framework",
+                                "net8.0"
+                        ],
+                        "group": "build",
+                        "problemMatcher": "$msCompile"
+                },
+                {
                         "label": "Run EvenPerfectBitScanner",
                         "type": "process",
                         "command": "dotnet",
@@ -117,6 +147,21 @@
                                 "run",
                                 "--project",
                                 "${workspaceFolder}/EvenPerfectBitScanner.ResultsParser/EvenPerfectBitScanner.ResultsParser.csproj",
+                                "--configuration",
+                                "Release",
+                                "--framework",
+                                "net8.0"
+                        ],
+                        "problemMatcher": []
+                },
+                {
+                        "label": "Run BuildDivisorTransitions",
+                        "type": "process",
+                        "command": "dotnet",
+                        "args": [
+                                "run",
+                                "--project",
+                                "${workspaceFolder}/BuildDivisorTransitions/BuildDivisorTransitions.csproj",
                                 "--configuration",
                                 "Release",
                                 "--framework",

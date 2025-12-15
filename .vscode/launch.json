@@ -8,7 +8,8 @@
       "options": [
         "EvenPerfectBitScanner",
         "EvenPerfectBitScanner.ResultsParser",
-        "EvenPerfectBitScanner.Benchmarks"
+        "EvenPerfectBitScanner.Benchmarks",
+        "BuildDivisorTransitions"
       ],
       "default": "EvenPerfectBitScanner"
     }
@@ -61,6 +62,33 @@
       "noDebug": true,
       "preLaunchTask": "Build EvenPerfectBitScanner Release",
       "program": "${workspaceFolder}/EvenPerfectBitScanner/bin/Release/net8.0/EvenPerfectBitScanner.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "justMyCode": false
+    },
+    {
+      "name": "Run BuildDivisorTransitions",
+      "type": "coreclr",
+      "request": "launch",
+      "noDebug": true,
+      "preLaunchTask": "Build BuildDivisorTransitions Release",
+      "program": "${workspaceFolder}/BuildDivisorTransitions/bin/Release/net8.0/BuildDivisorTransitions.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "justMyCode": false
+    },
+    {
+      "name": "Debug BuildDivisorTransitions",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build BuildDivisorTransitions Debug",
+      "program": "${workspaceFolder}/BuildDivisorTransitions/bin/Debug/net8.0/BuildDivisorTransitions.dll",
       "args": [],
       "cwd": "${workspaceFolder}",
       "stopAtEntry": false,

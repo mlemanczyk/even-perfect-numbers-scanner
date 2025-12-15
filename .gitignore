@@ -8,6 +8,9 @@ EvenPerfectBitScanner.ResultsParser/bin/*
 EvenPerfectBitScanner.ResultsParser/obj/*
 EvenPerfectBitScanner.Tests/bin/*
 EvenPerfectBitScanner.Tests/obj/*
+BuildDivisorTransitions/bin/*
+BuildDivisorTransitions/obj/*
 PerfectNumbers.Core.Tests/bin/*
 PerfectNumbers.Core.Tests/obj/*
 .DS_Store
+.vs/*
