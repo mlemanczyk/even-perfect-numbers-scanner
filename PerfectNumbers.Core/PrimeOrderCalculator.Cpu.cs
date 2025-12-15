@@ -123,7 +123,7 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		ulong candidateOrder = InitializeStartingOrderCpu(prime, phi, divisorData);
-		candidateOrder = ExponentLoweringCpu(candidateOrder, prime, phiFactors, divisorData);
+		candidateOrder = ExponentLoweringCpu(candidateOrder, phiFactors, divisorData);
 
 		if (TryConfirmOrderCpu(prime, candidateOrder, divisorData, config, out PartialFactorResult? orderFactors))
 		{
@@ -542,39 +542,34 @@ internal static partial class PrimeOrderCalculator
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-	private static ulong ExponentLoweringCpu(ulong order, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
+	private static ulong ExponentLoweringCpu(ulong order, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
 	{
-		int length = factors.Count;
-		ReadOnlySpan<ulong> factorSpan = new(factors.Factors, 0, length);
-		ReadOnlySpan<int> exponentsSpan = new(factors.Exponents, 0, length);
-
-		int newLength = length + 1;
-		ulong[] tempFactorsArray = factors.TempFactorsArray;
-		int[] tempExponentsArray = factors.TempExponentsArray;
-
-		Span<ulong> ulongBuffer = tempFactorsArray;
-		factorSpan.CopyTo(ulongBuffer);
-		Span<int> intBuffer = tempExponentsArray;
-		exponentsSpan.CopyTo(intBuffer);
+		int factorCount = factors.Count;
+		int newFactorCount = factorCount + 1;
+		Span<ulong> factorsSpan = new(factors.Factors, 0, newFactorCount);
+		Span<int> exponentsSpan = new(factors.Exponents, 0, newFactorCount);
 
 		if (!factors.FullyFactored && factors.Cofactor > 1UL && factors.CofactorIsPrime)
 		{
-			ulongBuffer[length] = factors.Cofactor;
-			intBuffer[length] = 1;
-			length = newLength;
+			factorsSpan[factorCount] = factors.Cofactor;
+			exponentsSpan[factorCount] = 1;
+			factors.Count = factorCount = newFactorCount;
+			factors.Cofactor = 1UL;
+			factors.FullyFactored = true;
+			factors.CofactorIsPrime = false;
 		}
 
-		Array.Sort(tempFactorsArray, tempExponentsArray, 0, length);
+		SortFactorExponentSpans(factorsSpan, exponentsSpan, factorCount);
 
 		ExponentRemainderStepperCpu stepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 
 		Span<ulong> stackCandidates = new(factors.StackCandidates);
 		Span<bool> stackEvaluations = new(factors.StackEvaluations);
 
-		for (int i = 0; i < length; i++)
+		for (int i = 0; i < factorCount; i++)
 		{
-			ulong primeFactor = ulongBuffer[i];
-			int exponent = intBuffer[i];
+			ulong primeFactor = factorsSpan[i];
+			int exponent = exponentsSpan[i];
 			// Factor exponents produced by Pollard-Rho and trial division are always positive in the scanner flow.
 			// if (exponent <= 0)
 			// {
@@ -587,6 +582,29 @@ internal static partial class PrimeOrderCalculator
 		ThreadStaticPools.ReturnExponentStepperCpu(stepper);
 		return order;
 	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	private static void SortFactorExponentSpans(Span<ulong> factorsSpan, Span<int> exponentsSpan, int length)
+	{
+		if (length <= 1)
+		{
+			return;
+		}
+
+		for (int i = 1; i < length; i++)
+		{
+			int current = i;
+			int previous = current - 1;
+			while (current > 0 && factorsSpan[current] < factorsSpan[previous])
+			{
+				(factorsSpan[current], factorsSpan[previous]) = (factorsSpan[previous], factorsSpan[current]);
+				(exponentsSpan[current], exponentsSpan[previous]) = (exponentsSpan[previous], exponentsSpan[current]);
+				current--;
+				previous--;
+			}
+		}
+	}
+
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static void ProcessExponentLoweringPrime(Span<ulong> candidateBuffer, Span<bool> evaluationBuffer, ref ulong order, ulong primeFactor, int exponent, ref ExponentRemainderStepperCpu stepper)
@@ -696,11 +714,9 @@ internal static partial class PrimeOrderCalculator
 		int length = factorization.Count;
 
 		const int StackExponentCapacity = 32;
-		const int ExponentHardLimit = 256;
 
 		Span<ulong> stackBuffer = stackalloc ulong[StackExponentCapacity];
 
-		ulong[]? heapCandidateArray = null;
 		ExponentRemainderStepperCpu stepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 		bool violates = false;
 
@@ -715,24 +731,7 @@ internal static partial class PrimeOrderCalculator
 			// 	continue;
 			// }
 
-			if (exponent > ExponentHardLimit)
-			{
-				throw new InvalidOperationException($"Factor exponent {exponent} exceeds the supported limit of {ExponentHardLimit}.");
-			}
-
-			if (exponent <= StackExponentCapacity)
-			{
-				if (ValidateOrderForFactor(stackBuffer[..exponent], primeFactor, exponent, order, ref stepper))
-				{
-					violates = true;
-					break;
-				}
-
-				continue;
-			}
-
-			heapCandidateArray ??= FixedCapacityPools.ExclusiveUlongArray.Rent(ExponentHardLimit);
-			if (ValidateOrderForFactor(heapCandidateArray.AsSpan(0, exponent), primeFactor, exponent, order, ref stepper))
+			if (ValidateOrderForFactor(stackBuffer[..exponent], primeFactor, exponent, order, ref stepper))
 			{
 				violates = true;
 				break;
@@ -740,11 +739,6 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		ThreadStaticPools.ReturnExponentStepperCpu(stepper);
-
-		if (heapCandidateArray is not null)
-		{
-			FixedCapacityPools.ExclusiveUlongArray.Return(heapCandidateArray);
-		}
 
 		return !violates;
 	}
@@ -946,10 +940,10 @@ internal static partial class PrimeOrderCalculator
 
 		bool leftIsGe = !hasPrevious || left >= previous;
 		bool rightIsGe = !hasPrevious || right >= previous;
-		int leftPrimary = ComputePrimary(leftGroup, leftIsGe, previousGroup);
 		int rightPrimary = ComputePrimary(rightGroup, rightIsGe, previousGroup);
 
-		int compare = leftPrimary.CompareTo(rightPrimary);
+		int compare = ComputePrimary(leftGroup, leftIsGe, previousGroup);
+		compare = compare.CompareTo(rightPrimary);
 		if (compare != 0)
 		{
 			return compare;
@@ -957,15 +951,15 @@ internal static partial class PrimeOrderCalculator
 
 		long leftSecondary;
 		long leftTertiary;
+		ulong tempReference;
 		if (leftGroup == 3)
 		{
-			leftSecondary = -(long)left;
-			leftTertiary = -(long)left;
+			leftSecondary = leftTertiary = -(long)left;
 		}
 		else
 		{
-			ulong leftReference = hasPrevious ? (left > previous ? left - previous : previous - left) : left;
-			leftSecondary = (long)leftReference;
+			tempReference = hasPrevious ? (left > previous ? left - previous : previous - left) : left;
+			leftSecondary = (long)tempReference;
 			leftTertiary = (long)left;
 		}
 
@@ -973,13 +967,12 @@ internal static partial class PrimeOrderCalculator
 		long rightTertiary;
 		if (rightGroup == 3)
 		{
-			rightSecondary = -(long)right;
-			rightTertiary = -(long)right;
+			rightSecondary = rightTertiary = -(long)right;
 		}
 		else
 		{
-			ulong rightReference = hasPrevious ? (right > previous ? right - previous : previous - right) : right;
-			rightSecondary = (long)rightReference;
+			tempReference = hasPrevious ? (right > previous ? right - previous : previous - right) : right;
+			rightSecondary = (long)tempReference;
 			rightTertiary = (long)right;
 		}
 

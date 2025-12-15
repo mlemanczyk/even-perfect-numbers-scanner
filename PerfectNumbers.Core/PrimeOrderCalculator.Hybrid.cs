@@ -304,7 +304,7 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		ulong candidateOrder = InitializeStartingOrderHybrid(gpu, prime, phi, divisorData);
-		candidateOrder = ExponentLoweringCpu(candidateOrder, prime, phiFactors, divisorData);
+		candidateOrder = ExponentLoweringCpu(candidateOrder, phiFactors, divisorData);
 
 		if (TryConfirmOrderHybrid(gpu, prime, candidateOrder, divisorData, config, out PartialFactorResult? orderFactors))
 		{
