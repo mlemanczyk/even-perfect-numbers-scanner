@@ -545,12 +545,12 @@ internal static partial class PrimeOrderCalculator
 	private static ulong ExponentLoweringCpu(ulong order, ulong prime, PartialFactorResult factors, in MontgomeryDivisorData divisorData)
 	{
 		int length = factors.Count;
-		ReadOnlySpan<ulong> factorSpan = factors.Factors.AsSpan(0, length);
-		ReadOnlySpan<int> exponentsSpan = factors.Exponents.AsSpan(0, length);
+		ReadOnlySpan<ulong> factorSpan = new(factors.Factors, 0, length);
+		ReadOnlySpan<int> exponentsSpan = new(factors.Exponents, 0, length);
 
 		int newLength = length + 1;
-		ulong[] tempFactorsArray = FixedCapacityPools.ExclusiveUlongArray.Rent(newLength);
-		int[] tempExponentsArray = FixedCapacityPools.ExclusiveIntArray.Rent(newLength);
+		ulong[] tempFactorsArray = factors.TempFactorsArray;
+		int[] tempExponentsArray = factors.TempExponentsArray;
 
 		Span<ulong> ulongBuffer = tempFactorsArray;
 		factorSpan.CopyTo(ulongBuffer);
@@ -568,14 +568,8 @@ internal static partial class PrimeOrderCalculator
 
 		ExponentRemainderStepperCpu stepper = ThreadStaticPools.RentExponentStepperCpu(divisorData);
 
-		const int StackExponentCapacity = 16;
-		const int ExponentHardLimit = 256;
-
-		Span<ulong> stackCandidates = stackalloc ulong[StackExponentCapacity];
-		Span<bool> stackEvaluations = stackalloc bool[StackExponentCapacity];
-
-		ulong[]? heapCandidateArray = null;
-		bool[]? heapEvaluationArray = null;
+		Span<ulong> stackCandidates = new(factors.StackCandidates);
+		Span<bool> stackEvaluations = new(factors.StackEvaluations);
 
 		for (int i = 0; i < length; i++)
 		{
@@ -587,31 +581,10 @@ internal static partial class PrimeOrderCalculator
 			// 	continue;
 			// }
 
-			if (exponent > ExponentHardLimit)
-			{
-				throw new InvalidOperationException($"Prime factor exponent {exponent} exceeds the supported limit of {ExponentHardLimit}.");
-			}
-
-			if (exponent <= StackExponentCapacity)
-			{
-				ProcessExponentLoweringPrime(stackCandidates[..exponent], stackEvaluations[..exponent], ref order, primeFactor, exponent, ref stepper);
-				continue;
-			}
-
-			heapCandidateArray ??= FixedCapacityPools.ExclusiveUlongArray.Rent(ExponentHardLimit);
-			heapEvaluationArray ??= ThreadStaticPools.BoolPool.Rent(ExponentHardLimit);
-			ProcessExponentLoweringPrime(heapCandidateArray.AsSpan(0, exponent), heapEvaluationArray.AsSpan(0, exponent), ref order, primeFactor, exponent, ref stepper);
+			ProcessExponentLoweringPrime(stackCandidates[..exponent], stackEvaluations[..exponent], ref order, primeFactor, exponent, ref stepper);
 		}
 
 		ThreadStaticPools.ReturnExponentStepperCpu(stepper);
-
-		if (heapCandidateArray is not null)
-		{
-			FixedCapacityPools.ExclusiveUlongArray.Return(heapCandidateArray);
-			ThreadStaticPools.BoolPool.Return(heapEvaluationArray!);
-		}
-
-		FixedCapacityPools.ExclusiveUlongArray.Return(tempFactorsArray);
 		return order;
 	}
 
@@ -1943,6 +1916,5 @@ internal static partial class PrimeOrderCalculator
 	}
 
 }
-
 
 

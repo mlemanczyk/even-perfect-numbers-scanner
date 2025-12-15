@@ -11,6 +11,10 @@ namespace PerfectNumbers.Core
 		public readonly int[] Exponents = new int[PrimeOrderConstants.GpuSmallPrimeFactorSlots];
 		public readonly FixedCapacityStack<ulong> CompositeStack = new (PrimeOrderConstants.GpuSmallPrimeFactorSlots);
 		public readonly List<PartialFactorPendingEntry> PendingFactors = new (PrimeOrderConstants.GpuSmallPrimeFactorSlots);
+		public readonly ulong[] TempFactorsArray = new ulong[PrimeOrderConstants.GpuSmallPrimeFactorSlots << 3];
+		public readonly int[] TempExponentsArray = new int[PrimeOrderConstants.GpuSmallPrimeFactorSlots << 3];
+		public readonly ulong[] StackCandidates = new ulong[PrimeOrderConstants.GpuSmallPrimeFactorSlots << 3];
+		public readonly bool[] StackEvaluations = new bool[PrimeOrderConstants.GpuSmallPrimeFactorSlots << 3];
 		private PartialFactorResult? _next;
 		public ulong Cofactor;
 		public bool FullyFactored;

@@ -1,40 +1,103 @@
+using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core
 {
 	public struct IntArrayPool(int poolCapacity)
 	{
-        private readonly int[][] _arrays = new int[poolCapacity][];
-        private int _count = 0;
+        private const int MinBucketPower = 1;
+        private static readonly int MaxBucketPower = CalculateMaxBucketPower();
+        private static readonly int MaxBucketLength = 1 << MaxBucketPower;
+        private static readonly int BucketCount = MaxBucketPower - MinBucketPower + 1;
+
+        private readonly int[][] _arrays = new int[poolCapacity * BucketCount][];
+        private readonly int[] _counts = new int[BucketCount];
+        private readonly int _bucketCapacity = poolCapacity;
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-        public int[] Rent(int length)
+        public readonly int[] Rent(int length)
         {
-            int available = _count;
-            if (available == 0)
+            int bucketIndex = GetBucketIndex(length);
+            if (bucketIndex < 0)
             {
                 return new int[length];
             }
 
-            int[][] arrays = _arrays;
-            available--;
-            _count = available;
+            int[] counts = _counts;
+            int available = counts[bucketIndex];
+            int bucketLength = GetBucketLength(bucketIndex);
 
-            int[] candidate = arrays[available];
-			return candidate.Length >= length ? candidate : new int[length];
+            if (available == 0)
+            {
+                return new int[bucketLength];
+            }
+
+            int offset = (bucketIndex * _bucketCapacity) + (available - 1);
+            counts[bucketIndex] = available - 1;
+            return _arrays[offset];
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-        public void Return(int[] array)
+        public readonly void Return(int[] array)
         {
-            int[][] arrays = _arrays;
-            int available = _count;
-
-            if (available < arrays.Length)
+			int capacity = array.Length;
+            int bucketIndex = GetBucketIndex(capacity);
+            if (bucketIndex < 0)
             {
-				arrays[available] = array;
-				_count = available + 1;
+                return;
             }
+
+            int bucketLength = GetBucketLength(bucketIndex);
+            if (capacity < bucketLength)
+            {
+                return;
+            }
+
+            int[] counts = _counts;
+            int available = counts[bucketIndex];
+            int bucketCapacity = _bucketCapacity;
+            if (available >= bucketCapacity)
+            {
+                return;
+            }
+
+            int offset = (bucketIndex * bucketCapacity) + available;
+            _arrays[offset] = array;
+            counts[bucketIndex] = available + 1;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        private static int GetBucketIndex(int length)
+        {
+            if (length <= 0 || length > MaxBucketLength)
+            {
+                return -1;
+            }
+
+            if (length <= (1 << MinBucketPower))
+            {
+                return 0;
+            }
+
+            int power = 32 - BitOperations.LeadingZeroCount((uint)(length - 1));
+            if (power > MaxBucketPower)
+            {
+                return -1;
+            }
+
+            return power - MinBucketPower;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        private static int GetBucketLength(int bucketIndex) => 1 << (bucketIndex + MinBucketPower);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        private static int CalculateMaxBucketPower()
+        {
+            int maxLength = Math.Min(int.MaxValue, Array.MaxLength);
+            int leadingZeros = BitOperations.LeadingZeroCount((uint)maxLength);
+            return 31 - leadingZeros;
         }
     }
 }
