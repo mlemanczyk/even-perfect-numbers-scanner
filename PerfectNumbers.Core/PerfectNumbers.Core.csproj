@@ -5,7 +5,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>12.0</LangVersion>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>$(IntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="**/*.generated.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="PeterO.Numbers" Version="1.8.1" />
@@ -27,5 +33,16 @@
     <InternalsVisibleTo Include="HeuristicMultiplyShiftTiming" />
     <InternalsVisibleTo Include="EvenPerfectBitScanner.Benchmarks" />
   </ItemGroup>
+
+  <Target Name="CopyDeviceDependentGeneratedToProjectDir"
+          AfterTargets="CoreCompile"
+          Condition="'$(DeviceDependentGenerator_CopyGeneratedToProjectDir)' == 'true' Or '$(BuildingInsideVisualStudio)' == 'true'">
+    <ItemGroup>
+      <_DeviceDependentGeneratedFiles Include="$(CompilerGeneratedFilesOutputPath)\DeviceDependentGenerator\PerfectNumbers.Core.Generators.DeviceDependentGenerator\**\*.generated.cs" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_DeviceDependentGeneratedFiles)"
+          DestinationFiles="@(_DeviceDependentGeneratedFiles->'$(ProjectDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

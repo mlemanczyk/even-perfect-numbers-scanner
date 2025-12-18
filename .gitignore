@@ -18,3 +18,5 @@ PerfectNumbers.Core.Tests/bin/*
 PerfectNumbers.Core.Tests/obj/*
 .DS_Store
 .vs/*
+*.generated.cs
+PerfectNumbers.Core/generated/*

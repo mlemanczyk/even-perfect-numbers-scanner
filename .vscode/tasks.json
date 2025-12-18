@@ -11,7 +11,8 @@
                                 "--configuration",
                                 "Debug",
                                 "--framework",
-                                "net8.0"
+                                "net8.0",
+                                "/p:DeviceDependentGenerator_CopyGeneratedToProjectDir=true"
                         ],
                         "group": {
                                 "kind": "build",
@@ -29,7 +30,8 @@
                                 "--configuration",
                                 "Release",
                                 "--framework",
-                                "net8.0"
+                                "net8.0",
+                                "/p:DeviceDependentGenerator_CopyGeneratedToProjectDir=true"
                         ],
                         "group": "build",
                         "problemMatcher": "$msCompile"
