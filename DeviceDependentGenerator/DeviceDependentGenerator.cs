@@ -170,7 +170,7 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
                 continue;
             }
 
-            ReportDeviceSpecificTemplateErrors(context, compilation, originalTree, deviceTree, templateSyntax.Identifier.GetLocation(), enumValueName);
+            ReportDeviceSpecificTemplateErrors(context, deviceTree);
 
             string generatedTypeName = baseName + enumValueName + template.Suffix;
             TypeDeclarationSyntax generatedTypeSyntax = TransformTemplateType(deviceTemplateSyntax, generatedTypeName);
@@ -192,13 +192,7 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
         }
     }
 
-    private static void ReportDeviceSpecificTemplateErrors(
-        SourceProductionContext context,
-        Compilation compilation,
-        SyntaxTree originalTree,
-        SyntaxTree deviceTree,
-        Location fallbackLocation,
-        string enumValueName)
+    private static void ReportDeviceSpecificTemplateErrors(SourceProductionContext context, SyntaxTree deviceTree)
     {
         foreach (Diagnostic diagnostic in deviceTree.GetDiagnostics(context.CancellationToken))
         {
@@ -206,28 +200,6 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
             {
                 context.ReportDiagnostic(diagnostic);
             }
-        }
-
-        if (compilation is not CSharpCompilation csharpCompilation)
-        {
-            return;
-        }
-
-        CSharpCompilation deviceCompilation = csharpCompilation.ReplaceSyntaxTree(originalTree, deviceTree);
-        foreach (Diagnostic diagnostic in deviceCompilation.GetDiagnostics(context.CancellationToken))
-        {
-            if (diagnostic.Severity != DiagnosticSeverity.Error)
-            {
-                continue;
-            }
-
-            if (diagnostic.Location is { Kind: LocationKind.SourceFile } location
-                && location.SourceTree != deviceTree)
-            {
-                continue;
-            }
-
-            context.ReportDiagnostic(diagnostic);
         }
     }
 
