@@ -10,6 +10,10 @@ EvenPerfectBitScanner.Tests/bin/*
 EvenPerfectBitScanner.Tests/obj/*
 BuildDivisorTransitions/bin/*
 BuildDivisorTransitions/obj/*
+DeviceDependentGenerator/bin/*
+DeviceDependentGenerator/obj/*
+DeviceDependentGenerator.Tests/bin/*
+DeviceDependentGenerator.Tests/obj/*
 PerfectNumbers.Core.Tests/bin/*
 PerfectNumbers.Core.Tests/obj/*
 .DS_Store

@@ -15,6 +15,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\DeviceDependentGenerator\DeviceDependentGenerator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="EvenPerfectBitScanner.Tests" />
     <InternalsVisibleTo Include="PerfectNumbers.Core.Tests" />
     <InternalsVisibleTo Include="ILGPURuntime" />
