@@ -11,6 +11,7 @@ public class MersenneNumberOrderGpuTester(GpuKernelType kernelType, bool useGpuO
 
 	public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
+		// TODO: Replace LastDigit lastDigit with bool lastIsSeven
 		// GpuPrimeWorkLimiter.Acquire();
 		// var accelerator = SharedGpuContext.Accelerator;
 		var acceleratorIndex = AcceleratorPool.Shared.Rent();

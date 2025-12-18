@@ -16,6 +16,7 @@ public class MersenneNumberIncrementalGpuTester(GpuKernelType kernelType, bool u
 
     public void Scan(ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
     {
+		// TODO: Replace LastDigit lastDigit with bool lastIsSeven
         throw new NotImplementedException($"GPU incremental scanning requires the device cycle heuristics implementation (kernel: {_kernelType}, GPU order: {_useGpuOrder}).");
 
         // GpuPrimeWorkLimiter.Acquire();

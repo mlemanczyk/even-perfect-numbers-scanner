@@ -26,6 +26,7 @@ public class MersenneNumberResidueGpuTester(bool useGpuOrder)
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public void Scan(PrimeOrderCalculatorAccelerator gpu, ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
 	{
+		// TODO: Replace LastDigit lastDigit with bool lastIsSeven
 		// GpuPrimeWorkLimiter.Acquire();
 		var acceleratorIndex = gpu.AcceleratorIndex;
 		var accelerator = gpu.Accelerator;
