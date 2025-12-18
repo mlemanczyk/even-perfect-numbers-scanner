@@ -55,23 +55,13 @@ public class MersenneNumberDivisorByDivisorTesterTests
         {
         }
 
-        public void ResumeFromState(BigInteger lastSavedK)
+        public void ResumeFromState(in string stateFile, in BigInteger lastSavedK, in BigInteger minK)
         {
         }
 
         public ulong DivisorLimit => ConfiguredMaxPrime + 100UL;
 
-        public void ConfigureFromMaxPrime(ulong maxPrime)
-        {
-            ConfiguredMaxPrime = maxPrime;
-        }
-
-        public ulong GetAllowedMaxDivisor(ulong prime)
-        {
-            return DivisorLimit;
-        }
-
-        public bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out BigInteger divisor)
+        public bool IsPrime(ulong prime, out bool divisorsExhausted, out BigInteger divisor)
         {
             divisorsExhausted = true;
             if (prime % 7UL == 0UL)
@@ -95,8 +85,9 @@ public class MersenneNumberDivisorByDivisorTesterTests
             return new DummySession();
         }
 
-        public void PrepareCandidates(in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)
+        public void PrepareCandidates(ulong maxPrime, in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)
         {
+            ConfiguredMaxPrime = maxPrime;
             for (int i = 0; i < primes.Length; i++)
             {
                 allowedMaxValues[i] = 100UL;

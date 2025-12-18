@@ -6,8 +6,8 @@ namespace PerfectNumbers.Core.Gpu.Accelerators;
 public static class AcceleratorStreamPool
 {
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
-	private static readonly PollingSemaphore[] _locks = new PollingSemaphore[PerfectNumberConstants.RollingAccelerators];
-	private static readonly ConcurrentFixedCapacityStack<AcceleratorStream>[] _streams = new ConcurrentFixedCapacityStack<AcceleratorStream>[PerfectNumberConstants.RollingAccelerators];
+	private static readonly PollingSemaphore[] _locks = new PollingSemaphore[EnvironmentConfiguration.RollingAccelerators];
+	private static readonly ConcurrentFixedCapacityStack<AcceleratorStream>[] _streams = new ConcurrentFixedCapacityStack<AcceleratorStream>[EnvironmentConfiguration.RollingAccelerators];
 
 	private static PollingSemaphore CreateLock() => new(PerfectNumberConstants.ThreadsByAccelerator, TimeSpan.FromMilliseconds(1000), 1);
 

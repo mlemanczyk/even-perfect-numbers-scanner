@@ -48,7 +48,7 @@ namespace PerfectNumbers.Core.Gpu
 			}
 		}
 
-		public static readonly AcceleratorPool Shared = new(PerfectNumberConstants.RollingAccelerators);
+		public static readonly AcceleratorPool Shared = new(EnvironmentConfiguration.RollingAccelerators);
 
 		private readonly int Capacity;
 

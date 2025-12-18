@@ -14,67 +14,46 @@ namespace PerfectNumbers.Core.Gpu;
 /// </summary>
 public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneNumberDivisorByDivisorTester
 {
-	private int _gpuBatchSize = GpuConstants.ScanBatchSize;
 	// EvenPerfectBitScanner configures the GPU tester once before scanning and never mutates the configuration afterwards,
 	// so the synchronization fields from the previous implementation remain commented out here.
+	private readonly PrimeOrderCalculatorAccelerator Accelerator = PrimeOrderCalculatorAccelerator.Rent(1);
 	private ulong _divisorLimit;
-	private BigInteger _minK = BigInteger.One;
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	internal void SetDivisorLimitForClone(ulong divisorLimit) => _divisorLimit = divisorLimit;
+	public BigInteger MinK = BigInteger.One;
+	public string? StateFilePath;
 
 	private readonly ConcurrentFixedCapacityStack<MersenneNumberDivisorByDivisorAccelerator>[] _resourcePool = [.. AcceleratorPool.Shared.Accelerators.Select(x => new ConcurrentFixedCapacityStack<MersenneNumberDivisorByDivisorAccelerator>(PerfectNumberConstants.DefaultPoolCapacity))];
 
 	private readonly ConcurrentFixedCapacityStack<DivisorScanSession> _sessionPool = new(PerfectNumberConstants.DefaultPoolCapacity);
 
-	public int GpuBatchSize
-	{
-		get => _gpuBatchSize;
-		set => _gpuBatchSize = value < 1 ? 1 : value;
-	}
-
-	int IMersenneNumberDivisorByDivisorTester.BatchSize
-	{
-		get => GpuBatchSize;
-		set => GpuBatchSize = value;
-	}
-
-	public BigInteger MinK
-	{
-		get => _minK;
-		set => _minK = value < BigInteger.One ? BigInteger.One : value;
-	}
-
-	public string? StateFilePath { get; set; }
-
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public void ResetStateTracking()
 	{
 	}
 
-	public void ResumeFromState(BigInteger lastSavedK)
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public void ResumeFromState(in string stateFile, in BigInteger lastSavedK, in BigInteger minK)
 	{
+		StateFilePath = stateFile;
 		if (lastSavedK > ulong.MaxValue)
 		{
-			throw new NotSupportedException("GPU by-divisor tester does not support MinK above UInt64.");
+			ThrowNotSupportedLastSavedK();
+			return; // We'll never get to here
 		}
 
-		_minK = lastSavedK + BigInteger.One;
+		MinK = minK;
 	}
 
-	public void ConfigureFromMaxPrime(ulong maxPrime)
-	{
-		// EvenPerfectBitScanner configures the GPU tester once before scanning and never mutates the configuration afterwards,
-		// so synchronization and runtime configuration guards are unnecessary here.
+	private static void ThrowNotSupportedLastSavedK() => throw new NotSupportedException("GPU by-divisor tester does not support MinK above UInt64.");
 
-		_divisorLimit = ComputeDivisorLimitFromMaxPrimeGpu(maxPrime);
-	}
-
-	public bool IsPrime(PrimeOrderCalculatorAccelerator gpu, ulong prime, out bool divisorsExhausted, out BigInteger divisor)
+	public bool IsPrime(ulong prime, out bool divisorsExhausted, out BigInteger divisor)
 	{
 		ulong allowedMax;
-		int batchCapacity;
 
 		// EvenPerfectBitScanner only calls into this tester after configuring it once, so we can read the cached values without locking.
 
 		allowedMax = ComputeAllowedMaxDivisorGpu(prime, _divisorLimit);
-		batchCapacity = _gpuBatchSize;
 
 		// Production scans never shrink the divisor window below three, so this guard stays commented out.
 		// if (allowedMax < 3UL)
@@ -84,17 +63,16 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		// }
 
 		bool composite;
-		bool coveredRange;
-		ulong lastProcessed;
 
 		// GpuPrimeWorkLimiter();
 		// int acceleratorIndex = AcceleratorPool.Shared.Rent();
 		// var accelerator = _accelerators[acceleratorIndex];
+		PrimeOrderCalculatorAccelerator gpu = Accelerator;
 		var acceleratorIndex = gpu.AcceleratorIndex;
 
 		// Monitor.Enter(gpuLease.ExecutionLock);
 
-		var resources = RentBatchResources(acceleratorIndex, batchCapacity);
+		var resources = RentBatchResources(acceleratorIndex, EnvironmentConfiguration.GpuBatchSize);
 
 		composite = CheckDivisors(
 			gpu,
@@ -115,8 +93,8 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			resources.Offsets,
 			resources.Counts,
 			resources.Cycles,
-			out lastProcessed,
-			out coveredRange);
+			out ulong lastProcessed,
+			out bool coveredRange);
 
 		ReturnBatchResources(acceleratorIndex, resources);
 		// Monitor.Exit(gpuLease.ExecutionLock);
@@ -134,17 +112,19 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		return true;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private ulong GetMinKOrThrow()
 	{
-		if (_minK > ulong.MaxValue)
+		if (MinK > ulong.MaxValue)
 		{
-			throw new NotSupportedException("GPU by-divisor tester does not support MinK above UInt64.");
+			ThrowNotSupportedLastSavedK();
+			return 0UL;
 		}
 
-		return (ulong)_minK;
+		return (ulong)MinK;
 	}
 
-	public void PrepareCandidates(in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)
+	public void PrepareCandidates(ulong maxPrime, in ReadOnlySpan<ulong> primes, Span<ulong> allowedMaxValues)
 	{
 		// The scanner always supplies matching spans, so the previous validation remains commented out.
 		// if (allowedMaxValues.Length < primes.Length)
@@ -165,7 +145,12 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		//     divisorLimit = _divisorLimit;
 		// }
 
-		divisorLimit = _divisorLimit;
+		// EvenPerfectBitScanner configures the GPU tester once before scanning and never mutates the configuration afterwards,
+		// so synchronization and runtime configuration guards are unnecessary here.
+
+		divisorLimit = ComputeDivisorLimitFromMaxPrimeGpu(maxPrime);
+
+		_divisorLimit = divisorLimit;
 
 		for (int index = 0; index < primes.Length; index++)
 		{
@@ -526,12 +511,12 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		private readonly Accelerator _accelerator;
 		private readonly PrimeOrderCalculatorAccelerator _primeOrderCalculatorAccelerator;
 		private readonly AcceleratorStream _stream;
-		private Action<AcceleratorStream, Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> _kernel = null!;
-		private MemoryBuffer1D<GpuDivisorPartialData, Stride1D.Dense> _divisorBuffer = null!;
-		private MemoryBuffer1D<int, Stride1D.Dense> _offsetBuffer = null!;
-		private MemoryBuffer1D<int, Stride1D.Dense> _countBuffer = null!;
-		private MemoryBuffer1D<ulong, Stride1D.Dense> _cycleBuffer = null!;
-		private MemoryBuffer1D<int, Stride1D.Dense> _firstHitBuffer = null!;
+		private readonly Action<AcceleratorStream, Index1D, ArrayView<GpuDivisorPartialData>, ArrayView<int>, ArrayView<int>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>, ArrayView<int>> _kernel = null!;
+		private readonly MemoryBuffer1D<GpuDivisorPartialData, Stride1D.Dense> _divisorBuffer = null!;
+		private readonly MemoryBuffer1D<int, Stride1D.Dense> _offsetBuffer = null!;
+		private readonly MemoryBuffer1D<int, Stride1D.Dense> _countBuffer = null!;
+		private readonly MemoryBuffer1D<ulong, Stride1D.Dense> _cycleBuffer = null!;
+		private readonly MemoryBuffer1D<int, Stride1D.Dense> _firstHitBuffer = null!;
 		private MemoryBuffer1D<ulong, Stride1D.Dense> _exponentsBuffer = null!;
 		private MemoryBuffer1D<byte, Stride1D.Dense> _hitBuffer = null!;
 		private ulong[] _hostBuffer = null!;
@@ -546,7 +531,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 			Accelerator accelerator = gpu.Accelerator;
 			_accelerator = accelerator;
 			_stream = accelerator.CreateStream();
-			_capacity = Math.Max(1, owner._gpuBatchSize);
 
 			// lock (accelerator)
 			{
@@ -559,11 +543,9 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 
 			int desiredCapacity = PerfectNumberConstants.DefaultSmallPrimeFactorSlotCount;
 			_capacity = desiredCapacity;
-			// lock (accelerator)
-			{
-				_exponentsBuffer = accelerator.Allocate1D<ulong>(desiredCapacity);
-				_hitBuffer = accelerator.Allocate1D<byte>(desiredCapacity);
-			}
+
+			_exponentsBuffer = accelerator.Allocate1D<ulong>(desiredCapacity);
+			_hitBuffer = accelerator.Allocate1D<byte>(desiredCapacity);
 
 			_hostBuffer = ThreadStaticPools.UlongPool.Rent(desiredCapacity);
 
@@ -727,23 +709,6 @@ public sealed partial class MersenneNumberDivisorByDivisorGpuTester : IMersenneN
 		public bool Equals(Accelerator? x, Accelerator? y) => ReferenceEquals(x, y);
 
 		public int GetHashCode(Accelerator obj) => RuntimeHelpers.GetHashCode(obj);
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-	public ulong GetAllowedMaxDivisor(ulong prime)
-	{
-		// The configuration is immutable after setup, so the cached limit can be read without locking.
-		// lock (_sync)
-		// {
-		//     if (!_isConfigured)
-		//     {
-		//         throw new InvalidOperationException("ConfigureFromMaxPrime must be called before using the tester.");
-		//     }
-
-		//     return ComputeAllowedMaxDivisorGpu(prime, _divisorLimit);
-		// }
-
-		return ComputeAllowedMaxDivisorGpu(prime, _divisorLimit);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]

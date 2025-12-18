@@ -25,7 +25,7 @@ public class PrimeTesterBenchmarks
             return;
         }
 
-		PerfectNumberConstants.RollingAccelerators = 1;
+		EnvironmentConfiguration.RollingAccelerators = 1;
 
 		PrimeOrderCalculatorAccelerator.WarmUp();
 		// HeuristicGroupABPrimeTesterAccelerator.WarmUp();

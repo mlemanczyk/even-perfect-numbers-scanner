@@ -328,12 +328,13 @@ internal static partial class PrimeOrderCalculator
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private static bool RunOnCpu()
 	{
-		if (PerfectNumberConstants.GpuRatio == 0)
+		int gpuRatio = EnvironmentConfiguration.GpuRatio;
+		if (gpuRatio == 0)
 		{
 			return false;
 		}
 
-		if (PerfectNumberConstants.GpuRatio == 1)
+		if (gpuRatio == 1)
 		{
 			while (true)
 			{
@@ -352,16 +353,16 @@ internal static partial class PrimeOrderCalculator
 		}
 
 		int cpuCount = Interlocked.Increment(ref _cpuCount);
-		if (cpuCount == PerfectNumberConstants.GpuRatio)
+		if (cpuCount == gpuRatio)
 		{
-			Interlocked.Add(ref _cpuCount, -PerfectNumberConstants.GpuRatio);
+			Interlocked.Add(ref _cpuCount, -gpuRatio);
 		}
-		else if (cpuCount > PerfectNumberConstants.GpuRatio)
+		else if (cpuCount > gpuRatio)
 		{
-			cpuCount -= PerfectNumberConstants.GpuRatio;
+			cpuCount -= gpuRatio;
 		}
 
-		return cpuCount != PerfectNumberConstants.GpuRatio;
+		return cpuCount != gpuRatio;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]

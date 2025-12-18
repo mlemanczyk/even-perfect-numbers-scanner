@@ -4,7 +4,7 @@ namespace PerfectNumbers.Core;
 
 public struct CycleRemainderStepper(ulong cycleLength)
 {
-    private readonly ulong _cycleLength = cycleLength;
+    public ulong CycleLength = cycleLength;
     private ulong _previousPrime = 0UL;
     private ulong _currentRemainder = 0UL;
 
@@ -18,7 +18,7 @@ public struct CycleRemainderStepper(ulong cycleLength)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ulong Initialize(ulong prime)
     {
-        ulong cycleLength = _cycleLength;
+        ulong cycleLength = CycleLength;
         ulong remainder = prime.ReduceCycleRemainder(cycleLength);
 
         _previousPrime = prime;
@@ -29,7 +29,7 @@ public struct CycleRemainderStepper(ulong cycleLength)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ulong ComputeNext(ulong prime)
     {
-        ulong cycleLength = _cycleLength;
+        ulong cycleLength = CycleLength;
         ulong delta = prime - _previousPrime;
         _previousPrime = prime;
 

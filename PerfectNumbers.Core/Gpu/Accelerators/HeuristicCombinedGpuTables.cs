@@ -8,7 +8,7 @@ internal readonly struct HeuristicCombinedGpuTables
 {
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
 
-	private static readonly HeuristicCombinedGpuTables[] _sharedTables = new HeuristicCombinedGpuTables[PerfectNumberConstants.RollingAccelerators];
+	private static readonly HeuristicCombinedGpuTables[] _sharedTables = new HeuristicCombinedGpuTables[EnvironmentConfiguration.RollingAccelerators];
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	internal static void WarmUp(int acceleratorIndex, AcceleratorStream stream) => _sharedTables[acceleratorIndex] = new(_accelerators[acceleratorIndex], stream);

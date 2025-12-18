@@ -68,7 +68,6 @@ public class MersenneNumberDivisorGpuTesterTests
 		{
 			tester.IsPrime(gpu, 35UL, 31UL, 0UL, out bool divisorsExhausted).Should().BeFalse();
 			divisorsExhausted.Should().BeTrue();
-
 		}
 		finally
 		{
@@ -93,47 +92,46 @@ public class MersenneNumberDivisorGpuTesterTests
 		}
 	}
 
+	private static void ConfigureByDivisorTester(MersenneNumberDivisorByDivisorGpuTester tester, ulong maxPrime)
+	{
+		tester.PrepareCandidates(maxPrime, ReadOnlySpan<ulong>.Empty, Span<ulong>.Empty);
+		tester.ResumeFromState(Path.Combine(Path.GetTempPath(), "bydivisor-gpu-tests.bin"), BigInteger.Zero, BigInteger.One);
+		tester.ResetStateTracking();
+	}
+
 	[Fact]
 	[Trait("Category", "Fast")]
 	public void ByDivisor_tester_tracks_divisors_across_primes()
 	{
 		var tester = new MersenneNumberDivisorByDivisorGpuTester();
-		tester.ConfigureFromMaxPrime(43UL);
+		ConfigureByDivisorTester(tester, maxPrime: 43UL);
 
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		try
-		{
-			tester.IsPrime(gpu, 31UL, out bool exhausted, out BigInteger divisor).Should().BeTrue();
-			exhausted.Should().BeTrue();
-			divisor.Should().Be(BigInteger.Zero);
+		tester.IsPrime(31UL, out bool exhausted, out BigInteger divisor).Should().BeTrue();
+		exhausted.Should().BeTrue();
+		divisor.Should().Be(BigInteger.Zero);
 
-			tester.IsPrime(gpu, 37UL, out exhausted, out divisor).Should().BeFalse();
-			exhausted.Should().BeTrue();
-			divisor.Should().BeGreaterThan(BigInteger.Zero);
+		tester.IsPrime(37UL, out exhausted, out divisor).Should().BeFalse();
+		exhausted.Should().BeTrue();
+		divisor.Should().BeGreaterThan(BigInteger.Zero);
 
-			tester.IsPrime(gpu, 43UL, out exhausted, out divisor).Should().BeFalse();
-			exhausted.Should().BeTrue();
-			divisor.Should().BeGreaterThan(BigInteger.Zero);
-		}
-		finally
-		{
-			PrimeOrderCalculatorAccelerator.Return(gpu);
-		}
+		tester.IsPrime(43UL, out exhausted, out divisor).Should().BeFalse();
+		exhausted.Should().BeTrue();
+		divisor.Should().BeGreaterThan(BigInteger.Zero);
 	}
 
 	[Fact]
 	[Trait("Category", "Fast")]
-	public void ByDivisor_tester_defaults_to_zero_limit_before_configuration()
+	public void ByDivisor_tester_defaults_to_zero_limit_before_prepare_candidates()
 	{
 		var tester = new MersenneNumberDivisorByDivisorGpuTester();
-
 		tester.DivisorLimit.Should().Be(0UL);
 
 		ulong[] primes = [31UL, 37UL];
 		ulong[] allowed = new ulong[primes.Length];
+		tester.PrepareCandidates(maxPrime: 37UL, primes, allowed);
 
-		tester.PrepareCandidates(primes, allowed);
-		allowed.Should().OnlyContain(value => value == 0UL);
+		tester.DivisorLimit.Should().BeGreaterThan(0UL);
+		allowed.Should().OnlyContain(value => value > 0UL);
 	}
 
 	[Fact]
@@ -141,27 +139,19 @@ public class MersenneNumberDivisorGpuTesterTests
 	public void ByDivisor_tester_respects_filter_based_limit()
 	{
 		var tester = new MersenneNumberDivisorByDivisorGpuTester();
-		tester.ConfigureFromMaxPrime(41UL);
+		ConfigureByDivisorTester(tester, maxPrime: 41UL);
 
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		try
-		{
-			tester.IsPrime(gpu, 31UL, out _, out BigInteger divisor).Should().BeTrue();
-			divisor.Should().Be(BigInteger.Zero);
-			tester.IsPrime(gpu, 37UL, out bool exhausted, out divisor).Should().BeFalse();
-			exhausted.Should().BeTrue();
-			divisor.Should().BeGreaterThan(BigInteger.Zero);
+		tester.IsPrime(31UL, out _, out BigInteger divisor).Should().BeTrue();
+		divisor.Should().Be(BigInteger.Zero);
 
-			tester.IsPrime(gpu, 41UL, out bool divisorsExhausted, out divisor).Should().BeFalse();
-			divisorsExhausted.Should().BeTrue();
-			divisor.Should().BeGreaterThan(BigInteger.Zero);
-		}
-		finally
-		{
-			PrimeOrderCalculatorAccelerator.Return(gpu);
-		}
+		tester.IsPrime(37UL, out bool exhausted, out divisor).Should().BeFalse();
+		exhausted.Should().BeTrue();
+		divisor.Should().BeGreaterThan(BigInteger.Zero);
+
+		tester.IsPrime(41UL, out bool divisorsExhausted, out divisor).Should().BeFalse();
+		divisorsExhausted.Should().BeTrue();
+		divisor.Should().BeGreaterThan(BigInteger.Zero);
 	}
-
 
 	[Theory]
 	[InlineData(71UL, false)]
@@ -171,50 +161,39 @@ public class MersenneNumberDivisorGpuTesterTests
 	public void ByDivisor_tester_matches_incremental_expectations(ulong exponent, bool expectedPrime)
 	{
 		var tester = new MersenneNumberDivisorByDivisorGpuTester();
-		tester.ConfigureFromMaxPrime(exponent);
+		ConfigureByDivisorTester(tester, maxPrime: exponent);
 
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		try
+		tester.IsPrime(exponent, out bool exhausted, out BigInteger divisor).Should().Be(expectedPrime);
+
+		exhausted.Should().BeTrue();
+		if (expectedPrime)
 		{
-			tester.IsPrime(gpu, exponent, out bool exhausted, out BigInteger divisor).Should().Be(expectedPrime);
-
-			exhausted.Should().BeTrue();
-			if (expectedPrime)
-			{
-				divisor.Should().Be(BigInteger.Zero);
-			}
-			else
-			{
-				divisor.Should().BeGreaterThan(BigInteger.Zero);
-			}
+			divisor.Should().Be(BigInteger.Zero);
 		}
-		finally
+		else
 		{
-			PrimeOrderCalculatorAccelerator.Return(gpu);
+			divisor.Should().BeGreaterThan(BigInteger.Zero);
 		}
-
 	}
+
 	[Fact]
 	[Trait("Category", "Fast")]
 	public void ByDivisor_gpu_tester_uses_cycle_remainders_per_divisor()
 	{
-		var tester = new MersenneNumberDivisorByDivisorGpuTester
-		{
-			GpuBatchSize = 8,
-		};
-
-		tester.ConfigureFromMaxPrime(43UL);
-
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+		int originalBatchSize = EnvironmentConfiguration.GpuBatchSize;
 		try
 		{
-			tester.IsPrime(gpu, 41UL, out bool divisorsExhausted, out BigInteger divisor).Should().BeFalse();
+			EnvironmentConfiguration.GpuBatchSize = 8;
+			var tester = new MersenneNumberDivisorByDivisorGpuTester();
+			ConfigureByDivisorTester(tester, maxPrime: 43UL);
+
+			tester.IsPrime(41UL, out bool divisorsExhausted, out BigInteger divisor).Should().BeFalse();
 			divisorsExhausted.Should().BeTrue();
 			divisor.Should().BeGreaterThan(BigInteger.Zero);
 		}
 		finally
 		{
-			PrimeOrderCalculatorAccelerator.Return(gpu);
+			EnvironmentConfiguration.GpuBatchSize = originalBatchSize;
 		}
 	}
 
@@ -223,14 +202,14 @@ public class MersenneNumberDivisorGpuTesterTests
 	public void ByDivisor_session_computes_cycle_when_zero_is_provided()
 	{
 		var tester = new MersenneNumberDivisorByDivisorGpuTester();
-		tester.ConfigureFromMaxPrime(43UL);
+		ConfigureByDivisorTester(tester, maxPrime: 43UL);
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		var session = tester.CreateDivisorSession(gpu);
 		try
 		{
-			ulong[] primes = [31UL, 37UL, 41UL];
+			var session = tester.CreateDivisorSession(gpu);
 
+			ulong[] primes = [31UL, 37UL, 41UL];
 			session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), 0UL, primes).Should().BeTrue();
 
 			ulong[] primesWithoutHit = [31UL, 41UL];
@@ -238,7 +217,6 @@ public class MersenneNumberDivisorGpuTesterTests
 		}
 		finally
 		{
-			session.Return();
 			PrimeOrderCalculatorAccelerator.Return(gpu);
 		}
 	}
@@ -248,12 +226,13 @@ public class MersenneNumberDivisorGpuTesterTests
 	public void ByDivisor_session_checks_divisors_across_primes()
 	{
 		var tester = new MersenneNumberDivisorByDivisorGpuTester();
-		tester.ConfigureFromMaxPrime(43UL);
+		ConfigureByDivisorTester(tester, maxPrime: 43UL);
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		var session = tester.CreateDivisorSession(gpu);
 		try
 		{
+			var session = tester.CreateDivisorSession(gpu);
+
 			ulong[] primes = [31UL, 37UL, 41UL, 43UL];
 
 			ulong cycle223 = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, 223UL, MontgomeryDivisorData.FromModulus(223UL));
@@ -270,7 +249,6 @@ public class MersenneNumberDivisorGpuTesterTests
 		}
 		finally
 		{
-			session.Return();
 			PrimeOrderCalculatorAccelerator.Return(gpu);
 		}
 	}
@@ -279,29 +257,34 @@ public class MersenneNumberDivisorGpuTesterTests
 	[Trait("Category", "Fast")]
 	public void ByDivisor_gpu_session_reuses_cycle_remainders_across_batches()
 	{
-		var tester = new MersenneNumberDivisorByDivisorGpuTester
-		{
-			GpuBatchSize = 2,
-		};
-
-		tester.ConfigureFromMaxPrime(47UL);
-
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		var session = tester.CreateDivisorSession(gpu);
+		int originalBatchSize = EnvironmentConfiguration.GpuBatchSize;
 		try
 		{
-			ulong[] primes = [31UL, 37UL, 41UL, 43UL, 47UL];
+			EnvironmentConfiguration.GpuBatchSize = 2;
+			var tester = new MersenneNumberDivisorByDivisorGpuTester();
+			ConfigureByDivisorTester(tester, maxPrime: 47UL);
 
-			ulong cycle223 = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, 223UL, MontgomeryDivisorData.FromModulus(223UL));
-			session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes).Should().BeTrue();
+			var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
+			try
+			{
+				var session = tester.CreateDivisorSession(gpu);
 
-			ulong[] primesBeforeHit = [31UL];
-			session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primesBeforeHit).Should().BeFalse();
+				ulong[] primes = [31UL, 37UL, 41UL, 43UL, 47UL];
+
+				ulong cycle223 = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, 223UL, MontgomeryDivisorData.FromModulus(223UL));
+				session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes).Should().BeTrue();
+
+				ulong[] primesBeforeHit = [31UL];
+				session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primesBeforeHit).Should().BeFalse();
+			}
+			finally
+			{
+				PrimeOrderCalculatorAccelerator.Return(gpu);
+			}
 		}
 		finally
 		{
-			session.Return();
-			PrimeOrderCalculatorAccelerator.Return(gpu);
+			EnvironmentConfiguration.GpuBatchSize = originalBatchSize;
 		}
 	}
 
@@ -309,16 +292,13 @@ public class MersenneNumberDivisorGpuTesterTests
 	[Trait("Category", "Fast")]
 	public void ByDivisor_session_marks_mersenne_numbers_divisible_by_seven_as_composite()
 	{
-		var tester = new MersenneNumberDivisorByDivisorGpuTester
-		{
-			GpuBatchSize = 5,
-		};
-		tester.ConfigureFromMaxPrime(43UL);
+		var tester = new MersenneNumberDivisorByDivisorGpuTester();
+		ConfigureByDivisorTester(tester, maxPrime: 43UL);
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		var session = tester.CreateDivisorSession(gpu);
 		try
 		{
+			var session = tester.CreateDivisorSession(gpu);
 			ulong[] exponents = [6UL, 7UL, 9UL, 10UL, 12UL];
 
 			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(7UL);
@@ -331,7 +311,6 @@ public class MersenneNumberDivisorGpuTesterTests
 		}
 		finally
 		{
-			session.Return();
 			PrimeOrderCalculatorAccelerator.Return(gpu);
 		}
 	}
@@ -340,16 +319,13 @@ public class MersenneNumberDivisorGpuTesterTests
 	[Trait("Category", "Fast")]
 	public void ByDivisor_session_marks_mersenne_numbers_divisible_by_eleven_as_composite()
 	{
-		var tester = new MersenneNumberDivisorByDivisorGpuTester
-		{
-			GpuBatchSize = 5,
-		};
-		tester.ConfigureFromMaxPrime(61UL);
+		var tester = new MersenneNumberDivisorByDivisorGpuTester();
+		ConfigureByDivisorTester(tester, maxPrime: 61UL);
 
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		var session = tester.CreateDivisorSession(gpu);
 		try
 		{
+			var session = tester.CreateDivisorSession(gpu);
 			ulong[] exponents = [10UL, 11UL, 20UL, 21UL, 30UL];
 
 			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(11UL);
@@ -362,7 +338,6 @@ public class MersenneNumberDivisorGpuTesterTests
 		}
 		finally
 		{
-			session.Return();
 			PrimeOrderCalculatorAccelerator.Return(gpu);
 		}
 	}
@@ -392,13 +367,13 @@ public class MersenneNumberDivisorGpuTesterTests
 			DivisorCycleCache.Shared.RefreshSnapshot();
 
 			var tester = new MersenneNumberDivisorByDivisorGpuTester();
-			tester.ConfigureFromMaxPrime(19UL);
+			ConfigureByDivisorTester(tester, maxPrime: 19UL);
 
 			typeof(MersenneNumberDivisorByDivisorGpuTester)
 				.GetField("_divisorLimit", BindingFlags.NonPublic | BindingFlags.Instance)!
 				.SetValue(tester, 200UL);
 
-			tester.IsPrime(gpu, 19UL, out bool divisorsExhausted, out BigInteger divisor).Should().BeTrue();
+			tester.IsPrime(19UL, out bool divisorsExhausted, out BigInteger divisor).Should().BeTrue();
 			divisorsExhausted.Should().BeTrue();
 			divisor.Should().Be(BigInteger.Zero);
 		}
@@ -413,32 +388,15 @@ public class MersenneNumberDivisorGpuTesterTests
 
 	[Fact]
 	[Trait("Category", "Fast")]
-	public void ByDivisor_cpu_session_reuses_cycle_remainders_across_primes()
+	public void ByDivisor_cpu_session_checks_divisors_across_primes()
 	{
-		var tester = new MersenneNumberDivisorByDivisorCpuTester
-		{
-			BatchSize = 2,
-		};
+		var session = new MersenneCpuDivisorScanSessionWithCpuOrder();
 
-		tester.ConfigureFromMaxPrime(47UL);
+		ulong[] primes = [31UL, 37UL, 41UL, 43UL, 47UL];
+		ulong cycle223 = MersenneDivisorCycles.CalculateCycleLengthCpu(223UL, MontgomeryDivisorData.FromModulus(223UL));
+		session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes).Should().BeTrue();
 
-		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-		var session = tester.CreateDivisorSession(gpu);
-		try
-		{
-			ulong[] primes = [31UL, 37UL, 41UL, 43UL, 47UL];
-
-			ulong cycle223 = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, 223UL, MontgomeryDivisorData.FromModulus(223UL));
-			session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes).Should().BeTrue();
-
-			ulong[] primesBeforeHit = [31UL];
-			session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primesBeforeHit).Should().BeFalse();
-		}
-		finally
-		{
-			session.Return();
-			PrimeOrderCalculatorAccelerator.Return(gpu);
-		}
+		ulong[] primesBeforeHit = [31UL];
+		session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primesBeforeHit).Should().BeFalse();
 	}
 }
-

@@ -127,24 +127,24 @@ namespace PerfectNumbers.Core
 			get => _gpuUInt128Pool ??= ArrayPool<GpuUInt128>.Create();
 		}
 
-		[ThreadStatic]
-		private static MersenneCpuDivisorScanSession? _mersenneCpuDivisorSession;
+		// [ThreadStatic]
+		// private static MersenneCpuDivisorScanSession? _mersenneCpuDivisorSession;
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-		internal static MersenneCpuDivisorScanSession RentMersenneCpuDivisorSession(Gpu.Accelerators.PrimeOrderCalculatorAccelerator gpu, ComputationDevice orderDevice)
-		{
-			if (_mersenneCpuDivisorSession is { } session)
-			{
-				session.Configure(gpu, orderDevice);
-				_mersenneCpuDivisorSession = null;
-				return session;
-			}
+		// [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+		// internal static MersenneCpuDivisorScanSession RentMersenneCpuDivisorSession(Gpu.Accelerators.PrimeOrderCalculatorAccelerator gpu, ComputationDevice orderDevice)
+		// {
+		// 	if (_mersenneCpuDivisorSession is { } session)
+		// 	{
+		// 		session.Configure(gpu, orderDevice);
+		// 		_mersenneCpuDivisorSession = null;
+		// 		return session;
+		// 	}
 
-			return new MersenneCpuDivisorScanSession(gpu, orderDevice);
-		}
+		// 	return new MersenneCpuDivisorScanSession(gpu, orderDevice);
+		// }
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-		internal static void ReturnMersenneCpuDivisorSession(MersenneCpuDivisorScanSession session) => _mersenneCpuDivisorSession = session;
+		// [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+		// internal static void ReturnMersenneCpuDivisorSession(MersenneCpuDivisorScanSession session) => _mersenneCpuDivisorSession = session;
 
 		[ThreadStatic]
 		private static ArrayPool<UInt128>? _uint128Pool;

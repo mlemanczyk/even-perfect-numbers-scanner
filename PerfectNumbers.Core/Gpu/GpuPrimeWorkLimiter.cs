@@ -9,6 +9,8 @@ public static class GpuPrimeWorkLimiter
 	public static void Acquire() => _semaphore.Wait();
 	public static void Release() => _semaphore.Release();
 
+	public static int CurrentLimit => _currentLimit;
+
 	public static void SetLimit(int value)
     {
         if (value <= 0)

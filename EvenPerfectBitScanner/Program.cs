@@ -18,7 +18,9 @@ internal static class Program
 	private const ulong InitialP = PerfectNumberConstants.BiggestKnownEvenPerfectP;
 	private static MersenneNumberDivisorGpuTester? _divisorTester;
 	private static UInt128 _divisor;
-	private static IMersenneNumberDivisorByDivisorTester? _byDivisorTester;
+	private static MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder _byDivisorCpuOrderTester;
+	private static MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder _byDivisorHybridOrderTester;
+	private static MersenneNumberDivisorByDivisorCpuTesterWithGpuOrder _byDivisorGpuOrderTester;
 	private static Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? _byDivisorPreviousResults;
 	private static bool _limitReached;
 	private static ulong _byDivisorStartPrime;
@@ -53,8 +55,13 @@ internal static class Program
 			Console.WriteLine("Initializing");
 			int gpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads);
 			int threadCount = Math.Max(1, _cliArguments.ThreadCount);
-			PerfectNumberConstants.GpuRatio = _cliArguments.GpuRatio;
-			PerfectNumberConstants.RollingAccelerators = Math.Min(Math.Min(PerfectNumberConstants.RollingAccelerators, gpuPrimeThreads), threadCount);
+
+			EnvironmentConfiguration.MinK = _cliArguments.MinK;
+			EnvironmentConfiguration.GpuBatchSize = Math.Max(1, _cliArguments.ScanBatchSize);
+			EnvironmentConfiguration.GpuRatio = _cliArguments.GpuRatio;
+			EnvironmentConfiguration.OrderDevice = _cliArguments.OrderDevice;
+			EnvironmentConfiguration.RollingAccelerators = Math.Min(Math.Min(PerfectNumberConstants.RollingAccelerators, gpuPrimeThreads), threadCount);
+			EnvironmentConfiguration.Initialize();
 
 			// NttGpuMath.GpuTransformBackend = _cliArguments.NttBackend;
 			// NttGpuMath.ReductionMode = _cliArguments.ModReductionMode;
@@ -70,7 +77,7 @@ internal static class Program
 			PrimeTester.GpuBatchSize = gpuPrimeBatch;
 			GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
 			Console.WriteLine("Warming up GPU kernels");
-			PrimeTester.WarmUpGpuKernels(PerfectNumberConstants.RollingAccelerators);
+			PrimeTester.WarmUpGpuKernels(EnvironmentConfiguration.RollingAccelerators);
 			// PrimeTester.WarmUpGpuKernels(gpuPrimeThreads >> 4);
 			Console.WriteLine("Starting up threads...");
 			_ = UnboundedTaskScheduler.Instance;
@@ -89,11 +96,10 @@ internal static class Program
 					: (useResidue ? PrimeTransformMode.Add : PrimeTransformMode.AddPrimes);
 			CandidatesCalculator.Configure(transformMode);
 			ComputationDevice mersenneDevice = _cliArguments.MersenneDevice;
-			ComputationDevice orderDevice = _cliArguments.OrderDevice;
+			ComputationDevice orderDevice = EnvironmentConfiguration.OrderDevice;
 			bool mersenneOnGpu = mersenneDevice == ComputationDevice.Gpu;
-			bool orderOnGpu = orderDevice == ComputationDevice.Gpu;
-			bool orderOnHybrid = orderDevice == ComputationDevice.Hybrid;
-			int scanBatchSize = Math.Max(1, _cliArguments.ScanBatchSize);
+			bool orderOnGpu = EnvironmentConfiguration.UseGpuOrder;
+			bool orderOnHybrid = EnvironmentConfiguration.UseHybridOrder;
 			int sliceSize = Math.Max(1, _cliArguments.SliceSize);
 			ulong residueKMax = _cliArguments.ResidueKMax;
 			string filterFile = _cliArguments.FilterFile;
@@ -235,15 +241,22 @@ internal static class Program
 			}
 			else if (useByDivisor)
 			{
-				_byDivisorTester = mersenneOnGpu
-						? new MersenneNumberDivisorByDivisorGpuTester()
-						: new MersenneNumberDivisorByDivisorCpuTester(orderDevice);
-				_byDivisorTester.MinK = _cliArguments.MinK;
-				_byDivisorTester.BatchSize = scanBatchSize;
-				if (_byDivisorTester is MersenneNumberDivisorByDivisorGpuTester && _cliArguments.MinK > ulong.MaxValue)
+				if (mersenneOnGpu)
 				{
-					Console.WriteLine("--min-k values above UInt64 are only supported on the CPU path for --mersenne=bydivisor.");
-					return;
+					throw new NotSupportedException("--mersenne-device=gpu is not supported for --mersenne=bydivisor on this execution path.");
+				}
+
+				if (EnvironmentConfiguration.UseCpuOrder)
+				{
+					_byDivisorCpuOrderTester = new MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder();
+				}
+				else if (EnvironmentConfiguration.UseHybridOrder)
+				{
+					_byDivisorHybridOrderTester = new MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder();
+				}
+				else
+				{
+					_byDivisorGpuOrderTester = new MersenneNumberDivisorByDivisorCpuTesterWithGpuOrder();
 				}
 			}
 
@@ -299,7 +312,7 @@ internal static class Program
 			NttGpuMath.GpuTransformBackend,
 							gpuPrimeThreads,
 							sliceSize,
-							scanBatchSize,
+							EnvironmentConfiguration.GpuBatchSize,
 							orderWarmupLimitOverride ?? 5_000_000UL,
 							NttGpuMath.ReductionMode,
 							mersenneDeviceLabel,
@@ -459,9 +472,11 @@ internal static class Program
 			if (useByDivisor)
 			{
 				int byDivisorPrimeRange = Math.Max(1, _cliArguments.BlockSize);
-				MersenneNumberDivisorByDivisorTester.Run(
+				if (EnvironmentConfiguration.UseCpuOrder)
+				{
+					MersenneNumberDivisorByDivisorTester.Run(
 						byDivisorCandidates,
-						_byDivisorTester!,
+						ref _byDivisorCpuOrderTester,
 						_byDivisorPreviousResults,
 						_byDivisorStartPrime,
 						static () => _lastCompositeP = true,
@@ -469,6 +484,33 @@ internal static class Program
 						static (candidate, searchedMersenne, detailedCheck, passedAllTests, divisor) => CalculationResultHandler.HandleResult(candidate, divisor, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP),
 						threadCount,
 						byDivisorPrimeRange);
+				}
+				else if (EnvironmentConfiguration.UseHybridOrder)
+				{
+					MersenneNumberDivisorByDivisorTester.Run(
+						byDivisorCandidates,
+						ref _byDivisorHybridOrderTester,
+						_byDivisorPreviousResults,
+						_byDivisorStartPrime,
+						static () => _lastCompositeP = true,
+						static () => _lastCompositeP = false,
+						static (candidate, searchedMersenne, detailedCheck, passedAllTests, divisor) => CalculationResultHandler.HandleResult(candidate, divisor, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP),
+						threadCount,
+						byDivisorPrimeRange);
+				}
+				else
+				{
+					MersenneNumberDivisorByDivisorTester.Run(
+						byDivisorCandidates,
+						ref _byDivisorGpuOrderTester,
+						_byDivisorPreviousResults,
+						_byDivisorStartPrime,
+						static () => _lastCompositeP = true,
+						static () => _lastCompositeP = false,
+						static (candidate, searchedMersenne, detailedCheck, passedAllTests, divisor) => CalculationResultHandler.HandleResult(candidate, divisor, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP),
+						threadCount,
+						byDivisorPrimeRange);
+				}
 
 				CalculationResultHandler.FlushBuffer();
 				CalculationResultHandler.ReleaseOutputBuffer();
@@ -674,9 +716,9 @@ internal static class Program
 		// Fast residue-based composite check for p using small primes
 		if (!_cliArguments.UseDivisor && !_cliArguments.UseByDivisor &&
 			(
-				(_cliArguments.OrderDevice == ComputationDevice.Gpu && CandidatesCalculator.IsCompositeByResiduesGpu(gpu, p)) ||
-				(_cliArguments.OrderDevice == ComputationDevice.Hybrid && CandidatesCalculator.IsCompositeByResiduesHybrid(gpu, p)) ||
-				(_cliArguments.OrderDevice == ComputationDevice.Cpu && CandidatesCalculator.IsCompositeByResiduesCpu(p))
+				(EnvironmentConfiguration.UseGpuOrder && CandidatesCalculator.IsCompositeByResiduesGpu(gpu, p)) ||
+				(EnvironmentConfiguration.UseHybridOrder && CandidatesCalculator.IsCompositeByResiduesHybrid(gpu, p)) ||
+				(EnvironmentConfiguration.UseCpuOrder && CandidatesCalculator.IsCompositeByResiduesCpu(p))
 			))
 		{
 			searchedMersenne = false;
@@ -711,7 +753,17 @@ internal static class Program
 		if (_cliArguments.UseByDivisor)
 		{
 			// Windowed pow2mod kernel handles by-divisor scans.
-			return _byDivisorTester!.IsPrime(gpu, p, out detailedCheck, out _);
+			if (EnvironmentConfiguration.UseCpuOrder)
+			{
+				return _byDivisorCpuOrderTester.IsPrime(p, out detailedCheck, out _);
+			}
+
+			if (EnvironmentConfiguration.UseHybridOrder)
+			{
+				return _byDivisorHybridOrderTester.IsPrime(p, out detailedCheck, out _);
+			}
+
+			return _byDivisorGpuOrderTester.IsPrime(p, out detailedCheck, out _);
 		}
 
 		detailedCheck = MersenneTesters.Value!.IsMersennePrime(gpu, p);

@@ -153,9 +153,9 @@ internal sealed class TaskThreadPool
 				return false;
 			}
 
-			workItem = _pendingTaskQueue.Pop();
-			if (workItem is { })
+			if (_pendingTaskQueue.TryPop(out WorkItem dequeued))
 			{
+				workItem = dequeued;
 				Interlocked.Decrement(ref _pendingTaskCount);
 				return true;
 			}

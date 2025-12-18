@@ -7,7 +7,7 @@ namespace PerfectNumbers.Core.Gpu.Accelerators;
 internal readonly struct LastDigitGpuTables
 {
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
-	private static readonly LastDigitGpuTables[] _sharedTables = new LastDigitGpuTables[PerfectNumberConstants.RollingAccelerators];
+	private static readonly LastDigitGpuTables[] _sharedTables = new LastDigitGpuTables[EnvironmentConfiguration.RollingAccelerators];
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static LastDigitGpuTables GetStaticTables(int acceleratorIndex) => _sharedTables[acceleratorIndex];

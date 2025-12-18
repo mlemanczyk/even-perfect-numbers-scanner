@@ -7,7 +7,7 @@ public readonly struct SmallPrimeFactorGpuTables
 
 {
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
-	private static readonly SmallPrimeFactorGpuTables?[] _sharedTables = new SmallPrimeFactorGpuTables?[PerfectNumberConstants.RollingAccelerators];
+	private static readonly SmallPrimeFactorGpuTables?[] _sharedTables = new SmallPrimeFactorGpuTables?[EnvironmentConfiguration.RollingAccelerators];
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static SmallPrimeFactorGpuTables? GetStaticTables(int acceleratorIndex) => _sharedTables[acceleratorIndex];

@@ -7,9 +7,9 @@ internal sealed class HeuristicGroupABGpuTables
 {
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
 
-	private static readonly HeuristicGroupABGpuTables[] _sharedTables = new HeuristicGroupABGpuTables[PerfectNumberConstants.RollingAccelerators];
+	private static readonly HeuristicGroupABGpuTables[] _sharedTables = new HeuristicGroupABGpuTables[EnvironmentConfiguration.RollingAccelerators];
 
-	private static readonly SemaphoreSlim[] _locks = [..Enumerable.Range(1, PerfectNumberConstants.RollingAccelerators).Select(_ => new SemaphoreSlim(1))];
+	private static readonly SemaphoreSlim[] _locks = [..Enumerable.Range(1, EnvironmentConfiguration.RollingAccelerators).Select(_ => new SemaphoreSlim(1))];
 
 	internal static HeuristicGroupABGpuTables EnsureStaticTables(int acceleratorIndex, AcceleratorStream stream)
 	{
