@@ -6,11 +6,15 @@ using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core.Cpu;
 
-public struct MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder() : IMersenneNumberDivisorByDivisorTester
+[DeviceDependentTemplate(typeof(ComputationDevice), suffix: "Order")]
+public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneNumberDivisorByDivisorTester
 {
 	public BigInteger DivisorLimit;
 	public BigInteger MinK = EnvironmentConfiguration.MinK;
+
+#if DEVICE_GPU || DEVICE_HYBRID
 	public readonly PrimeOrderCalculatorAccelerator Accelerator = PrimeOrderCalculatorAccelerator.Rent(1);
+#endif
 
 #pragma warning disable CS8618 // StateFilePath is always set on EvenPerfectBitScanner execution path when ResumeFromState is called.
 	private string StateFilePath;
@@ -21,11 +25,13 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder() : IMersen
 
 	private GpuUInt128WorkSet _divisorScanGpuWorkSet;
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public void ResetStateTracking()
 	{
 		_stateCounter = 0;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public void ResumeFromState(in string stateFile, in BigInteger lastSavedK, in BigInteger minK)
 	{
 		StateFilePath = stateFile;
@@ -81,9 +87,17 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder() : IMersen
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public readonly IMersenneNumberDivisorByDivisorTester.IDivisorScanSession CreateDivisorSession(PrimeOrderCalculatorAccelerator gpu)
 	{
+#if DEVICE_GPU
+		var session = new MersenneCpuDivisorScanSessionWithGpuOrder();
+		session.Configure(gpu);
+		return session;
+#elif DEVICE_HYBRID
 		var session = new MersenneCpuDivisorScanSessionWithHybridOrder();
 		session.Configure(gpu);
 		return session;
+#else
+		return new MersenneCpuDivisorScanSessionWithCpuOrder();
+#endif
 	}
 
 	private bool CheckDivisors(
@@ -254,32 +268,69 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder() : IMersen
 			return composite;
 		}
 
+#if DEVICE_GPU || DEVICE_HYBRID
 		PrimeOrderCalculatorAccelerator gpu = Accelerator;
+#endif
 		var residueStepper = new MersenneDivisorResidueStepper(prime, step, divisor);
 
+		ulong computedCycle;
+		bool primeOrderFailed;
+		ulong candidate;
+		ulong divisorCycle;
+		bool computed;
 		while (divisor.CompareTo(limit) <= 0)
 		{
 			if (residueStepper.IsAdmissible())
 			{
-				ulong candidate = divisor.Low;
+				candidate = divisor.Low;
 				MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(candidate);
-				ulong divisorCycle;
 				// Divisors generated from 2 * k * p + 1 exceed the small-cycle snapshot when p >= 138,000,000, so the short path below never runs.
-				if (!MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentHybrid(
-						candidate,
-						gpu,
-						prime,
-						divisorData,
-						out ulong computedCycle,
-						out bool primeOrderFailed) || computedCycle == 0UL)
+#if DEVICE_GPU
+				computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentGpu(
+					candidate,
+					gpu,
+					prime,
+					divisorData,
+					out computedCycle,
+					out primeOrderFailed);
+#elif DEVICE_HYBRID
+				computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentHybrid(
+					candidate,
+					gpu,
+					prime,
+					divisorData,
+					out computedCycle,
+					out primeOrderFailed);
+#else
+				computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentCpu(
+					candidate,
+					prime,
+					divisorData,
+					out computedCycle,
+					out primeOrderFailed);
+#endif
+				if (!computed || computedCycle == 0UL)
 				{
 					// Divisors produced by 2 * k * p + 1 always exceed PerfectNumberConstants.MaxQForDivisorCycles
 					// for the exponents scanned here, so skip the unused cache fallback and compute directly.
+#if DEVICE_GPU
+					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthGpu(
+						candidate,
+						gpu,
+						divisorData,
+						skipPrimeOrderHeuristic: primeOrderFailed);
+#elif DEVICE_HYBRID
 					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthHybrid(
 						candidate,
 						gpu,
 						divisorData,
 						skipPrimeOrderHeuristic: primeOrderFailed);
+#else
+					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthCpu(
+						candidate,
+						divisorData,
+						skipPrimeOrderHeuristic: primeOrderFailed);
+#endif
 				}
 				else
 				{
@@ -312,6 +363,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder() : IMersen
 		return false;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private bool CheckDivisorsLarge(
 		ulong prime,
 		BigInteger allowedMax,
@@ -402,6 +454,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder() : IMersen
 		return false;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private bool CheckDivisors64Range(
 		ulong prime,
 		ulong step,
@@ -452,6 +505,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder() : IMersen
 			out foundDivisor);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private bool CheckDivisors64(
 			ulong prime,
 			ulong step,
@@ -462,27 +516,63 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder() : IMersen
 			out bool processedAll,
 			out ulong foundDivisor)
 	{
+#if DEVICE_GPU || DEVICE_HYBRID
 		PrimeOrderCalculatorAccelerator gpu = Accelerator;
+#endif
+		ulong computedCycle;
+		bool primeOrderFailed;
 		bool canAdvance = step <= limit;
+		ulong divisorCycle;
+		bool computed;
 		if (!canAdvance)
 		{
 			if (divisor <= limit && residueStepper.IsAdmissible())
 			{
 				MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
-				ulong divisorCycle;
-				if (!MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentHybrid(
+#if DEVICE_GPU
+				computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentGpu(
+					divisor,
+					gpu,
+					prime,
+					divisorData,
+					out computedCycle,
+					out primeOrderFailed);
+#elif DEVICE_HYBRID
+				computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentHybrid(
+					divisor,
+					gpu,
+					prime,
+					divisorData,
+					out computedCycle,
+					out primeOrderFailed);
+#else
+				computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentCpu(
+					divisor,
+					prime,
+					divisorData,
+					out computedCycle,
+					out primeOrderFailed);
+#endif
+				if (!computed || computedCycle == 0UL)
+				{
+#if DEVICE_GPU
+					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthGpu(
 						divisor,
 						gpu,
-						prime,
 						divisorData,
-						out ulong computedCycle,
-						out bool primeOrderFailed) || computedCycle == 0UL)
-				{
+						skipPrimeOrderHeuristic: primeOrderFailed);
+#elif DEVICE_HYBRID
 					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthHybrid(
 						divisor,
 						gpu,
 						divisorData,
 						skipPrimeOrderHeuristic: primeOrderFailed);
+#else
+					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthCpu(
+						divisor,
+						divisorData,
+						skipPrimeOrderHeuristic: primeOrderFailed);
+#endif
 				}
 				else
 				{
@@ -520,20 +610,50 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder() : IMersen
 			if (residueStepper.IsAdmissible())
 			{
 				MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
-				ulong divisorCycle;
-				if (!MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentHybrid(
+#if DEVICE_GPU
+				computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentGpu(
+					divisor,
+					gpu,
+					prime,
+					divisorData,
+					out computedCycle,
+					out primeOrderFailed);
+#elif DEVICE_HYBRID
+				computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentHybrid(
+					divisor,
+					gpu,
+					prime,
+					divisorData,
+					out computedCycle,
+					out primeOrderFailed);
+#else
+				computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentCpu(
+					divisor,
+					prime,
+					divisorData,
+					out computedCycle,
+					out primeOrderFailed);
+#endif
+				if (!computed || computedCycle == 0UL)
+				{
+#if DEVICE_GPU
+					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthGpu(
 						divisor,
 						gpu,
-						prime,
 						divisorData,
-						out ulong computedCycle,
-						out bool primeOrderFailed) || computedCycle == 0UL)
-				{
+						skipPrimeOrderHeuristic: primeOrderFailed);
+#elif DEVICE_HYBRID
 					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthHybrid(
 						divisor,
 						gpu,
 						divisorData,
 						skipPrimeOrderHeuristic: primeOrderFailed);
+#else
+					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthCpu(
+						divisor,
+						divisorData,
+						skipPrimeOrderHeuristic: primeOrderFailed);
+#endif
 				}
 				else
 				{
@@ -568,10 +688,10 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder() : IMersen
 		}
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private void RecordState(BigInteger k)
 	{
 		string path = StateFilePath;
-
 		if (k <= _lastSavedK)
 		{
 			return;
