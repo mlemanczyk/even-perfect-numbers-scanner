@@ -14,7 +14,6 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     private const ulong NativeModuloChunkMask = (1UL << NativeModuloChunkBits) - 1UL;
 
     private const int Pow2WindowSizeBits = 8;
-    private const int Pow2WindowOddPowerCount = 1 << (Pow2WindowSizeBits - 1);
     private const int Pow2WindowMaxExponent = (1 << Pow2WindowSizeBits) - 1;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -54,7 +53,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         get => High == 0UL && Low == 0UL;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public readonly int GetBitLength()
     {
         ulong temp = High;
@@ -89,7 +88,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     public readonly ReadOnlyGpuUInt128 AsReadOnly() => new(this);
 
     // Operators must return fresh instances so callers never rely on accidental in-place mutation. Prefer the mutating helpers when state updates are required.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static GpuUInt128 operator +(GpuUInt128 left, GpuUInt128 right)
     {
         GpuUInt128 result = new(left.High, left.Low);
@@ -97,7 +96,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         return result;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static GpuUInt128 operator -(GpuUInt128 left, GpuUInt128 right)
     {
         GpuUInt128 result = new(left.High, left.Low);
@@ -105,18 +104,18 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         return result;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static GpuUInt128 operator ^(GpuUInt128 left, GpuUInt128 right) =>
         new(left.High ^ right.High, left.Low ^ right.Low);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static GpuUInt128 operator *(GpuUInt128 left, GpuUInt128 right)
     {
         Multiply(left, right, out var high, out var low);
         return new GpuUInt128(high, low);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static GpuUInt128 operator <<(GpuUInt128 value, int shift)
     {
         shift &= 127;
@@ -144,7 +143,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         return result;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static GpuUInt128 operator >>(GpuUInt128 value, int shift)
     {
         shift &= 127;
@@ -198,7 +197,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         return result;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public readonly int CompareTo(GpuUInt128 other)
     {
         if (High < other.High)
@@ -224,7 +223,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         return 0;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public readonly int CompareTo(in ReadOnlyGpuUInt128 other)
     {
         if (High < other.High)
@@ -266,7 +265,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Add(GpuUInt128 other) => Add(other.High, other.Low);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void Add(ulong otherHigh, ulong otherLow)
     {
         ulong originalLow = Low;
@@ -279,7 +278,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         High = low + originalLow;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void Add(ulong value)
     {
         ulong low = Low + value;
@@ -368,7 +367,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void AddMod(in ReadOnlyGpuUInt128 value, ulong modulus)
     {
         // TODO: Pre-reduce the operands via the Montgomery ladder used in MulMod64Benchmarks so the GPU
@@ -389,7 +388,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void AddMod(GpuUInt128 value, ulong modulus) => AddMod(value.Low, modulus);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void AddMod(ulong value, ulong modulus)
     {
         // TODO: Fold these operands with the ImmediateModulo helper once the GPU shim exposes it, avoiding
@@ -413,7 +412,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Sub(GpuUInt128 other) => SubInternal(other.High, other.Low);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private void SubInternal(ulong otherHigh, ulong otherLow)
     {
         ulong borrow = Low < otherLow ? 1UL : 0UL;
@@ -421,7 +420,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         Low -= otherLow;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static ulong MulHigh(ulong x, ulong y)
     {
         // TODO: Review if we can reuse any other existing variables to reduce registry pressure.
@@ -454,7 +453,7 @@ public struct GpuUInt128 : IComparable<GpuUInt128>, IEquatable<GpuUInt128>
         return yHigh;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     // Kept by-value to coexist with the ref readonly overload below while still signaling read-only intent.
     public void MulMod(ReadOnlyGpuUInt128 value, in ReadOnlyGpuUInt128 modulus)
     {

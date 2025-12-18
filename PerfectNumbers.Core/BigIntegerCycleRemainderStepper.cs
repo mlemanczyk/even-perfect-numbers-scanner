@@ -14,7 +14,7 @@ public struct BigIntegerCycleRemainderStepper(BigInteger cycleLength)
     private BigInteger _previousValue = BigInteger.Zero;
     private BigInteger _currentRemainder = BigInteger.Zero;
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public BigInteger Initialize(BigInteger value)
     {
         _previousValue = value;
@@ -22,7 +22,7 @@ public struct BigIntegerCycleRemainderStepper(BigInteger cycleLength)
         return _currentRemainder;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public BigInteger ComputeNext(BigInteger value)
     {
         BigInteger delta = value - _previousValue;
