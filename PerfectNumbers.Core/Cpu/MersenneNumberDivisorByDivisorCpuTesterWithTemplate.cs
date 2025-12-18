@@ -40,6 +40,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		_stateCounter = 0;
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public bool IsPrime(ulong prime, out bool divisorsExhausted, out BigInteger divisor)
 	{
 		BigInteger allowedMax = MersenneNumberDivisorByDivisorTester.ComputeAllowedMaxDivisorBig(prime, DivisorLimit);
@@ -100,6 +101,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 #endif
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private bool CheckDivisors(
 		ulong prime,
 		BigInteger allowedMax,
@@ -107,35 +109,41 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		out bool processedAll,
 		out BigInteger foundDivisor)
 	{
-		BigInteger normalizedMinK = minK < BigInteger.One ? BigInteger.One : minK;
-		BigInteger step = ((BigInteger)prime) << 1;
-		BigInteger firstDivisor = (step * normalizedMinK) + BigInteger.One;
-		bool unlimited = allowedMax.IsZero;
+		// TODO: Is minK ever < 1? Can this be optimized
+		BigInteger normalizedMinK = minK >= BigInteger.One ? minK : BigInteger.One,
+				   step = ((BigInteger)prime) << 1,
+				   firstDivisor = (step * normalizedMinK) + BigInteger.One;
 
-		bool fits64 = normalizedMinK <= ulong.MaxValue && firstDivisor <= ulong.MaxValue;
-		bool limitFits64 = unlimited || allowedMax <= ulong.MaxValue;
-		if (fits64 && limitFits64)
+		bool fits64 = normalizedMinK <= ulong.MaxValue && firstDivisor <= ulong.MaxValue,
+			 unlimited = allowedMax.IsZero,
+			 // This checks if the limit fits 64-bit
+			 composite64 = unlimited || allowedMax <= ulong.MaxValue;
+			 
+		ulong allowedMax64,
+			  foundDivisor64;
+
+		if (fits64 && composite64)
 		{
-			ulong allowedMax64 = unlimited ? ulong.MaxValue : (ulong)allowedMax;
-			bool composite64 = CheckDivisors64Bit(
+			allowedMax64 = unlimited ? ulong.MaxValue : (ulong)allowedMax;
+			composite64 = CheckDivisors64Bit(
 				prime,
 				allowedMax64,
 				(ulong)normalizedMinK,
 				out processedAll,
-				out ulong foundDivisor64);
+				out foundDivisor64);
 			foundDivisor = foundDivisor64;
 			return composite64;
 		}
 
 		if (fits64 && allowedMax > ulong.MaxValue)
 		{
-			ulong allowedMax64 = ulong.MaxValue;
-			bool composite64 = CheckDivisors64Bit(
+			allowedMax64 = ulong.MaxValue;
+			composite64 = CheckDivisors64Bit(
 				prime,
 				allowedMax64,
 				(ulong)normalizedMinK,
 				out processedAll,
-				out ulong foundDivisor64);
+				out foundDivisor64);
 			if (composite64)
 			{
 				foundDivisor = foundDivisor64;
@@ -162,6 +170,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			out foundDivisor);
 	}
 
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private bool CheckDivisors64Bit(
 		ulong prime,
 		ulong allowedMax,
@@ -170,7 +179,6 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		out ulong foundDivisor)
 	{
 		foundDivisor = 0UL;
-		ulong currentK = minK < 1UL ? 1UL : minK;
 
 		// The EvenPerfectBitScanner feeds primes >= 138,000,000 here, so allowedMax >= 3 in production runs.
 		// Keeping the guard commented out documents the reasoning for benchmarks and tests.
@@ -211,35 +219,44 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		// Intentionally recomputes factorizations without a per-thread cache.
 		// The previous factor cache recorded virtually no hits and only slowed down the scan.
 
-		ulong stepHigh = step.High;
-		ulong stepLow = step.Low;
-		ulong limitHigh = limit.High;
+		ulong currentK = minK,
+			  // We're reusing candidate variable as stepLow to limit registry pressure
+			  candidate = step.Low,
+			  // We're reusing computedCycle variable as lowerEnd to limit registry pressure
+			  computedCycle,
+			  // We're reusing divisorCycle variable as maxK to limit registry pressure
+			  divisorCycle;
 
-		if (stepHigh == 0UL && limitHigh == 0UL)
+			 // We're reusing computed variable as processedTop to limit registry pressure
+		bool computed,
+			 // We're reusing primeOrderFailed variable as processedBottom to limit registry pressure
+			 primeOrderFailed,
+			 composite;
+
+		if (step.High == 0UL && limit.High == 0UL)
 		{
-			ulong maxK = allowedMax > 0UL ? (allowedMax - 1UL) / stepLow : 0UL;
-			if (maxK == 0UL)
+			divisorCycle = allowedMax > 0UL ? (allowedMax - 1UL) / candidate : 0UL;
+			if (divisorCycle == 0UL)
 			{
 				processedAll = true;
 				foundDivisor = 0UL;
 				return false;
 			}
 
-			ulong startK = minK < 1UL ? 1UL : minK;
-			bool processedTop = true;
-			bool processedBottom = true;
-			bool composite = false;
+			computed = true;
+			primeOrderFailed = true;
+			composite = false;
 
-			if (startK <= maxK)
+			if (minK <= divisorCycle)
 			{
 				composite = CheckDivisors64Range(
 					prime,
-					stepLow,
+					candidate,
 					allowedMax,
-					startK,
-					maxK,
+					minK,
+					divisorCycle,
 					ref currentK,
-					out processedTop,
+					out computed,
 					out foundDivisor);
 				if (composite)
 				{
@@ -248,23 +265,23 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				}
 			}
 
-			ulong lowerEnd = startK > 1UL ? startK - 1UL : 0UL;
-			if (lowerEnd >= 1UL && startK == 1UL)
+			computedCycle = minK > 1UL ? minK - 1UL : 0UL;
+			if (computedCycle >= 1UL && minK == 1UL)
 			{
-				lowerEnd = Math.Min(lowerEnd, maxK);
+				computedCycle = Math.Min(computedCycle, divisorCycle);
 				currentK = 1UL;
 				composite = CheckDivisors64Range(
 					prime,
-					stepLow,
+					candidate,
 					allowedMax,
 					1UL,
-					lowerEnd,
+					computedCycle,
 					ref currentK,
-					out processedBottom,
+					out primeOrderFailed,
 					out foundDivisor);
 			}
 
-			processedAll = processedTop && processedBottom;
+			processedAll = computed && primeOrderFailed;
 			return composite;
 		}
 
@@ -273,11 +290,6 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 #endif
 		var residueStepper = new MersenneDivisorResidueStepper(prime, step, divisor);
 
-		ulong computedCycle;
-		bool primeOrderFailed;
-		ulong candidate;
-		ulong divisorCycle;
-		bool computed;
 		while (divisor.CompareTo(limit) <= 0)
 		{
 			if (residueStepper.IsAdmissible())
@@ -309,7 +321,11 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 					out computedCycle,
 					out primeOrderFailed);
 #endif
-				if (!computed || computedCycle == 0UL)
+				if (computed && computedCycle != 0UL)
+				{
+					divisorCycle = computedCycle;
+				}
+				else
 				{
 					// Divisors produced by 2 * k * p + 1 always exceed PerfectNumberConstants.MaxQForDivisorCycles
 					// for the exponents scanned here, so skip the unused cache fallback and compute directly.
@@ -331,10 +347,6 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 						divisorData,
 						skipPrimeOrderHeuristic: primeOrderFailed);
 #endif
-				}
-				else
-				{
-					divisorCycle = computedCycle;
 				}
 
 				RecordState(currentK);
@@ -374,7 +386,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	{
 		processedAll = true;
 		foundDivisor = BigInteger.Zero;
-		BigInteger currentK = minK < BigInteger.One ? BigInteger.One : minK;
+		BigInteger currentK = minK;
 		BigInteger divisor = (step * currentK) + BigInteger.One;
 		if (allowedMax.IsZero)
 		{
@@ -386,8 +398,8 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			return false;
 		}
 
-		LastDigit lastDigit = (prime & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
-		ushort decimalMask = DivisorGenerator.GetDecimalMask(lastDigit);
+		bool lastIsSeven = (prime & 3UL) == 3UL;
+		ushort decimalMask = DivisorGenerator.GetDecimalMask(lastIsSeven);
 
 		var rem10 = new BigIntegerCycleRemainderStepper(10);
 		var rem8 = new BigIntegerCycleRemainderStepper(8);
@@ -431,7 +443,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				}
 			}
 
-			currentK += BigInteger.One;
+			currentK++;
 			divisor += step;
 			remainder10 = (byte)rem10.ComputeNext(divisor);
 			remainder8 = (byte)rem8.ComputeNext(divisor);
@@ -521,10 +533,9 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 #endif
 		ulong computedCycle;
 		bool primeOrderFailed;
-		bool canAdvance = step <= limit;
 		ulong divisorCycle;
 		bool computed;
-		if (!canAdvance)
+		if (step > limit)
 		{
 			if (divisor <= limit && residueStepper.IsAdmissible())
 			{

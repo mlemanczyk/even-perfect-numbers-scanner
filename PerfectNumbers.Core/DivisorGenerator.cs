@@ -47,19 +47,19 @@ internal static class DivisorGenerator
             out SmallPrimesPow2LastNineWithoutLastThree);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ushort GetDecimalMask(LastDigit lastDigit)
-    {
-        return lastDigit switch
-        {
-            LastDigit.Seven => DecimalMaskWhenLastIsSeven,
-            LastDigit.Three => DecimalMaskWhenLastIsThree,
-            LastDigit.Nine => DecimalMaskWhenLastIsNine,
-            _ => DecimalMaskOtherwise,
-        };
-    }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static ushort GetDecimalMask(LastDigit lastDigit) => lastDigit switch
+	{
+		LastDigit.Seven => DecimalMaskWhenLastIsSeven,
+		LastDigit.Three => DecimalMaskWhenLastIsThree,
+		LastDigit.Nine => DecimalMaskWhenLastIsNine,
+		_ => DecimalMaskOtherwise,
+	};
 
-    private static void BuildSmallPrimes(
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static ushort GetDecimalMask(bool lastIsSeven) => lastIsSeven ? DecimalMaskWhenLastIsSeven : DecimalMaskOtherwise;
+
+	private static void BuildSmallPrimes(
         out uint[] all,
         out ulong[] allPow2,
         out uint[] lastOne,
@@ -210,6 +210,8 @@ internal static class DivisorGenerator
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static LastDigit GetLastDigit(uint prime)
     {
+        // TODO: Swap the `% 10` usage for ULongExtensions.Mod10 so the hot classification path
+        // reuses the benchmarked residue helper instead of repeated divisions.
         return (prime % 10U) switch
         {
             1U => LastDigit.One,
@@ -221,20 +223,15 @@ internal static class DivisorGenerator
         };
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsAllowedForLastOne(uint prime, LastDigit lastDigit)
-    {
-        // TODO: Swap the `% 10` usage for ULongExtensions.Mod10 so the hot classification path
-        // reuses the benchmarked residue helper instead of repeated divisions.
-        return lastDigit switch
-        {
-            LastDigit.One or LastDigit.Three or LastDigit.Nine => true,
-            LastDigit.Seven => prime == 7U,
-            _ => prime == 11U,
-        };
-    }
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	private static bool IsAllowedForLastOne(uint prime, LastDigit lastDigit) => lastDigit switch
+	{
+		LastDigit.One or LastDigit.Three or LastDigit.Nine => true,
+		LastDigit.Seven => prime == 7U,
+		_ => prime == 11U,
+	};
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsAllowedForLastSeven(uint prime, LastDigit lastDigit)
     {
         // TODO: Route this `% 10` classification through ULongExtensions.Mod10 to match the faster
