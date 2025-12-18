@@ -75,7 +75,7 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
         }
 
         AttributeData attributeData = attributeContext.Attributes[0];
-        if (attributeData.ConstructorArguments.Length != 1)
+        if (attributeData.ConstructorArguments.Length is not (1 or 2))
         {
             return null;
         }
@@ -83,6 +83,23 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
         if (attributeData.ConstructorArguments[0].Value is not INamedTypeSymbol enumTypeSymbol)
         {
             return null;
+        }
+
+        string? suffix = null;
+        if (attributeData.ConstructorArguments.Length == 2)
+        {
+            suffix = attributeData.ConstructorArguments[1].Value as string;
+        }
+
+        if (suffix is null && attributeData.NamedArguments.Length != 0)
+        {
+            foreach (KeyValuePair<string, TypedConstant> namedArgument in attributeData.NamedArguments)
+            {
+                if (string.Equals(namedArgument.Key, "suffix", StringComparison.OrdinalIgnoreCase))
+                {
+                    suffix = namedArgument.Value.Value as string;
+                }
+            }
         }
 
         if (enumTypeSymbol.TypeKind != TypeKind.Enum)
@@ -99,7 +116,7 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
             .ToImmutableArray();
 
         Location attributeLocation = attributeContext.TargetNode.GetLocation();
-        return TemplateInfo.CreateValid(templateSymbol, enumTypeSymbol, attributeLocation, enumValues);
+        return TemplateInfo.CreateValid(templateSymbol, enumTypeSymbol, attributeLocation, enumValues, suffix);
     }
 
     private static void GenerateForTemplate(SourceProductionContext context, TemplateInfo template, GeneratorOptions options)
@@ -149,7 +166,7 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
                 continue;
             }
 
-            string generatedTypeName = baseName + enumValueName;
+            string generatedTypeName = baseName + enumValueName + template.Suffix;
             TypeDeclarationSyntax generatedTypeSyntax = TransformTemplateType(deviceTemplateSyntax, generatedTypeName);
 
             CompilationUnitSyntax generatedRoot = BuildGeneratedFile(
@@ -161,7 +178,7 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
             generatedRoot = (CompilationUnitSyntax)new ConditionalDirectiveAndDisabledTextStripper().Visit(generatedRoot)!;
             generatedRoot = generatedRoot.NormalizeWhitespace();
 
-            string generatedFileName = baseName + "." + enumValueName + ".generated.cs";
+            string generatedFileName = baseName + "." + enumValueName + template.Suffix + ".generated.cs";
             string hintName = options.BuildHintName(filePath, generatedFileName);
             context.AddSource(
                 hintName,
@@ -280,12 +297,14 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
             INamedTypeSymbol enumType,
             Location attributeLocation,
             ImmutableArray<string> enumValues,
+            string? suffix,
             bool valid)
         {
             TemplateType = templateType;
             EnumType = enumType;
             AttributeLocation = attributeLocation;
             EnumValues = enumValues;
+            Suffix = suffix ?? string.Empty;
             Valid = valid;
         }
 
@@ -293,6 +312,7 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
         public INamedTypeSymbol EnumType { get; }
         public Location AttributeLocation { get; }
         public ImmutableArray<string> EnumValues { get; }
+        public string Suffix { get; }
         public bool Valid { get; }
 
         public string Name => TemplateType.Name;
@@ -304,14 +324,15 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
         public SyntaxReference? DeclaringSyntaxReference => TemplateType.DeclaringSyntaxReferences.FirstOrDefault();
 
         public static TemplateInfo CreateInvalidEnum(INamedTypeSymbol templateType, INamedTypeSymbol enumType, Location attributeLocation)
-            => new(templateType, enumType, attributeLocation, enumValues: default, valid: false);
+            => new(templateType, enumType, attributeLocation, enumValues: default, suffix: null, valid: false);
 
         public static TemplateInfo CreateValid(
             INamedTypeSymbol templateType,
             INamedTypeSymbol enumType,
             Location attributeLocation,
-            ImmutableArray<string> enumValues)
-            => new(templateType, enumType, attributeLocation, enumValues, valid: true);
+            ImmutableArray<string> enumValues,
+            string? suffix)
+            => new(templateType, enumType, attributeLocation, enumValues, suffix, valid: true);
     }
 
     private readonly struct GeneratorOptions

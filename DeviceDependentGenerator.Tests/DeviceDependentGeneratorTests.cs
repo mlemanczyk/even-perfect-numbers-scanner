@@ -9,7 +9,7 @@ namespace DeviceDependentGenerator.Tests;
 public sealed class DeviceDependentGeneratorTests
 {
     [Fact]
-    public void Generates_classes_per_enum_value_and_filters_device_blocks()
+    public void Generates_classes_per_enum_value_and_filters_device_blocks_with_suffix()
     {
         const string attributeAndEnum = """
             using System;
@@ -19,7 +19,7 @@ public sealed class DeviceDependentGeneratorTests
             [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, Inherited = false, AllowMultiple = false)]
             public sealed class DeviceDependentTemplateAttribute : Attribute
             {
-                public DeviceDependentTemplateAttribute(Type enumType) { }
+                public DeviceDependentTemplateAttribute(Type enumType, string? suffix = null) { }
             }
 
             public enum CalculationDevice
@@ -35,7 +35,7 @@ public sealed class DeviceDependentGeneratorTests
 
             namespace PerfectNumbers.Core;
 
-            [DeviceDependentTemplate(typeof(CalculationDevice))]
+            [DeviceDependentTemplate(typeof(CalculationDevice), suffix: "Impl")]
             public static class PrimeCalculatorTemplate
             {
             #if DEVICE_CPU
@@ -65,21 +65,21 @@ public sealed class DeviceDependentGeneratorTests
 
         ImmutableArray<GeneratedSourceResult> generated = runResult.Results.Single().GeneratedSources;
 
-        string cpu = generated.Single(s => s.HintName.EndsWith("PrimeCalculator.Cpu.generated.cs", StringComparison.Ordinal)).SourceText.ToString();
-        string hybrid = generated.Single(s => s.HintName.EndsWith("PrimeCalculator.Hybrid.generated.cs", StringComparison.Ordinal)).SourceText.ToString();
-        string gpu = generated.Single(s => s.HintName.EndsWith("PrimeCalculator.Gpu.generated.cs", StringComparison.Ordinal)).SourceText.ToString();
+        string cpu = generated.Single(s => s.HintName.EndsWith("PrimeCalculator.CpuImpl.generated.cs", StringComparison.Ordinal)).SourceText.ToString();
+        string hybrid = generated.Single(s => s.HintName.EndsWith("PrimeCalculator.HybridImpl.generated.cs", StringComparison.Ordinal)).SourceText.ToString();
+        string gpu = generated.Single(s => s.HintName.EndsWith("PrimeCalculator.GpuImpl.generated.cs", StringComparison.Ordinal)).SourceText.ToString();
 
-        cpu.Should().Contain("class PrimeCalculatorCpu");
+        cpu.Should().Contain("class PrimeCalculatorCpuImpl");
         cpu.Should().Contain("=> \"CPU\"");
         cpu.Should().NotContain("#if");
         cpu.Should().NotContain("#endif");
 
-        hybrid.Should().Contain("class PrimeCalculatorHybrid");
+        hybrid.Should().Contain("class PrimeCalculatorHybridImpl");
         hybrid.Should().Contain("=> \"HYBRID\"");
         hybrid.Should().NotContain("#if");
         hybrid.Should().NotContain("#endif");
 
-        gpu.Should().Contain("class PrimeCalculatorGpu");
+        gpu.Should().Contain("class PrimeCalculatorGpuImpl");
         gpu.Should().Contain("=> \"GPU\"");
         gpu.Should().NotContain("#if");
         gpu.Should().NotContain("#endif");
