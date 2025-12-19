@@ -17,11 +17,13 @@ namespace PerfectNumbers.Core.Generators;
 public sealed class DeviceDependentGenerator : IIncrementalGenerator
 {
     private const string DeviceDependentTemplateAttributeMetadataName = "PerfectNumbers.Core.DeviceDependentTemplateAttribute";
+    private const string EnumDependentTemplateAttributeMetadataName = "PerfectNumbers.Core.EnumDependentTemplateAttribute";
+    private const string NameSuffixAttributeMetadataName = "PerfectNumbers.Core.NameSuffixAttribute";
 
-    private static readonly DiagnosticDescriptor EnumTypeMustBeEnum = new(
+    private static readonly DiagnosticDescriptor TemplateEnumTypeMustBeEnum = new(
         id: "DDG001",
-        title: "DeviceDependentTemplate requires an enum type",
-        messageFormat: "DeviceDependentTemplate requires an enum type, but '{0}' is not an enum.",
+        title: "Template attribute requires an enum type",
+        messageFormat: "Template attribute '{0}' requires an enum type, but '{1}' is not an enum.",
         category: "DeviceDependentGenerator",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -37,17 +39,24 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor TemplateNotFoundInDeviceParse = new(
         id: "DDG003",
         title: "Template not found after preprocessing",
-        messageFormat: "Could not find template type '{0}' after preprocessing for device '{1}'.",
+        messageFormat: "Could not find template type '{0}' after preprocessing for combination '{1}'.",
+        category: "DeviceDependentGenerator",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    private static readonly DiagnosticDescriptor DuplicateSingleUseAttribute = new(
+        id: "DDG004",
+        title: "Template attribute used multiple times",
+        messageFormat: "Attribute '{0}' can be applied only once to '{1}'.",
         category: "DeviceDependentGenerator",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        IncrementalValuesProvider<TemplateInfo> templates = context.SyntaxProvider.ForAttributeWithMetadataName(
-            fullyQualifiedMetadataName: DeviceDependentTemplateAttributeMetadataName,
-            predicate: static (node, _) => node is TypeDeclarationSyntax,
-            transform: static (attributeContext, cancellationToken) => TryGetTemplateInfo(attributeContext, cancellationToken))
+        IncrementalValuesProvider<TemplateInfo> templates = context.SyntaxProvider.CreateSyntaxProvider(
+            predicate: static (node, _) => node is TypeDeclarationSyntax typeDecl && typeDecl.AttributeLists.Count > 0,
+            transform: static (syntaxContext, cancellationToken) => TryGetTemplateInfo(syntaxContext, cancellationToken))
             .Where(static info => info is not null)!
             .Select(static (info, _) => info!);
 
@@ -63,70 +72,32 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
         });
     }
 
-    private static TemplateInfo? TryGetTemplateInfo(GeneratorAttributeSyntaxContext attributeContext, CancellationToken cancellationToken)
+    private static TemplateInfo? TryGetTemplateInfo(GeneratorSyntaxContext context, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (attributeContext.TargetSymbol is not INamedTypeSymbol templateSymbol)
+        if (context.Node is not TypeDeclarationSyntax typeSyntax)
         {
             return null;
         }
 
-        if (attributeContext.Attributes.Length != 1)
+        if (context.SemanticModel.GetDeclaredSymbol(typeSyntax, cancellationToken) is not INamedTypeSymbol templateSymbol)
         {
             return null;
         }
 
-        AttributeData attributeData = attributeContext.Attributes[0];
-        if (attributeData.ConstructorArguments.Length is not (1 or 2))
-        {
-            return null;
-        }
-
-        if (attributeData.ConstructorArguments[0].Value is not INamedTypeSymbol enumTypeSymbol)
-        {
-            return null;
-        }
-
-        string? suffix = null;
-        if (attributeData.ConstructorArguments.Length == 2)
-        {
-            suffix = attributeData.ConstructorArguments[1].Value as string;
-        }
-
-        if (suffix is null && attributeData.NamedArguments.Length != 0)
-        {
-            foreach (KeyValuePair<string, TypedConstant> namedArgument in attributeData.NamedArguments)
-            {
-                if (string.Equals(namedArgument.Key, "suffix", StringComparison.OrdinalIgnoreCase))
-                {
-                    suffix = namedArgument.Value.Value as string;
-                }
-            }
-        }
-
-        if (enumTypeSymbol.TypeKind != TypeKind.Enum)
-        {
-            Location location = attributeContext.TargetNode.GetLocation();
-            return TemplateInfo.CreateInvalidEnum(templateSymbol, enumTypeSymbol, location);
-        }
-
-        ImmutableArray<string> enumValues = enumTypeSymbol
-            .GetMembers()
-            .OfType<IFieldSymbol>()
-            .Where(static f => !f.IsImplicitlyDeclared && f.HasConstantValue)
-            .Select(static f => f.Name)
-            .ToImmutableArray();
-
-        Location attributeLocation = attributeContext.TargetNode.GetLocation();
-        return TemplateInfo.CreateValid(templateSymbol, enumTypeSymbol, attributeLocation, enumValues, suffix);
+        return CollectTemplateInfo(templateSymbol, typeSyntax, cancellationToken);
     }
 
     private static void GenerateForTemplate(SourceProductionContext context, TemplateInfo template, Compilation compilation, GeneratorOptions options)
     {
-        if (!template.Valid)
+        foreach (Diagnostic diagnostic in template.Diagnostics)
         {
-            context.ReportDiagnostic(Diagnostic.Create(EnumTypeMustBeEnum, template.AttributeLocation, template.EnumType.ToDisplayString()));
+            context.ReportDiagnostic(diagnostic);
+        }
+
+        if (!template.Valid || !template.HasAnyTemplateAttribute)
+        {
             return;
         }
 
@@ -151,10 +122,9 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
         CSharpParseOptions baseParseOptions = (CSharpParseOptions)templateSyntax.SyntaxTree.Options;
         SyntaxTree originalTree = templateSyntax.SyntaxTree;
 
-        foreach (string enumValueName in template.EnumValues)
+        foreach (TemplateVariant variant in template.ExpandVariants())
         {
-            string deviceDefine = "DEVICE_" + enumValueName.ToUpperInvariant();
-            CSharpParseOptions parseOptions = WithDeviceDefine(baseParseOptions, deviceDefine);
+            CSharpParseOptions parseOptions = WithDefines(baseParseOptions, variant.PreprocessorSymbols);
 
             SyntaxTree deviceTree = CSharpSyntaxTree.ParseText(
                 fileText.ToString(),
@@ -166,13 +136,17 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
             TypeDeclarationSyntax? deviceTemplateSyntax = FindTemplateDeclaration(deviceRoot, templateName);
             if (deviceTemplateSyntax is null)
             {
-                context.ReportDiagnostic(Diagnostic.Create(TemplateNotFoundInDeviceParse, templateSyntax.Identifier.GetLocation(), templateName, enumValueName));
+                context.ReportDiagnostic(Diagnostic.Create(
+                    TemplateNotFoundInDeviceParse,
+                    templateSyntax.Identifier.GetLocation(),
+                    templateName,
+                    variant.CombinationDisplay));
                 continue;
             }
 
             ReportDeviceSpecificTemplateErrors(context, deviceTree);
 
-            string generatedTypeName = baseName + enumValueName + template.Suffix;
+            string generatedTypeName = baseName + variant.NameSuffix + template.NameSuffix;
             TypeDeclarationSyntax generatedTypeSyntax = TransformTemplateType(deviceTemplateSyntax, generatedTypeName);
 
             CompilationUnitSyntax generatedRoot = BuildGeneratedFile(
@@ -184,7 +158,7 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
             generatedRoot = (CompilationUnitSyntax)new ConditionalDirectiveAndDisabledTextStripper().Visit(generatedRoot)!;
             generatedRoot = generatedRoot.NormalizeWhitespace();
 
-            string generatedFileName = baseName + "." + enumValueName + template.Suffix + ".generated.cs";
+            string generatedFileName = baseName + "." + variant.FileSuffix + template.NameSuffix + ".generated.cs";
             string hintName = options.BuildHintName(filePath, generatedFileName);
             context.AddSource(
                 hintName,
@@ -208,16 +182,8 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
             || typeDeclaration.Parent is FileScopedNamespaceDeclarationSyntax
             || typeDeclaration.Parent is CompilationUnitSyntax;
 
-    private static CSharpParseOptions WithDeviceDefine(CSharpParseOptions baseParseOptions, string deviceDefine)
-    {
-        IEnumerable<string> symbols = baseParseOptions.PreprocessorSymbolNames;
-        if (symbols.Contains(deviceDefine))
-        {
-            return baseParseOptions;
-        }
-
-        return baseParseOptions.WithPreprocessorSymbols(symbols.Concat(new[] { deviceDefine }));
-    }
+    private static CSharpParseOptions WithDefines(CSharpParseOptions baseParseOptions, IEnumerable<string> defines)
+        => baseParseOptions.WithPreprocessorSymbols(baseParseOptions.PreprocessorSymbolNames.Concat(defines).Distinct());
 
     private static TypeDeclarationSyntax? FindTemplateDeclaration(CompilationUnitSyntax root, string templateName)
     {
@@ -234,12 +200,12 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
 
     private static TypeDeclarationSyntax TransformTemplateType(TypeDeclarationSyntax templateType, string generatedTypeName)
     {
-        TypeDeclarationSyntax withoutAttribute = RemoveDeviceDependentAttribute(templateType);
+        TypeDeclarationSyntax withoutAttribute = RemoveTemplateAttributes(templateType);
         TypeDeclarationSyntax renamed = (TypeDeclarationSyntax)new SelfIdentifierRewriter(templateType.Identifier.ValueText, generatedTypeName).Visit(withoutAttribute)!;
         return renamed.WithIdentifier(SyntaxFactory.Identifier(generatedTypeName));
     }
 
-    private static TypeDeclarationSyntax RemoveDeviceDependentAttribute(TypeDeclarationSyntax typeDeclaration)
+    private static TypeDeclarationSyntax RemoveTemplateAttributes(TypeDeclarationSyntax typeDeclaration)
     {
         if (typeDeclaration.AttributeLists.Count == 0)
         {
@@ -253,7 +219,7 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
             var newAttributes = new List<AttributeSyntax>(attributes.Count);
             foreach (AttributeSyntax attribute in attributes)
             {
-                if (IsDeviceDependentTemplateAttribute(attribute.Name))
+                if (IsTemplateAttribute(attribute.Name))
                 {
                     continue;
                 }
@@ -294,15 +260,15 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
         }
     }
 
-    private static bool IsDeviceDependentTemplateAttribute(NameSyntax attributeName)
+    private static bool IsTemplateAttribute(NameSyntax attributeName)
     {
         string text = attributeName.ToString();
-        if (text.EndsWith("DeviceDependentTemplate", StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        return text.EndsWith("DeviceDependentTemplateAttribute", StringComparison.Ordinal);
+        return text.EndsWith("DeviceDependentTemplate", StringComparison.Ordinal)
+            || text.EndsWith("DeviceDependentTemplateAttribute", StringComparison.Ordinal)
+            || text.EndsWith("EnumDependentTemplate", StringComparison.Ordinal)
+            || text.EndsWith("EnumDependentTemplateAttribute", StringComparison.Ordinal)
+            || text.EndsWith("NameSuffix", StringComparison.Ordinal)
+            || text.EndsWith("NameSuffixAttribute", StringComparison.Ordinal);
     }
 
     private static CompilationUnitSyntax BuildGeneratedFile(
@@ -334,26 +300,26 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
     {
         private TemplateInfo(
             INamedTypeSymbol templateType,
-            INamedTypeSymbol enumType,
-            Location attributeLocation,
-            ImmutableArray<string> enumValues,
-            string? suffix,
-            bool valid)
+            ImmutableArray<EnumTemplateInfo> enumAttributes,
+            DeviceTemplateInfo? deviceAttribute,
+            string nameSuffix,
+            ImmutableArray<Diagnostic> diagnostics)
         {
             TemplateType = templateType;
-            EnumType = enumType;
-            AttributeLocation = attributeLocation;
-            EnumValues = enumValues;
-            Suffix = suffix ?? string.Empty;
-            Valid = valid;
+            EnumAttributes = enumAttributes;
+            DeviceAttribute = deviceAttribute;
+            NameSuffix = nameSuffix;
+            Diagnostics = diagnostics;
         }
 
         public INamedTypeSymbol TemplateType { get; }
-        public INamedTypeSymbol EnumType { get; }
-        public Location AttributeLocation { get; }
-        public ImmutableArray<string> EnumValues { get; }
-        public string Suffix { get; }
-        public bool Valid { get; }
+        public ImmutableArray<EnumTemplateInfo> EnumAttributes { get; }
+        public DeviceTemplateInfo? DeviceAttribute { get; }
+        public string NameSuffix { get; }
+        public ImmutableArray<Diagnostic> Diagnostics { get; }
+
+        public bool Valid => Diagnostics.IsDefaultOrEmpty;
+        public bool HasAnyTemplateAttribute => EnumAttributes.Length > 0 || DeviceAttribute is not null;
 
         public string Name => TemplateType.Name;
 
@@ -363,16 +329,279 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
 
         public SyntaxReference? DeclaringSyntaxReference => TemplateType.DeclaringSyntaxReferences.FirstOrDefault();
 
-        public static TemplateInfo CreateInvalidEnum(INamedTypeSymbol templateType, INamedTypeSymbol enumType, Location attributeLocation)
-            => new(templateType, enumType, attributeLocation, enumValues: default, suffix: null, valid: false);
+        public IEnumerable<TemplateVariant> ExpandVariants()
+        {
+            var combinations = ImmutableArray.Create(new TemplateVariantBuilder());
 
-        public static TemplateInfo CreateValid(
+            foreach (EnumTemplateInfo enumInfo in EnumAttributes)
+            {
+                combinations = ExpandEnum(combinations, enumInfo);
+            }
+
+            bool hasEnumAttributes = EnumAttributes.Length > 0;
+
+            if (DeviceAttribute is not null)
+            {
+                combinations = ExpandDevice(combinations, DeviceAttribute.Value, hasEnumAttributes);
+            }
+
+            foreach (TemplateVariantBuilder builder in combinations)
+            {
+                yield return new TemplateVariant(builder.Symbols, builder.NameSuffix);
+            }
+        }
+
+        private static ImmutableArray<TemplateVariantBuilder> ExpandEnum(
+            ImmutableArray<TemplateVariantBuilder> current,
+            EnumTemplateInfo enumInfo)
+        {
+            var builder = ImmutableArray.CreateBuilder<TemplateVariantBuilder>(current.Length * enumInfo.Values.Length);
+            foreach (TemplateVariantBuilder existing in current)
+            {
+                foreach (string value in enumInfo.Values)
+                {
+                    builder.Add(existing.Append(
+                        symbol: $"{enumInfo.EnumType.Name}_{value}",
+                        namePart: $"For{value}{enumInfo.EnumType.Name}"));
+                }
+            }
+
+            return builder.ToImmutable();
+        }
+
+        private static ImmutableArray<TemplateVariantBuilder> ExpandDevice(
+            ImmutableArray<TemplateVariantBuilder> current,
+            DeviceTemplateInfo deviceInfo,
+            bool prefixWithFor)
+        {
+            var builder = ImmutableArray.CreateBuilder<TemplateVariantBuilder>(current.Length * deviceInfo.Values.Length);
+            foreach (TemplateVariantBuilder existing in current)
+            {
+                foreach (string value in deviceInfo.Values)
+                {
+                    string namePart = prefixWithFor ? $"For{value}" : value;
+                    builder.Add(existing.Append(
+                        symbol: "DEVICE_" + value.ToUpperInvariant(),
+                        namePart: namePart));
+                }
+            }
+
+            return builder.ToImmutable();
+        }
+
+        public static TemplateInfo Create(
             INamedTypeSymbol templateType,
-            INamedTypeSymbol enumType,
-            Location attributeLocation,
-            ImmutableArray<string> enumValues,
-            string? suffix)
-            => new(templateType, enumType, attributeLocation, enumValues, suffix, valid: true);
+            ImmutableArray<EnumTemplateInfo> enumAttributes,
+            DeviceTemplateInfo? deviceAttribute,
+            string? nameSuffix,
+            ImmutableArray<Diagnostic> diagnostics)
+            => new(
+                templateType,
+                enumAttributes,
+                deviceAttribute,
+                nameSuffix ?? string.Empty,
+                diagnostics);
+    }
+
+    private readonly struct EnumTemplateInfo
+    {
+        public EnumTemplateInfo(INamedTypeSymbol enumType, ImmutableArray<string> values, Location attributeLocation)
+        {
+            EnumType = enumType;
+            Values = values;
+            AttributeLocation = attributeLocation;
+        }
+
+        public INamedTypeSymbol EnumType { get; }
+        public ImmutableArray<string> Values { get; }
+        public Location AttributeLocation { get; }
+    }
+
+    private readonly struct DeviceTemplateInfo
+    {
+        public DeviceTemplateInfo(INamedTypeSymbol enumType, ImmutableArray<string> values, Location attributeLocation)
+        {
+            EnumType = enumType;
+            Values = values;
+            AttributeLocation = attributeLocation;
+        }
+
+        public INamedTypeSymbol EnumType { get; }
+        public ImmutableArray<string> Values { get; }
+        public Location AttributeLocation { get; }
+    }
+
+    private readonly struct TemplateVariant
+    {
+        public TemplateVariant(ImmutableArray<string> preprocessorSymbols, string nameSuffix)
+        {
+            PreprocessorSymbols = preprocessorSymbols;
+            NameSuffix = nameSuffix;
+        }
+
+        public ImmutableArray<string> PreprocessorSymbols { get; }
+        public string NameSuffix { get; }
+        public string FileSuffix => NameSuffix;
+        public string CombinationDisplay => string.Join(", ", PreprocessorSymbols);
+    }
+
+    private sealed class TemplateVariantBuilder
+    {
+        public TemplateVariantBuilder()
+        {
+            Symbols = ImmutableArray<string>.Empty;
+            NameSuffix = string.Empty;
+        }
+
+        private TemplateVariantBuilder(ImmutableArray<string> symbols, string nameSuffix)
+        {
+            Symbols = symbols;
+            NameSuffix = nameSuffix;
+        }
+
+        public ImmutableArray<string> Symbols { get; }
+        public string NameSuffix { get; }
+
+        public TemplateVariantBuilder Append(string symbol, string namePart)
+        {
+            return new TemplateVariantBuilder(Symbols.Add(symbol), NameSuffix + namePart);
+        }
+    }
+
+    private static TemplateInfo? CollectTemplateInfo(INamedTypeSymbol templateSymbol, TypeDeclarationSyntax typeSyntax, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        ImmutableArray<AttributeData> attributes = templateSymbol.GetAttributes();
+        var enumAttributes = new List<EnumTemplateInfo>();
+        DeviceTemplateInfo? deviceAttribute = null;
+        string? nameSuffix = null;
+        var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
+
+        AttributeData? nameSuffixAttribute = null;
+        AttributeData? deviceTemplateAttribute = null;
+        foreach (AttributeData attribute in attributes)
+        {
+            string? metadataName = attribute.AttributeClass?.ToDisplayString();
+            if (metadataName is null)
+            {
+                continue;
+            }
+
+            if (string.Equals(metadataName, EnumDependentTemplateAttributeMetadataName, StringComparison.Ordinal))
+            {
+                enumAttributes.AddRange(CreateEnumTemplateInfo(attribute, TemplateEnumTypeMustBeEnum, diagnostics));
+            }
+            else if (string.Equals(metadataName, DeviceDependentTemplateAttributeMetadataName, StringComparison.Ordinal))
+            {
+                if (deviceTemplateAttribute is not null)
+                {
+                    diagnostics.Add(Diagnostic.Create(
+                        DuplicateSingleUseAttribute,
+                        attribute.ApplicationSyntaxReference?.GetSyntax(cancellationToken)?.GetLocation() ?? typeSyntax.GetLocation(),
+                        DeviceDependentTemplateAttributeMetadataName,
+                        templateSymbol.Name));
+                    continue;
+                }
+
+                deviceTemplateAttribute = attribute;
+            }
+            else if (string.Equals(metadataName, NameSuffixAttributeMetadataName, StringComparison.Ordinal))
+            {
+                if (nameSuffixAttribute is not null)
+                {
+                    diagnostics.Add(Diagnostic.Create(
+                        DuplicateSingleUseAttribute,
+                        attribute.ApplicationSyntaxReference?.GetSyntax(cancellationToken)?.GetLocation() ?? typeSyntax.GetLocation(),
+                        NameSuffixAttributeMetadataName,
+                        templateSymbol.Name));
+                    continue;
+                }
+
+                nameSuffixAttribute = attribute;
+            }
+        }
+
+        if (deviceTemplateAttribute is not null)
+        {
+            var deviceInfo = CreateEnumTemplateInfo(deviceTemplateAttribute, TemplateEnumTypeMustBeEnum, diagnostics).FirstOrDefault();
+            if (deviceInfo.EnumType is not null)
+            {
+                deviceAttribute = new DeviceTemplateInfo(deviceInfo.EnumType, deviceInfo.Values, deviceInfo.AttributeLocation);
+            }
+        }
+
+        if (nameSuffixAttribute is not null)
+        {
+            nameSuffix = ExtractSuffix(nameSuffixAttribute);
+        }
+
+        if (!enumAttributes.Any() && deviceAttribute is null && nameSuffixAttribute is null)
+        {
+            return null;
+        }
+
+        ImmutableArray<EnumTemplateInfo> orderedEnums = enumAttributes
+            .OrderBy(static e => e.AttributeLocation.SourceSpan.Start)
+            .ToImmutableArray();
+
+        return TemplateInfo.Create(
+            templateSymbol,
+            orderedEnums,
+            deviceAttribute,
+            nameSuffix,
+            diagnostics.ToImmutable());
+    }
+
+    private static IEnumerable<EnumTemplateInfo> CreateEnumTemplateInfo(
+        AttributeData attribute,
+        DiagnosticDescriptor diagnosticDescriptor,
+        ImmutableArray<Diagnostic>.Builder diagnostics)
+    {
+        if (attribute.ConstructorArguments.Length < 1)
+        {
+            return Array.Empty<EnumTemplateInfo>();
+        }
+
+        if (attribute.ConstructorArguments[0].Value is not INamedTypeSymbol enumTypeSymbol)
+        {
+            return Array.Empty<EnumTemplateInfo>();
+        }
+
+        if (enumTypeSymbol.TypeKind != TypeKind.Enum)
+        {
+            Location location = attribute.ApplicationSyntaxReference?.GetSyntax().GetLocation() ?? Location.None;
+            diagnostics.Add(Diagnostic.Create(diagnosticDescriptor, location, attribute.AttributeClass?.Name ?? "TemplateAttribute", enumTypeSymbol.ToDisplayString()));
+            return Array.Empty<EnumTemplateInfo>();
+        }
+
+        ImmutableArray<string> enumValues = enumTypeSymbol
+            .GetMembers()
+            .OfType<IFieldSymbol>()
+            .Where(static f => !f.IsImplicitlyDeclared && f.HasConstantValue)
+            .Select(static f => f.Name)
+            .ToImmutableArray();
+
+        Location attributeLocation = attribute.ApplicationSyntaxReference?.GetSyntax().GetLocation() ?? Location.None;
+        return new[] { new EnumTemplateInfo(enumTypeSymbol, enumValues, attributeLocation) };
+    }
+
+    private static string? ExtractSuffix(AttributeData attributeData)
+    {
+        if (attributeData.ConstructorArguments.Length > 0)
+        {
+            return attributeData.ConstructorArguments[0].Value as string;
+        }
+
+        foreach (KeyValuePair<string, TypedConstant> argument in attributeData.NamedArguments)
+        {
+            if (string.Equals(argument.Key, "suffix", StringComparison.OrdinalIgnoreCase))
+            {
+                return argument.Value.Value as string;
+            }
+        }
+
+        return null;
     }
 
     private readonly struct GeneratorOptions

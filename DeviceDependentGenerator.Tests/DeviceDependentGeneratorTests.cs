@@ -19,7 +19,19 @@ public sealed class DeviceDependentGeneratorTests
             [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, Inherited = false, AllowMultiple = false)]
             public sealed class DeviceDependentTemplateAttribute : Attribute
             {
-                public DeviceDependentTemplateAttribute(Type enumType, string? suffix = null) { }
+                public DeviceDependentTemplateAttribute(Type enumType) { }
+            }
+
+            [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, Inherited = false, AllowMultiple = true)]
+            public sealed class EnumDependentTemplateAttribute : Attribute
+            {
+                public EnumDependentTemplateAttribute(Type enumType) { }
+            }
+
+            [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, Inherited = false, AllowMultiple = false)]
+            public sealed class NameSuffixAttribute : Attribute
+            {
+                public NameSuffixAttribute(string suffix) { }
             }
 
             public enum CalculationDevice
@@ -35,7 +47,8 @@ public sealed class DeviceDependentGeneratorTests
 
             namespace PerfectNumbers.Core;
 
-            [DeviceDependentTemplate(typeof(CalculationDevice), suffix: "Impl")]
+            [DeviceDependentTemplate(typeof(CalculationDevice))]
+            [NameSuffix("Impl")]
             public static class PrimeCalculatorTemplate
             {
             #if DEVICE_CPU
