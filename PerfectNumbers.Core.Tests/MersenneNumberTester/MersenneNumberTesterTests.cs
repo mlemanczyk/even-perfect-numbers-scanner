@@ -13,7 +13,7 @@ public class MersenneNumberTesterTests
 	[InlineData(136_000_005UL)]
 	public void IsMersennePrime_detects_small_prime_divisors_for_large_exponents(ulong p)
 	{
-		var tester = new MersenneNumberTester();
+		var tester = new MersenneNumberTesterCpu();
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
@@ -29,8 +29,8 @@ public class MersenneNumberTesterTests
 	[InlineData(125UL)]
 	public void WarmUpOrdersCpu_populates_cache_without_affecting_results(ulong p)
 	{
-		var tester = new MersenneNumberTester(useOrderCache: true, useGpuOrder: true);
-		tester.WarmUpOrdersCpu(p, 1_000UL);
+		var tester = new MersenneNumberTesterCpu(useOrderCache: true, useGpuOrder: true);
+		tester.WarmUpOrders(p, 1_000UL);
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
@@ -46,8 +46,8 @@ public class MersenneNumberTesterTests
 	[InlineData(125UL)]
 	public void WarmUpOrdersGpu_populates_cache_without_affecting_results(ulong p)
 	{
-		var tester = new MersenneNumberTester(useOrderCache: true, useGpuOrder: true);
-		tester.WarmUpOrdersGpu(p, 1_000UL);
+		var tester = new MersenneNumberTesterGpu(useOrderCache: true, useGpuOrder: true);
+		tester.WarmUpOrders(p, 1_000UL);
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
@@ -83,4 +83,6 @@ public class MersenneNumberTesterTests
 		}
 	}
 }
+
+
 

@@ -14,7 +14,7 @@ namespace EvenPerfectBitScanner;
 internal static class Program
 {
 	// private static ThreadLocal<PrimeTester> PrimeTesters = null!;
-	private static ThreadLocal<MersenneNumberTester> MersenneTesters = null!;
+private static ThreadLocal<object>? MersenneTesters;
 	private const ulong InitialP = PerfectNumberConstants.BiggestKnownEvenPerfectP;
 	private static MersenneNumberDivisorGpuTester? _divisorTester;
 	private static UInt128 _divisor;
@@ -27,6 +27,8 @@ internal static class Program
 	private static CliArguments _cliArguments;
 	private static int _testTargetPrimeCount;
 	private static int _testProcessedPrimeCount;
+	private static ComputationDevice _mersenneDevice;
+	private static ComputationDevice _orderDevice;
 
 	[ThreadStatic]
 	private static bool _lastCompositeP;
@@ -97,6 +99,8 @@ internal static class Program
 			CandidatesCalculator.Configure(transformMode);
 			ComputationDevice mersenneDevice = _cliArguments.MersenneDevice;
 			ComputationDevice orderDevice = EnvironmentConfiguration.OrderDevice;
+			_mersenneDevice = mersenneDevice;
+			_orderDevice = orderDevice;
 			bool mersenneOnGpu = mersenneDevice == ComputationDevice.Gpu;
 			bool orderOnGpu = EnvironmentConfiguration.UseGpuOrder;
 			bool orderOnHybrid = EnvironmentConfiguration.UseHybridOrder;
@@ -214,34 +218,59 @@ internal static class Program
 			// Initialize per-thread p residue tracker (Identity model) at currentP
 			if (!useDivisor && !_cliArguments.UseByDivisor)
 			{
-				MersenneTesters = new ThreadLocal<MersenneNumberTester>(() =>
+				MersenneTesters = new ThreadLocal<object>(() =>
 				{
 					// ProcessEightBitWindows windowed pow2 ladder is the default kernel.
-					var tester = new MersenneNumberTester(
-												useIncremental: !useLucas,
-												useOrderCache: false,
-												kernelType: kernelType,
-												useOrder: useOrder,
-												useGpuLucas: mersenneOnGpu,
-												useGpuScan: mersenneOnGpu,
-												useGpuOrder: orderOnGpu || orderOnHybrid,
-												useResidue: useResidue,
-												maxK: residueKMax,
-												orderDevice: orderDevice);
+					object tester = orderDevice switch
+					{
+						ComputationDevice.Gpu => new MersenneNumberTesterGpu(
+							useIncremental: !useLucas,
+							useOrderCache: false,
+							kernelType: kernelType,
+							useOrder: useOrder,
+							useGpuLucas: mersenneOnGpu,
+							useGpuScan: mersenneOnGpu,
+							useGpuOrder: orderOnGpu || orderOnHybrid,
+							useResidue: useResidue,
+							maxK: residueKMax,
+							orderDevice: orderDevice),
+						ComputationDevice.Hybrid => new MersenneNumberTesterHybrid(
+							useIncremental: !useLucas,
+							useOrderCache: false,
+							kernelType: kernelType,
+							useOrder: useOrder,
+							useGpuLucas: mersenneOnGpu,
+							useGpuScan: mersenneOnGpu,
+							useGpuOrder: orderOnGpu || orderOnHybrid,
+							useResidue: useResidue,
+							maxK: residueKMax,
+							orderDevice: orderDevice),
+						_ => new MersenneNumberTesterCpu(
+							useIncremental: !useLucas,
+							useOrderCache: false,
+							kernelType: kernelType,
+							useOrder: useOrder,
+							useGpuLucas: mersenneOnGpu,
+							useGpuScan: mersenneOnGpu,
+							useGpuOrder: orderOnGpu || orderOnHybrid,
+							useResidue: useResidue,
+							maxK: residueKMax,
+							orderDevice: orderDevice),
+					};
 					if (!useLucas)
 					{
 						Console.WriteLine("Warming up orders");
 						if (orderDevice == ComputationDevice.Hybrid)
 						{
-							tester.WarmUpOrdersHybrid(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+							((MersenneNumberTesterHybrid)tester).WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
 						}
 						else if (orderDevice == ComputationDevice.Gpu)
 						{
-							tester.WarmUpOrdersGpu(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+							((MersenneNumberTesterGpu)tester).WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
 						}
 						else
 						{
-							tester.WarmUpOrdersCpu(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+							((MersenneNumberTesterCpu)tester).WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
 						}
 					}
 
@@ -548,15 +577,15 @@ internal static class Program
 					Console.WriteLine("Warming up orders...");
 					if (orderDevice == ComputationDevice.Hybrid)
 					{
-						MersenneTesters.Value!.WarmUpOrdersHybrid(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+						((MersenneNumberTesterHybrid)MersenneTesters.Value!).WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
 					}
 					else if (orderDevice == ComputationDevice.Gpu)
 					{
-						MersenneTesters.Value!.WarmUpOrdersGpu(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+						((MersenneNumberTesterGpu)MersenneTesters.Value!).WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
 					}
 					else
 					{
-						MersenneTesters.Value!.WarmUpOrdersCpu(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
+						((MersenneNumberTesterCpu)MersenneTesters.Value!).WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
 					}
 				}
 			}
@@ -662,6 +691,17 @@ internal static class Program
 		{
 			CalculationResultHandler.Dispose();
 		}
+	}
+
+	private static bool IsMersennePrime(PrimeOrderCalculatorAccelerator gpu, ulong exponent)
+	{
+		object tester = MersenneTesters!.Value!;
+		return _orderDevice switch
+		{
+			ComputationDevice.Gpu => ((MersenneNumberTesterGpu)tester).IsMersennePrime(gpu, exponent),
+			ComputationDevice.Hybrid => ((MersenneNumberTesterHybrid)tester).IsMersennePrime(gpu, exponent),
+			_ => ((MersenneNumberTesterCpu)tester).IsMersennePrime(gpu, exponent),
+		};
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -781,7 +821,8 @@ internal static class Program
 			return _byDivisorGpuOrderTester.IsPrime(p, out detailedCheck, out _);
 		}
 
-		detailedCheck = MersenneTesters.Value!.IsMersennePrime(gpu, p);
+		detailedCheck = IsMersennePrime(gpu, p);
 		return detailedCheck;
 	}
 }
+

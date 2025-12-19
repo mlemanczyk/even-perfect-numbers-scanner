@@ -227,7 +227,7 @@ public class ProgramTests
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(useIncremental: true, useResidue: true, maxK: 1_000UL), trackAllValues: true));
+        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterCpu(useIncremental: true, useResidue: true, maxK: 1_000UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
 
@@ -260,7 +260,7 @@ public class ProgramTests
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
+        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterCpu(
             useIncremental: true,
             useResidue: true,
             maxK: 1_024UL), trackAllValues: true));
@@ -297,7 +297,7 @@ public class ProgramTests
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
+        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterCpu(
             useIncremental: true,
             useResidue: true,
             maxK: 5_000_000UL), trackAllValues: true));
@@ -333,7 +333,7 @@ public class ProgramTests
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
+        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterCpu(
             useIncremental: true,
             useResidue: true,
             maxK: 5_000_000UL), trackAllValues: true));
@@ -370,7 +370,7 @@ public class ProgramTests
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
+        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterCpu(
             useIncremental: true,
             useGpuScan: false,
             useGpuOrder: false,
@@ -406,7 +406,7 @@ public class ProgramTests
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(
+        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterCpu(
             useIncremental: false,
             kernelType: configuration.KernelType,
             useGpuScan: true,
@@ -493,7 +493,7 @@ public class ProgramTests
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var compositeField = typeof(Program).GetField("_lastCompositeP", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<MersenneNumberTester>(() => new MersenneNumberTester(useIncremental: true, useResidue: false, maxK: 1_000UL), trackAllValues: true));
+        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterCpu(useIncremental: true, useResidue: false, maxK: 1_000UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
 
@@ -546,4 +546,5 @@ public class ProgramTests
         output.Should().Contain("--primes-device=cpu|gpu");
     }
 }
+
 
