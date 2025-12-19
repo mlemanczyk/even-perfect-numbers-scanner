@@ -10,9 +10,8 @@ public class MersenneResidueModeTests
 	[Fact]
 	public void IsMersennePrime_residue_mode_rejects_composite_exponent()
 	{
-		var tester = new MersenneNumberTesterCpu(
-			useResidue: true,
-			useIncremental: false,
+		var tester = new MersenneNumberTesterForResidueCalculationMethodForCpu(
+
 			useGpuScan: false,
 			useGpuOrder: false);
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
@@ -29,9 +28,8 @@ public class MersenneResidueModeTests
 	[Fact]
 	public void IsMersennePrime_residue_mode_accepts_prime_exponent()
 	{
-		var tester = new MersenneNumberTesterCpu(
-			useResidue: true,
-			useIncremental: true,
+		var tester = new MersenneNumberTesterForResidueCalculationMethodForCpu(
+
 			useGpuScan: false,
 			useGpuOrder: false,
 			maxK: 1_000UL);

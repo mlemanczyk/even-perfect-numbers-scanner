@@ -29,6 +29,7 @@ private static ThreadLocal<object>? MersenneTesters;
 	private static int _testProcessedPrimeCount;
 	private static ComputationDevice _mersenneDevice;
 	private static ComputationDevice _orderDevice;
+	private static CalculationMethod _calculationMethod;
 
 	[ThreadStatic]
 	private static bool _lastCompositeP;
@@ -101,6 +102,11 @@ private static ThreadLocal<object>? MersenneTesters;
 			ComputationDevice orderDevice = EnvironmentConfiguration.OrderDevice;
 			_mersenneDevice = mersenneDevice;
 			_orderDevice = orderDevice;
+			_calculationMethod = useResidue
+				? CalculationMethod.Residue
+				: (useLucas
+					? CalculationMethod.LucasLehmer
+					: (useOrder ? CalculationMethod.Divisor : CalculationMethod.Incremental));
 			bool mersenneOnGpu = mersenneDevice == ComputationDevice.Gpu;
 			bool orderOnGpu = EnvironmentConfiguration.UseGpuOrder;
 			bool orderOnHybrid = EnvironmentConfiguration.UseHybridOrder;
@@ -220,58 +226,20 @@ private static ThreadLocal<object>? MersenneTesters;
 			{
 				MersenneTesters = new ThreadLocal<object>(() =>
 				{
-					// ProcessEightBitWindows windowed pow2 ladder is the default kernel.
-					object tester = orderDevice switch
-					{
-						ComputationDevice.Gpu => new MersenneNumberTesterGpu(
-							useIncremental: !useLucas,
-							useOrderCache: false,
-							kernelType: kernelType,
-							useOrder: useOrder,
-							useGpuLucas: mersenneOnGpu,
-							useGpuScan: mersenneOnGpu,
-							useGpuOrder: orderOnGpu || orderOnHybrid,
-							useResidue: useResidue,
-							maxK: residueKMax,
-							orderDevice: orderDevice),
-						ComputationDevice.Hybrid => new MersenneNumberTesterHybrid(
-							useIncremental: !useLucas,
-							useOrderCache: false,
-							kernelType: kernelType,
-							useOrder: useOrder,
-							useGpuLucas: mersenneOnGpu,
-							useGpuScan: mersenneOnGpu,
-							useGpuOrder: orderOnGpu || orderOnHybrid,
-							useResidue: useResidue,
-							maxK: residueKMax,
-							orderDevice: orderDevice),
-						_ => new MersenneNumberTesterCpu(
-							useIncremental: !useLucas,
-							useOrderCache: false,
-							kernelType: kernelType,
-							useOrder: useOrder,
-							useGpuLucas: mersenneOnGpu,
-							useGpuScan: mersenneOnGpu,
-							useGpuOrder: orderOnGpu || orderOnHybrid,
-							useResidue: useResidue,
-							maxK: residueKMax,
-							orderDevice: orderDevice),
-					};
+					object tester = CreateMersenneTester(
+						_calculationMethod,
+						orderDevice,
+						kernelType,
+						useLucas,
+						useOrder,
+						mersenneOnGpu,
+						orderOnGpu,
+						orderOnHybrid,
+						residueKMax);
 					if (!useLucas)
 					{
 						Console.WriteLine("Warming up orders");
-						if (orderDevice == ComputationDevice.Hybrid)
-						{
-							((MersenneNumberTesterHybrid)tester).WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
-						}
-						else if (orderDevice == ComputationDevice.Gpu)
-						{
-							((MersenneNumberTesterGpu)tester).WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
-						}
-						else
-						{
-							((MersenneNumberTesterCpu)tester).WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
-						}
+						WarmUpOrders(tester, orderDevice, currentP, orderWarmupLimitOverride ?? 5_000_000UL);
 					}
 
 					return tester;
@@ -575,18 +543,7 @@ private static ThreadLocal<object>? MersenneTesters;
 				if (!useLucas)
 				{
 					Console.WriteLine("Warming up orders...");
-					if (orderDevice == ComputationDevice.Hybrid)
-					{
-						((MersenneNumberTesterHybrid)MersenneTesters.Value!).WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
-					}
-					else if (orderDevice == ComputationDevice.Gpu)
-					{
-						((MersenneNumberTesterGpu)MersenneTesters.Value!).WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
-					}
-					else
-					{
-						((MersenneNumberTesterCpu)MersenneTesters.Value!).WarmUpOrders(currentP, orderWarmupLimitOverride ?? 5_000_000UL);
-					}
+					WarmUpOrders(MersenneTesters.Value!, orderDevice, currentP, orderWarmupLimitOverride ?? 5_000_000UL);
 				}
 			}
 
@@ -696,12 +653,299 @@ private static ThreadLocal<object>? MersenneTesters;
 	private static bool IsMersennePrime(PrimeOrderCalculatorAccelerator gpu, ulong exponent)
 	{
 		object tester = MersenneTesters!.Value!;
-		return _orderDevice switch
+		return (_calculationMethod, _orderDevice) switch
 		{
-			ComputationDevice.Gpu => ((MersenneNumberTesterGpu)tester).IsMersennePrime(gpu, exponent),
-			ComputationDevice.Hybrid => ((MersenneNumberTesterHybrid)tester).IsMersennePrime(gpu, exponent),
-			_ => ((MersenneNumberTesterCpu)tester).IsMersennePrime(gpu, exponent),
+			(CalculationMethod.Residue, ComputationDevice.Gpu) => ((MersenneNumberTesterForResidueCalculationMethodForGpu)tester).IsMersennePrime(gpu, exponent),
+			(CalculationMethod.Residue, ComputationDevice.Hybrid) => ((MersenneNumberTesterForResidueCalculationMethodForHybrid)tester).IsMersennePrime(gpu, exponent),
+			(CalculationMethod.Residue, _) => ((MersenneNumberTesterForResidueCalculationMethodForCpu)tester).IsMersennePrime(gpu, exponent),
+
+			(CalculationMethod.LucasLehmer, ComputationDevice.Gpu) => ((MersenneNumberTesterForLucasLehmerCalculationMethodForGpu)tester).IsMersennePrime(gpu, exponent),
+			(CalculationMethod.LucasLehmer, ComputationDevice.Hybrid) => ((MersenneNumberTesterForLucasLehmerCalculationMethodForHybrid)tester).IsMersennePrime(gpu, exponent),
+			(CalculationMethod.LucasLehmer, _) => ((MersenneNumberTesterForLucasLehmerCalculationMethodForCpu)tester).IsMersennePrime(gpu, exponent),
+
+			(CalculationMethod.Divisor, ComputationDevice.Gpu) => ((MersenneNumberTesterForDivisorCalculationMethodForGpu)tester).IsMersennePrime(gpu, exponent),
+			(CalculationMethod.Divisor, ComputationDevice.Hybrid) => ((MersenneNumberTesterForDivisorCalculationMethodForHybrid)tester).IsMersennePrime(gpu, exponent),
+			(CalculationMethod.Divisor, _) => ((MersenneNumberTesterForDivisorCalculationMethodForCpu)tester).IsMersennePrime(gpu, exponent),
+
+			(CalculationMethod.ByDivisor, ComputationDevice.Gpu) => ((MersenneNumberTesterForByDivisorCalculationMethodForGpu)tester).IsMersennePrime(gpu, exponent),
+			(CalculationMethod.ByDivisor, ComputationDevice.Hybrid) => ((MersenneNumberTesterForByDivisorCalculationMethodForHybrid)tester).IsMersennePrime(gpu, exponent),
+			(CalculationMethod.ByDivisor, _) => ((MersenneNumberTesterForByDivisorCalculationMethodForCpu)tester).IsMersennePrime(gpu, exponent),
+
+			(CalculationMethod.Pow2Mod, ComputationDevice.Gpu) => ((MersenneNumberTesterForPow2ModCalculationMethodForGpu)tester).IsMersennePrime(gpu, exponent),
+			(CalculationMethod.Pow2Mod, ComputationDevice.Hybrid) => ((MersenneNumberTesterForPow2ModCalculationMethodForHybrid)tester).IsMersennePrime(gpu, exponent),
+			(CalculationMethod.Pow2Mod, _) => ((MersenneNumberTesterForPow2ModCalculationMethodForCpu)tester).IsMersennePrime(gpu, exponent),
+
+			(_, ComputationDevice.Gpu) => ((MersenneNumberTesterForIncrementalCalculationMethodForGpu)tester).IsMersennePrime(gpu, exponent),
+			(_, ComputationDevice.Hybrid) => ((MersenneNumberTesterForIncrementalCalculationMethodForHybrid)tester).IsMersennePrime(gpu, exponent),
+			_ => ((MersenneNumberTesterForIncrementalCalculationMethodForCpu)tester).IsMersennePrime(gpu, exponent),
 		};
+	}
+
+	private static object CreateMersenneTester(
+		CalculationMethod method,
+		ComputationDevice device,
+		GpuKernelType kernelType,
+		bool useLucas,
+		bool useOrder,
+		bool mersenneOnGpu,
+		bool orderOnGpu,
+		bool orderOnHybrid,
+		ulong residueKMax)
+	{
+		return (method, device) switch
+		{
+			(CalculationMethod.Residue, ComputationDevice.Gpu) => new MersenneNumberTesterForResidueCalculationMethodForGpu(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+			(CalculationMethod.Residue, ComputationDevice.Hybrid) => new MersenneNumberTesterForResidueCalculationMethodForHybrid(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+			(CalculationMethod.Residue, _) => new MersenneNumberTesterForResidueCalculationMethodForCpu(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+
+			(CalculationMethod.LucasLehmer, ComputationDevice.Gpu) => new MersenneNumberTesterForLucasLehmerCalculationMethodForGpu(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+			(CalculationMethod.LucasLehmer, ComputationDevice.Hybrid) => new MersenneNumberTesterForLucasLehmerCalculationMethodForHybrid(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+			(CalculationMethod.LucasLehmer, _) => new MersenneNumberTesterForLucasLehmerCalculationMethodForCpu(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+
+			(CalculationMethod.Divisor, ComputationDevice.Gpu) => new MersenneNumberTesterForDivisorCalculationMethodForGpu(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+			(CalculationMethod.Divisor, ComputationDevice.Hybrid) => new MersenneNumberTesterForDivisorCalculationMethodForHybrid(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+			(CalculationMethod.Divisor, _) => new MersenneNumberTesterForDivisorCalculationMethodForCpu(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+
+			(CalculationMethod.ByDivisor, ComputationDevice.Gpu) => new MersenneNumberTesterForByDivisorCalculationMethodForGpu(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+			(CalculationMethod.ByDivisor, ComputationDevice.Hybrid) => new MersenneNumberTesterForByDivisorCalculationMethodForHybrid(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+			(CalculationMethod.ByDivisor, _) => new MersenneNumberTesterForByDivisorCalculationMethodForCpu(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+
+			(CalculationMethod.Pow2Mod, ComputationDevice.Gpu) => new MersenneNumberTesterForPow2ModCalculationMethodForGpu(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+			(CalculationMethod.Pow2Mod, ComputationDevice.Hybrid) => new MersenneNumberTesterForPow2ModCalculationMethodForHybrid(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+			(CalculationMethod.Pow2Mod, _) => new MersenneNumberTesterForPow2ModCalculationMethodForCpu(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+
+			(_, ComputationDevice.Gpu) => new MersenneNumberTesterForIncrementalCalculationMethodForGpu(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+			(_, ComputationDevice.Hybrid) => new MersenneNumberTesterForIncrementalCalculationMethodForHybrid(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+			_ => new MersenneNumberTesterForIncrementalCalculationMethodForCpu(
+
+				useOrderCache: false,
+				kernelType: kernelType,
+				useOrder: useOrder,
+				useGpuLucas: mersenneOnGpu,
+				useGpuScan: mersenneOnGpu,
+				useGpuOrder: orderOnGpu || orderOnHybrid,
+				maxK: residueKMax,
+				orderDevice: device),
+		};
+	}
+
+	private static void WarmUpOrders(object tester, ComputationDevice device, ulong exponent, ulong limit)
+	{
+		switch (_calculationMethod, device)
+		{
+			case (CalculationMethod.Residue, ComputationDevice.Gpu):
+				((MersenneNumberTesterForResidueCalculationMethodForGpu)tester).WarmUpOrders(exponent, limit);
+				break;
+			case (CalculationMethod.Residue, ComputationDevice.Hybrid):
+				((MersenneNumberTesterForResidueCalculationMethodForHybrid)tester).WarmUpOrders(exponent, limit);
+				break;
+			case (CalculationMethod.Residue, _):
+				((MersenneNumberTesterForResidueCalculationMethodForCpu)tester).WarmUpOrders(exponent, limit);
+				break;
+
+			case (CalculationMethod.LucasLehmer, ComputationDevice.Gpu):
+				((MersenneNumberTesterForLucasLehmerCalculationMethodForGpu)tester).WarmUpOrders(exponent, limit);
+				break;
+			case (CalculationMethod.LucasLehmer, ComputationDevice.Hybrid):
+				((MersenneNumberTesterForLucasLehmerCalculationMethodForHybrid)tester).WarmUpOrders(exponent, limit);
+				break;
+			case (CalculationMethod.LucasLehmer, _):
+				((MersenneNumberTesterForLucasLehmerCalculationMethodForCpu)tester).WarmUpOrders(exponent, limit);
+				break;
+
+			case (CalculationMethod.Divisor, ComputationDevice.Gpu):
+				((MersenneNumberTesterForDivisorCalculationMethodForGpu)tester).WarmUpOrders(exponent, limit);
+				break;
+			case (CalculationMethod.Divisor, ComputationDevice.Hybrid):
+				((MersenneNumberTesterForDivisorCalculationMethodForHybrid)tester).WarmUpOrders(exponent, limit);
+				break;
+			case (CalculationMethod.Divisor, _):
+				((MersenneNumberTesterForDivisorCalculationMethodForCpu)tester).WarmUpOrders(exponent, limit);
+				break;
+
+			case (CalculationMethod.ByDivisor, ComputationDevice.Gpu):
+				((MersenneNumberTesterForByDivisorCalculationMethodForGpu)tester).WarmUpOrders(exponent, limit);
+				break;
+			case (CalculationMethod.ByDivisor, ComputationDevice.Hybrid):
+				((MersenneNumberTesterForByDivisorCalculationMethodForHybrid)tester).WarmUpOrders(exponent, limit);
+				break;
+			case (CalculationMethod.ByDivisor, _):
+				((MersenneNumberTesterForByDivisorCalculationMethodForCpu)tester).WarmUpOrders(exponent, limit);
+				break;
+
+			case (CalculationMethod.Pow2Mod, ComputationDevice.Gpu):
+				((MersenneNumberTesterForPow2ModCalculationMethodForGpu)tester).WarmUpOrders(exponent, limit);
+				break;
+			case (CalculationMethod.Pow2Mod, ComputationDevice.Hybrid):
+				((MersenneNumberTesterForPow2ModCalculationMethodForHybrid)tester).WarmUpOrders(exponent, limit);
+				break;
+			case (CalculationMethod.Pow2Mod, _):
+				((MersenneNumberTesterForPow2ModCalculationMethodForCpu)tester).WarmUpOrders(exponent, limit);
+				break;
+
+			case (_, ComputationDevice.Gpu):
+				((MersenneNumberTesterForIncrementalCalculationMethodForGpu)tester).WarmUpOrders(exponent, limit);
+				break;
+			case (_, ComputationDevice.Hybrid):
+				((MersenneNumberTesterForIncrementalCalculationMethodForHybrid)tester).WarmUpOrders(exponent, limit);
+				break;
+			default:
+				((MersenneNumberTesterForIncrementalCalculationMethodForCpu)tester).WarmUpOrders(exponent, limit);
+				break;
+		}
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
