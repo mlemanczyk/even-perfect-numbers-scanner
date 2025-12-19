@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 using System.Collections.Concurrent;
 using System.Buffers;
@@ -26,32 +27,49 @@ public enum CalculationMethod
     Residue,
 }
 
+public enum CacheStatus
+{
+    Disabled,
+    Enabled,
+}
+
+public enum OrderDevice
+{
+    Cpu,
+    Hybrid,
+    Gpu,
+}
+
 [EnumDependentTemplate(typeof(CalculationMethod))]
+[EnumDependentTemplate(typeof(CacheStatus))]
+[EnumDependentTemplate(typeof(OrderDevice))]
 [DeviceDependentTemplate(typeof(ComputationDevice))]
 public sealed class MersenneNumberTesterTemplate(
-    bool useOrderCache = false,
     GpuKernelType kernelType = GpuKernelType.Incremental,
-    bool useOrder = false,
-    bool useGpuLucas = true,
-    bool useGpuScan = true,
-    bool useGpuOrder = true,
-    ulong maxK = 5_000_000UL,
-    ComputationDevice orderDevice = ComputationDevice.Gpu)
+    ulong maxK = 5_000_000UL)
 {
+#if CacheStatus_Enabled
     private static readonly ConcurrentDictionary<UInt128, ulong> _orderCache = [];
-    // TODO: Swap this ConcurrentDictionary for the pooled dictionary variant highlighted in
-    // Pow2MontgomeryModBenchmarks once order warmups reuse deterministic divisor-cycle snapshots; the pooled approach removed
-    // the locking overhead when scanning p >= 138M in those benchmarks.
+#endif
+
 #if CalculationMethod_Residue
 #if DEVICE_GPU || DEVICE_HYBRID
-    private readonly MersenneNumberResidueGpuTester _residueTester = new(useGpuOrder);
+#if OrderDevice_Gpu || OrderDevice_Hybrid
+    private readonly MersenneNumberResidueGpuTester _residueTester = new(true);
+#else
+    private readonly MersenneNumberResidueGpuTester _residueTester = new(false);
+#endif
 #else
     private readonly MersenneNumberResidueCpuTester _residueTester = new();
 #endif
     private readonly ulong _maxK = maxK;
 #elif CalculationMethod_LucasLehmer
 #if DEVICE_GPU || DEVICE_HYBRID
-    private readonly MersenneNumberIncrementalGpuTester _incrementalTester = new(kernelType, useGpuOrder);
+#if OrderDevice_Cpu
+    private readonly MersenneNumberIncrementalCpuTester _incrementalTester = new(kernelType);
+#else
+    private readonly MersenneNumberIncrementalGpuTester _incrementalTester = new(kernelType, true);
+#endif
     private readonly MersenneNumberLucasLehmerGpuTester _lucasLehmerTester = new();
 #else
     private readonly MersenneNumberIncrementalCpuTester _incrementalTester = new(kernelType);
@@ -59,13 +77,21 @@ public sealed class MersenneNumberTesterTemplate(
 #endif
 #elif CalculationMethod_Divisor || CalculationMethod_ByDivisor
 #if DEVICE_GPU || DEVICE_HYBRID
-    private readonly MersenneNumberOrderGpuTester _orderTester = new(kernelType, useGpuOrder);
+#if OrderDevice_Cpu
+    private readonly MersenneNumberOrderCpuTester _orderTester = new(kernelType);
+#else
+    private readonly MersenneNumberOrderGpuTester _orderTester = new(kernelType, true);
+#endif
 #else
     private readonly MersenneNumberOrderCpuTester _orderTester = new(kernelType);
 #endif
 #else
 #if DEVICE_GPU || DEVICE_HYBRID
-    private readonly MersenneNumberIncrementalGpuTester _incrementalTester = new(kernelType, useGpuOrder);
+#if OrderDevice_Cpu
+    private readonly MersenneNumberIncrementalCpuTester _incrementalTester = new(kernelType);
+#else
+    private readonly MersenneNumberIncrementalGpuTester _incrementalTester = new(kernelType, true);
+#endif
 #else
     private readonly MersenneNumberIncrementalCpuTester _incrementalTester = new(kernelType);
 #endif
@@ -75,100 +101,83 @@ public sealed class MersenneNumberTesterTemplate(
 
     public void WarmUpOrders(ulong exponent, ulong limit = 5_000_000UL)
     {
-        if (!useOrderCache)
-        {
-            return;
-        }
-
-		UInt128 k, q;
+#if !CacheStatus_Enabled
+        return;
+#else
         UInt128 twoP = (UInt128)exponent << 1; // 2 * p
         bool lastIsSeven = (exponent & 3UL) == 3UL;
-#if DEVICE_GPU || DEVICE_HYBRID
-        var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
-#endif
-        if (!useGpuOrder)
+
+#if OrderDevice_Cpu
+        UInt128 k = UInt128.One;
+        for (; k <= limit; k++)
         {
-            k = UInt128.One;
-            for (; k <= limit; k++)
+            UInt128 q = twoP * k + UInt128.One;
+            ulong remainder = q.Mod10();
+            bool shouldCheck = lastIsSeven
+                    ? remainder == 7UL || remainder == 9UL || remainder == 3UL
+                    : remainder == 1UL || remainder == 3UL || remainder == 9UL;
+
+            if (shouldCheck)
             {
-                q = twoP * k + UInt128.One;
-                ulong remainder = q.Mod10();
-                bool shouldCheck = lastIsSeven
-                        ? remainder == 7UL || remainder == 9UL || remainder == 3UL
-                        : remainder == 1UL || remainder == 3UL || remainder == 9UL;
-
-                if (shouldCheck)
-                {
-                    ulong mod8 = q.Mod8();
-                    if (mod8 != 1UL && mod8 != 7UL)
-                    {
-                        continue;
-                    }
-
-                    if (q.Mod3() == 0UL || q.Mod5() == 0UL)
-                    {
-                        continue;
-                    }
-                }
-
-                if (!shouldCheck || _orderCache.ContainsKey(q))
+                ulong mod8 = q.Mod8();
+                if (mod8 != 1UL && mod8 != 7UL)
                 {
                     continue;
                 }
 
-                _orderCache[q] =
-#if DEVICE_GPU
-                    q.CalculateOrderGpu(gpu);
-#elif DEVICE_HYBRID
-                    q.CalculateOrderHybrid(gpu);
-#else
-                    q.CalculateOrderCpu();
-#endif
+                if (q.Mod3() == 0UL || q.Mod5() == 0UL)
+                {
+                    continue;
+                }
             }
-#if DEVICE_GPU || DEVICE_HYBRID
-            PrimeOrderCalculatorAccelerator.Return(gpu);
-#endif
-            return;
-        }
 
+            if (!shouldCheck || _orderCache.ContainsKey(q))
+            {
+                continue;
+            }
+
+            _orderCache[q] = q.CalculateOrderCpu();
+        }
+        return;
+#else
+#if DEVICE_GPU || DEVICE_HYBRID
+        var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
         ArrayPool<UInt128> uInt128Pool = ThreadStaticPools.UInt128Pool;
         UInt128[] qsBuffer = uInt128Pool.Rent((int)limit);
         int idx = 0;
-        k = UInt128.One;
-        for (; k <= limit; k++)
+        UInt128 k2 = 1UL;
+        for (; k2 <= limit; k2++)
         {
-            q = twoP * k + UInt128.One;
-            ulong remainder2 = q.Mod10();
+            UInt128 q2 = twoP * k2 + 1UL;
+            ulong remainder2 = q2.Mod10();
             bool shouldCheck2 = lastIsSeven
                     ? remainder2 == 7UL || remainder2 == 9UL || remainder2 == 3UL
                     : remainder2 == 1UL || remainder2 == 3UL || remainder2 == 9UL;
 
             if (shouldCheck2)
             {
-                ulong mod8 = q.Mod8();
+                ulong mod8 = q2.Mod8();
                 if (mod8 != 1UL && mod8 != 7UL)
                 {
                     shouldCheck2 = false;
                 }
-                else if (q.Mod3() == 0UL || q.Mod5() == 0UL)
+                else if (q2.Mod3() == 0UL || q2.Mod5() == 0UL)
                 {
                     shouldCheck2 = false;
                 }
             }
 
-            if (!shouldCheck2 || _orderCache.ContainsKey(q))
+            if (!shouldCheck2 || _orderCache.ContainsKey(q2))
             {
                 continue;
             }
 
-            qsBuffer[idx++] = q;
+            qsBuffer[idx++] = q2;
         }
 
         if (idx == 0)
         {
-#if DEVICE_GPU || DEVICE_HYBRID
             PrimeOrderCalculatorAccelerator.Return(gpu);
-#endif
             ThreadStaticPools.UInt128Pool.Return(qsBuffer);
             return;
         }
@@ -210,20 +219,10 @@ public sealed class MersenneNumberTesterTemplate(
                 ulong order = orders[i];
                 if (order == 0UL)
                 {
-                    order =
-#if DEVICE_GPU
-                        qs[offset + i].CalculateOrderGpu(gpu);
-#elif DEVICE_HYBRID
-                        qs[offset + i].CalculateOrderHybrid(gpu);
-#else
-                        qs[offset + i].CalculateOrderCpu();
-#endif
+                    order = qs[offset + i].CalculateOrderGpu(gpu);
                 }
 
-                if (useOrderCache)
-                {
-                    _orderCache[qs[offset + i]] = order;
-                }
+                _orderCache[qs[offset + i]] = order;
             }
 
             offset += count;
@@ -232,10 +231,42 @@ public sealed class MersenneNumberTesterTemplate(
         }
 
         AcceleratorStreamPool.Return(acceleratorIndex,stream);
-#if DEVICE_GPU || DEVICE_HYBRID
         PrimeOrderCalculatorAccelerator.Return(gpu);
-#endif
         uInt128Pool.Return(qs);
+#else
+        UInt128 kFallback = UInt128.One;
+        for (; kFallback <= limit; kFallback++)
+        {
+            UInt128 qFallback = twoP * kFallback + UInt128.One;
+            ulong remainderFallback = qFallback.Mod10();
+            bool shouldCheckFallback = lastIsSeven
+                    ? remainderFallback == 7UL || remainderFallback == 9UL || remainderFallback == 3UL
+                    : remainderFallback == 1UL || remainderFallback == 3UL || remainderFallback == 9UL;
+
+            if (shouldCheckFallback)
+            {
+                ulong mod8Fallback = qFallback.Mod8();
+                if (mod8Fallback != 1UL && mod8Fallback != 7UL)
+                {
+                    continue;
+                }
+
+                if (qFallback.Mod3() == 0UL || qFallback.Mod5() == 0UL)
+                {
+                    continue;
+                }
+            }
+
+            if (!shouldCheckFallback || _orderCache.ContainsKey(qFallback))
+            {
+                continue;
+            }
+
+            _orderCache[qFallback] = qFallback.CalculateOrderCpu();
+        }
+#endif
+#endif
+#endif
     }
 
     public bool IsMersennePrime(PrimeOrderCalculatorAccelerator gpu, ulong exponent)
@@ -272,6 +303,10 @@ public sealed class MersenneNumberTesterTemplate(
             return false;
         }
 
+#if CalculationMethod_Divisor || CalculationMethod_ByDivisor
+        // When using order/divisor scanning the theoretical maxK is huge; cache or GPU selection already fixed at compile time.
+#endif
+
         UInt128 twoP = (UInt128)exponent << 1; // 2 * p
         UInt128 maxK = UInt128Numbers.Two.Pow(exponent) / 2 + 1;
         LastDigit lastDigit = (exponent & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
@@ -296,7 +331,11 @@ public sealed class MersenneNumberTesterTemplate(
         UInt128 maxKPre = (UInt128)PreLucasPreScanK;
         LastDigit lastDigitPre = (exponent & 3UL) == 3UL ? LastDigit.Seven : LastDigit.One;
 #if DEVICE_GPU || DEVICE_HYBRID
+#if OrderDevice_Cpu
+        _incrementalTester.Scan(gpu, exponent, twoPPre, lastDigitPre, maxKPre, ref prePrime);
+#else
         _incrementalTester.Scan(exponent, twoPPre, lastDigitPre, maxKPre, ref prePrime);
+#endif
         if (!prePrime)
         {
             return false;
@@ -315,7 +354,11 @@ public sealed class MersenneNumberTesterTemplate(
 #elif CalculationMethod_Divisor || CalculationMethod_ByDivisor
         bool isPrime = true;
 #if DEVICE_GPU || DEVICE_HYBRID
+#if OrderDevice_Cpu
+        _orderTester.Scan(gpu, exponent, twoP, lastDigit, maxK, ref isPrime);
+#else
         _orderTester.Scan(exponent, twoP, lastDigit, maxK, ref isPrime);
+#endif
 #else
         _orderTester.Scan(gpu, exponent, twoP, lastDigit, maxK, ref isPrime);
 #endif
@@ -323,7 +366,11 @@ public sealed class MersenneNumberTesterTemplate(
 #else
         bool isPrime = true;
 #if DEVICE_GPU || DEVICE_HYBRID
+#if OrderDevice_Cpu
+        _incrementalTester.Scan(gpu, exponent, twoP, lastDigit, maxK, ref isPrime);
+#else
         _incrementalTester.Scan(exponent, twoP, lastDigit, maxK, ref isPrime);
+#endif
 #else
         _incrementalTester.Scan(gpu, exponent, twoP, lastDigit, maxK, ref isPrime);
 #endif

@@ -227,7 +227,7 @@ public class ProgramTests
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterForResidueCalculationMethodForCpu( maxK: 1_000UL), trackAllValues: true));
+        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterForResidueCalculationMethodForDisabledCacheStatusForCpuOrderDeviceForCpu( maxK: 1_000UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
 
@@ -260,7 +260,7 @@ public class ProgramTests
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterForResidueCalculationMethodForCpu(
+        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterForResidueCalculationMethodForDisabledCacheStatusForCpuOrderDeviceForCpu(
             
             maxK: 1_024UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
@@ -296,7 +296,7 @@ public class ProgramTests
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterForResidueCalculationMethodForCpu(
+        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterForResidueCalculationMethodForDisabledCacheStatusForCpuOrderDeviceForCpu(
             
             maxK: 5_000_000UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
@@ -331,7 +331,7 @@ public class ProgramTests
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterForResidueCalculationMethodForCpu(
+        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterForResidueCalculationMethodForDisabledCacheStatusForCpuOrderDeviceForCpu(
             
             maxK: 5_000_000UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
@@ -367,10 +367,8 @@ public class ProgramTests
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterForResidueCalculationMethodForCpu(
+        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterForResidueCalculationMethodForDisabledCacheStatusForCpuOrderDeviceForCpu(
             
-            useGpuScan: false,
-            useGpuOrder: false,
             maxK: 1_024UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, exponent, true), trackAllValues: true));
@@ -402,12 +400,21 @@ public class ProgramTests
         var mersenneField = typeof(Program).GetField("MersenneTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterForResidueCalculationMethodForCpu(
-            
-            kernelType: configuration.KernelType,
-            useGpuScan: true,
-            useGpuOrder: configuration.UseGpuOrder,
-            maxK: configuration.ResidueMaxK), trackAllValues: true));
+        mersenneField.SetValue(null, new ThreadLocal<object>(() =>
+        {
+            if (configuration.UseGpuOrder)
+            {
+                return new MersenneNumberTesterForResidueCalculationMethodForDisabledCacheStatusForGpuOrderDeviceForCpu(
+                    
+                    kernelType: configuration.KernelType,
+                    maxK: configuration.ResidueMaxK);
+            }
+
+            return new MersenneNumberTesterForResidueCalculationMethodForDisabledCacheStatusForCpuOrderDeviceForCpu(
+                
+                kernelType: configuration.KernelType,
+                maxK: configuration.ResidueMaxK);
+        }, trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, exponent, true), trackAllValues: true));
 
@@ -488,7 +495,7 @@ public class ProgramTests
         var primeField = typeof(Program).GetField("PrimeTesters", BindingFlags.NonPublic | BindingFlags.Static)!;
         var compositeField = typeof(Program).GetField("_lastCompositeP", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterForIncrementalCalculationMethodForCpu( maxK: 1_000UL), trackAllValues: true));
+        mersenneField.SetValue(null, new ThreadLocal<object>(() => new MersenneNumberTesterForIncrementalCalculationMethodForDisabledCacheStatusForCpuOrderDeviceForCpu( maxK: 1_000UL), trackAllValues: true));
         primeField.SetValue(null, new ThreadLocal<PrimeTester>(() => new PrimeTester(), trackAllValues: true));
         CandidatesCalculator.OverrideResidueTrackers(new ThreadLocal<ModResidueTracker>(() => new ModResidueTracker(ResidueModel.Identity, 2UL, true), trackAllValues: true));
 
