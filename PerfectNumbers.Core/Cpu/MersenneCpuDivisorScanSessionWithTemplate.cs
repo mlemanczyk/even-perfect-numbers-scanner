@@ -3,7 +3,8 @@ using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core.Cpu;
 
-[DeviceDependentTemplate(typeof(ComputationDevice), suffix: "Order")]
+[DeviceDependentTemplate(typeof(ComputationDevice))]
+[NameSuffix("Order")]
 internal struct MersenneCpuDivisorScanSessionWithTemplate() : IMersenneNumberDivisorByDivisorTester.IDivisorScanSession
 {
 #if DEVICE_GPU || DEVICE_HYBRID

@@ -6,7 +6,8 @@ using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core.Cpu;
 
-[DeviceDependentTemplate(typeof(ComputationDevice), suffix: "Order")]
+[DeviceDependentTemplate(typeof(ComputationDevice))]
+[NameSuffix("Order")]
 public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneNumberDivisorByDivisorTester
 {
 	public BigInteger DivisorLimit;
