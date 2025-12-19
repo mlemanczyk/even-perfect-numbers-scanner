@@ -138,7 +138,6 @@ internal static class Program
 			Directory.CreateDirectory(PerfectNumberConstants.ByDivisorStateDirectory);
 
 
-			MersenneDivisorCycles mersenneDivisorCycles = new();
 			if (!File.Exists(cyclesPath) || continueCyclesGeneration)
 			{
 				Console.WriteLine($"Generating divisor cycles '{cyclesPath}' for all p <= {PerfectNumberConstants.MaxQForDivisorCycles}...");
@@ -147,7 +146,9 @@ internal static class Program
 				if (continueCyclesGeneration && File.Exists(cyclesPath))
 				{
 					Console.WriteLine("Finding last divisor position...");
-					(nextPosition, completeCount) = MersenneDivisorCycles.FindLast(cyclesPath);
+					(nextPosition, completeCount) = useGpuCycles
+						? MersenneDivisorCyclesGpu.FindLast(cyclesPath)
+						: MersenneDivisorCyclesCpu.FindLast(cyclesPath);
 				}
 
 				if (useGpuCycles)
@@ -162,22 +163,36 @@ internal static class Program
 					}
 
 					// TODO: Wire GenerateGpu to the unrolled-hex kernel that led the MersenneDivisorCycleLengthGpuBenchmarks once it lands.
-					MersenneDivisorCycles.GenerateGpu(cyclesPath, PerfectNumberConstants.MaxQForDivisorCycles, cyclesBatchSize, skipCount: completeCount, nextPosition: nextPosition);
+					MersenneDivisorCyclesGpu.GenerateGpu(cyclesPath, PerfectNumberConstants.MaxQForDivisorCycles, cyclesBatchSize, skipCount: completeCount, nextPosition: nextPosition);
 				}
 				else
 				{
-					MersenneDivisorCycles.Generate(cyclesPath, PerfectNumberConstants.MaxQForDivisorCycles);
+					MersenneDivisorCyclesCpu.Generate(cyclesPath, PerfectNumberConstants.MaxQForDivisorCycles);
 				}
 			}
 
 			Console.WriteLine($"Loading divisor cycles into memory...");
 			if (string.Equals(Path.GetExtension(cyclesPath), ".csv", StringComparison.OrdinalIgnoreCase))
 			{
-				MersenneDivisorCycles.Shared.LoadFrom(cyclesPath);
+				if (useGpuCycles)
+				{
+					MersenneDivisorCyclesGpu.Shared.LoadFrom(cyclesPath);
+				}
+				else
+				{
+					MersenneDivisorCyclesCpu.Shared.LoadFrom(cyclesPath);
+				}
 			}
 			else
 			{
-				MersenneDivisorCycles.Shared.LoadFrom(cyclesPath);
+				if (useGpuCycles)
+				{
+					MersenneDivisorCyclesGpu.Shared.LoadFrom(cyclesPath);
+				}
+				else
+				{
+					MersenneDivisorCyclesCpu.Shared.LoadFrom(cyclesPath);
+				}
 			}
 
 			DivisorCycleCache.SetDivisorCyclesBatchSize(cyclesBatchSize);

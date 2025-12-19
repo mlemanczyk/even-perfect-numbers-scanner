@@ -179,18 +179,15 @@ internal static class CandidatesCalculator
         return candidates;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong AdvancePrime(ulong value, ref ulong remainder, ref bool limitReached)
-    {
-        return _transformMode switch
-        {
-            PrimeTransformMode.Bit => CandidateBitTransform.Transform(value, ref remainder, ref limitReached),
-            PrimeTransformMode.Add => CandidateAddTransform.Transform(value, ref remainder, ref limitReached),
-            _ => CandidateAddPrimesTransform.Transform(value, ref remainder, ref limitReached),
-        };
-    }
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	internal static ulong AdvancePrime(ulong value, ref ulong remainder, ref bool limitReached) => _transformMode switch
+	{
+		PrimeTransformMode.Bit => CandidateBitTransform.Transform(value, ref remainder, ref limitReached),
+		PrimeTransformMode.Add => CandidateAddTransform.Transform(value, ref remainder, ref limitReached),
+		_ => CandidateAddPrimesTransform.Transform(value, ref remainder, ref limitReached),
+	};
 
-    internal static int ReserveBlock(ulong[] buffer, int blockSize, ref bool limitReached)
+	internal static int ReserveBlock(ulong[] buffer, int blockSize, ref bool limitReached)
     {
         Span<ulong> bufferSpan = new(buffer);
 
