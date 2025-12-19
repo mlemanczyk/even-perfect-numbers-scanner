@@ -14,7 +14,7 @@ public class MersenneDivisorCyclesGenerateGpuTests
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			MersenneDivisorCycles.GenerateGpu(path, maxDivisor: 50UL, batchSize: 16, skipCount: 0, nextPosition: 0);
+			MersenneDivisorCyclesGpu.GenerateGpu(path, maxDivisor: 50UL, batchSize: 16, skipCount: 0, nextPosition: 0);
 			var pairs = new List<(ulong divisor, ulong cycle)>();
 			using var stream = new FileStream(path, FileMode.Open, FileAccess.Read);
 			using var reader = new BinaryReader(stream);
@@ -41,7 +41,7 @@ public class MersenneDivisorCyclesGenerateGpuTests
 			{
 				expected.Should().Contain(pair.divisor);
 				MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(pair.divisor);
-				pair.cycle.Should().Be(MersenneDivisorCycles.CalculateCycleLengthCpu(pair.divisor, divisorData));
+				pair.cycle.Should().Be(MersenneDivisorCyclesCpu.CalculateCycleLength(pair.divisor, divisorData));
 			}
 		}
 		finally
@@ -61,7 +61,7 @@ public class MersenneDivisorCyclesGenerateGpuTests
 		string path = Path.GetTempFileName();
 		try
 		{
-			MersenneDivisorCycles.Generate(path, maxDivisor: 50UL, threads: 4);
+			MersenneDivisorCyclesCpu.Generate(path, maxDivisor: 50UL, threads: 4);
 
 			var pairs = new List<(ulong divisor, ulong cycle)>();
 			using var stream = new FileStream(path, FileMode.Open, FileAccess.Read);
@@ -91,12 +91,12 @@ public class MersenneDivisorCyclesGenerateGpuTests
 			{
 				uniqueDivisors.Add(pair.divisor).Should().BeTrue();
 				MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(pair.divisor);
-				pair.cycle.Should().Be(MersenneDivisorCycles.CalculateCycleLengthCpu(pair.divisor, divisorData));
+				pair.cycle.Should().Be(MersenneDivisorCyclesCpu.CalculateCycleLength(pair.divisor, divisorData));
 			}
 
 			uniqueDivisors.Should().BeEquivalentTo(expected);
 
-			var (_, completeCount) = MersenneDivisorCycles.FindLast(path);
+			var (_, completeCount) = MersenneDivisorCyclesCpu.FindLast(path);
 			completeCount.Should().Be(expected.Count);
 		}
 		finally

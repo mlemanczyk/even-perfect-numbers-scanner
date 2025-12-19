@@ -150,7 +150,7 @@ public class GpuKernelPool
 			return;
 		}
 
-		var host = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
+		var host = MersenneDivisorCyclesGpu.Shared.ExportSmallCyclesSnapshot();
 		MemoryBuffer1D<ulong, Stride1D.Dense>? device;
 
 		// lock (accelerator)

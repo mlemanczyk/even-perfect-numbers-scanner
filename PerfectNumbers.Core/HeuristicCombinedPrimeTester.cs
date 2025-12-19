@@ -109,7 +109,7 @@ public sealed class HeuristicCombinedPrimeTester
 	internal static readonly ulong[] CombinedDivisorsEnding7Squares;
 	internal static readonly ulong[] CombinedDivisorsEnding9Squares;
 
-	private static readonly ulong[] HeuristicSmallCycleSnapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
+	private static readonly ulong[] HeuristicSmallCycleSnapshot = MersenneDivisorCyclesCpu.Shared.ExportSmallCyclesSnapshot();
 
 	internal enum CombinedDivisorPattern : byte
 	{
@@ -507,7 +507,7 @@ public sealed class HeuristicCombinedPrimeTester
 		ulong divisor = preparation.Candidate.Value;
 		MontgomeryDivisorData divisorData = preparation.DivisorData;
 
-		bool trySuccess = MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
+		bool trySuccess = MersenneDivisorCyclesCpu.TryCalculateCycleLengthForExponent(
 			divisor,
 			exponent,
 			divisorData,
@@ -523,7 +523,7 @@ public sealed class HeuristicCombinedPrimeTester
 		}
 
 		primeOrderFailed = primeOrderFailedLocal || !trySuccess || computedCycle == 0UL;
-		ulong resolvedCycle = MersenneDivisorCycles.CalculateCycleLengthCpu(divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
+		ulong resolvedCycle = MersenneDivisorCyclesCpu.CalculateCycleLength(divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
 		cycleFromHint = false;
 		cycleComputed = resolvedCycle != 0UL;
 		return resolvedCycle;
@@ -549,7 +549,7 @@ public sealed class HeuristicCombinedPrimeTester
 		ulong divisor = preparation.Candidate.Value;
 		MontgomeryDivisorData divisorData = preparation.DivisorData;
 
-		bool trySuccess = MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
+		bool trySuccess = MersenneDivisorCyclesCpu.TryCalculateCycleLengthForExponent(
 			divisor,
 			exponent,
 			divisorData,
@@ -565,7 +565,7 @@ public sealed class HeuristicCombinedPrimeTester
 		}
 
 		primeOrderFailed = primeOrderFailedLocal || !trySuccess || computedCycle == 0UL;
-		ulong resolvedCycle = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
+		ulong resolvedCycle = MersenneDivisorCyclesGpu.CalculateCycleLength(gpu, divisor, divisorData, skipPrimeOrderHeuristic: primeOrderFailed);
 		cycleFromHint = false;
 		cycleComputed = resolvedCycle != 0UL;
 		return resolvedCycle;

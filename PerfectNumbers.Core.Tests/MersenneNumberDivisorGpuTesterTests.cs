@@ -235,13 +235,13 @@ public class MersenneNumberDivisorGpuTesterTests
 
 			ulong[] primes = [31UL, 37UL, 41UL, 43UL];
 
-			ulong cycle223 = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, 223UL, MontgomeryDivisorData.FromModulus(223UL));
+			ulong cycle223 = MersenneDivisorCyclesGpu.CalculateCycleLength(gpu, 223UL, MontgomeryDivisorData.FromModulus(223UL));
 			session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes).Should().BeTrue();
 
 			ulong[] primesBeforeHit = [31UL];
 			session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primesBeforeHit).Should().BeFalse();
 
-			ulong cycle13367 = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, 13367UL, MontgomeryDivisorData.FromModulus(13367UL));
+			ulong cycle13367 = MersenneDivisorCyclesGpu.CalculateCycleLength(gpu, 13367UL, MontgomeryDivisorData.FromModulus(13367UL));
 			session.CheckDivisor(13367UL, MontgomeryDivisorData.FromModulus(13367UL), cycle13367, primes).Should().BeTrue();
 
 			ulong[] primesWithoutMatchingExponent = [31UL, 37UL, 43UL];
@@ -271,7 +271,7 @@ public class MersenneNumberDivisorGpuTesterTests
 
 				ulong[] primes = [31UL, 37UL, 41UL, 43UL, 47UL];
 
-				ulong cycle223 = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, 223UL, MontgomeryDivisorData.FromModulus(223UL));
+				ulong cycle223 = MersenneDivisorCyclesGpu.CalculateCycleLength(gpu, 223UL, MontgomeryDivisorData.FromModulus(223UL));
 				session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes).Should().BeTrue();
 
 				ulong[] primesBeforeHit = [31UL];
@@ -302,7 +302,7 @@ public class MersenneNumberDivisorGpuTesterTests
 			ulong[] exponents = [6UL, 7UL, 9UL, 10UL, 12UL];
 
 			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(7UL);
-			ulong cycle = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, 7UL, divisorData);
+			ulong cycle = MersenneDivisorCyclesGpu.CalculateCycleLength(gpu, 7UL, divisorData);
 
 			session.CheckDivisor(7UL, divisorData, cycle, exponents).Should().BeTrue();
 
@@ -329,7 +329,7 @@ public class MersenneNumberDivisorGpuTesterTests
 			ulong[] exponents = [10UL, 11UL, 20UL, 21UL, 30UL];
 
 			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(11UL);
-			ulong cycle = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, 11UL, divisorData);
+			ulong cycle = MersenneDivisorCyclesGpu.CalculateCycleLength(gpu, 11UL, divisorData);
 
 			session.CheckDivisor(11UL, divisorData, cycle, exponents).Should().BeTrue();
 
@@ -346,9 +346,9 @@ public class MersenneNumberDivisorGpuTesterTests
 	[Trait("Category", "Fast")]
 	public void ByDivisor_gpu_tester_skips_divisors_excluded_by_small_cycle_generation()
 	{
-		var cycles = MersenneDivisorCycles.Shared;
-		var tableField = typeof(MersenneDivisorCycles).GetField("_table", BindingFlags.NonPublic | BindingFlags.Instance)!;
-		var smallCyclesField = typeof(MersenneDivisorCycles).GetField("_smallCycles", BindingFlags.NonPublic | BindingFlags.Instance)!;
+		var cycles = MersenneDivisorCyclesGpu.Shared;
+		var tableField = typeof(MersenneDivisorCyclesGpu).GetField("_table", BindingFlags.NonPublic | BindingFlags.Instance)!;
+		var smallCyclesField = typeof(MersenneDivisorCyclesGpu).GetField("_smallCycles", BindingFlags.NonPublic | BindingFlags.Instance)!;
 
 		var originalTable = (List<(ulong Divisor, ulong Cycle)>)tableField.GetValue(cycles)!;
 		var originalSmall = (ulong[]?)smallCyclesField.GetValue(cycles);
@@ -360,7 +360,7 @@ public class MersenneNumberDivisorGpuTesterTests
 			ulong[] patchedSmall = new ulong[PerfectNumberConstants.MaxQForDivisorCycles + 1];
 
 			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(191UL);
-			patchedSmall[191] = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, 191UL, divisorData);
+			patchedSmall[191] = MersenneDivisorCyclesGpu.CalculateCycleLength(gpu, 191UL, divisorData);
 
 			tableField.SetValue(cycles, patchedTable);
 			smallCyclesField.SetValue(cycles, patchedSmall);
@@ -393,7 +393,7 @@ public class MersenneNumberDivisorGpuTesterTests
 		var session = new MersenneCpuDivisorScanSessionWithCpuOrder();
 
 		ulong[] primes = [31UL, 37UL, 41UL, 43UL, 47UL];
-		ulong cycle223 = MersenneDivisorCycles.CalculateCycleLengthCpu(223UL, MontgomeryDivisorData.FromModulus(223UL));
+		ulong cycle223 = MersenneDivisorCyclesCpu.CalculateCycleLength(223UL, MontgomeryDivisorData.FromModulus(223UL));
 		session.CheckDivisor(223UL, MontgomeryDivisorData.FromModulus(223UL), cycle223, primes).Should().BeTrue();
 
 		ulong[] primesBeforeHit = [31UL];

@@ -270,7 +270,7 @@ public static class MersenneNumberDivisorByDivisorTester
 		ulong exponent,
 		in MontgomeryDivisorData divisorData,
 		out ulong cycleLength,
-		out bool primeOrderFailed) => MersenneDivisorCycles.TryCalculateCycleLengthForExponentCpu(
+		out bool primeOrderFailed) => MersenneDivisorCyclesCpu.TryCalculateCycleLengthForExponent(
 			divisor,
 			exponent,
 			divisorData,
@@ -284,7 +284,7 @@ public static class MersenneNumberDivisorByDivisorTester
 		ulong exponent,
 		in MontgomeryDivisorData divisorData,
 		out ulong cycleLength,
-		out bool primeOrderFailed) => MersenneDivisorCycles.TryCalculateCycleLengthForExponentHybrid(
+		out bool primeOrderFailed) => MersenneDivisorCyclesHybrid.TryCalculateCycleLengthForExponent(
 			gpu,
 			divisor,
 			exponent,
@@ -299,7 +299,7 @@ public static class MersenneNumberDivisorByDivisorTester
 		ulong exponent,
 		in MontgomeryDivisorData divisorData,
 		out ulong cycleLength,
-		out bool primeOrderFailed) => MersenneDivisorCycles.TryCalculateCycleLengthForExponentGpu(
+		out bool primeOrderFailed) => MersenneDivisorCyclesGpu.TryCalculateCycleLengthForExponent(
 			gpu,
 			divisor,
 			exponent,
@@ -311,7 +311,7 @@ public static class MersenneNumberDivisorByDivisorTester
 	public static ulong CalculateCycleLengthCpu(
 		ulong divisor,
 		in MontgomeryDivisorData divisorData,
-		bool skipPrimeOrderHeuristic) => MersenneDivisorCycles.CalculateCycleLengthCpu(
+		bool skipPrimeOrderHeuristic) => MersenneDivisorCyclesCpu.CalculateCycleLength(
 			divisor,
 			divisorData,
 			skipPrimeOrderHeuristic);
@@ -321,7 +321,7 @@ public static class MersenneNumberDivisorByDivisorTester
 		ulong divisor,
 		PrimeOrderCalculatorAccelerator gpu,
 		in MontgomeryDivisorData divisorData,
-		bool skipPrimeOrderHeuristic) => MersenneDivisorCycles.CalculateCycleLengthHybrid(
+		bool skipPrimeOrderHeuristic) => MersenneDivisorCyclesHybrid.CalculateCycleLength(
 			gpu,
 			divisor,
 			divisorData,
@@ -332,7 +332,7 @@ public static class MersenneNumberDivisorByDivisorTester
 		ulong divisor,
 		PrimeOrderCalculatorAccelerator gpu,
 		in MontgomeryDivisorData divisorData,
-		bool skipPrimeOrderHeuristic) => MersenneDivisorCycles.CalculateCycleLengthGpu(
+		bool skipPrimeOrderHeuristic) => MersenneDivisorCyclesGpu.CalculateCycleLength(
 			gpu,
 			divisor,
 			divisorData,
@@ -1232,3 +1232,4 @@ public static class MersenneNumberDivisorByDivisorTester
 		startGate.Dispose();
 	}
 }
+

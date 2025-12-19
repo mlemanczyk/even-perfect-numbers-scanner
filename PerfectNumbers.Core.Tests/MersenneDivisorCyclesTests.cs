@@ -23,8 +23,8 @@ public class MersenneDivisorCyclesTests
 		try
 		{
 			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
-			MersenneDivisorCycles.CalculateCycleLengthCpu(divisor, divisorData).Should().Be(expected);
-			MersenneDivisorCycles.CalculateCycleLengthGpu(divisor).Should().Be(expected);
+			MersenneDivisorCyclesCpu.CalculateCycleLength(divisor, divisorData).Should().Be(expected);
+			MersenneDivisorCyclesGpu.CalculateCycleLength(gpu, divisor, divisorData).Should().Be(expected);
 		}
 		finally
 		{

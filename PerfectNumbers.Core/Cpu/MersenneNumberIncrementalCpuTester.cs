@@ -4,7 +4,7 @@ namespace PerfectNumbers.Core.Cpu;
 
 public class MersenneNumberIncrementalCpuTester(GpuKernelType kernelType)
 {
-	private static readonly MersenneDivisorCycles _cycles = MersenneDivisorCycles.Shared;
+	private static readonly MersenneDivisorCyclesCpu _cycles = MersenneDivisorCyclesCpu.Shared;
 	private readonly GpuKernelType _kernelType = kernelType;
 
 	public void Scan(PrimeOrderCalculatorAccelerator gpu, ulong exponent, UInt128 twoP, LastDigit lastDigit, UInt128 maxK, ref bool isPrime)
@@ -31,7 +31,7 @@ public class MersenneNumberIncrementalCpuTester(GpuKernelType kernelType)
 		{
 			// TODO: Replace this direct GetCycle call with DivisorCycleCache.Lookup so we reuse the single snapshot block
 			// and compute missing cycles on the configured device without queuing additional block generation.
-			qCycle = MersenneDivisorCycles.GetCycleCpu(q);
+			qCycle = MersenneDivisorCyclesCpu.GetCycle(q);
 			shouldCheck = auto.Mod10R != 5UL;
 			if (shouldCheck)
 			{

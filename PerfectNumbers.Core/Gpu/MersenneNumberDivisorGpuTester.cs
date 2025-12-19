@@ -35,7 +35,7 @@ public sealed class MersenneNumberDivisorGpuTester
 
 	public static void BuildDivisorCandidates()
 	{
-		ulong[] snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
+		ulong[] snapshot = MersenneDivisorCyclesGpu.Shared.ExportSmallCyclesSnapshot();
 		(ulong divisor, uint cycle)[] list = new (ulong divisor, uint cycle)[snapshot.Length / 2];
 		ulong cycle;
 		int count = 0, i, snapshotLength = snapshot.Length;
@@ -142,7 +142,7 @@ public sealed class MersenneNumberDivisorGpuTester
 				continue;
 			}
 
-			UInt128 cycle128 = MersenneDivisorCycles.GetCycleGpu(gpu, d);
+			UInt128 cycle128 = MersenneDivisorCyclesGpu.GetCycle(gpu, d);
 			if ((UInt128)p % cycle128 != UInt128.Zero)
 			{
 				continue;

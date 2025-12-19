@@ -193,7 +193,7 @@ public class PrimeOrderCalculatorTests
 		var gpu = PrimeOrderCalculatorAccelerator.Rent(1);
 		try
 		{
-			var mersenneDivisorCycles = MersenneDivisorCycles.GetCycleGpu(gpu, prime).Should().Be((UInt128)1229782938247309446UL);
+			var mersenneDivisorCycles = MersenneDivisorCyclesGpu.GetCycle(gpu, prime).Should().Be((UInt128)1229782938247309446UL);
 		}
 		finally
 		{
@@ -225,3 +225,4 @@ public class PrimeOrderCalculatorTests
 		return order;
 	}
 }
+

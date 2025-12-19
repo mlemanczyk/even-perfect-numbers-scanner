@@ -583,7 +583,7 @@ public static class UInt128Extensions
 		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
 
 		int i = 0, primesLength = smallPrimes.Length;
-		UInt128 cycle = MersenneDivisorCycles.GetCycleCpu(q);
+		UInt128 cycle = MersenneDivisorCyclesCpu.GetCycle(q);
 		
 		// TODO: If the cache lacks this cycle, immediately schedule the configured device
 		// (GPU by default) to compute it on the fly and skip inserting it into the cache so
@@ -634,7 +634,7 @@ public static class UInt128Extensions
 		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
 
 		int i = 0, primesLength = smallPrimes.Length;
-		UInt128 cycle = MersenneDivisorCycles.GetCycleGpu(gpu, q);
+		UInt128 cycle = MersenneDivisorCyclesGpu.GetCycle(gpu, q);
 		// TODO: If the cache lacks this cycle, immediately schedule the configured device
 		// (GPU by default) to compute it on the fly and skip inserting it into the cache so
 		// wide-order factoring can still leverage cycle stepping without breaching the
@@ -684,7 +684,7 @@ public static class UInt128Extensions
 		ulong[] smallPrimesPow2 = PrimesGenerator.SmallPrimesPow2;
 
 		int i = 0, primesLength = smallPrimes.Length;
-		UInt128 cycle = MersenneDivisorCycles.GetCycleHybrid(gpu, q);
+		UInt128 cycle = MersenneDivisorCyclesHybrid.GetCycle(gpu, q);
 		// TODO: If the cache lacks this cycle, immediately schedule the configured device
 		// (GPU by default) to compute it on the fly and skip inserting it into the cache so
 		// wide-order factoring can still leverage cycle stepping without breaching the
@@ -1013,3 +1013,4 @@ public static class UInt128Extensions
 		return result;
 	}
 }
+

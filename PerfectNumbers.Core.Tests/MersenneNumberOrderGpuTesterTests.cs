@@ -45,9 +45,9 @@ public class MersenneNumberOrderGpuTesterTests
                 writer.Write((ulong)uint.MaxValue);
             }
 
-            var cycles = MersenneDivisorCycles.Shared;
-            var tableField = typeof(MersenneDivisorCycles).GetField("_table", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            var smallCyclesField = typeof(MersenneDivisorCycles).GetField("_smallCycles", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var cycles = MersenneDivisorCyclesGpu.Shared;
+            var tableField = typeof(MersenneDivisorCyclesGpu).GetField("_table", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var smallCyclesField = typeof(MersenneDivisorCyclesGpu).GetField("_smallCycles", BindingFlags.NonPublic | BindingFlags.Instance)!;
 
             var originalTable = ((List<(ulong Divisor, ulong Cycle)>)tableField.GetValue(cycles)!).Select(x => x).ToList();
             var originalSmall = (ulong[]?)smallCyclesField.GetValue(cycles);
@@ -88,4 +88,3 @@ public class MersenneNumberOrderGpuTesterTests
         isPrime.Should().Be(expectedPrime);
     }
 }
-

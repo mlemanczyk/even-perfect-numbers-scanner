@@ -111,7 +111,7 @@ public static partial class ULongExtensions
 
 		int i = 0, primesLength = smallPrimes.Length;
 		UInt128 q128 = q,
-				cycle = MersenneDivisorCycles.GetCycleCpu(q128);
+				cycle = MersenneDivisorCyclesCpu.GetCycle(q128);
 		// TODO: When the shared cycle snapshot cannot serve this divisor, trigger an on-demand
 		// GPU computation (respecting the configured device) without promoting the result into
 		// the cache so the order calculator still benefits from cycle stepping while keeping the
@@ -158,7 +158,7 @@ public static partial class ULongExtensions
 
 		int i = 0, primesLength = smallPrimes.Length;
 		UInt128 q128 = q,
-				cycle = MersenneDivisorCycles.GetCycleGpu(gpu, q128);
+				cycle = MersenneDivisorCyclesGpu.GetCycle(gpu, q128);
 		// TODO: When the shared cycle snapshot cannot serve this divisor, trigger an on-demand
 		// GPU computation (respecting the configured device) without promoting the result into
 		// the cache so the order calculator still benefits from cycle stepping while keeping the
@@ -205,7 +205,7 @@ public static partial class ULongExtensions
 
 		int i = 0, primesLength = smallPrimes.Length;
 		UInt128 q128 = q,
-				cycle = MersenneDivisorCycles.GetCycleHybrid(gpu, q128);
+				cycle = MersenneDivisorCyclesHybrid.GetCycle(gpu, q128);
 		// TODO: When the shared cycle snapshot cannot serve this divisor, trigger an on-demand
 		// GPU computation (respecting the configured device) without promoting the result into
 		// the cache so the order calculator still benefits from cycle stepping while keeping the
@@ -986,7 +986,7 @@ public static partial class ULongExtensions
 
 		for (; modulusCandidate <= modulus; modulusCandidate++)
 		{
-			cycle = MersenneDivisorCycles.GetCycleCpu(modulusCandidate);
+			cycle = MersenneDivisorCyclesCpu.GetCycle(modulusCandidate);
 			remainderForCandidate = cycle > zero
 					? PowModWithCycle(exponent, modulusCandidate, cycle)
 					: PowMod(exponent, modulusCandidate);
@@ -1030,7 +1030,7 @@ public static partial class ULongExtensions
 
 		for (; modulusCandidate <= modulus; modulusCandidate++)
 		{
-			cycle = MersenneDivisorCycles.GetCycleGpu(gpu, modulusCandidate);
+			cycle = MersenneDivisorCyclesGpu.GetCycle(gpu, modulusCandidate);
 			remainderForCandidate = cycle > zero
 					? PowModWithCycle(exponent, modulusCandidate, cycle)
 					: PowMod(exponent, modulusCandidate);
@@ -1074,7 +1074,7 @@ public static partial class ULongExtensions
 
 		for (; modulusCandidate <= modulus; modulusCandidate++)
 		{
-			cycle = MersenneDivisorCycles.GetCycleHybrid(gpu, modulusCandidate);
+			cycle = MersenneDivisorCyclesHybrid.GetCycle(gpu, modulusCandidate);
 			remainderForCandidate = cycle > zero
 					? PowModWithCycle(exponent, modulusCandidate, cycle)
 					: PowMod(exponent, modulusCandidate);
@@ -1310,3 +1310,4 @@ public static partial class ULongExtensions
 	}
 
 }
+

@@ -34,7 +34,7 @@ public class MersenneNumberLucasLehmerCpuTester
 		for (UInt128 i = UInt128.Zero; i < limit; i++)
 		{
 			// Lucas–Lehmer squares the evolving residue, so we stay on the Montgomery powmod path rather than the pow2-specific helper.
-			s = s.PowModWithCycle(two, MersenneDivisorCycles.GetCycleCpu(m)) - two;
+			s = s.PowModWithCycle(two, MersenneDivisorCyclesCpu.GetCycle(m)) - two;
 			if (s < UInt128.Zero)
 			{
 				s += m;
@@ -44,3 +44,4 @@ public class MersenneNumberLucasLehmerCpuTester
 		return s == UInt128.Zero;
 	}
 }
+

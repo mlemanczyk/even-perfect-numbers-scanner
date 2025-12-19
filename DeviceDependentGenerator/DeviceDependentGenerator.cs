@@ -235,7 +235,8 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
     private static TypeDeclarationSyntax TransformTemplateType(TypeDeclarationSyntax templateType, string generatedTypeName)
     {
         TypeDeclarationSyntax withoutAttribute = RemoveDeviceDependentAttribute(templateType);
-        return withoutAttribute.WithIdentifier(SyntaxFactory.Identifier(generatedTypeName));
+        TypeDeclarationSyntax renamed = (TypeDeclarationSyntax)new SelfIdentifierRewriter(templateType.Identifier.ValueText, generatedTypeName).Visit(withoutAttribute)!;
+        return renamed.WithIdentifier(SyntaxFactory.Identifier(generatedTypeName));
     }
 
     private static TypeDeclarationSyntax RemoveDeviceDependentAttribute(TypeDeclarationSyntax typeDeclaration)
@@ -269,6 +270,28 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
         }
 
         return typeDeclaration.WithAttributeLists(SyntaxFactory.List(newLists));
+    }
+
+    private sealed class SelfIdentifierRewriter : CSharpSyntaxRewriter
+    {
+        private readonly string templateName;
+        private readonly string generatedName;
+
+        public SelfIdentifierRewriter(string templateName, string generatedName)
+        {
+            this.templateName = templateName;
+            this.generatedName = generatedName;
+        }
+
+        public override SyntaxToken VisitToken(SyntaxToken token)
+        {
+            if (token.IsKind(SyntaxKind.IdentifierToken) && string.Equals(token.ValueText, templateName, StringComparison.Ordinal))
+            {
+                return SyntaxFactory.Identifier(token.LeadingTrivia, generatedName, token.TrailingTrivia);
+            }
+
+            return base.VisitToken(token);
+        }
     }
 
     private static bool IsDeviceDependentTemplateAttribute(NameSyntax attributeName)
@@ -376,6 +399,11 @@ public sealed class DeviceDependentGenerator : IIncrementalGenerator
 
             string relativeDirectory = GetRelativePath(projectDir, templateDirectory);
             if (relativeDirectory is "." or "")
+            {
+                return generatedFileName;
+            }
+
+            if (relativeDirectory.StartsWith("..", StringComparison.Ordinal))
             {
                 return generatedFileName;
             }

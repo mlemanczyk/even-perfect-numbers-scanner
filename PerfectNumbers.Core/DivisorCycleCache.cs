@@ -39,12 +39,12 @@ public sealed class DivisorCycleCache
 		Accelerator accelerator = AcceleratorPool.Shared.Accelerators[acceleratorIndex];
 		_accelerator = accelerator;
 		_gpuKernel = LoadKernel(accelerator);
-		_snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
+		_snapshot = MersenneDivisorCyclesCpu.Shared.ExportSmallCyclesSnapshot();
 	}
 
 	public void RefreshSnapshot()
 	{
-		_snapshot = MersenneDivisorCycles.Shared.ExportSmallCyclesSnapshot();
+		_snapshot = MersenneDivisorCyclesCpu.Shared.ExportSmallCyclesSnapshot();
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -60,7 +60,7 @@ public sealed class DivisorCycleCache
 			return cached;
 		}
 
-		return MersenneDivisorCycles.CalculateCycleLengthCpu(divisor, divisorData);
+		return MersenneDivisorCyclesCpu.CalculateCycleLength(divisor, divisorData);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -89,7 +89,7 @@ public sealed class DivisorCycleCache
 			return cycleLength;
 		}
 
-		cycleLength = MersenneDivisorCycles.CalculateCycleLengthHybrid(gpu, divisor, divisorData, skipPrimeOrderHeuristic: true);
+		cycleLength = MersenneDivisorCyclesHybrid.CalculateCycleLength(gpu, divisor, divisorData, skipPrimeOrderHeuristic: true);
 		return cycleLength;
 	}
 
@@ -122,7 +122,7 @@ public sealed class DivisorCycleCache
 			return cycleLength;
 		}
 
-		cycleLength = MersenneDivisorCycles.CalculateCycleLengthGpu(gpu, divisor, divisorData, skipPrimeOrderHeuristic: true);
+		cycleLength = MersenneDivisorCyclesGpu.CalculateCycleLength(gpu, divisor, divisorData, skipPrimeOrderHeuristic: true);
 		return cycleLength;
 	}
 
@@ -179,7 +179,7 @@ public sealed class DivisorCycleCache
 			return cached;
 		}
 
-		return MersenneDivisorCycles.CalculateCycleLengthHybrid(gpu, divisor, divisorData);
+		return MersenneDivisorCyclesHybrid.CalculateCycleLength(gpu, divisor, divisorData);
 	}
 
 	public void GetCycleLengthsHybrid(PrimeOrderCalculatorAccelerator gpu, ReadOnlySpan<ulong> divisors, Span<ulong> cycles)
@@ -270,7 +270,7 @@ public sealed class DivisorCycleCache
 			int targetIndex = indices[i];
 			ulong divisor = divisors[targetIndex];
 			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
-			cycles[targetIndex] = MersenneDivisorCycles.CalculateCycleLengthCpu(divisor, divisorData);
+			cycles[targetIndex] = MersenneDivisorCyclesCpu.CalculateCycleLength(divisor, divisorData);
 		}
 	}
 
@@ -282,7 +282,7 @@ public sealed class DivisorCycleCache
 			int targetIndex = indices[i];
 			ulong divisor = divisors[targetIndex];
 			MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor);
-			cycles[targetIndex] = MersenneDivisorCycles.CalculateCycleLengthHybrid(gpu, divisor, divisorData);
+			cycles[targetIndex] = MersenneDivisorCyclesHybrid.CalculateCycleLength(gpu, divisor, divisorData);
 		}
 	}
 
