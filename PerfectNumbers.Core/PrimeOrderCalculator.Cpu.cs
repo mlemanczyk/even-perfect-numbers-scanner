@@ -1344,6 +1344,7 @@ internal static partial class PrimeOrderCalculator
 				isPrime = PrimeTesterByLastDigit.IsPrimeCpu(value);
 
 				entry.WithPrimality(isPrime);
+				pending[index] = entry;
 			}
 
 			if (entry.IsPrime)
