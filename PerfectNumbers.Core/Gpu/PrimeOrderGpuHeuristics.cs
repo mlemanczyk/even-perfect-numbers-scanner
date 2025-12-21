@@ -253,7 +253,7 @@ internal static partial class PrimeOrderGpuHeuristics
 		PrimeOrderCalculatorAccelerator gpu,
 		ulong prime,
 		ulong? previousOrder,
-		PrimeOrderCalculator.PrimeOrderCalculatorConfig config,
+		PrimeOrderCalculatorConfig config,
 		in MontgomeryDivisorData divisorData,
 		out ulong order)
 	{

@@ -259,22 +259,23 @@ public struct MersenneDivisorCyclesTemplate
 		}
 
 #if DEVICE_GPU
-		UInt128 wideOrder = PrimeOrderCalculator.CalculateGpu(
+		UInt128 wideOrder = PrimeOrderCalculatorGpu.Calculate(
 			gpu,
 			divisor,
 			previousOrder: null,
-			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+			PrimeOrderCalculatorConfig.HeuristicDefault);
 #elif DEVICE_HYBRID
-		UInt128 wideOrder = PrimeOrderCalculator.CalculateHybrid(
+		UInt128 wideOrder = PrimeOrderCalculatorHybrid.Calculate(
 			gpu,
 			divisor,
 			previousOrder: null,
-			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+			MontgomeryDivisorData.FromModulus((ulong)divisor),
+			PrimeOrderCalculatorConfig.HeuristicDefault);
 #else
-		UInt128 wideOrder = PrimeOrderCalculator.CalculateCpu(
+		UInt128 wideOrder = PrimeOrderCalculatorCpu.Calculate(
 			divisor,
 			previousOrder: null,
-			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+			PrimeOrderCalculatorConfig.HeuristicDefault);
 #endif
 		if (wideOrder != UInt128.Zero)
 		{
@@ -329,25 +330,25 @@ public struct MersenneDivisorCyclesTemplate
 		// }
 
 #if DEVICE_GPU
-		ulong computedOrder = PrimeOrderCalculator.CalculateGpu(
+		ulong computedOrder = PrimeOrderCalculatorGpu.Calculate(
 			gpu,
 			divisor,
 			previousOrder: null,
 			divisorData,
-			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+			PrimeOrderCalculatorConfig.HeuristicDefault);
 #elif DEVICE_HYBRID
-		ulong computedOrder = PrimeOrderCalculator.CalculateHybrid(
+		ulong computedOrder = PrimeOrderCalculatorHybrid.Calculate(
 			gpu,
 			divisor,
 			previousOrder: null,
 			divisorData,
-			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+			PrimeOrderCalculatorConfig.HeuristicDefault);
 #else
-		ulong computedOrder = PrimeOrderCalculator.CalculateCpu(
+		ulong computedOrder = PrimeOrderCalculatorCpu.Calculate(
 			divisor,
 			previousOrder: null,
 			divisorData,
-			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+			PrimeOrderCalculatorConfig.HeuristicDefault);
 #endif
 		if (computedOrder != 0UL)
 		{
@@ -1011,14 +1012,14 @@ public struct MersenneDivisorCyclesTemplate
 		}
 
 #if DEVICE_GPU
-		if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.IsPrimeGpu(gpu, divisor))
-		{
-			ulong computedOrder = PrimeOrderCalculator.CalculateGpu(
-					gpu,
-					divisor,
-					previousOrder: null,
-					divisorData,
-					PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+			if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.IsPrimeGpu(gpu, divisor))
+			{
+				ulong computedOrder = PrimeOrderCalculatorGpu.Calculate(
+						gpu,
+						divisor,
+						previousOrder: null,
+						divisorData,
+						PrimeOrderCalculatorConfig.HeuristicDefault);
 			if (computedOrder != 0UL)
 			{
 				cycleLength = computedOrder;
@@ -1026,14 +1027,14 @@ public struct MersenneDivisorCyclesTemplate
 			}
 		}
 #elif DEVICE_HYBRID
-		if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.IsPrimeCpu(divisor))
-		{
-			ulong computedOrder = PrimeOrderCalculator.CalculateHybrid(
-					gpu,
-					divisor,
-					previousOrder: null,
-					divisorData,
-					PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+			if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.IsPrimeCpu(divisor))
+			{
+				ulong computedOrder = PrimeOrderCalculatorHybrid.Calculate(
+						gpu,
+						divisor,
+						previousOrder: null,
+						divisorData,
+						PrimeOrderCalculatorConfig.HeuristicDefault);
 			if (computedOrder != 0UL)
 			{
 				cycleLength = computedOrder;
@@ -1043,11 +1044,11 @@ public struct MersenneDivisorCyclesTemplate
 #else
 		if (!skipPrimeOrderHeuristic && HeuristicPrimeTester.IsPrimeCpu(divisor))
 		{
-			ulong computedOrder = PrimeOrderCalculator.CalculateCpu(
+			ulong computedOrder = PrimeOrderCalculatorCpu.Calculate(
 					divisor,
 					previousOrder: null,
 					divisorData,
-					PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+					PrimeOrderCalculatorConfig.HeuristicDefault);
 			if (computedOrder != 0UL)
 			{
 				cycleLength = computedOrder;

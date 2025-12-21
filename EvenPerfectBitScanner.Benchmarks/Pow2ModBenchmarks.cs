@@ -619,11 +619,11 @@ public class Pow2ModBenchmarks
 				return MersenneDivisorCyclesCpu.CalculateCycleLength(modulus, divisorData);
 			}
 
-			ulong order = PrimeOrderCalculator.CalculateCpu(
+			ulong order = PrimeOrderCalculatorCpu.Calculate(
 				modulus,
 				previousPrimeOrder,
 				divisorData,
-				PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+				PrimeOrderCalculatorConfig.HeuristicDefault);
 
 			if (order != 0UL)
 			{
@@ -642,10 +642,10 @@ public class Pow2ModBenchmarks
 				return MersenneDivisorCyclesCpu.GetCycle(modulus);
 			}
 
-			UInt128 order = PrimeOrderCalculator.CalculateCpu(
+			UInt128 order = PrimeOrderCalculatorCpu.Calculate(
 				modulus,
 				previousWidePrimeOrder,
-				PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+				PrimeOrderCalculatorConfig.HeuristicDefault);
 
 			if (order != UInt128.Zero)
 			{
@@ -689,11 +689,11 @@ public class Pow2ModBenchmarks
 #if DEBUG
 		Console.WriteLine("Trying heuristic. Prime order calculation");
 #endif
-		ulong order = PrimeOrderCalculator.CalculateCpu(
+		ulong order = PrimeOrderCalculatorCpu.Calculate(
 			modulus,
 			_previousPrimeOrder,
 			divisorData,
-			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+			PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		if (order != 0UL)
 		{
@@ -718,12 +718,12 @@ public class Pow2ModBenchmarks
 #if DEBUG
 		Console.WriteLine("Trying heuristic. Prime order calculation");
 #endif
-		ulong order = PrimeOrderCalculator.CalculateGpu(
+		ulong order = PrimeOrderCalculatorGpu.Calculate(
 			gpu,
 			modulus,
 			_previousPrimeOrder,
 			divisorData,
-			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+			PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		if (order != 0UL)
 		{
@@ -747,10 +747,10 @@ public class Pow2ModBenchmarks
 #if DEBUG
 		Console.WriteLine("Trying heuristic. Wide prime order calculation");
 #endif
-		UInt128 order = PrimeOrderCalculator.CalculateCpu(
+		UInt128 order = PrimeOrderCalculatorCpu.Calculate(
 			modulus,
 			_previousWidePrimeOrder,
-			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+			PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		if (order != UInt128.Zero)
 		{
@@ -774,11 +774,11 @@ public class Pow2ModBenchmarks
 #if DEBUG
 		Console.WriteLine("Trying heuristic. Wide prime order calculation");
 #endif
-		UInt128 order = PrimeOrderCalculator.CalculateGpu(
+		UInt128 order = PrimeOrderCalculatorGpu.Calculate(
 			gpu,
 			modulus,
 			_previousWidePrimeOrder,
-			PrimeOrderCalculator.PrimeOrderCalculatorConfig.HeuristicDefault);
+			PrimeOrderCalculatorConfig.HeuristicDefault);
 
 		if (order != UInt128.Zero)
 		{

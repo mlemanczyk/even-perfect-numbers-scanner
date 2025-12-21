@@ -101,6 +101,31 @@ namespace PerfectNumbers.Core
 		public static void Return(this FixedCapacityStack<Dictionary<UInt128, int>> pool, Dictionary<UInt128, int> dictionary) => pool.Push(dictionary);
 
 		[ThreadStatic]
+		private static FixedCapacityStack<Dictionary<ulong, int>>? _ulongIntDictionaryPool;
+
+		public static FixedCapacityStack<Dictionary<ulong, int>> UlongIntDictionaryPool
+		{
+			[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+			get => _ulongIntDictionaryPool ??= new(PerfectNumberConstants.DefaultPoolCapacity);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+		public static Dictionary<ulong, int> Rent(this FixedCapacityStack<Dictionary<ulong, int>> pool, int capacity)
+		{
+			if (pool.Pop() is { } pooled)
+			{
+				pooled.EnsureCapacity(capacity);
+				pooled.Clear();
+				return pooled;
+			}
+
+			return new(capacity);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+		public static void Return(this FixedCapacityStack<Dictionary<ulong, int>> pool, Dictionary<ulong, int> dictionary) => pool.Push(dictionary);
+
+		[ThreadStatic]
 		private static ArrayPool<FactorEntry>? _factorEntryPool;
 
 		public static ArrayPool<FactorEntry> FactorEntryPool
