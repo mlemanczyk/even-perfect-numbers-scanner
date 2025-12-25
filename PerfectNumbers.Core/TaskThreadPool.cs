@@ -171,7 +171,13 @@ internal sealed class TaskThreadPool
 				return;
 			}
 
-			_taskExecutor(workItem.Task);
+			Task? task = workItem.Task;
+			if (task is null)
+			{
+				return;
+			}
+
+			_taskExecutor(task);
 		}
 		finally
 		{
