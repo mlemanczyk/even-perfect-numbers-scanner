@@ -16,7 +16,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public static PrimeOrderCalculatorAccelerator Rent(int primeTesterCapacity)
 	{
 		var pool = _pool ??= new(PerfectNumberConstants.DefaultThreadPoolCapacity);
-		if (pool.Pop() is { } gpu)
+		if (pool.TryPop(out var gpu))
 		{
 			gpu.EnsureCapacity(PerfectNumberConstants.DefaultFactorsBuffer, primeTesterCapacity);
 			return gpu;
@@ -67,8 +67,8 @@ public sealed class PrimeOrderCalculatorAccelerator
 			// TODO: Review which tables are needed when final execution path is defined.
 			LastDigitGpuTables.WarmUp(i, stream);
 			_kernels[i] = new CalculatorKernels(accelerator);
-			// HeuristicCombinedGpuTables.WarmUp(i, stream);
-			// SmallPrimeFactorGpuTables.WarmUp(i, stream);
+			HeuristicCombinedGpuTables.WarmUp(i, stream);
+			SmallPrimeFactorGpuTables.WarmUp(i, stream);
 			// SharedHeuristicGpuTables.EnsureStaticTables(accelerator, stream);
 			// _ = GpuKernelPool.GetOrAddKernels(accelerator, stream, KernelType.None);
 			// KernelContainer kernels = GpuKernelPool.GetOrAddKernels(accelerator, stream);
@@ -170,7 +170,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 
 		// public readonly Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>> SharesFactorKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SharesFactorKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<byte>>>();
 
-		// public readonly Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> SmallPrimeFactorKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(SmallPrimeFactorKernels.SmallPrimeFactorKernelScan)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+		public readonly Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> SmallPrimeFactorKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(SmallPrimeFactorKernels.SmallPrimeFactorKernelScan)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
 
 		// public readonly Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> SmallPrimeSieveKernelLauncher = KernelUtil.GetKernel(accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>(PrimeTesterKernels.SmallPrimeSieveKernel)).CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>>>();
 
@@ -360,98 +360,95 @@ public sealed class PrimeOrderCalculatorAccelerator
 		Accelerator = accelerator;
 		AcceleratorIndex = acceleratorIndex;
 
-		// lock (accelerator)
-		// {
-			Input = accelerator.Allocate1D<ulong>(Math.Max(Math.Max(specialMaxFactorCapacity, primeTesterCapacity), PrimeOrderConstants.MaxGpuBatchSize));
-			InputView = Input.View;
+		Input = accelerator.Allocate1D<ulong>(Math.Max(Math.Max(specialMaxFactorCapacity, primeTesterCapacity), PrimeOrderConstants.MaxGpuBatchSize));
+		InputView = Input.View;
 
-			OutputByte = Accelerator.Allocate1D<byte>(primeTesterCapacity);
-			OutputByteView = OutputByte.View;
+		OutputByte = Accelerator.Allocate1D<byte>(primeTesterCapacity);
+		OutputByteView = OutputByte.View;
 
-			OutputInt = Accelerator.Allocate1D<int>(Math.Max(Math.Max(primeTesterCapacity, smallPrimeFactorSlotCount), PrimeOrderConstants.GpuSmallPrimeFactorSlots));
-			OutputIntView = OutputInt.View;
+		OutputInt = Accelerator.Allocate1D<int>(Math.Max(Math.Max(primeTesterCapacity, smallPrimeFactorSlotCount), PrimeOrderConstants.GpuSmallPrimeFactorSlots));
+		OutputIntView = OutputInt.View;
 
-			OutputInt2 = accelerator.Allocate1D<int>(PrimeOrderConstants.GpuSmallPrimeFactorSlots);			
-			OutputIntView2 = OutputInt2.View;
+		OutputInt2 = accelerator.Allocate1D<int>(PrimeOrderConstants.GpuSmallPrimeFactorSlots);			
+		OutputIntView2 = OutputInt2.View;
 
-			OutputUlong = accelerator.Allocate1D<ulong>(Math.Max(Math.Max(Math.Max(specialMaxFactorCapacity, smallPrimeFactorSlotCount), PrimeOrderConstants.MaxGpuBatchSize), PrimeOrderConstants.GpuSmallPrimeFactorSlots));
-			OutputUlongView = OutputUlong.View;
+		OutputUlong = accelerator.Allocate1D<ulong>(Math.Max(Math.Max(Math.Max(specialMaxFactorCapacity, smallPrimeFactorSlotCount), PrimeOrderConstants.MaxGpuBatchSize), PrimeOrderConstants.GpuSmallPrimeFactorSlots));
+		OutputUlongView = OutputUlong.View;
 
-			OutputUlong2 = accelerator.Allocate1D<ulong>(1);
-			OutputUlongView2 = OutputUlong2.View;
+		OutputUlong2 = accelerator.Allocate1D<ulong>(1);
+		OutputUlongView2 = OutputUlong2.View;
 
-			Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
-			Pow2ModEntriesToTestOnDeviceView = Pow2ModEntriesToTestOnDevice.View;
+		Pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
+		Pow2ModEntriesToTestOnDeviceView = Pow2ModEntriesToTestOnDevice.View;
 
-			WorkFactorBuffer = accelerator.Allocate1D<ulong>(PrimeOrderConstants.GpuSmallPrimeFactorSlots);
-			CandidateBuffer = accelerator.Allocate1D<ulong>(PrimeOrderConstants.HeuristicCandidateLimit);
-			StackIndexBuffer = accelerator.Allocate1D<int>(PrimeOrderConstants.HeuristicStackCapacity);
-			StackExponentBuffer = accelerator.Allocate1D<int>(PrimeOrderConstants.HeuristicStackCapacity);
-			StackProductBuffer = accelerator.Allocate1D<ulong>(PrimeOrderConstants.HeuristicStackCapacity);
+		WorkFactorBuffer = accelerator.Allocate1D<ulong>(PrimeOrderConstants.GpuSmallPrimeFactorSlots);
+		CandidateBuffer = accelerator.Allocate1D<ulong>(PrimeOrderConstants.HeuristicCandidateLimit);
+		StackIndexBuffer = accelerator.Allocate1D<int>(PrimeOrderConstants.HeuristicStackCapacity);
+		StackExponentBuffer = accelerator.Allocate1D<int>(PrimeOrderConstants.HeuristicStackCapacity);
+		StackProductBuffer = accelerator.Allocate1D<ulong>(PrimeOrderConstants.HeuristicStackCapacity);
 
-			WorkFactorBufferView = WorkFactorBuffer.View;
-			CandidateBufferView = CandidateBuffer.View;
-			StackIndexBufferView = StackIndexBuffer.View;
-			StackExponentBufferView = StackExponentBuffer.View;
-			StackProductBufferView = StackProductBuffer.View;
+		WorkFactorBufferView = WorkFactorBuffer.View;
+		CandidateBufferView = CandidateBuffer.View;
+		StackIndexBufferView = StackIndexBuffer.View;
+		StackExponentBufferView = StackExponentBuffer.View;
+		StackProductBufferView = StackProductBuffer.View;
 
-			CalculateOrderKernelBuffers = new OrderKernelBuffers(
-				OutputUlongView,
-				OutputIntView,
-				WorkFactorBufferView,
-				OutputIntView2,
-				CandidateBufferView,
-				StackIndexBufferView,
-				StackExponentBufferView,
-				StackProductBufferView,
-				OutputUlongView2,
-				OutputByteView
-			);
+		CalculateOrderKernelBuffers = new OrderKernelBuffers(
+			OutputUlongView,
+			OutputIntView,
+			WorkFactorBufferView,
+			OutputIntView2,
+			CandidateBufferView,
+			StackIndexBufferView,
+			StackExponentBufferView,
+			StackProductBufferView,
+			OutputUlongView2,
+			OutputByteView
+		);
 
-			CalculateOrderWideExponentBuffer = accelerator.Allocate1D<GpuUInt128>(PrimeOrderConstants.MaxGpuBatchSize);
-			CalculateOrderWideRemainderBuffer = accelerator.Allocate1D<GpuUInt128>(PrimeOrderConstants.MaxGpuBatchSize);
-			CalculateOrderWideExponentBufferView = CalculateOrderWideExponentBuffer.View;
-			CalculateOrderWideRemainderBufferView = CalculateOrderWideRemainderBuffer.View;
+		CalculateOrderWideExponentBuffer = accelerator.Allocate1D<GpuUInt128>(PrimeOrderConstants.MaxGpuBatchSize);
+		CalculateOrderWideRemainderBuffer = accelerator.Allocate1D<GpuUInt128>(PrimeOrderConstants.MaxGpuBatchSize);
+		CalculateOrderWideExponentBufferView = CalculateOrderWideExponentBuffer.View;
+		CalculateOrderWideRemainderBufferView = CalculateOrderWideRemainderBuffer.View;
 
-			LastDigitGpuTables lastDigitSharedTables = LastDigitGpuTables.GetStaticTables(acceleratorIndex);
-			DevicePrimesLastOne = lastDigitSharedTables.DevicePrimesLastOne.View;
-			DevicePrimesLastSeven = lastDigitSharedTables.DevicePrimesLastSeven.View;
-			DevicePrimesLastThree = lastDigitSharedTables.DevicePrimesLastThree.View;
-			DevicePrimesLastNine = lastDigitSharedTables.DevicePrimesLastNine.View;
-			DevicePrimesPow2LastOne = lastDigitSharedTables.DevicePrimesPow2LastOne.View;
-			DevicePrimesPow2LastSeven = lastDigitSharedTables.DevicePrimesPow2LastSeven.View;
-			DevicePrimesPow2LastThree = lastDigitSharedTables.DevicePrimesPow2LastThree.View;
-			DevicePrimesPow2LastNine = lastDigitSharedTables.DevicePrimesPow2LastNine.View;
+		LastDigitGpuTables lastDigitSharedTables = LastDigitGpuTables.GetStaticTables(acceleratorIndex);
+		DevicePrimesLastOne = lastDigitSharedTables.DevicePrimesLastOne.View;
+		DevicePrimesLastSeven = lastDigitSharedTables.DevicePrimesLastSeven.View;
+		DevicePrimesLastThree = lastDigitSharedTables.DevicePrimesLastThree.View;
+		DevicePrimesLastNine = lastDigitSharedTables.DevicePrimesLastNine.View;
+		DevicePrimesPow2LastOne = lastDigitSharedTables.DevicePrimesPow2LastOne.View;
+		DevicePrimesPow2LastSeven = lastDigitSharedTables.DevicePrimesPow2LastSeven.View;
+		DevicePrimesPow2LastThree = lastDigitSharedTables.DevicePrimesPow2LastThree.View;
+		DevicePrimesPow2LastNine = lastDigitSharedTables.DevicePrimesPow2LastNine.View;
 
-			// DivisorTables = HeuristicCombinedGpuTables
-			// 	.GetStaticTables(acceleratorIndex)
-			// 	.CreateViews();
+		DivisorTables = HeuristicCombinedGpuTables
+			.GetStaticTables(acceleratorIndex)
+			.CreateViews();
 
-			var smallPrimeFactorTables = SmallPrimeFactorGpuTables.GetStaticTables(acceleratorIndex);
+		var smallPrimeFactorTables = SmallPrimeFactorGpuTables.GetStaticTables(acceleratorIndex);
 
-			if (smallPrimeFactorTables.HasValue)
-			{
-				SmallPrimeFactorGpuTables tables = smallPrimeFactorTables.Value;
-				SmallPrimeFactorPrimes = tables.Primes.View;
-				SmallPrimeFactorSquares = tables.Squares.View;
-			}
+		if (smallPrimeFactorTables.HasValue)
+		{
+			SmallPrimeFactorGpuTables tables = smallPrimeFactorTables.Value;
+			SmallPrimeFactorPrimes = tables.Primes.View;
+			SmallPrimeFactorSquares = tables.Squares.View;
+		}
 
-			var kernels = _kernels[acceleratorIndex];
+		var kernels = _kernels[acceleratorIndex];
 
-			// CalculateOrderKernelLauncher = kernels.CalculateOrderKernelLauncher;
-			CheckFactorsKernel = kernels.CheckFactorsKernel;
-			ConvertToStandardKernelLauncher = kernels.ConvertToStandardKernelLauncher;
-			HeuristicCombinedTrialDivisionKernelLauncher = kernels.HeuristicCombinedTrialDivisionKernelLauncher;
-			// KeepMontgomeryKernelLauncher = kernels.KeepMontgomeryKernelLauncher;
-			// PartialFactorKernelLauncher = kernels.PartialFactorKernelLauncher;
-			// PollardRhoKernel = kernels.PollardRhoKernel;
-			Pow2ModKernelLauncher = kernels.Pow2ModKernelLauncher;
-			Pow2ModWideKernelLauncher = kernels.Pow2ModWideKernelLauncher;
-			// SharesFactorKernelLauncher = kernels.SharesFactorKernelLauncher;
-			// SmallPrimeFactorKernelLauncher = kernels.SmallPrimeFactorKernelLauncher;
-			// SmallPrimeSieveKernelLauncher = kernels.SmallPrimeSieveKernelLauncher;
-			SpecialMaxKernelLauncher = kernels.SpecialMaxKernelLauncher;
-		// }
+		// CalculateOrderKernelLauncher = kernels.CalculateOrderKernelLauncher;
+		CheckFactorsKernel = kernels.CheckFactorsKernel;
+		ConvertToStandardKernelLauncher = kernels.ConvertToStandardKernelLauncher;
+		HeuristicCombinedTrialDivisionKernelLauncher = kernels.HeuristicCombinedTrialDivisionKernelLauncher;
+		// KeepMontgomeryKernelLauncher = kernels.KeepMontgomeryKernelLauncher;
+		// PartialFactorKernelLauncher = kernels.PartialFactorKernelLauncher;
+		// PollardRhoKernel = kernels.PollardRhoKernel;
+		Pow2ModKernelLauncher = kernels.Pow2ModKernelLauncher;
+		Pow2ModWideKernelLauncher = kernels.Pow2ModWideKernelLauncher;
+		// SharesFactorKernelLauncher = kernels.SharesFactorKernelLauncher;
+		SmallPrimeFactorKernelLauncher = kernels.SmallPrimeFactorKernelLauncher;
+		// SmallPrimeSieveKernelLauncher = kernels.SmallPrimeSieveKernelLauncher;
+		SpecialMaxKernelLauncher = kernels.SpecialMaxKernelLauncher;
 	}
 
 	public void Dispose()
