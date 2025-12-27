@@ -46,4 +46,9 @@
           SkipUnchangedFiles="true" />
   </Target>
 
+  <Target Name="CleanDeviceDependentGeneratedFromProjectDir"
+          AfterTargets="Clean">
+    <RemoveDir Directories="$(ProjectDir)generated" />
+  </Target>
+
 </Project>
