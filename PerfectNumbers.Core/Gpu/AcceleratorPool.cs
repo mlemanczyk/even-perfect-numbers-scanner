@@ -16,8 +16,8 @@ namespace PerfectNumbers.Core.Gpu
 		public int Rent()
 		{
 			_ = Interlocked.CompareExchange(ref _index, Capacity, 0);
-			var index = Interlocked.Increment(ref _index);
-			if (index >= Capacity)
+			var index = Interlocked.Increment(ref _index) - 1;
+			if (index + 1 >= Capacity)
 			{
 				index -= Capacity;
 			}
