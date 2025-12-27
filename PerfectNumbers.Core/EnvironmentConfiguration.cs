@@ -18,6 +18,8 @@ public static class EnvironmentConfiguration
 	public static bool UseGpuOrder;
 	public static bool UseHybridOrder;
 	public static bool UseCpuOrder;
+	public static bool UsePow2GroupDivisors;
+	public static int ByDivisorSpecialRange;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static void Initialize()

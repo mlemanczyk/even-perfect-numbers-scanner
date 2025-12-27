@@ -170,20 +170,20 @@ public static partial class PrimeOrderCalculatorTemplate
 
     private static int GetGroupWide(in UInt128 value, in UInt128 prime)
     {
-        UInt128 threshold1 = prime >> 3;
-        if (value <= threshold1)
+        UInt128 threshold = prime >> 3;
+        if (value <= threshold)
         {
             return 1;
         }
 
-        UInt128 threshold2 = prime >> 2;
-        if (value <= threshold2)
+        threshold = prime >> 2;
+        if (value <= threshold)
         {
             return 2;
         }
 
-        UInt128 threshold3 = (UInt128)(((BigInteger)prime * 3) >> 3);
-        if (value <= threshold3)
+        threshold = (UInt128)(((BigInteger)prime * 3) >> 3);
+        if (value <= threshold)
         {
             return 3;
         }
@@ -306,6 +306,7 @@ public static partial class PrimeOrderCalculatorTemplate
         }
 
         FactorEntry128 factor = factors[index];
+		index++;
         UInt128 primeFactor = factor.Value;
         UInt128 contribution = UInt128.One;
         for (int exponent = 0; exponent <= factor.Exponent; exponent++)
@@ -316,7 +317,7 @@ public static partial class PrimeOrderCalculatorTemplate
                 break;
             }
 
-            BuildCandidatesRecursiveWide(order, factors, index + 1, nextDivisor, candidates, limit);
+            BuildCandidatesRecursiveWide(order, factors, index, nextDivisor, candidates, limit);
             if (candidates.Count >= limit)
             {
                 return;
@@ -1267,48 +1268,49 @@ public static partial class PrimeOrderCalculatorTemplate
     private static int ExtractSmallPrimeExponent(ref ulong value, ulong primeValue, ulong quotient)
     {
         ulong dividend = quotient;
-        int exponent = 1;
 
         if (dividend < primeValue)
         {
             value = dividend;
-            return exponent;
+            return 1;
         }
 
         quotient = dividend / primeValue;
-        ulong product = quotient * primeValue;
-        if (dividend - product != 0UL)
+        if (dividend - quotient * primeValue != 0UL)
         {
             value = dividend;
-            return exponent;
+            return 1;
         }
 
         dividend = quotient;
-        exponent++;
 
         if (dividend < primeValue)
         {
             value = dividend;
-            return exponent;
+            return 2;
         }
 
         quotient = dividend / primeValue;
-        product = quotient * primeValue;
-        if (dividend - product != 0UL)
+        if (dividend - quotient * primeValue != 0UL)
         {
             value = dividend;
-            return exponent;
+            return 2;
         }
 
-        dividend = quotient;
-        exponent++;
+		return ExtractSmallPrimeExponentWithLoop(ref value, primeValue, quotient);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static int ExtractSmallPrimeExponentWithLoop(ref ulong value, ulong primeValue, ulong quotient)
+	{
+		ulong dividend = quotient;
+        int exponent = 3;
 
         while (true)
         {
             quotient = dividend / primeValue;
-            product = quotient * primeValue;
 
-            if (dividend - product != 0UL)
+            if (dividend - quotient * primeValue != 0UL)
             {
                 break;
             }
@@ -1319,7 +1321,8 @@ public static partial class PrimeOrderCalculatorTemplate
 
         value = dividend;
         return exponent;
-    }
+	}
+
 #endif
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -1336,16 +1339,13 @@ public static partial class PrimeOrderCalculatorTemplate
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    private static ulong AdvancePolynomial(ulong x, ulong c, ulong modulus)
-    {
-        return unchecked((x * x) % modulus + c) % modulus;
-    }
+    private static ulong AdvancePolynomial(ulong x, ulong c, ulong modulus) => unchecked(x * x % modulus + c) % modulus;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static ulong AdvancePolynomialTwice(ulong x, ulong c, ulong modulus)
     {
-        x = AdvancePolynomial(x, c, modulus);
-        return AdvancePolynomial(x, c, modulus);
+		x = unchecked(x * x % modulus + c) % modulus;
+        return unchecked(x * x % modulus + c) % modulus;
     }
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
@@ -1911,14 +1911,29 @@ public static partial class PrimeOrderCalculatorTemplate
 
 		List<PartialFactorPendingEntry> pending = result.PendingFactors;
 		pending.Clear();
+		// #if DEVICE_HYBRID
+		// 	bool pollardRhoDeadlineReached = false;
+		// 	CollectSmallFactors(gpu, config, exponentSlots, primeSlots, ref value, ref pollardRhoDeadlineReached, out int factorCount);
+		// 	if (factorCount == 0 && !pollardRhoDeadlineReached)
+		// 	{
+		// 		PopulateSmallPrimeFactors(
+		// 			value,
+		// 			config.SmallFactorLimit,
+		// 			primeSlots,
+		// 			exponentSlots,
+		// 			out factorCount,
+		// 			out value);
+		// 	}
+		// #elif DEVICE_CPU
+			PopulateSmallPrimeFactors(
+				value,
+				config.SmallFactorLimit,
+				primeSlots,
+				exponentSlots,
+				out int factorCount,
+				out value);
+		// #endif
 
-        PopulateSmallPrimeFactors(
-            value,
-            config.SmallFactorLimit,
-            primeSlots,
-            exponentSlots,
-            out int factorCount,
-			out value);
 
 		bool cofactorContainsComposite;
 		if (value > 1UL)
@@ -3051,7 +3066,7 @@ public static partial class PrimeOrderCalculatorTemplate
 		return true;
 	}
 
-#if DEVICE_GPU
+#if DEVICE_GPU //|| DEVICE_HYBRID
     private const int GpuSmallPrimeFactorSlots = 64;
 
 	// GPU specific. It doesn't make sense to consolidate into one method.

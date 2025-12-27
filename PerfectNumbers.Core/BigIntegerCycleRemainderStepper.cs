@@ -8,27 +8,38 @@ namespace PerfectNumbers.Core;
 /// Mirrors <see cref="CycleRemainderStepper"/> for values that exceed 64 bits.
 /// </summary>
 [method: MethodImpl(MethodImplOptions.AggressiveInlining)]
-public struct BigIntegerCycleRemainderStepper(BigInteger cycleLength)
+public struct BigIntegerCycleRemainderStepper(byte cycleLength)
 {
-    private readonly BigInteger _cycleLength = cycleLength;
+    private readonly BigInteger _cycleLength = (BigInteger)cycleLength;
     private BigInteger _previousValue = BigInteger.Zero;
-    private BigInteger _currentRemainder = BigInteger.Zero;
+    private BigInteger _currentRemainder = 0;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    public BigInteger Initialize(BigInteger value)
+    public byte Initialize(BigInteger value)
     {
         _previousValue = value;
-        _currentRemainder = value.ReduceCycleRemainder(_cycleLength);
-        return _currentRemainder;
+        _currentRemainder = value % _cycleLength;
+        return (byte)_currentRemainder;
     }
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    public BigInteger ComputeNext(BigInteger value)
+    public bool NextIsNotDivisible(BigInteger value)
     {
-        BigInteger delta = value - _previousValue;
+		BigInteger delta = value - _previousValue;
         _previousValue = value;
-        _currentRemainder = (_currentRemainder + delta).ReduceCycleRemainder(_cycleLength);
+		delta = (_currentRemainder + delta) % _cycleLength;
+        _currentRemainder = delta;
+        return !delta.IsZero;
+    }
 
-        return _currentRemainder;
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    public byte ComputeNext(BigInteger value)
+    {
+		BigInteger delta = value - _previousValue;
+        _previousValue = value;
+		delta = (_currentRemainder + delta) % _cycleLength;
+        _currentRemainder = delta;
+
+        return (byte)delta;
     }
 }

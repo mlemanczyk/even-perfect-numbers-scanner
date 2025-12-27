@@ -5,8 +5,8 @@ using PerfectNumbers.Core.Gpu;
 
 namespace EvenPerfectBitScanner;
 
-internal readonly struct CliArguments
-{
+	internal readonly struct CliArguments
+	{
     private const string DefaultCyclesPath = "divisor_cycles.bin";
 
     internal readonly ulong StartPrime;
@@ -24,8 +24,10 @@ internal readonly struct CliArguments
     internal readonly bool UseLucas;
     internal readonly bool UseResidue;
     internal readonly bool UseDivisor;
-    internal readonly bool UseByDivisor;
-    internal readonly bool UseGcdFilter;
+	internal readonly bool UseByDivisor;
+    internal readonly bool UseDivisorPow2Increment;
+    internal readonly int ByDivisorSpecialRange;
+	internal readonly bool UseGcdFilter;
     internal readonly bool TestMode;
     internal readonly bool UseGpuCycles;
     internal readonly ComputationDevice MersenneDevice;
@@ -72,6 +74,8 @@ internal readonly struct CliArguments
             bool useDivisor,
             bool useByDivisor,
             bool useGcdFilter,
+            bool useDivisorPow2Increment,
+            int byDivisorSpecialRange,
             bool testMode,
             bool useGpuCycles,
             ComputationDevice mersenneDevice,
@@ -116,6 +120,8 @@ internal readonly struct CliArguments
         UseResidue = useResidue;
         UseDivisor = useDivisor;
         UseByDivisor = useByDivisor;
+        UseDivisorPow2Increment = useDivisorPow2Increment;
+        ByDivisorSpecialRange = byDivisorSpecialRange;
         UseGcdFilter = useGcdFilter;
         TestMode = testMode;
         UseGpuCycles = useGpuCycles;
@@ -166,6 +172,8 @@ internal readonly struct CliArguments
         bool useResidue = false;
         bool useDivisor = false;
         bool useByDivisor = false;
+        bool useDivisorPow2Increment = false;
+        int byDivisorSpecialRange = 0;
         bool useGcdFilter = false;
         bool testMode = false;
         bool useGpuCycles = true;
@@ -288,6 +296,41 @@ internal readonly struct CliArguments
                 else
                 {
                     kernelType = GpuKernelType.Incremental;
+                }
+
+                continue;
+            }
+
+            if (argument.StartsWith("--bydivisor-k-increment=", StringComparison.OrdinalIgnoreCase))
+            {
+                string value = argument["--bydivisor-k-increment=".Length..].Trim();
+                if (value.Equals("pow2groups", StringComparison.OrdinalIgnoreCase))
+                {
+                    useDivisorPow2Increment = true;
+                }
+                else if (value.Equals("sequential", StringComparison.OrdinalIgnoreCase))
+                {
+                    useDivisorPow2Increment = false;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid value for --bydivisor-k-increment. Use onebyone or pow2groups.");
+                    return default;
+                }
+
+                continue;
+            }
+
+            if (argument.StartsWith("--bydivisor-special-range=", StringComparison.OrdinalIgnoreCase))
+            {
+                if (Utf8CliParser.TryParseInt32(argument.AsSpan("--bydivisor-special-range=".Length), out int parsedRange) && parsedRange >= 0)
+                {
+                    byDivisorSpecialRange = parsedRange;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid value for --bydivisor-special-range. Use a non-negative integer.");
+                    return default;
                 }
 
                 continue;
@@ -576,10 +619,10 @@ internal readonly struct CliArguments
         }
 
         return new CliArguments(
-                startPrime,
-                startPrimeProvided,
-                maxPrimeLimit,
-                maxPrimeConfigured,
+            startPrime,
+            startPrimeProvided,
+            maxPrimeLimit,
+            maxPrimeConfigured,
                 threadCount,
                 blockSize,
                 gpuPrimeThreads,
@@ -589,37 +632,39 @@ internal readonly struct CliArguments
                 showHelp,
                 useBitTransform,
                 useLucas,
-                useResidue,
-                useDivisor,
-                useByDivisor,
-                useGcdFilter,
-                testMode,
-                useGpuCycles,
-                mersenneDevice,
-                orderDevice,
-                scanBatchSize,
-                sliceSize,
-                residueKMax,
-                filterFile,
-                forcePrimeKernelsOnCpu,
-                modReductionMode,
-                nttBackend,
-                resultsDirectory,
-                resultsPrefix,
-                writeBatchSize,
-                cyclesPath,
-                continueCyclesGeneration,
-                cyclesBatchSize,
-                divisorCyclesSearchLimit,
-                orderWarmupLimitOverride,
-                rleBlacklistPath,
-                rleHardMaxP,
-                rleOnlyLast7,
-                zeroFractionHard,
-                zeroFractionConjecture,
-                maxZeroConjecture,
-                minK,
-				gpuRatio);
+            useResidue,
+            useDivisor,
+            useByDivisor,
+            useGcdFilter,
+            useDivisorPow2Increment,
+            byDivisorSpecialRange,
+            testMode,
+            useGpuCycles,
+            mersenneDevice,
+            orderDevice,
+            scanBatchSize,
+            sliceSize,
+            residueKMax,
+            filterFile,
+            forcePrimeKernelsOnCpu,
+            modReductionMode,
+            nttBackend,
+            resultsDirectory,
+            resultsPrefix,
+            writeBatchSize,
+            cyclesPath,
+            continueCyclesGeneration,
+            cyclesBatchSize,
+            divisorCyclesSearchLimit,
+            orderWarmupLimitOverride,
+            rleBlacklistPath,
+            rleHardMaxP,
+            rleOnlyLast7,
+            zeroFractionHard,
+            zeroFractionConjecture,
+            maxZeroConjecture,
+            minK,
+			gpuRatio);
     }
 
     internal static void PrintHelp()
@@ -632,7 +677,9 @@ internal readonly struct CliArguments
         Console.WriteLine("  --max-prime=<value>    inclusive upper bound for primes from filter files");
         Console.WriteLine("  --increment=bit|add    exponent increment method (default add)");
         Console.WriteLine("  --threads=<value>      number of worker threads");
-        Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
+S        Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
+        Console.WriteLine("  --bydivisor-k-increment=sequential|pow2groups  k iteration strategy for --mersenne=bydivisor (default sequential)");
+        Console.WriteLine("  --bydivisor-special-range=<n>  widen pow2groups special values to +/- n percent (default 0 = points)");
         Console.WriteLine("  --residue-max-k=<value> max k for residue Mersenne test (q = 2*p*k + 1)");
         Console.WriteLine("  --mersenne-device=cpu|gpu|hybrid  Device for Mersenne method (default gpu)");
         Console.WriteLine("  --primes-device=cpu|gpu device for prime-scan kernels (default gpu)");

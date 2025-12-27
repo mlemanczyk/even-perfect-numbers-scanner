@@ -1,6 +1,7 @@
 using System.Numerics;
 using FluentAssertions;
 using PerfectNumbers.Core.Cpu;
+using MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForCpuOrder;
 using Xunit;
 
 namespace PerfectNumbers.Core.Tests;
