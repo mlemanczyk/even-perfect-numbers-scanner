@@ -2,6 +2,7 @@ using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Open.Numeric.Primes;
 using PerfectNumbers.Core;
+using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace EvenPerfectBitScanner.Benchmarks;
@@ -18,6 +19,8 @@ public class PrimeTesterBenchmarks
     [GlobalSetup]
     public void GlobalSetup()
     {
+		EnvironmentConfiguration.RollingAccelerators = 1;
+
         _candidates = BenchmarkCase.Candidates;
 
         if (_candidates.Length == 0)
@@ -25,7 +28,6 @@ public class PrimeTesterBenchmarks
             return;
         }
 
-		EnvironmentConfiguration.RollingAccelerators = 1;
 
 		PrimeOrderCalculatorAccelerator.WarmUp();
 		// HeuristicGroupABPrimeTesterAccelerator.WarmUp();

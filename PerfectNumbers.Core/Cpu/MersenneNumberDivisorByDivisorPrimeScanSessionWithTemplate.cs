@@ -1,33 +1,56 @@
 using System.Globalization;
+using System.Globalization;
+using System.IO;
 using System.Numerics;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
+#if DivisorSet_Pow2Groups
+using TesterCpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPow2GroupsDivisorSetForCpuOrder;
+using TesterHybrid = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPow2GroupsDivisorSetForHybridOrder;
+using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPow2GroupsDivisorSetForGpuOrder;
+#else
+using TesterCpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForCpuOrder;
+using TesterHybrid = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForHybridOrder;
+using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForGpuOrder;
+#endif
+
 namespace PerfectNumbers.Core.Cpu;
 
-internal struct MersenneNumberDivisorByDivisorPrimeScanSessionWithHybridOrder
+[EnumDependentTemplate(typeof(DivisorSet))]
+[DeviceDependentTemplate(typeof(ComputationDevice))]
+[NameSuffix("Order")]
+internal struct MersenneNumberDivisorByDivisorPrimeScanSessionWithTemplate
 {
-	private MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder _tester;
-	private MersenneCpuDivisorScanSessionWithHybridOrder _divisorScanSession;
+#if DEVICE_GPU
+	private TesterGpu _tester;
+#elif DEVICE_HYBRID
+	private TesterHybrid _tester;
+#else
+	private TesterCpu _tester;
+#endif
 
 	private readonly Action _markComposite;
 	private readonly Action _clearComposite;
 	private readonly Action<ulong, bool, bool, bool, BigInteger> _printResult;
 
-	public MersenneNumberDivisorByDivisorPrimeScanSessionWithHybridOrder(
-		in MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder prototype,
+	public MersenneNumberDivisorByDivisorPrimeScanSessionWithTemplate(
+#if DEVICE_GPU
+		in TesterGpu prototype,
+#elif DEVICE_HYBRID
+		in TesterHybrid prototype,
+#else
+		in TesterCpu prototype,
+#endif
 		Action markComposite,
 		Action clearComposite,
 		Action<ulong, bool, bool, bool, BigInteger> printResult)
 	{
-		_tester = new MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder
+		_tester = new()
 		{
 			DivisorLimit = prototype.DivisorLimit,
 			MinK = EnvironmentConfiguration.MinK,
 		};
-
-		_divisorScanSession = new MersenneCpuDivisorScanSessionWithHybridOrder();
-		_divisorScanSession.Configure(_tester.Accelerator);
 
 		_markComposite = markComposite;
 		_clearComposite = clearComposite;
@@ -96,6 +119,8 @@ internal struct MersenneNumberDivisorByDivisorPrimeScanSessionWithHybridOrder
 
 	public void Dispose()
 	{
+#if DEVICE_GPU || DEVICE_HYBRID
 		PrimeOrderCalculatorAccelerator.Return(_tester.Accelerator);
+#endif
 	}
 }
