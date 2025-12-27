@@ -7,10 +7,11 @@ namespace PerfectNumbers.Core
         public static readonly UInt128 Two = 2UL;
         public static readonly UInt128 Three = 3UL;
         public static readonly UInt128 Four = 4UL;
-        public static readonly UInt128 SixtyFour = 64UL;
+		public static readonly UInt128 MaxValueMinusOne = UInt128.MaxValue - UInt128.One;
         public static readonly UInt128 OneHundredTwentySeven = 127UL;
         public static readonly UInt128 OneShiftedLeft64 = UInt128.One << 64;
         public static readonly UInt128 OneShiftedLeft64x2 = Two * OneShiftedLeft64;
+        public static readonly UInt128 SixtyFour = 64UL;
 
         public static readonly GpuUInt128 TwoGpu = new(2UL);
 
