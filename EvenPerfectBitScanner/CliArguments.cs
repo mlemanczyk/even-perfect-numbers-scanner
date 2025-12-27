@@ -677,7 +677,7 @@ namespace EvenPerfectBitScanner;
         Console.WriteLine("  --max-prime=<value>    inclusive upper bound for primes from filter files");
         Console.WriteLine("  --increment=bit|add    exponent increment method (default add)");
         Console.WriteLine("  --threads=<value>      number of worker threads");
-S        Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
+        Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
         Console.WriteLine("  --bydivisor-k-increment=sequential|pow2groups  k iteration strategy for --mersenne=bydivisor (default sequential)");
         Console.WriteLine("  --bydivisor-special-range=<n>  widen pow2groups special values to +/- n percent (default 0 = points)");
         Console.WriteLine("  --residue-max-k=<value> max k for residue Mersenne test (q = 2*p*k + 1)");

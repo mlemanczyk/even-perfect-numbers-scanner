@@ -17,6 +17,16 @@ using TesterHybrid = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTe
 using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForGpuOrder;
 #endif
 
+#if DivisorSet_Pow2Groups
+using TesterCpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPow2GroupsDivisorSetForCpuOrder;
+using TesterHybrid = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPow2GroupsDivisorSetForHybridOrder;
+using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPow2GroupsDivisorSetForGpuOrder;
+#else
+using TesterCpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForCpuOrder;
+using TesterHybrid = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForHybridOrder;
+using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForGpuOrder;
+#endif
+
 namespace PerfectNumbers.Core.Cpu;
 
 [EnumDependentTemplate(typeof(DivisorSet))]
