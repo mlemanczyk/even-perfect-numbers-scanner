@@ -2,6 +2,7 @@
 	"dotnet.defaultSolution": "FlexiCoder.sln",
 	"chatgpt.openOnStartup": true,
 	"cSpell.words": [
+		"bydivisor",
 		"CCCCCCCDUL",
 		"cofactor",
 		"ILGPU",
