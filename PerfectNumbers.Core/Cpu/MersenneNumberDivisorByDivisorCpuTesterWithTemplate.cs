@@ -2192,6 +2192,11 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			ulong limit64 = (ulong)limit;
 			for (int x = 2; x < 64; x++)
 			{
+				if ((ulong)x == prime)
+				{
+					continue;
+				}
+
 				ulong d = (1UL << x) - 1UL;
 				if (d > limit64)
 				{
@@ -2214,6 +2219,11 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			if (dBig > limit)
 			{
 				break;
+			}
+
+			if ((ulong)x == prime)
+			{
+				continue;
 			}
 
 			if (BigInteger.ModPow(2, prime, dBig) == BigInteger.One)
