@@ -127,7 +127,14 @@ internal static class Program
                 throw new FormatException($"Invalid divisor value '{parts[1]}' for p={p} in {path}.");
             }
 
-            result[p] = divisor;
+            if (IsProperMersenneDivisor(p, divisor))
+            {
+                result[p] = divisor;
+            }
+            else
+            {
+                Console.Error.WriteLine($"Skipping invalid divisor entry p={p}, divisor={divisor} (not a proper divisor of 2^{p}-1 or fails powmod check).");
+            }
         }
 
         return result;
@@ -184,6 +191,45 @@ internal static class Program
         }
 
         return k;
+    }
+
+    private static bool IsProperMersenneDivisor(long p, in BigInteger divisor)
+    {
+        if (p <= 1 || divisor <= BigInteger.One)
+        {
+            return false;
+        }
+
+        int bitLength = GetBitLength(divisor);
+        if (bitLength > p)
+        {
+            return false;
+        }
+
+        if (bitLength == p && IsPowerOfTwo(divisor + BigInteger.One))
+        {
+            // Divisor equals the Mersenne number itself.
+            return false;
+        }
+
+        return BigInteger.ModPow(2, p, divisor) == BigInteger.One;
+    }
+
+    private static int GetBitLength(in BigInteger value)
+    {
+        if (value.IsZero)
+        {
+            return 0;
+        }
+
+        byte[] bytes = value.ToByteArray(isUnsigned: true, isBigEndian: false);
+        byte msb = bytes[^1];
+        return ((bytes.Length - 1) * 8) + (BitOperations.Log2(msb) + 1);
+    }
+
+    private static bool IsPowerOfTwo(in BigInteger value)
+    {
+        return value > BigInteger.One && (value & (value - BigInteger.One)) == BigInteger.Zero;
     }
 
     private static void WriteOutput(IReadOnlyCollection<Transition> transitions)

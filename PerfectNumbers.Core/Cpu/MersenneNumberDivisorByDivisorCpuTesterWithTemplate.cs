@@ -68,6 +68,128 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	private (int Start, int End)[] _preparedSpecialRanges = Array.Empty<(int Start, int End)>();
 #endif
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool IsMersenneValue(ulong prime, in BigInteger divisor)
+	{
+		if (divisor <= BigInteger.One || prime == 0UL || prime > int.MaxValue)
+		{
+			return false;
+		}
+
+		int divisorBitLength = GetBitLengthPortable(divisor);
+		if (divisorBitLength != (int)prime)
+		{
+			return false;
+		}
+
+		BigInteger plusOne = divisor + BigInteger.One;
+		return plusOne > BigInteger.One && IsPowerOfTwoBig(plusOne);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static int GetBitLengthPortable(in BigInteger value)
+	{
+		if (value.IsZero)
+		{
+			return 0;
+		}
+
+		byte[] bytes = value.ToByteArray(isUnsigned: true, isBigEndian: false);
+		byte msb = bytes[^1];
+		return ((bytes.Length - 1) * 8) + (BitOperations.Log2(msb) + 1);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool IsPowerOfTwoBig(in BigInteger value)
+	{
+		return value > BigInteger.One && (value & (value - BigInteger.One)) == BigInteger.Zero;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool TryGetMersenneStopK(ulong prime, in BigInteger step, out BigInteger stopK, out BigInteger tailStartK)
+	{
+		stopK = BigInteger.Zero;
+		tailStartK = BigInteger.Zero;
+
+		if (prime == 0UL || prime > int.MaxValue)
+		{
+			return false;
+		}
+
+		int bits;
+		try
+		{
+			bits = checked((int)prime);
+		}
+		catch (OverflowException)
+		{
+			throw;
+		}
+
+		BigInteger mersenne;
+		try
+		{
+			mersenne = (BigInteger.One << bits) - BigInteger.One;
+		}
+		catch (OutOfMemoryException)
+		{
+			throw;
+		}
+		BigInteger denominator = step;
+		if (denominator <= BigInteger.Zero)
+		{
+			return false;
+		}
+
+		stopK = (mersenne - BigInteger.One) / denominator;
+		if (stopK < BigInteger.One)
+		{
+			return false;
+		}
+
+		int tailCount = PerfectNumberConstants.ByDivisorMersenneTailCount;
+		if (tailCount < 0)
+		{
+			tailCount = 0;
+		}
+
+		BigInteger tail = stopK - tailCount;
+		tailStartK = tail > BigInteger.One ? tail : BigInteger.One;
+		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool TryClampMaxKForMersenneTail(ulong prime, in BigInteger step, ref BigInteger maxKAllowed)
+	{
+		if (maxKAllowed <= BigInteger.Zero)
+		{
+			return false;
+		}
+
+		if (!TryGetMersenneStopK(prime, step, out BigInteger stopK, out BigInteger tailStartK))
+		{
+			return false;
+		}
+
+		if (maxKAllowed < tailStartK)
+		{
+			return false;
+		}
+
+		BigInteger cap = stopK - BigInteger.One;
+		if (cap < BigInteger.One)
+		{
+			return false;
+		}
+
+		if (maxKAllowed > cap)
+		{
+			maxKAllowed = cap;
+		}
+
+		return true;
+	}
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public void ResetStateTracking()
 	{
@@ -288,6 +410,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 
 		BigInteger normalizedMinK = minK >= BigInteger.One ? minK : BigInteger.One;
 		BigInteger maxKAllowed = (allowedMax - BigInteger.One) / step;
+		TryClampMaxKForMersenneTail(prime, step, ref maxKAllowed);
 		if (maxKAllowed < normalizedMinK)
 		{
 			return false;
@@ -455,6 +578,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			processedAll = true;
 			BigInteger stepBig = step64;
 			BigInteger maxKAllowed = allowedMax == 0UL ? BigInteger.Zero : (((BigInteger)allowedMax - BigInteger.One) / stepBig);
+			TryClampMaxKForMersenneTail(prime, stepBig, ref maxKAllowed);
 
 			ReadOnlySpan<int> specialPercents = SpecialPercentPromille;
 			ReadOnlySpan<(int Start, int End)> groups = PercentGroupsPromille;
@@ -760,7 +884,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				}
 
 				RecordState(currentK);
-				if (divisorCycle == prime)
+				if (divisorCycle == prime && !IsMersenneValue(prime, candidate))
 				{
 					// A cycle equal to the tested exponent (which is prime in this path) guarantees that the candidate divides
 					// the corresponding Mersenne number because the order of 2 modulo the divisor is exactly p.
@@ -1320,7 +1444,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 					BigInteger divisorBig = (BigInteger)divisor;
 					RecordState((BigInteger)k);
 					BigInteger powResult = BigInteger.ModPow(2, prime, divisorBig);
-					if (powResult.IsOne)
+					if (powResult.IsOne && !IsMersenneValue(prime, divisorBig))
 					{
 						foundDivisor = divisorBig;
 						return true;
@@ -1364,6 +1488,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		}
 
 		BigInteger maxKAllowed = (allowedMax - BigInteger.One) / step;
+		TryClampMaxKForMersenneTail(prime, step, ref maxKAllowed);
 		if (currentK > maxKAllowed)
 		{
 			return false;
@@ -1453,7 +1578,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 					{
 						RecordState(currentK);
 						BigInteger powResult = BigInteger.ModPow(BigIntegerNumbers.Two, primeBig, divisor);
-						if (powResult.IsOne)
+						if (powResult.IsOne && !IsMersenneValue(prime, divisor))
 						{
 							foundDivisor = divisor;
 							processedAll = true;
@@ -1498,6 +1623,13 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		}
 
 		ulong maxKAllowed = (allowedMax - 1UL) / step;
+		{
+			BigInteger maxKBig = maxKAllowed;
+			if (TryClampMaxKForMersenneTail(prime, (BigInteger)step, ref maxKBig))
+			{
+				maxKAllowed = maxKBig > ulong.MaxValue ? ulong.MaxValue : (ulong)maxKBig;
+			}
+		}
 		if (endK > maxKAllowed)
 		{
 			endK = maxKAllowed;
@@ -1642,7 +1774,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				}
 
 				RecordState(currentK);
-				if (divisorCycle == prime)
+				if (divisorCycle == prime && !IsMersenneValue(prime, divisor))
 				{
 					foundDivisor = divisor;
 					return true;
@@ -2120,7 +2252,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			{
 				RecordState(currentK, phase);
 				BigInteger powResult = BigInteger.ModPow(2, prime, divisor);
-				if (powResult.IsOne)
+				if (powResult.IsOne && !IsMersenneValue(prime, divisor))
 				{
 					foundDivisor = divisor;
 					processedAll = true;
