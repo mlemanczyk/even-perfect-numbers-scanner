@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
+using PerfectNumbers.Core.ByDivisor;
 
 namespace PerfectNumbers.Core.Cpu;
 
@@ -13,6 +14,7 @@ public enum DivisorSet
 {
 	OneByOne,
 	Pow2Groups,
+	Predictive,
 }
 
 [EnumDependentTemplate(typeof(DivisorSet))]
@@ -71,19 +73,24 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static bool IsMersenneValue(ulong prime, in BigInteger divisor)
 	{
-		if (divisor <= BigInteger.One || prime == 0UL || prime > int.MaxValue)
-		{
-			return false;
-		}
-
-		int divisorBitLength = GetBitLengthPortable(divisor);
-		if (divisorBitLength != (int)prime)
+		if (divisor <= BigInteger.One || prime == 0UL)
 		{
 			return false;
 		}
 
 		BigInteger plusOne = divisor + BigInteger.One;
-		return plusOne > BigInteger.One && IsPowerOfTwoBig(plusOne);
+		if (plusOne <= BigInteger.One || !IsPowerOfTwoBig(plusOne))
+		{
+			return false;
+		}
+
+		int exponentBits = GetBitLengthPortable(plusOne) - 1;
+		if (exponentBits <= 0)
+		{
+			return false;
+		}
+
+		return prime == (ulong)exponentBits;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -331,8 +338,36 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				step,
 				out processedAll,
 				out foundDivisor);
+			// Console.WriteLine($"[by-divisor-plan] p={prime} suffix={(prime & 1023UL)} using pow2-groups plan; model skipped.");
 			return compositePow2;
 #else
+#if DivisorSet_Predictive
+		ByDivisorClassModel? classifier = EnvironmentConfiguration.ByDivisorClassModel;
+		if (classifier is not null)
+		{
+			bool compositePlanned = TryExecutePlannedScan(
+				classifier,
+				prime,
+				allowedMax,
+				normalizedMinK,
+				out processedAll,
+				out foundDivisor);
+			if (compositePlanned)
+			{
+				return true;
+			}
+
+			if (processedAll)
+			{
+				return false;
+			}
+		}
+		else
+		{
+			Console.WriteLine($"[by-divisor-plan] p={prime} suffix={(prime & 1023UL)} model unavailable, falling back to sequential scan.");
+		}
+#endif
+
 		if (fits64 && composite64)
 		{
 			allowedMax64 = unlimited ? ulong.MaxValue : (ulong)allowedMax;
@@ -555,6 +590,400 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		return false;
 	}
 #endif
+
+	#if !DivisorSet_Pow2Groups && DivisorSet_Predictive
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private bool TryExecutePlannedScan(
+		ByDivisorClassModel model,
+		ulong prime,
+		BigInteger allowedMax,
+		BigInteger minK,
+		out bool processedAll,
+		out BigInteger foundDivisor)
+	{
+		processedAll = false;
+		foundDivisor = BigInteger.Zero;
+
+		if (minK > ulong.MaxValue)
+		{
+			// Console.WriteLine($"[by-divisor-plan] p={prime} using BigInteger plan (minK={minK}).");
+			return TryExecutePlannedScanBig(model, prime, allowedMax, minK, out processedAll, out foundDivisor);
+		}
+
+		ulong allowedMax64;
+		if (allowedMax.IsZero)
+		{
+			allowedMax64 = ulong.MaxValue;
+		}
+		else if (allowedMax > ulong.MaxValue)
+		{
+			// Console.WriteLine($"[by-divisor-plan] p={prime} using BigInteger plan (allowedMax={allowedMax}).");
+			return TryExecutePlannedScanBig(model, prime, allowedMax, minK, out processedAll, out foundDivisor);
+		}
+		else
+		{
+			allowedMax64 = (ulong)allowedMax;
+		}
+		bool composite = TryExecutePlannedScan64(
+			model,
+			prime,
+			allowedMax64,
+			(ulong)minK,
+			out processedAll,
+			out ulong foundDivisor64);
+		if (composite)
+		{
+			foundDivisor = foundDivisor64;
+			return true;
+		}
+
+		if (processedAll)
+		{
+			foundDivisor = BigInteger.Zero;
+		}
+
+		return false;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private bool TryExecutePlannedScanBig(
+		ByDivisorClassModel model,
+		ulong prime,
+		in BigInteger allowedMax,
+		in BigInteger minK,
+		out bool processedAll,
+		out BigInteger foundDivisor)
+	{
+		processedAll = true;
+		foundDivisor = BigInteger.Zero;
+
+		if (allowedMax.IsZero)
+		{
+			processedAll = false;
+			return false;
+		}
+
+		BigInteger step = ((BigInteger)prime) << 1;
+		BigInteger maxKAllowed = (allowedMax - BigInteger.One) / step;
+		TryClampMaxKForMersenneTail(prime, step, ref maxKAllowed);
+		if (maxKAllowed <= BigInteger.Zero || minK > maxKAllowed)
+		{
+			processedAll = false;
+			return false;
+		}
+
+		ByDivisorScanTuning tuning = EnvironmentConfiguration.ByDivisorScanTuning;
+		ByDivisorScanPlan plan = model.BuildPlan(prime, allowedMax, tuning);
+		int suffix = (int)(prime & 1023UL);
+		// ByDivisorClassEntry entry = model.Entries[suffix];
+		// Console.WriteLine($"[by-divisor-plan] p={prime} suffix={suffix} k50={entry.K50:F2} k75={entry.K75:F2} gap={entry.GapProbability:F3} cheap<= {plan.CheapLimit:F0} start={plan.Start:F0} target={plan.Target:F0} rho1={plan.Rho1:F2} rho2={plan.Rho2:F2} maxK={maxKAllowed}");
+
+		BigInteger cheapLimit = BigInteger.Min((BigInteger)plan.CheapLimit, maxKAllowed);
+		if (cheapLimit >= minK)
+		{
+			BigInteger currentK = minK;
+			bool compositeCheap = CheckDivisorsBigPlanRange(
+				prime,
+				step,
+				allowedMax,
+				minK,
+				cheapLimit,
+				out bool processedRange,
+				out BigInteger foundRange,
+				ref currentK);
+			if (compositeCheap)
+			{
+				foundDivisor = foundRange;
+				return true;
+			}
+
+			if (!processedRange)
+			{
+				processedAll = false;
+				return false;
+			}
+		}
+
+		BigInteger startPlan = plan.Start <= 0d ? minK : new BigInteger(Math.Ceiling(plan.Start));
+		if (startPlan < minK)
+		{
+			startPlan = minK;
+		}
+
+		BigInteger target = plan.Target <= 0d ? startPlan + BigInteger.One : new BigInteger(Math.Ceiling(plan.Target));
+		if (target < startPlan)
+		{
+			target = startPlan + BigInteger.One;
+		}
+
+		BigInteger current = cheapLimit + BigInteger.One;
+		if (current < startPlan)
+		{
+			current = startPlan;
+		}
+
+		bool loggedProgressive = false;
+		while (current <= maxKAllowed)
+		{
+			if (!loggedProgressive)
+			{
+				// Console.WriteLine($"[by-divisor-progressive] p={prime} startK={current} target={target} rho={(current < target ? plan.Rho1 : plan.Rho2):F2} maxK={maxKAllowed}");
+				loggedProgressive = true;
+			}
+
+			BigInteger startRange = current;
+			BigInteger endRange = current;
+			bool composite = CheckDivisorsBigPlanRange(
+				prime,
+				step,
+				allowedMax,
+				startRange,
+				endRange,
+				out bool processedRange,
+				out BigInteger foundRange,
+				ref startRange);
+			if (composite)
+			{
+				foundDivisor = foundRange;
+				return true;
+			}
+
+			if (!processedRange)
+			{
+				processedAll = false;
+				return false;
+			}
+
+			double multiplier = current < target ? plan.Rho1 : plan.Rho2;
+			BigInteger advanced = new BigInteger(Math.Ceiling((double)current * multiplier));
+			if (advanced <= current)
+			{
+				advanced = current + BigInteger.One;
+			}
+
+			if (advanced > maxKAllowed)
+			{
+				break;
+			}
+
+			current = advanced;
+		}
+
+		return false;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private bool CheckDivisorsBigPlanRange(
+		ulong prime,
+		in BigInteger step,
+		in BigInteger allowedMax,
+		in BigInteger startK,
+		in BigInteger endK,
+		out bool processedAll,
+		out BigInteger foundDivisor,
+		ref BigInteger currentK)
+	{
+		processedAll = true;
+		foundDivisor = BigInteger.Zero;
+
+		if (startK < BigInteger.One || endK < startK)
+		{
+			return false;
+		}
+
+		BigInteger maxKAllowed = (allowedMax - BigInteger.One) / step;
+		TryClampMaxKForMersenneTail(prime, step, ref maxKAllowed);
+		if (startK > maxKAllowed)
+		{
+			return false;
+		}
+
+		BigInteger effectiveEnd = endK > maxKAllowed ? maxKAllowed : endK;
+		ushort primeDecimalMask = DivisorGenerator.GetDecimalMask((prime & 3UL) == 3UL);
+		BigInteger divisor = (step * startK) + BigInteger.One;
+		if (divisor > allowedMax)
+		{
+			return false;
+		}
+
+		BigInteger iterations = (effectiveEnd - startK) + BigInteger.One;
+		currentK = startK;
+
+		var rem10 = new BigIntegerCycleRemainderStepper(10);
+		var rem8 = new BigIntegerCycleRemainderStepper(8);
+		var rem3 = new BigIntegerCycleRemainderStepper(3);
+		var rem7 = new BigIntegerCycleRemainderStepper(7);
+		var rem11 = new BigIntegerCycleRemainderStepper(11);
+		var rem13 = new BigIntegerCycleRemainderStepper(13);
+		var rem17 = new BigIntegerCycleRemainderStepper(17);
+		var rem19 = new BigIntegerCycleRemainderStepper(19);
+
+		byte remainder10 = rem10.Initialize(divisor);
+		BigInteger primeBig = (BigInteger)prime;
+
+		while (iterations.Sign > 0)
+		{
+			if (remainder10 == 1 || remainder10 == 7)
+			{
+				if (rem3.NextIsNotDivisible(divisor) &&
+					rem7.NextIsNotDivisible(divisor) &&
+					rem11.NextIsNotDivisible(divisor) &&
+					rem13.NextIsNotDivisible(divisor) &&
+					rem17.NextIsNotDivisible(divisor) &&
+					rem19.NextIsNotDivisible(divisor))
+				{
+					byte remainder8 = rem8.ComputeNext(divisor);
+					if (remainder8 == 1 || remainder8 == 7)
+					{
+						if (((primeDecimalMask >> remainder10) & 1) != 0)
+						{
+							RecordState(currentK);
+							BigInteger powResult = BigInteger.ModPow(BigIntegerNumbers.Two, primeBig, divisor);
+							if (powResult.IsOne && !IsMersenneValue(prime, divisor))
+							{
+								foundDivisor = divisor;
+								return true;
+							}
+						}
+					}
+				}
+			}
+
+			iterations--;
+			if (iterations.IsZero)
+			{
+				break;
+			}
+
+			currentK++;
+			divisor += step;
+			remainder10 = rem10.ComputeNext(divisor);
+		}
+
+		return false;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private bool TryExecutePlannedScan64(
+		ByDivisorClassModel model,
+		ulong prime,
+		ulong allowedMax,
+		ulong minK,
+		out bool processedAll,
+		out ulong foundDivisor)
+	{
+		processedAll = true;
+		foundDivisor = 0UL;
+
+		ulong step64 = prime << 1;
+		if (step64 == 0UL)
+		{
+			processedAll = false;
+			return false;
+		}
+
+		ByDivisorScanTuning tuning = EnvironmentConfiguration.ByDivisorScanTuning;
+		ByDivisorScanPlan plan = model.BuildPlan(prime, allowedMax == ulong.MaxValue ? BigInteger.Zero : new BigInteger(allowedMax), tuning);
+		int suffix = (int)(prime & 1023UL);
+		// ByDivisorClassEntry entry = model.Entries[suffix];
+		// Console.WriteLine($"[by-divisor-plan] p={prime} suffix={suffix} k50={entry.K50:F2} k75={entry.K75:F2} gap={entry.GapProbability:F3} cheap<= {plan.CheapLimit:F0} start={plan.Start:F0} target={plan.Target:F0} rho1={plan.Rho1:F2} rho2={plan.Rho2:F2}");
+
+		ulong effectiveAllowed = allowedMax == 0UL ? ulong.MaxValue : allowedMax;
+		ulong maxKAllowed = effectiveAllowed == ulong.MaxValue ? ulong.MaxValue : ((effectiveAllowed - 1UL) / step64);
+		if (maxKAllowed == 0UL || maxKAllowed < minK)
+		{
+			processedAll = false;
+			return false;
+		}
+
+		ulong cheapLimit = (ulong)Math.Min(plan.CheapLimit, maxKAllowed);
+		if (cheapLimit >= minK)
+		{
+			ulong currentK = minK;
+			bool composite = CheckDivisors64Range(
+				prime,
+				step64,
+				effectiveAllowed,
+				minK,
+				cheapLimit,
+				ref currentK,
+				out bool processedRange,
+				out ulong foundRange);
+			if (composite)
+			{
+				foundDivisor = foundRange;
+				return true;
+			}
+
+			if (!processedRange)
+			{
+				processedAll = false;
+				return false;
+			}
+		}
+
+		double nextK = Math.Max(plan.Start, cheapLimit + 1d);
+		if (nextK < minK)
+		{
+			nextK = minK;
+		}
+
+		double target = plan.Target <= 0d ? nextK : plan.Target;
+		if (target < nextK)
+		{
+			target = nextK + 1d;
+		}
+
+		ulong current = (ulong)Math.Ceiling(nextK);
+		bool loggedProgressive = false;
+		while (current <= maxKAllowed)
+		{
+			if (!loggedProgressive)
+			{
+				Console.WriteLine($"[by-divisor-progressive] p={prime} startK={current} target={target:F0} rho={(current < target ? plan.Rho1 : plan.Rho2):F2} maxK={maxKAllowed}");
+				loggedProgressive = true;
+			}
+
+			ulong currentK = current;
+			bool compositeSingle = CheckDivisors64Range(
+				prime,
+				step64,
+				effectiveAllowed,
+				currentK,
+				currentK,
+				ref currentK,
+				out bool processedSingle,
+				out ulong foundSingle);
+			if (compositeSingle)
+			{
+				foundDivisor = foundSingle;
+				return true;
+			}
+
+			if (!processedSingle)
+			{
+				processedAll = false;
+				return false;
+			}
+
+			double multiplier = current < target ? plan.Rho1 : plan.Rho2;
+			double advanced = Math.Ceiling(current * multiplier);
+			if (advanced <= current)
+			{
+				advanced = current + 1d;
+			}
+
+			if (advanced > maxKAllowed)
+			{
+				break;
+			}
+
+			current = (ulong)advanced;
+		}
+
+		return false;
+	}
+	#endif
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private bool CheckDivisors64Bit(

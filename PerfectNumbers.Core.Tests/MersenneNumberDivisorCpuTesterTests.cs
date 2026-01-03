@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Reflection;
 using FluentAssertions;
 using PerfectNumbers.Core.Cpu;
 using MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForCpuOrder;
@@ -99,9 +100,38 @@ public class MersenneNumberDivisorCpuTesterTests
         tester.ResumeFromState(Path.Combine(Path.GetTempPath(), "bydivisor-selfdivisor.bin"), BigInteger.Zero, kSelf);
         tester.ResetStateTracking();
 
-        tester.IsPrime(31UL, out bool divisorsExhausted, out BigInteger divisor).Should().BeTrue();
-        divisorsExhausted.Should().BeTrue();
-        divisor.Should().Be(BigInteger.Zero);
+	    tester.IsPrime(31UL, out bool divisorsExhausted, out BigInteger divisor).Should().BeTrue();
+	    divisorsExhausted.Should().BeTrue();
+	    divisor.Should().Be(BigInteger.Zero);
+    }
+
+    [Theory]
+    [Trait("Category", "Fast")]
+    [InlineData(127UL, 127, true)]
+    [InlineData(127UL, 89, false)]
+    [InlineData(89UL, 61, false)]
+    public void IsMersenneValue_flags_only_matching_exponent_as_trivial(ulong prime, int exponent, bool expected)
+    {
+        BigInteger divisor = (BigInteger.One << exponent) - BigInteger.One;
+        InvokeIsMersenneValue(prime, divisor).Should().Be(expected);
+    }
+
+    [Fact]
+    [Trait("Category", "Fast")]
+    public void IsMersenneValue_ignores_mersenne_shaped_divisors_above_prime()
+    {
+        ulong prime = 89UL;
+        BigInteger divisor = (BigInteger.One << 101) - BigInteger.One;
+        InvokeIsMersenneValue(prime, divisor).Should().BeFalse();
+    }
+
+    private static bool InvokeIsMersenneValue(ulong prime, BigInteger divisor)
+    {
+        MethodInfo? method = typeof(MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder)
+            .GetMethod("IsMersenneValue", BindingFlags.NonPublic | BindingFlags.Static);
+
+        method.Should().NotBeNull("IsMersenneValue should exist as a private static helper on the tester type.");
+        return (bool)method!.Invoke(null, new object[] { prime, divisor })!;
     }
 
 }

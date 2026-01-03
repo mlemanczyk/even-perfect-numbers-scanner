@@ -25,17 +25,19 @@ namespace EvenPerfectBitScanner;
     internal readonly bool UseResidue;
     internal readonly bool UseDivisor;
 	internal readonly bool UseByDivisor;
-    internal readonly bool UseDivisorPow2Increment;
-    internal readonly int ByDivisorSpecialRange;
+	internal readonly bool UseDivisorPow2Increment;
+	internal readonly bool UseDivisorPredictiveIncrement;
+	internal readonly int ByDivisorSpecialRange;
 	internal readonly bool UseGcdFilter;
-    internal readonly bool TestMode;
-    internal readonly bool UseGpuCycles;
-    internal readonly ComputationDevice MersenneDevice;
-    internal readonly ComputationDevice OrderDevice;
-    internal readonly int ScanBatchSize;
-    internal readonly int SliceSize;
-    internal readonly ulong ResidueKMax;
-    internal readonly string FilterFile;
+	internal readonly bool TestMode;
+	internal readonly bool UseGpuCycles;
+	internal readonly ComputationDevice MersenneDevice;
+	internal readonly ComputationDevice OrderDevice;
+	internal readonly int ScanBatchSize;
+	internal readonly int SliceSize;
+	internal readonly ulong MaxKLimit;
+    internal readonly bool MaxKConfigured;
+	internal readonly string FilterFile;
     internal readonly bool ForcePrimeKernelsOnCpu;
     internal readonly ModReductionMode ModReductionMode;
     internal readonly NttBackend NttBackend;
@@ -75,6 +77,7 @@ namespace EvenPerfectBitScanner;
             bool useByDivisor,
             bool useGcdFilter,
             bool useDivisorPow2Increment,
+            bool useDivisorPredictiveIncrement,
             int byDivisorSpecialRange,
             bool testMode,
             bool useGpuCycles,
@@ -82,7 +85,8 @@ namespace EvenPerfectBitScanner;
             ComputationDevice orderDevice,
             int scanBatchSize,
             int sliceSize,
-            ulong residueKMax,
+            ulong maxKLimit,
+            bool maxKConfigured,
             string filterFile,
             bool forcePrimeKernelsOnCpu,
             ModReductionMode modReductionMode,
@@ -121,6 +125,7 @@ namespace EvenPerfectBitScanner;
         UseDivisor = useDivisor;
         UseByDivisor = useByDivisor;
         UseDivisorPow2Increment = useDivisorPow2Increment;
+        UseDivisorPredictiveIncrement = useDivisorPredictiveIncrement;
         ByDivisorSpecialRange = byDivisorSpecialRange;
         UseGcdFilter = useGcdFilter;
         TestMode = testMode;
@@ -129,7 +134,8 @@ namespace EvenPerfectBitScanner;
         OrderDevice = orderDevice;
         ScanBatchSize = scanBatchSize;
         SliceSize = sliceSize;
-        ResidueKMax = residueKMax;
+        MaxKLimit = maxKLimit;
+        MaxKConfigured = maxKConfigured;
         FilterFile = filterFile;
         ForcePrimeKernelsOnCpu = forcePrimeKernelsOnCpu;
         ModReductionMode = modReductionMode;
@@ -173,6 +179,7 @@ namespace EvenPerfectBitScanner;
         bool useDivisor = false;
         bool useByDivisor = false;
         bool useDivisorPow2Increment = false;
+        bool useDivisorPredictiveIncrement = false;
         int byDivisorSpecialRange = 0;
         bool useGcdFilter = false;
         bool testMode = false;
@@ -181,7 +188,8 @@ namespace EvenPerfectBitScanner;
         ComputationDevice orderDevice = ComputationDevice.Gpu;
         int scanBatchSize = 2_097_152;
         int sliceSize = 32;
-        ulong residueKMax = 5_000_000UL;
+        ulong maxKLimit = 5_000_000UL;
+        bool maxKConfigured = false;
         string filterFile = string.Empty;
         bool forcePrimeKernelsOnCpu = false;
         ModReductionMode modReductionMode = ModReductionMode.Auto;
@@ -189,7 +197,7 @@ namespace EvenPerfectBitScanner;
         string? resultsDirectory = null;
         string? resultsPrefix = null;
         int writeBatchSize = CalculationResultHandler.DefaultWriteBatchSize;
-        string cyclesPath = DefaultCyclesPath;
+            string cyclesPath = DefaultCyclesPath;
         bool continueCyclesGeneration = false;
         int cyclesBatchSize = 512;
         ulong divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
@@ -307,14 +315,21 @@ namespace EvenPerfectBitScanner;
                 if (value.Equals("pow2groups", StringComparison.OrdinalIgnoreCase))
                 {
                     useDivisorPow2Increment = true;
+                    useDivisorPredictiveIncrement = false;
                 }
                 else if (value.Equals("sequential", StringComparison.OrdinalIgnoreCase))
                 {
                     useDivisorPow2Increment = false;
+                    useDivisorPredictiveIncrement = false;
+                }
+                else if (value.Equals("predictive", StringComparison.OrdinalIgnoreCase))
+                {
+                    useDivisorPow2Increment = false;
+                    useDivisorPredictiveIncrement = true;
                 }
                 else
                 {
-                    Console.WriteLine("Invalid value for --bydivisor-k-increment. Use onebyone or pow2groups.");
+                    Console.WriteLine("Invalid value for --bydivisor-k-increment. Use sequential, pow2groups, or predictive.");
                     return default;
                 }
 
@@ -346,11 +361,12 @@ namespace EvenPerfectBitScanner;
                 continue;
             }
 
-            if (argument.StartsWith("--residue-max-k=", StringComparison.OrdinalIgnoreCase))
+            if (argument.StartsWith("--max-k=", StringComparison.OrdinalIgnoreCase))
             {
-                if (Utf8CliParser.TryParseUInt64(argument.AsSpan("--residue-max-k=".Length), out ulong parsedResidueMax))
+                if (Utf8CliParser.TryParseUInt64(argument.AsSpan("--max-k=".Length), out ulong parsedMaxK))
                 {
-                    residueKMax = parsedResidueMax;
+                    maxKLimit = parsedMaxK;
+                    maxKConfigured = true;
                 }
 
                 continue;
@@ -637,6 +653,7 @@ namespace EvenPerfectBitScanner;
             useByDivisor,
             useGcdFilter,
             useDivisorPow2Increment,
+            useDivisorPredictiveIncrement,
             byDivisorSpecialRange,
             testMode,
             useGpuCycles,
@@ -644,7 +661,8 @@ namespace EvenPerfectBitScanner;
             orderDevice,
             scanBatchSize,
             sliceSize,
-            residueKMax,
+            maxKLimit,
+            maxKConfigured,
             filterFile,
             forcePrimeKernelsOnCpu,
             modReductionMode,
@@ -678,9 +696,9 @@ namespace EvenPerfectBitScanner;
         Console.WriteLine("  --increment=bit|add    exponent increment method (default add)");
         Console.WriteLine("  --threads=<value>      number of worker threads");
         Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
-        Console.WriteLine("  --bydivisor-k-increment=sequential|pow2groups  k iteration strategy for --mersenne=bydivisor (default sequential)");
+        Console.WriteLine("  --bydivisor-k-increment=sequential|pow2groups|predictive  k iteration strategy for --mersenne=bydivisor (default sequential)");
         Console.WriteLine("  --bydivisor-special-range=<n>  widen pow2groups special values to +/- n percent (default 0 = points)");
-        Console.WriteLine("  --residue-max-k=<value> max k for residue Mersenne test (q = 2*p*k + 1)");
+        Console.WriteLine("  --max-k=<value> max k for Mersenne tests (q = 2*p*k + 1), including --mersenne=bydivisor");
         Console.WriteLine("  --mersenne-device=cpu|gpu|hybrid  Device for Mersenne method (default gpu)");
         Console.WriteLine("  --primes-device=cpu|gpu device for prime-scan kernels (default gpu)");
         Console.WriteLine("  --gpu-prime-batch=<n>   batch size for GPU primality sieve (default 262144)");

@@ -20,6 +20,9 @@ public static class EnvironmentConfiguration
 	public static bool UseCpuOrder;
 	public static bool UsePow2GroupDivisors;
 	public static int ByDivisorSpecialRange;
+	public static ByDivisor.ByDivisorClassModel? ByDivisorClassModel;
+	public static ByDivisor.ByDivisorScanTuning ByDivisorScanTuning = ByDivisor.ByDivisorScanTuning.Default;
+	public static double ByDivisorCheapKLimit = 100_000d;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static void Initialize()
