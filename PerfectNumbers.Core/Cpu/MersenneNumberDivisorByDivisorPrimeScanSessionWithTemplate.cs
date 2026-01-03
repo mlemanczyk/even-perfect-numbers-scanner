@@ -68,9 +68,13 @@ internal struct MersenneNumberDivisorByDivisorPrimeScanSessionWithTemplate
 		try
 		{
 			Console.WriteLine($"Processing {prime}");
+			string extension = ".bin";
+#if DivisorSet_Predictive
+			extension = ".predictive";
+#endif
 			string stateFile = Path.Combine(
 				PerfectNumberConstants.ByDivisorStateDirectory,
-				prime.ToString(CultureInfo.InvariantCulture) + ".bin");
+				prime.ToString(CultureInfo.InvariantCulture) + extension);
 
 			ConfigureForPrime(stateFile);
 
