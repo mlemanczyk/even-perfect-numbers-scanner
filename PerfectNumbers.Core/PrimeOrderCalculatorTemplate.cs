@@ -938,7 +938,7 @@ public static partial class PrimeOrderCalculatorTemplate
 				ulong candidate = order - primeFactor * remainder;
 				// ulong candidate = order / primeFactor;
 
-				if (candidate.Pow2MontgomeryModWindowedConvertToStandardCpu(divisorData) == 1UL)
+				if (candidate.Pow2MontgomeryModWindowedKeepMontgomeryCpu(divisorData) == divisorData.MontgomeryOne)
 				{
 					order = candidate;
 					continue;
@@ -1674,7 +1674,7 @@ public static partial class PrimeOrderCalculatorTemplate
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static bool Pow2EqualsOne(ulong exponent, in MontgomeryDivisorData divisorData)
     {
-        return exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(divisorData) == 1UL;
+        return exponent.Pow2MontgomeryModWindowedKeepMontgomeryCpu(divisorData) == divisorData.MontgomeryOne;
     }
 
 #if DEVICE_HYBRID || DEVICE_GPU
@@ -1685,7 +1685,7 @@ public static partial class PrimeOrderCalculatorTemplate
         in MontgomeryDivisorData divisorData)
     {
         // TODO: swap to GPU pow2 when available; fallback to CPU for now.
-        return exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(divisorData) == 1UL;
+        return exponent.Pow2MontgomeryModWindowedKeepMontgomeryCpu(divisorData) == divisorData.MontgomeryOne;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -1695,7 +1695,7 @@ public static partial class PrimeOrderCalculatorTemplate
         ulong prime,
         in MontgomeryDivisorData divisorData)
     {
-        return exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(divisorData) == 1UL;
+        return exponent.Pow2MontgomeryModWindowedKeepMontgomeryCpu(divisorData) == divisorData.MontgomeryOne;
     }
 #endif
 

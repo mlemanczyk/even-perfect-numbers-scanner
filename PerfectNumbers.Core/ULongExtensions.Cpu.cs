@@ -18,7 +18,7 @@ public static partial class ULongExtensions
 		// Small divisors come from the precomputed <= 4,000,000 snapshot and tiny rotation counts
 		// appear when cycle reductions trigger. Route both cases through the single-bit ladder so the
 		// CPU path avoids renting the window tables when a cheaper method is available.
-		if (exponent <= Pow2WindowFallbackThreshold || modulus <= (ulong)PerfectNumberConstants.MaxQForDivisorCycles)
+		if (exponent <= Pow2WindowFallbackThreshold || modulus <= PerfectNumberConstants.MaxQForDivisorCycles)
 		{
 			return Pow2MontgomeryModSingleBitKeepMontgomery(exponent, divisor);
 		}
@@ -88,7 +88,7 @@ public static partial class ULongExtensions
 		// Small divisors come from the precomputed <= 4,000,000 snapshot and tiny rotation counts
 		// appear when cycle reductions trigger. Route both cases through the single-bit ladder so the
 		// CPU path avoids renting the window tables when a cheaper method is available.
-		if (exponent <= Pow2WindowFallbackThreshold || modulus <= (ulong)PerfectNumberConstants.MaxQForDivisorCycles)
+		if (exponent <= Pow2WindowFallbackThreshold || modulus <= PerfectNumberConstants.MaxQForDivisorCycles)
 		{
 			return Pow2MontgomeryModSingleBitConvertToStandard(exponent, divisor);
 		}
@@ -274,7 +274,7 @@ public static partial class ULongExtensions
 		}
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static bool AdvanceMersenneDivisorCycleStepCpu(ref ulong pow, ulong divisor, ref ulong order)
 	{
 		pow += pow;

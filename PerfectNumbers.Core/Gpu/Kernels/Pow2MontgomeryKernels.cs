@@ -142,6 +142,12 @@ public static class Pow2MontgomeryKernels
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static ulong Pow2MontgomeryModWindowedGpuKeepMontgomery(this MontgomeryDivisorDataGpu divisor, ulong exponent)
+	{
+		return Pow2MontgomeryModWindowedGpuMontgomeryResult(divisor, exponent);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong Pow2MontgomeryModWindowedGpuConvertToStandard(this MontgomeryDivisorDataGpu divisor, ulong exponent)
 	{
 		ulong modulus = divisor.Modulus;

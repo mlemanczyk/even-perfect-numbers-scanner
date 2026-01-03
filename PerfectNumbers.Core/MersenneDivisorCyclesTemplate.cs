@@ -99,7 +99,7 @@ public struct MersenneDivisorCyclesTemplate
 			return cycleLength == exponent;
 		}
 
-		return exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(divisorData) == 1UL;
+		return exponent.Pow2MontgomeryModWindowedKeepMontgomeryCpu(divisorData) == divisorData.MontgomeryOne;
 	}
 
 	public static bool CycleEqualsExponentForMersenneCandidate(ulong divisor, in MontgomeryDivisorData divisorData, ulong exponent)
@@ -125,7 +125,7 @@ public struct MersenneDivisorCyclesTemplate
 			}
 		}
 
-		return exponent.Pow2MontgomeryModWindowedConvertToStandardCpu(divisorData) == 1UL;
+		return exponent.Pow2MontgomeryModWindowedKeepMontgomeryCpu(divisorData) == divisorData.MontgomeryOne;
 	}
 
 	private static bool IsValidMersenneDivisorCandidate(ulong divisor, ulong exponent)

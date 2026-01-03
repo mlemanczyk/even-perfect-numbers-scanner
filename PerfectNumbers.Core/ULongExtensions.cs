@@ -390,7 +390,7 @@ public static partial class ULongExtensions
 		return value.BinaryGcd(exponentLog) > 1UL;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong BinaryGcd(this ulong a, ulong b)
 	{
 		if (a == 0UL)
@@ -423,7 +423,7 @@ public static partial class ULongExtensions
 		}
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static ulong Select(ulong left, ulong right, bool useRight)
 	{
 		ulong mask = useRight ? ulong.MaxValue : 0UL;
@@ -432,7 +432,7 @@ public static partial class ULongExtensions
 
 	// Benchmarks (Mod5ULongBenchmarks) show the direct `% 5` is still cheaper (~0.26 ns vs 0.43 ns), so keep the modulo until a faster lookup is proven.
 	// (Mod8/Mod10 stay masked because they win; Mod5 currently does not.)
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static byte Mod10(this ulong value) => (byte)(value % 5UL) switch
 	{
 		0 => 0,
@@ -446,7 +446,7 @@ public static partial class ULongExtensions
 	public static ulong Mod128(this ulong value) => value & 127UL;
 
 	// Benchmarks confirm `%` beats our current Mod5/Mod3 helpers for 64-bit inputs, so leave these modulo operations in place until a superior lookup is available.
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static void Mod10_8_5_3(this ulong value, out ulong mod10, out ulong mod8, out ulong mod5, out ulong mod3)
 	{
 		mod8 = value & 7UL;
@@ -474,7 +474,7 @@ public static partial class ULongExtensions
 	}
 
 	// Mod5/Mod3 lookup tables are currently slower on 64-bit operands; keep the direct modulo until benchmarks flip.
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static void Mod10_8_5_3Steps(this ulong value, out ulong step10, out ulong step8, out ulong step5, out ulong step3)
 	{
 		ulong mod8 = value & 7UL;
@@ -520,16 +520,16 @@ public static partial class ULongExtensions
 		}
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static UInt128 Mul64(this ulong a, ulong b) => ((UInt128)a.MulHighCpu(b) << 64) | (UInt128)(a * b);
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong MulHighCpu(this ulong x, ulong y)
 	{
 		return (ulong)(((UInt128)x * y) >> 64);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong MulHighGpu(this ulong x, ulong y)
 	{
 		// Retain this manual decomposition for GPU-style arithmetic so callers staging accelerator work
@@ -553,7 +553,7 @@ public static partial class ULongExtensions
 		return result;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong AddMod64(this ulong value, ulong addend, ulong modulus)
 	{
 		// Every CPU caller (Pollard Rho and the ModPow64 ladder) supplies moduli of at least three, so leave this guard
@@ -580,7 +580,7 @@ public static partial class ULongExtensions
 		return (ulong)sum;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static ulong FoldMontgomery(ulong value, ulong modulus)
 	{
 		// Pollard Rho and ModPow64 both feed moduli of at least three, so retain the documentation and skip the runtime guard.
@@ -609,7 +609,7 @@ public static partial class ULongExtensions
 		return folded;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong ModPow64(this ulong value, ulong exponent, ulong modulus)
 	{
 		// Pollard Rho and the Mersenne testers never pass moduli below two, so keep the guard commented for clarity.
@@ -635,13 +635,10 @@ public static partial class ULongExtensions
 		return result;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	// Reuse the direct UInt128 reduction path that dominated MulMod64Benchmarks to avoid
 	// the redundant operand modulo operations in the older fallback.
-	public static ulong MulMod64(this ulong a, ulong b, ulong modulus)
-	{
-		return (ulong)(((UInt128)a * b) % modulus);
-	}
+	public static ulong MulMod64(this ulong a, ulong b, ulong modulus) => (ulong)(((UInt128)a * b) % modulus);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static ulong MontgomeryMultiplyCpu(this ulong a, ulong b, ulong modulus, ulong nPrime)
@@ -658,7 +655,7 @@ public static partial class ULongExtensions
 		return result;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static ulong Pow2MontgomeryModSingleBitKeepMontgomery(ulong exponent, in MontgomeryDivisorData divisor)
 	{
 		ulong modulus = divisor.Modulus;
@@ -686,7 +683,7 @@ public static partial class ULongExtensions
 		return result;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	private static ulong Pow2MontgomeryModSingleBitConvertToStandard(ulong exponent, in MontgomeryDivisorData divisor)
 	{
 		ulong modulus = divisor.Modulus;
@@ -714,7 +711,7 @@ public static partial class ULongExtensions
 		return result.MontgomeryMultiplyCpu(1UL, modulus, nPrime);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static UInt128 PowMod(this ulong exponent, UInt128 modulus)
 	{
 		// EvenPerfectBitScanner starts CPU scans at p >= 138,000,000 (Program.cs),
@@ -1198,7 +1195,7 @@ public static partial class ULongExtensions
 		return value % modulus;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static bool SharesFactorWithExponentMinusOneCpu(this ulong exponent)
 	{
 		ulong prime, value = exponent - 1UL;
@@ -1235,7 +1232,7 @@ public static partial class ULongExtensions
 		return false;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static bool SharesFactorWithExponentMinusOneGpu(this ulong exponent, PrimeOrderCalculatorAccelerator gpu)
 	{
 		ulong prime, value = exponent - 1UL;
@@ -1272,7 +1269,7 @@ public static partial class ULongExtensions
 		return false;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static bool SharesFactorWithExponentMinusOneHybrid(this ulong exponent, PrimeOrderCalculatorAccelerator gpu)
 	{
 		ulong prime, value = exponent - 1UL;

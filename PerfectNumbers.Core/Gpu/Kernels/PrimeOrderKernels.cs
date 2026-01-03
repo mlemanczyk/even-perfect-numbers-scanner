@@ -39,7 +39,7 @@ internal static partial class PrimeOrderKernels
 				}
 
 				// ulong candidate = order / primeFactor;
-				if (divisorData.Pow2MontgomeryModWindowedGpuConvertToStandard(candidate) == 1UL)
+				if (divisorData.Pow2MontgomeryModWindowedGpuKeepMontgomery(candidate) == divisorData.MontgomeryOne)
 				{
 					order = candidate;
 					continue;
@@ -395,7 +395,7 @@ internal static partial class PrimeOrderKernels
 			}
 
 			ulong reduced = phi / factor;
-			if (divisor.Pow2MontgomeryModWindowedGpuConvertToStandard(reduced) == 1UL)
+			if (divisor.Pow2MontgomeryModWindowedGpuKeepMontgomery(reduced) == divisor.MontgomeryOne)
 			{
 				return false;
 			}
@@ -1179,7 +1179,7 @@ internal static partial class PrimeOrderKernels
 
 	private static bool Pow2EqualsOneKernel(ulong exponent, in MontgomeryDivisorDataGpu divisor)
 	{
-		return divisor.Pow2MontgomeryModWindowedGpuConvertToStandard(exponent) == 1UL;
+		return divisor.Pow2MontgomeryModWindowedGpuKeepMontgomery(exponent) == divisor.MontgomeryOne;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
