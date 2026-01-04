@@ -5,6 +5,16 @@ using PerfectNumbers.Core.Gpu;
 
 namespace EvenPerfectBitScanner;
 
+	internal enum ByDivisorKIncrementMode
+	{
+		Sequential,
+		Pow2Groups,
+		Predictive,
+		Percentile,
+	Additive,
+	TopDown,
+}
+
 	internal readonly struct CliArguments
 	{
     private const string DefaultCyclesPath = "divisor_cycles.bin";
@@ -25,8 +35,7 @@ namespace EvenPerfectBitScanner;
     internal readonly bool UseResidue;
     internal readonly bool UseDivisor;
 	internal readonly bool UseByDivisor;
-	internal readonly bool UseDivisorPow2Increment;
-	internal readonly bool UseDivisorPredictiveIncrement;
+	internal readonly ByDivisorKIncrementMode ByDivisorKIncrementMode;
 	internal readonly int ByDivisorSpecialRange;
 	internal readonly bool UseGcdFilter;
 	internal readonly bool TestMode;
@@ -76,8 +85,7 @@ namespace EvenPerfectBitScanner;
             bool useDivisor,
             bool useByDivisor,
             bool useGcdFilter,
-            bool useDivisorPow2Increment,
-            bool useDivisorPredictiveIncrement,
+            ByDivisorKIncrementMode byDivisorKIncrementMode,
             int byDivisorSpecialRange,
             bool testMode,
             bool useGpuCycles,
@@ -124,8 +132,7 @@ namespace EvenPerfectBitScanner;
         UseResidue = useResidue;
         UseDivisor = useDivisor;
         UseByDivisor = useByDivisor;
-        UseDivisorPow2Increment = useDivisorPow2Increment;
-        UseDivisorPredictiveIncrement = useDivisorPredictiveIncrement;
+        ByDivisorKIncrementMode = byDivisorKIncrementMode;
         ByDivisorSpecialRange = byDivisorSpecialRange;
         UseGcdFilter = useGcdFilter;
         TestMode = testMode;
@@ -178,8 +185,7 @@ namespace EvenPerfectBitScanner;
         bool useResidue = false;
         bool useDivisor = false;
         bool useByDivisor = false;
-        bool useDivisorPow2Increment = false;
-        bool useDivisorPredictiveIncrement = false;
+        ByDivisorKIncrementMode byDivisorKIncrementMode = ByDivisorKIncrementMode.Sequential;
         int byDivisorSpecialRange = 0;
         bool useGcdFilter = false;
         bool testMode = false;
@@ -314,22 +320,31 @@ namespace EvenPerfectBitScanner;
                 string value = argument["--bydivisor-k-increment=".Length..].Trim();
                 if (value.Equals("pow2groups", StringComparison.OrdinalIgnoreCase))
                 {
-                    useDivisorPow2Increment = true;
-                    useDivisorPredictiveIncrement = false;
+                    byDivisorKIncrementMode = ByDivisorKIncrementMode.Pow2Groups;
                 }
                 else if (value.Equals("sequential", StringComparison.OrdinalIgnoreCase))
                 {
-                    useDivisorPow2Increment = false;
-                    useDivisorPredictiveIncrement = false;
+                    byDivisorKIncrementMode = ByDivisorKIncrementMode.Sequential;
                 }
                 else if (value.Equals("predictive", StringComparison.OrdinalIgnoreCase))
                 {
-                    useDivisorPow2Increment = false;
-                    useDivisorPredictiveIncrement = true;
+                    byDivisorKIncrementMode = ByDivisorKIncrementMode.Predictive;
+                }
+                else if (value.Equals("percentile", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorKIncrementMode = ByDivisorKIncrementMode.Percentile;
+                }
+                else if (value.Equals("additive", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorKIncrementMode = ByDivisorKIncrementMode.Additive;
+                }
+                else if (value.Equals("topdown", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorKIncrementMode = ByDivisorKIncrementMode.TopDown;
                 }
                 else
                 {
-                    Console.WriteLine("Invalid value for --bydivisor-k-increment. Use sequential, pow2groups, or predictive.");
+                    Console.WriteLine("Invalid value for --bydivisor-k-increment. Use sequential, pow2groups, predictive, percentile, additive, or topdown.");
                     return default;
                 }
 
@@ -652,8 +667,7 @@ namespace EvenPerfectBitScanner;
             useDivisor,
             useByDivisor,
             useGcdFilter,
-            useDivisorPow2Increment,
-            useDivisorPredictiveIncrement,
+            byDivisorKIncrementMode,
             byDivisorSpecialRange,
             testMode,
             useGpuCycles,
@@ -696,7 +710,7 @@ namespace EvenPerfectBitScanner;
         Console.WriteLine("  --increment=bit|add    exponent increment method (default add)");
         Console.WriteLine("  --threads=<value>      number of worker threads");
         Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
-        Console.WriteLine("  --bydivisor-k-increment=sequential|pow2groups|predictive  k iteration strategy for --mersenne=bydivisor (default sequential)");
+        Console.WriteLine("  --bydivisor-k-increment=sequential|pow2groups|predictive|percentile|additive|topdown  k iteration strategy for --mersenne=bydivisor (default sequential)");
         Console.WriteLine("  --bydivisor-special-range=<n>  widen pow2groups special values to +/- n percent (default 0 = points)");
         Console.WriteLine("  --max-k=<value> max k for Mersenne tests (q = 2*p*k + 1), including --mersenne=bydivisor");
         Console.WriteLine("  --mersenne-device=cpu|gpu|hybrid  Device for Mersenne method (default gpu)");

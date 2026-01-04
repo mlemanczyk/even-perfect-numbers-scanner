@@ -6,12 +6,18 @@ using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
 using PerfectNumbers.Core.Cpu;
 using System.Runtime.CompilerServices;
-using MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForCpuOrder;
-using MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForHybridOrder;
-using MersenneNumberDivisorByDivisorCpuTesterWithGpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForGpuOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForSequentialDivisorSetForCpuOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForSequentialDivisorSetForHybridOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithGpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForSequentialDivisorSetForGpuOrder;
 using MersenneNumberDivisorByDivisorCpuTesterWithPredictiveCpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPredictiveDivisorSetForCpuOrder;
 using MersenneNumberDivisorByDivisorCpuTesterWithPredictiveHybridOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPredictiveDivisorSetForHybridOrder;
 using MersenneNumberDivisorByDivisorCpuTesterWithPredictiveGpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPredictiveDivisorSetForGpuOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithPercentileCpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPercentileDivisorSetForCpuOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithPercentileHybridOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPercentileDivisorSetForHybridOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithPercentileGpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPercentileDivisorSetForGpuOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithAdditiveCpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForAdditiveDivisorSetForCpuOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithAdditiveHybridOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForAdditiveDivisorSetForHybridOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithAdditiveGpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForAdditiveDivisorSetForGpuOrder;
 
 namespace PerfectNumbers.Core;
 
@@ -27,7 +33,7 @@ public static class MersenneNumberDivisorByDivisorTester
 		Action clearComposite,
 		Action<ulong, bool, bool, bool, BigInteger> printResult,
 		int threadCount,
-		int primesPerTask)
+	int primesPerTask)
 		=> RunStructTester(
 			candidates,
 			ref tester,
@@ -78,6 +84,68 @@ public static class MersenneNumberDivisorByDivisorTester
 				Action cc,
 				Action<ulong, bool, bool, bool, BigInteger> pr) =>
 				RunPredictiveCpuOrderFiltered(filteredPrimes, prototype, workerCount, partitionSize, mc, cc, pr));
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static void Run(
+		List<ulong> candidates,
+		ref MersenneNumberDivisorByDivisorCpuTesterWithPercentileCpuOrder tester,
+		Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
+		ulong startPrime,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult,
+		int threadCount,
+		int primesPerTask)
+		=> RunStructTester(
+			candidates,
+			ref tester,
+			previousResults,
+			startPrime,
+			markComposite,
+			clearComposite,
+			printResult,
+			threadCount,
+			primesPerTask,
+			static (
+				List<ulong> filteredPrimes,
+				in MersenneNumberDivisorByDivisorCpuTesterWithPercentileCpuOrder prototype,
+				int workerCount,
+				int partitionSize,
+				Action mc,
+				Action cc,
+				Action<ulong, bool, bool, bool, BigInteger> pr) =>
+				RunPercentileCpuOrderFiltered(filteredPrimes, prototype, workerCount, partitionSize, mc, cc, pr));
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static void Run(
+		List<ulong> candidates,
+		ref MersenneNumberDivisorByDivisorCpuTesterWithAdditiveCpuOrder tester,
+		Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
+		ulong startPrime,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult,
+		int threadCount,
+		int primesPerTask)
+		=> RunStructTester(
+			candidates,
+			ref tester,
+			previousResults,
+			startPrime,
+			markComposite,
+			clearComposite,
+			printResult,
+			threadCount,
+			primesPerTask,
+			static (
+				List<ulong> filteredPrimes,
+				in MersenneNumberDivisorByDivisorCpuTesterWithAdditiveCpuOrder prototype,
+				int workerCount,
+				int partitionSize,
+				Action mc,
+				Action cc,
+				Action<ulong, bool, bool, bool, BigInteger> pr) =>
+				RunAdditiveCpuOrderFiltered(filteredPrimes, prototype, workerCount, partitionSize, mc, cc, pr));
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static void Run(
@@ -144,6 +212,68 @@ public static class MersenneNumberDivisorByDivisorTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static void Run(
 		List<ulong> candidates,
+		ref MersenneNumberDivisorByDivisorCpuTesterWithPercentileHybridOrder tester,
+		Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
+		ulong startPrime,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult,
+		int threadCount,
+		int primesPerTask)
+		=> RunStructTester(
+			candidates,
+			ref tester,
+			previousResults,
+			startPrime,
+			markComposite,
+			clearComposite,
+			printResult,
+			threadCount,
+			primesPerTask,
+			static (
+				List<ulong> filteredPrimes,
+				in MersenneNumberDivisorByDivisorCpuTesterWithPercentileHybridOrder prototype,
+				int workerCount,
+				int partitionSize,
+				Action mc,
+				Action cc,
+				Action<ulong, bool, bool, bool, BigInteger> pr) =>
+				RunPercentileHybridOrderFiltered(filteredPrimes, prototype, workerCount, partitionSize, mc, cc, pr));
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static void Run(
+		List<ulong> candidates,
+		ref MersenneNumberDivisorByDivisorCpuTesterWithAdditiveHybridOrder tester,
+		Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
+		ulong startPrime,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult,
+		int threadCount,
+		int primesPerTask)
+		=> RunStructTester(
+			candidates,
+			ref tester,
+			previousResults,
+			startPrime,
+			markComposite,
+			clearComposite,
+			printResult,
+			threadCount,
+			primesPerTask,
+			static (
+				List<ulong> filteredPrimes,
+				in MersenneNumberDivisorByDivisorCpuTesterWithAdditiveHybridOrder prototype,
+				int workerCount,
+				int partitionSize,
+				Action mc,
+				Action cc,
+				Action<ulong, bool, bool, bool, BigInteger> pr) =>
+				RunAdditiveHybridOrderFiltered(filteredPrimes, prototype, workerCount, partitionSize, mc, cc, pr));
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static void Run(
+		List<ulong> candidates,
 		ref MersenneNumberDivisorByDivisorCpuTesterWithGpuOrder tester,
 		Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
 		ulong startPrime,
@@ -202,6 +332,68 @@ public static class MersenneNumberDivisorByDivisorTester
 				Action cc,
 				Action<ulong, bool, bool, bool, BigInteger> pr) =>
 				RunPredictiveGpuOrderFiltered(filteredPrimes, prototype, workerCount, partitionSize, mc, cc, pr));
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static void Run(
+		List<ulong> candidates,
+		ref MersenneNumberDivisorByDivisorCpuTesterWithPercentileGpuOrder tester,
+		Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
+		ulong startPrime,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult,
+		int threadCount,
+		int primesPerTask)
+		=> RunStructTester(
+			candidates,
+			ref tester,
+			previousResults,
+			startPrime,
+			markComposite,
+			clearComposite,
+			printResult,
+			threadCount,
+			primesPerTask,
+			static (
+				List<ulong> filteredPrimes,
+				in MersenneNumberDivisorByDivisorCpuTesterWithPercentileGpuOrder prototype,
+				int workerCount,
+				int partitionSize,
+				Action mc,
+				Action cc,
+				Action<ulong, bool, bool, bool, BigInteger> pr) =>
+				RunPercentileGpuOrderFiltered(filteredPrimes, prototype, workerCount, partitionSize, mc, cc, pr));
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static void Run(
+		List<ulong> candidates,
+		ref MersenneNumberDivisorByDivisorCpuTesterWithAdditiveGpuOrder tester,
+		Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
+		ulong startPrime,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult,
+		int threadCount,
+		int primesPerTask)
+		=> RunStructTester(
+			candidates,
+			ref tester,
+			previousResults,
+			startPrime,
+			markComposite,
+			clearComposite,
+			printResult,
+			threadCount,
+			primesPerTask,
+			static (
+				List<ulong> filteredPrimes,
+				in MersenneNumberDivisorByDivisorCpuTesterWithAdditiveGpuOrder prototype,
+				int workerCount,
+				int partitionSize,
+				Action mc,
+				Action cc,
+				Action<ulong, bool, bool, bool, BigInteger> pr) =>
+				RunAdditiveGpuOrderFiltered(filteredPrimes, prototype, workerCount, partitionSize, mc, cc, pr));
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static void Run(
@@ -1093,7 +1285,7 @@ public static class MersenneNumberDivisorByDivisorTester
 		if (workerCount == 1)
 		{
 			DeterministicRandomCpu.Initialize();
-			var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForOneByOneDivisorSetForCpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+			var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForSequentialDivisorSetForCpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
 			foreach (ulong prime in filteredPrimes)
 			{
 				session.ProcessPrime(prime);
@@ -1115,7 +1307,7 @@ public static class MersenneNumberDivisorByDivisorTester
 				() =>
 				{
 					DeterministicRandomCpu.Initialize();
-					var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForOneByOneDivisorSetForCpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+					var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForSequentialDivisorSetForCpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
 					startGate.Wait();
 					Console.WriteLine($"Task started for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
 
@@ -1230,6 +1422,162 @@ public static class MersenneNumberDivisorByDivisorTester
 		startGate.Dispose();
 	}
 
+	private static void RunPercentileCpuOrderFiltered(
+		List<ulong> filteredPrimes,
+		in MersenneNumberDivisorByDivisorCpuTesterWithPercentileCpuOrder prototype,
+		int workerCount,
+		int partitionSize,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult)
+	{
+		MersenneNumberDivisorByDivisorCpuTesterWithPercentileCpuOrder prototypeCopy = prototype;
+		int totalCount = filteredPrimes.Count;
+		if (partitionSize > totalCount)
+		{
+			partitionSize = totalCount;
+		}
+
+		if (workerCount == 1)
+		{
+			DeterministicRandomCpu.Initialize();
+			var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForPercentileDivisorSetForCpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+			foreach (ulong prime in filteredPrimes)
+			{
+				session.ProcessPrime(prime);
+			}
+
+			session.Dispose();
+			return;
+		}
+
+		TaskScheduler scheduler = UnboundedTaskScheduler.Instance;
+		int nextIndex = 0;
+		Task[] tasks = new Task[workerCount];
+		var startGate = new ManualResetEventSlim(initialState: false);
+
+		for (int taskIndex = 0; taskIndex < workerCount; taskIndex++)
+		{
+			int workerIndex = taskIndex;
+			tasks[taskIndex] = Task.Factory.StartNew(
+				() =>
+				{
+					DeterministicRandomCpu.Initialize();
+					var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForPercentileDivisorSetForCpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+					startGate.Wait();
+					Console.WriteLine($"Task started for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+
+					while (true)
+					{
+						int start = Interlocked.Add(ref nextIndex, partitionSize) - partitionSize;
+						if (start >= totalCount)
+						{
+							break;
+						}
+
+						int end = start + partitionSize;
+						if (end > totalCount)
+						{
+							end = totalCount;
+						}
+
+						for (int index = start; index < end; index++)
+						{
+							session.ProcessPrime(filteredPrimes[index]);
+						}
+					}
+
+					session.Dispose();
+					Console.WriteLine($"Task finished for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+				},
+				CancellationToken.None,
+				TaskCreationOptions.DenyChildAttach,
+				scheduler);
+		}
+
+		startGate.Set();
+		Task.WaitAll(tasks);
+		startGate.Dispose();
+	}
+
+	private static void RunAdditiveCpuOrderFiltered(
+		List<ulong> filteredPrimes,
+		in MersenneNumberDivisorByDivisorCpuTesterWithAdditiveCpuOrder prototype,
+		int workerCount,
+		int partitionSize,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult)
+	{
+		MersenneNumberDivisorByDivisorCpuTesterWithAdditiveCpuOrder prototypeCopy = prototype;
+		int totalCount = filteredPrimes.Count;
+		if (partitionSize > totalCount)
+		{
+			partitionSize = totalCount;
+		}
+
+		if (workerCount == 1)
+		{
+			DeterministicRandomCpu.Initialize();
+			var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForAdditiveDivisorSetForCpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+			foreach (ulong prime in filteredPrimes)
+			{
+				session.ProcessPrime(prime);
+			}
+
+			session.Dispose();
+			return;
+		}
+
+		TaskScheduler scheduler = UnboundedTaskScheduler.Instance;
+		int nextIndex = 0;
+		Task[] tasks = new Task[workerCount];
+		var startGate = new ManualResetEventSlim(initialState: false);
+
+		for (int taskIndex = 0; taskIndex < workerCount; taskIndex++)
+		{
+			int workerIndex = taskIndex;
+			tasks[taskIndex] = Task.Factory.StartNew(
+				() =>
+				{
+					DeterministicRandomCpu.Initialize();
+					var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForAdditiveDivisorSetForCpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+					startGate.Wait();
+					Console.WriteLine($"Task started for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+
+					while (true)
+					{
+						int start = Interlocked.Add(ref nextIndex, partitionSize) - partitionSize;
+						if (start >= totalCount)
+						{
+							break;
+						}
+
+						int end = start + partitionSize;
+						if (end > totalCount)
+						{
+							end = totalCount;
+						}
+
+						for (int index = start; index < end; index++)
+						{
+							session.ProcessPrime(filteredPrimes[index]);
+						}
+					}
+
+					session.Dispose();
+					Console.WriteLine($"Task finished for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+				},
+				CancellationToken.None,
+				TaskCreationOptions.DenyChildAttach,
+				scheduler);
+		}
+
+		startGate.Set();
+		Task.WaitAll(tasks);
+		startGate.Dispose();
+	}
+
 	private static void RunHybridOrderFiltered(
 		List<ulong> filteredPrimes,
 		in MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder prototype,
@@ -1256,7 +1604,7 @@ public static class MersenneNumberDivisorByDivisorTester
 		if (workerCount == 1)
 		{
 			DeterministicRandomCpu.Initialize();
-			var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForOneByOneDivisorSetForHybridOrder(prototypeCopy, markComposite, clearComposite, printResult);
+			var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForSequentialDivisorSetForHybridOrder(prototypeCopy, markComposite, clearComposite, printResult);
 
 			GpuPrimeWorkLimiter.Acquire();
 			foreach (ulong prime in filteredPrimes)
@@ -1282,7 +1630,7 @@ public static class MersenneNumberDivisorByDivisorTester
 				() =>
 				{
 					DeterministicRandomCpu.Initialize();
-					var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForOneByOneDivisorSetForHybridOrder(prototypeCopy, markComposite, clearComposite, printResult);
+					var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForSequentialDivisorSetForHybridOrder(prototypeCopy, markComposite, clearComposite, printResult);
 					startGate.Wait();
 					Console.WriteLine($"Task started for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
 
@@ -1399,6 +1747,188 @@ public static class MersenneNumberDivisorByDivisorTester
 		startGate.Dispose();
 	}
 
+	private static void RunPercentileHybridOrderFiltered(
+		List<ulong> filteredPrimes,
+		in MersenneNumberDivisorByDivisorCpuTesterWithPercentileHybridOrder prototype,
+		int workerCount,
+		int partitionSize,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult)
+	{
+		MersenneNumberDivisorByDivisorCpuTesterWithPercentileHybridOrder prototypeCopy = prototype;
+		int totalCount = filteredPrimes.Count;
+		if (partitionSize > totalCount)
+		{
+			partitionSize = totalCount;
+		}
+
+		int effectiveWorkerCount = workerCount;
+		int gpuLimit = GpuPrimeWorkLimiter.CurrentLimit;
+		if (effectiveWorkerCount > gpuLimit)
+		{
+			effectiveWorkerCount = gpuLimit;
+		}
+
+		if (workerCount == 1)
+		{
+			DeterministicRandomCpu.Initialize();
+			var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForPercentileDivisorSetForHybridOrder(prototypeCopy, markComposite, clearComposite, printResult);
+
+			GpuPrimeWorkLimiter.Acquire();
+			foreach (ulong prime in filteredPrimes)
+			{
+				session.ProcessPrime(prime);
+			}
+
+			GpuPrimeWorkLimiter.Release();
+			session.Dispose();
+
+			return;
+		}
+
+		TaskScheduler scheduler = UnboundedTaskScheduler.Instance;
+		int nextIndex = 0;
+		Task[] tasks = new Task[effectiveWorkerCount];
+		var startGate = new ManualResetEventSlim(initialState: false);
+
+		for (int taskIndex = 0; taskIndex < effectiveWorkerCount; taskIndex++)
+		{
+			int workerIndex = taskIndex;
+			tasks[taskIndex] = Task.Factory.StartNew(
+				() =>
+				{
+					DeterministicRandomCpu.Initialize();
+					var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForPercentileDivisorSetForHybridOrder(prototypeCopy, markComposite, clearComposite, printResult);
+					startGate.Wait();
+					Console.WriteLine($"Task started for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+
+					GpuPrimeWorkLimiter.Acquire();
+					while (true)
+					{
+						int start = Interlocked.Add(ref nextIndex, partitionSize) - partitionSize;
+						if (start >= totalCount)
+						{
+							break;
+						}
+
+						int end = start + partitionSize;
+						if (end > totalCount)
+						{
+							end = totalCount;
+						}
+
+						for (int index = start; index < end; index++)
+						{
+							session.ProcessPrime(filteredPrimes[index]);
+						}
+					}
+
+					GpuPrimeWorkLimiter.Release();
+					session.Dispose();
+					Console.WriteLine($"Task finished for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+				},
+				CancellationToken.None,
+				TaskCreationOptions.DenyChildAttach,
+				scheduler);
+		}
+
+		startGate.Set();
+		Task.WaitAll(tasks);
+		startGate.Dispose();
+	}
+
+	private static void RunAdditiveHybridOrderFiltered(
+		List<ulong> filteredPrimes,
+		in MersenneNumberDivisorByDivisorCpuTesterWithAdditiveHybridOrder prototype,
+		int workerCount,
+		int partitionSize,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult)
+	{
+		MersenneNumberDivisorByDivisorCpuTesterWithAdditiveHybridOrder prototypeCopy = prototype;
+		int totalCount = filteredPrimes.Count;
+		if (partitionSize > totalCount)
+		{
+			partitionSize = totalCount;
+		}
+
+		int effectiveWorkerCount = workerCount;
+		int gpuLimit = GpuPrimeWorkLimiter.CurrentLimit;
+		if (effectiveWorkerCount > gpuLimit)
+		{
+			effectiveWorkerCount = gpuLimit;
+		}
+
+		if (workerCount == 1)
+		{
+			DeterministicRandomCpu.Initialize();
+			var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForAdditiveDivisorSetForHybridOrder(prototypeCopy, markComposite, clearComposite, printResult);
+
+			GpuPrimeWorkLimiter.Acquire();
+			foreach (ulong prime in filteredPrimes)
+			{
+				session.ProcessPrime(prime);
+			}
+
+			GpuPrimeWorkLimiter.Release();
+			session.Dispose();
+
+			return;
+		}
+
+		TaskScheduler scheduler = UnboundedTaskScheduler.Instance;
+		int nextIndex = 0;
+		Task[] tasks = new Task[effectiveWorkerCount];
+		var startGate = new ManualResetEventSlim(initialState: false);
+
+		for (int taskIndex = 0; taskIndex < effectiveWorkerCount; taskIndex++)
+		{
+			int workerIndex = taskIndex;
+			tasks[taskIndex] = Task.Factory.StartNew(
+				() =>
+				{
+					DeterministicRandomCpu.Initialize();
+					var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForAdditiveDivisorSetForHybridOrder(prototypeCopy, markComposite, clearComposite, printResult);
+					startGate.Wait();
+					Console.WriteLine($"Task started for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+
+					GpuPrimeWorkLimiter.Acquire();
+					while (true)
+					{
+						int start = Interlocked.Add(ref nextIndex, partitionSize) - partitionSize;
+						if (start >= totalCount)
+						{
+							break;
+						}
+
+						int end = start + partitionSize;
+						if (end > totalCount)
+						{
+							end = totalCount;
+						}
+
+						for (int index = start; index < end; index++)
+						{
+							session.ProcessPrime(filteredPrimes[index]);
+						}
+					}
+
+					GpuPrimeWorkLimiter.Release();
+					session.Dispose();
+					Console.WriteLine($"Task finished for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+				},
+				CancellationToken.None,
+				TaskCreationOptions.DenyChildAttach,
+				scheduler);
+		}
+
+		startGate.Set();
+		Task.WaitAll(tasks);
+		startGate.Dispose();
+	}
+
 	private static void RunGpuOrderFiltered(
 		List<ulong> filteredPrimes,
 		in MersenneNumberDivisorByDivisorCpuTesterWithGpuOrder prototype,
@@ -1425,7 +1955,7 @@ public static class MersenneNumberDivisorByDivisorTester
 		if (workerCount == 1)
 		{
 			DeterministicRandomCpu.Initialize();
-			var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForOneByOneDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+			var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForSequentialDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
 
 			GpuPrimeWorkLimiter.Acquire();
 			foreach (ulong prime in filteredPrimes)
@@ -1451,7 +1981,7 @@ public static class MersenneNumberDivisorByDivisorTester
 				() =>
 				{
 					DeterministicRandomCpu.Initialize();
-					var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForOneByOneDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+					var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForSequentialDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
 					startGate.Wait();
 					Console.WriteLine($"Task started for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
 
@@ -1532,6 +2062,162 @@ public static class MersenneNumberDivisorByDivisorTester
 				{
 					DeterministicRandomCpu.Initialize();
 					var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForPredictiveDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+					startGate.Wait();
+					Console.WriteLine($"Task started for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+
+					while (true)
+					{
+						int start = Interlocked.Add(ref nextIndex, partitionSize) - partitionSize;
+						if (start >= totalCount)
+						{
+							break;
+						}
+
+						int end = start + partitionSize;
+						if (end > totalCount)
+						{
+							end = totalCount;
+						}
+
+						for (int index = start; index < end; index++)
+						{
+							session.ProcessPrime(filteredPrimes[index]);
+						}
+					}
+
+					session.Dispose();
+					Console.WriteLine($"Task finished for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+				},
+				CancellationToken.None,
+				TaskCreationOptions.DenyChildAttach,
+				scheduler);
+		}
+
+		startGate.Set();
+		Task.WaitAll(tasks);
+		startGate.Dispose();
+	}
+
+	private static void RunPercentileGpuOrderFiltered(
+		List<ulong> filteredPrimes,
+		in MersenneNumberDivisorByDivisorCpuTesterWithPercentileGpuOrder prototype,
+		int workerCount,
+		int partitionSize,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult)
+	{
+		MersenneNumberDivisorByDivisorCpuTesterWithPercentileGpuOrder prototypeCopy = prototype;
+		int totalCount = filteredPrimes.Count;
+		if (partitionSize > totalCount)
+		{
+			partitionSize = totalCount;
+		}
+
+		if (workerCount == 1)
+		{
+			DeterministicRandomCpu.Initialize();
+			var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForPercentileDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+			foreach (ulong prime in filteredPrimes)
+			{
+				session.ProcessPrime(prime);
+			}
+
+			session.Dispose();
+			return;
+		}
+
+		TaskScheduler scheduler = UnboundedTaskScheduler.Instance;
+		int nextIndex = 0;
+		Task[] tasks = new Task[workerCount];
+		var startGate = new ManualResetEventSlim(initialState: false);
+
+		for (int taskIndex = 0; taskIndex < workerCount; taskIndex++)
+		{
+			int workerIndex = taskIndex;
+			tasks[taskIndex] = Task.Factory.StartNew(
+				() =>
+				{
+					DeterministicRandomCpu.Initialize();
+					var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForPercentileDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+					startGate.Wait();
+					Console.WriteLine($"Task started for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+
+					while (true)
+					{
+						int start = Interlocked.Add(ref nextIndex, partitionSize) - partitionSize;
+						if (start >= totalCount)
+						{
+							break;
+						}
+
+						int end = start + partitionSize;
+						if (end > totalCount)
+						{
+							end = totalCount;
+						}
+
+						for (int index = start; index < end; index++)
+						{
+							session.ProcessPrime(filteredPrimes[index]);
+						}
+					}
+
+					session.Dispose();
+					Console.WriteLine($"Task finished for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+				},
+				CancellationToken.None,
+				TaskCreationOptions.DenyChildAttach,
+				scheduler);
+		}
+
+		startGate.Set();
+		Task.WaitAll(tasks);
+		startGate.Dispose();
+	}
+
+	private static void RunAdditiveGpuOrderFiltered(
+		List<ulong> filteredPrimes,
+		in MersenneNumberDivisorByDivisorCpuTesterWithAdditiveGpuOrder prototype,
+		int workerCount,
+		int partitionSize,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult)
+	{
+		MersenneNumberDivisorByDivisorCpuTesterWithAdditiveGpuOrder prototypeCopy = prototype;
+		int totalCount = filteredPrimes.Count;
+		if (partitionSize > totalCount)
+		{
+			partitionSize = totalCount;
+		}
+
+		if (workerCount == 1)
+		{
+			DeterministicRandomCpu.Initialize();
+			var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForAdditiveDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+			foreach (ulong prime in filteredPrimes)
+			{
+				session.ProcessPrime(prime);
+			}
+
+			session.Dispose();
+			return;
+		}
+
+		TaskScheduler scheduler = UnboundedTaskScheduler.Instance;
+		int nextIndex = 0;
+		Task[] tasks = new Task[workerCount];
+		var startGate = new ManualResetEventSlim(initialState: false);
+
+		for (int taskIndex = 0; taskIndex < workerCount; taskIndex++)
+		{
+			int workerIndex = taskIndex;
+			tasks[taskIndex] = Task.Factory.StartNew(
+				() =>
+				{
+					DeterministicRandomCpu.Initialize();
+					var session = new MersenneNumberDivisorByDivisorPrimeScanSessionWithForAdditiveDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
 					startGate.Wait();
 					Console.WriteLine($"Task started for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
 

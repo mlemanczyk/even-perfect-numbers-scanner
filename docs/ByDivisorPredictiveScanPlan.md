@@ -42,6 +42,12 @@
 - [x] Skip trivial divisors and previously recorded divisors for p when scanning/rebuilding stats.
 - [x] Persist updated model after processing primes (additions from new divisors found during run).
 
+5) Additional increment modes and state separation
+- [x] Add percentile and additive increment modes alongside predictive/pow2/sequential.
+- [x] Use mode-specific state file extensions (.predictive/.percentile/.additive) to avoid cross-mode interference.
+- [x] Wire CLI flag `--bydivisor-k-increment=predictive|percentile|additive|pow2|sequential` (default predictive) and route Program.cs to the correct tester.
+- [x] Extend model percentiles (k10/k25/k50/k75) and delta-k tuning for additive mode.
+
 4) Validation
 - [ ] Add targeted unit/functional tests (xUnit + FluentAssertions) for classifier defaults, model rebuild from synthetic results, and scan plan generation for easy vs hard classes.
 - [ ] Document how to run fast tests (Category=Fast) and keep runtime under 2 minutes.

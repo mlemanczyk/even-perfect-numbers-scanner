@@ -7,14 +7,18 @@ using System.Collections.Concurrent;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
 using PerfectNumbers.Core.ByDivisor;
+using PerfectNumbers.Core.Persistence;
 
 namespace PerfectNumbers.Core.Cpu;
 
 public enum DivisorSet
 {
-	OneByOne,
+	Sequential,
 	Pow2Groups,
 	Predictive,
+	Percentile,
+	Additive,
+	TopDown,
 }
 
 [EnumDependentTemplate(typeof(DivisorSet))]
@@ -36,10 +40,18 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	private int _stateCounter;
 	private BigInteger _lastSavedK;
 	private bool _pow2MinusOneChecked;
-	private string _pow2MinusOneStateFilePath = string.Empty;
+	private Pow2Minus1StateRepository? _pow2MinusOneRepository;
+	private KStateRepository _kRepository = null!;
+	private KStateRepository? _cheapRepository;
+	private BigInteger _cheapLastSavedK;
+	private BigInteger _cheapResumeK;
 
 	private GpuUInt128WorkSet _divisorScanGpuWorkSet;
-	private static readonly ConcurrentDictionary<ulong, byte> _checkedPow2MinusOne = new();
+private static readonly ConcurrentDictionary<ulong, byte> _checkedPow2MinusOne = new();
+private ulong _currentPrime;
+#if DivisorSet_TopDown
+	private BigInteger _topDownCursor;
+#endif
 
 #if DivisorSet_Pow2Groups
 	private const int PercentScale = DivisorByDivisorConfig.PercentScale;
@@ -68,6 +80,8 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	private int _preparedSpecialRangePromille;
 	private int[] _preparedSpecialSingles = Array.Empty<int>();
 	private (int Start, int End)[] _preparedSpecialRanges = Array.Empty<(int Start, int End)>();
+	private KStateRepository? _specialRepository;
+	private KStateRepository? _groupsRepository;
 #endif
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -198,10 +212,58 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	private bool TryBuildCheapRange(in BigInteger minK, in BigInteger chunkSize, in BigInteger maxKAllowed, out BigInteger start, out BigInteger end)
+	{
+		start = minK > BigInteger.One ? minK : BigInteger.One;
+		if (_cheapResumeK > start)
+		{
+			start = _cheapResumeK;
+		}
+
+		if (start > maxKAllowed)
+		{
+			end = BigInteger.Zero;
+			return false;
+		}
+
+		BigInteger span = chunkSize > BigInteger.One ? chunkSize - BigInteger.One : BigInteger.Zero;
+		end = start + span;
+		if (end > maxKAllowed)
+		{
+			end = maxKAllowed;
+		}
+
+		return end >= start;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	private void RecordCheapState(in BigInteger k)
+	{
+		if (_currentPrime == 0UL || _cheapRepository is null)
+		{
+			return;
+		}
+
+		if (k <= _cheapLastSavedK)
+		{
+			return;
+		}
+
+		_cheapRepository.Upsert(_currentPrime, k);
+		_cheapLastSavedK = k;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public void ResetStateTracking()
 	{
 		_stateCounter = 0;
 		_pow2MinusOneChecked = false;
+		_currentPrime = 0UL;
+		_cheapLastSavedK = BigInteger.Zero;
+		_cheapResumeK = BigInteger.One;
+#if DivisorSet_TopDown
+		_topDownCursor = BigInteger.Zero;
+#endif
 #if DivisorSet_Pow2Groups
 		_specialStateCounter = 0;
 		_groupsStateCounter = 0;
@@ -217,21 +279,49 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		_lastSavedK = lastSavedK;
 		MinK = minK;
 		_stateCounter = 0;
-		_pow2MinusOneStateFilePath = stateFile + ".pow2minus1";
-		_pow2MinusOneChecked = File.Exists(_pow2MinusOneStateFilePath);
+		_kRepository = EnvironmentConfiguration.ByDivisorKStateRepository ?? throw new InvalidOperationException("By-divisor k-state repository not initialized.");
+		_pow2MinusOneRepository = EnvironmentConfiguration.ByDivisorPow2Minus1Repository;
+		_cheapRepository = EnvironmentConfiguration.ByDivisorCheapKStateRepository;
+		_cheapLastSavedK = BigInteger.Zero;
+		_cheapResumeK = MinK;
+
+		string stateName = Path.GetFileNameWithoutExtension(stateFile);
+		if (ulong.TryParse(stateName, NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsedPrime))
+		{
+			_currentPrime = parsedPrime;
+			if (_kRepository.TryGet(parsedPrime, out BigInteger storedK) && storedK > BigInteger.Zero)
+			{
+				_lastSavedK = storedK;
+			}
+
+			_pow2MinusOneChecked = _pow2MinusOneRepository?.IsChecked(parsedPrime) ?? false;
+			if (_cheapRepository is not null && _cheapRepository.TryGet(parsedPrime, out BigInteger cheapStored) && cheapStored > BigInteger.Zero)
+			{
+				_cheapLastSavedK = cheapStored;
+				_cheapResumeK = cheapStored + BigInteger.One;
+			}
+		}
+#if DivisorSet_TopDown
+		_topDownCursor = _lastSavedK;
+#endif
 #if DivisorSet_Pow2Groups
-		_specialStateFilePath = stateFile + ".special";
-		_groupsStateFilePath = stateFile + ".groups";
+		_specialRepository = EnvironmentConfiguration.ByDivisorSpecialStateRepository;
+		_groupsRepository = EnvironmentConfiguration.ByDivisorGroupsStateRepository;
 		_specialStateCounter = 0;
 		_groupsStateCounter = 0;
-		if (!MersenneNumberDivisorByDivisorTester.TryReadLastSavedK(_specialStateFilePath, out _specialLastSavedK))
+		_specialLastSavedK = lastSavedK;
+		_groupsLastSavedK = lastSavedK;
+		if (_currentPrime != 0UL)
 		{
-			_specialLastSavedK = lastSavedK;
-		}
+			if (_specialRepository is not null && _specialRepository.TryGet(_currentPrime, out BigInteger storedSpecial) && storedSpecial > BigInteger.Zero)
+			{
+				_specialLastSavedK = storedSpecial;
+			}
 
-		if (!MersenneNumberDivisorByDivisorTester.TryReadLastSavedK(_groupsStateFilePath, out _groupsLastSavedK))
-		{
-			_groupsLastSavedK = lastSavedK;
+			if (_groupsRepository is not null && _groupsRepository.TryGet(_currentPrime, out BigInteger storedGroups) && storedGroups > BigInteger.Zero)
+			{
+				_groupsLastSavedK = storedGroups;
+			}
 		}
 
 		_specialResumeK = _specialLastSavedK + BigInteger.One;
@@ -244,6 +334,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	public bool IsPrime(ulong prime, out bool divisorsExhausted, out BigInteger divisor)
 	{
+		_currentPrime = prime;
 		BigInteger allowedMax = MersenneNumberDivisorByDivisorTester.ComputeAllowedMaxDivisorBig(prime, DivisorLimit);
 
 		if (TryFindPowerOfTwoMinusOneDivisor(prime, allowedMax, out divisor))
@@ -341,7 +432,16 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			// Console.WriteLine($"[by-divisor-plan] p={prime} suffix={(prime & 1023UL)} using pow2-groups plan; model skipped.");
 			return compositePow2;
 #else
-#if DivisorSet_Predictive
+#if DivisorSet_TopDown
+		bool compositeTopDown = CheckDivisorsTopDown(
+			prime,
+			allowedMax,
+			normalizedMinK,
+			out processedAll,
+			out foundDivisor);
+		return compositeTopDown;
+#endif
+#if DivisorSet_Predictive || DivisorSet_Percentile || DivisorSet_Additive
 		ByDivisorClassModel? classifier = EnvironmentConfiguration.ByDivisorClassModel;
 		if (classifier is not null)
 		{
@@ -591,7 +691,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	}
 #endif
 
-	#if !DivisorSet_Pow2Groups && DivisorSet_Predictive
+#if !DivisorSet_Pow2Groups && (DivisorSet_Predictive || DivisorSet_Percentile || DivisorSet_Additive)
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private bool TryExecutePlannedScan(
 		ByDivisorClassModel model,
@@ -675,24 +775,28 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		ByDivisorScanTuning tuning = EnvironmentConfiguration.ByDivisorScanTuning;
 		ByDivisorScanPlan plan = model.BuildPlan(prime, allowedMax, tuning);
 		int suffix = (int)(prime & 1023UL);
+		_ = suffix;
 		// ByDivisorClassEntry entry = model.Entries[suffix];
 		// Console.WriteLine($"[by-divisor-plan] p={prime} suffix={suffix} k50={entry.K50:F2} k75={entry.K75:F2} gap={entry.GapProbability:F3} cheap<= {plan.CheapLimit:F0} start={plan.Start:F0} target={plan.Target:F0} rho1={plan.Rho1:F2} rho2={plan.Rho2:F2} maxK={maxKAllowed}");
 
-		BigInteger cheapLimit = BigInteger.Min((BigInteger)plan.CheapLimit, maxKAllowed);
-		if (cheapLimit >= minK)
+		BigInteger cheapChunk = BigInteger.Min((BigInteger)plan.CheapLimit, maxKAllowed);
+		BigInteger cheapStart = BigInteger.Zero;
+		BigInteger cheapEnd = BigInteger.Zero;
+		if (TryBuildCheapRange(minK, cheapChunk, maxKAllowed, out cheapStart, out cheapEnd))
 		{
-			BigInteger currentK = minK;
+			BigInteger currentK = cheapStart;
 			bool compositeCheap = CheckDivisorsBigPlanRange(
 				prime,
 				step,
 				allowedMax,
-				minK,
-				cheapLimit,
+				cheapStart,
+				cheapEnd,
 				out bool processedRange,
 				out BigInteger foundRange,
 				ref currentK);
 			if (compositeCheap)
 			{
+				RecordCheapState(currentK);
 				foundDivisor = foundRange;
 				return true;
 			}
@@ -702,6 +806,8 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				processedAll = false;
 				return false;
 			}
+
+			RecordCheapState(cheapEnd);
 		}
 
 		BigInteger startPlan = plan.Start <= 0d ? minK : new BigInteger(Math.Ceiling(plan.Start));
@@ -716,12 +822,13 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			target = startPlan + BigInteger.One;
 		}
 
-		BigInteger current = cheapLimit + BigInteger.One;
+		BigInteger current = (cheapEnd > BigInteger.Zero ? cheapEnd + BigInteger.One : minK);
 		if (current < startPlan)
 		{
 			current = startPlan;
 		}
 
+#if DivisorSet_Predictive
 		bool loggedProgressive = false;
 		while (current <= maxKAllowed)
 		{
@@ -768,6 +875,163 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 
 			current = advanced;
 		}
+#elif DivisorSet_Percentile
+		BigInteger k10 = plan.K10 > 0d ? new BigInteger(Math.Ceiling(plan.K10)) : current;
+		BigInteger k25 = plan.K25 > 0d ? new BigInteger(Math.Ceiling(plan.K25)) : k10 + BigInteger.One;
+		BigInteger k50 = plan.K50 > 0d ? new BigInteger(Math.Ceiling(plan.K50)) : k25 + BigInteger.One;
+		BigInteger k75 = plan.K75 > 0d ? new BigInteger(Math.Ceiling(plan.K75)) : k50 + BigInteger.One;
+
+		BigInteger[] stops = new BigInteger[]
+		{
+			k25 - BigInteger.One,
+			k50 - BigInteger.One,
+			k75 - BigInteger.One,
+		};
+
+		BigInteger startRangeK = current > k10 ? current : k10;
+		for (int i = 0; i < stops.Length; i++)
+		{
+			BigInteger endRange = stops[i];
+			if (endRange < startRangeK)
+			{
+				continue;
+			}
+
+			bool composite = CheckDivisorsBigPlanRange(
+				prime,
+				step,
+				allowedMax,
+				startRangeK,
+				endRange,
+				out bool processedRange,
+				out BigInteger foundRange,
+				ref startRangeK);
+			if (composite)
+			{
+				foundDivisor = foundRange;
+				return true;
+			}
+
+			if (!processedRange)
+			{
+				processedAll = false;
+				return false;
+			}
+
+			startRangeK = endRange + BigInteger.One;
+			if (startRangeK > maxKAllowed)
+			{
+				return false;
+			}
+		}
+
+		// After percentile sweeps, escalate geometrically.
+		BigInteger startGeo = startRangeK;
+		if (startGeo < k75)
+		{
+			startGeo = k75;
+		}
+
+		bool loggedPercentile = false;
+		while (startGeo <= maxKAllowed)
+		{
+			if (!loggedPercentile)
+			{
+				loggedPercentile = true;
+			}
+
+			BigInteger scanStart = startGeo;
+			BigInteger scanEnd = scanStart;
+			bool composite = CheckDivisorsBigPlanRange(
+				prime,
+				step,
+				allowedMax,
+				scanStart,
+				scanEnd,
+				out bool processedRange,
+				out BigInteger foundRange,
+				ref scanStart);
+			if (composite)
+			{
+				foundDivisor = foundRange;
+				return true;
+			}
+
+			if (!processedRange)
+			{
+				processedAll = false;
+				return false;
+			}
+
+			BigInteger advanced = new BigInteger(Math.Ceiling((double)startGeo * plan.Rho2));
+			if (advanced <= startGeo)
+			{
+				advanced = startGeo + BigInteger.One;
+			}
+
+			if (advanced > maxKAllowed)
+			{
+				break;
+			}
+
+			startGeo = advanced;
+		}
+#else
+		BigInteger delta = plan.DeltaK > 0d ? new BigInteger(Math.Ceiling(plan.DeltaK)) : BigInteger.One;
+		if (delta < BigInteger.One)
+		{
+			delta = BigInteger.One;
+		}
+
+		if (delta > maxKAllowed)
+		{
+			delta = maxKAllowed;
+		}
+
+		bool loggedAdditive = false;
+		while (current <= maxKAllowed)
+		{
+			if (!loggedAdditive)
+			{
+				loggedAdditive = true;
+			}
+
+			BigInteger startRange = current;
+			bool composite = CheckDivisorsBigPlanRange(
+				prime,
+				step,
+				allowedMax,
+				startRange,
+				startRange,
+				out bool processedRange,
+				out BigInteger foundRange,
+				ref startRange);
+			if (composite)
+			{
+				foundDivisor = foundRange;
+				return true;
+			}
+
+			if (!processedRange)
+			{
+				processedAll = false;
+				return false;
+			}
+
+			BigInteger advanced = current + delta;
+			if (advanced <= current)
+			{
+				advanced = current + BigInteger.One;
+			}
+
+			if (advanced > maxKAllowed)
+			{
+				break;
+			}
+
+			current = advanced;
+		}
+#endif
 
 		return false;
 	}
@@ -885,6 +1149,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		ByDivisorScanTuning tuning = EnvironmentConfiguration.ByDivisorScanTuning;
 		ByDivisorScanPlan plan = model.BuildPlan(prime, allowedMax == ulong.MaxValue ? BigInteger.Zero : new BigInteger(allowedMax), tuning);
 		int suffix = (int)(prime & 1023UL);
+		_ = suffix;
 		// ByDivisorClassEntry entry = model.Entries[suffix];
 		// Console.WriteLine($"[by-divisor-plan] p={prime} suffix={suffix} k50={entry.K50:F2} k75={entry.K75:F2} gap={entry.GapProbability:F3} cheap<= {plan.CheapLimit:F0} start={plan.Start:F0} target={plan.Target:F0} rho1={plan.Rho1:F2} rho2={plan.Rho2:F2}");
 
@@ -896,33 +1161,43 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			return false;
 		}
 
-		ulong cheapLimit = (ulong)Math.Min(plan.CheapLimit, maxKAllowed);
-		if (cheapLimit >= minK)
+		BigInteger cheapChunk = new BigInteger(Math.Min(plan.CheapLimit, (double)maxKAllowed));
+		BigInteger cheapStart = BigInteger.Zero;
+		BigInteger cheapEnd = BigInteger.Zero;
+		if (TryBuildCheapRange(new BigInteger(minK), cheapChunk, new BigInteger(maxKAllowed), out cheapStart, out cheapEnd))
 		{
-			ulong currentK = minK;
-			bool composite = CheckDivisors64Range(
-				prime,
-				step64,
-				effectiveAllowed,
-				minK,
-				cheapLimit,
-				ref currentK,
-				out bool processedRange,
-				out ulong foundRange);
-			if (composite)
+			if (cheapStart <= ulong.MaxValue && cheapEnd <= ulong.MaxValue)
 			{
-				foundDivisor = foundRange;
-				return true;
-			}
+				ulong cheapStart64 = (ulong)cheapStart;
+				ulong cheapEnd64 = (ulong)cheapEnd;
+				ulong currentK = cheapStart64;
+				bool composite = CheckDivisors64Range(
+					prime,
+					step64,
+					effectiveAllowed,
+					cheapStart64,
+					cheapEnd64,
+					ref currentK,
+					out bool processedRange,
+					out ulong foundRange);
+				if (composite)
+				{
+					RecordCheapState(currentK);
+					foundDivisor = foundRange;
+					return true;
+				}
 
-			if (!processedRange)
-			{
-				processedAll = false;
-				return false;
+				if (!processedRange)
+				{
+					processedAll = false;
+					return false;
+				}
+
+				RecordCheapState(cheapEnd);
 			}
 		}
 
-		double nextK = Math.Max(plan.Start, cheapLimit + 1d);
+		double nextK = Math.Max(plan.Start, (cheapEnd > BigInteger.Zero ? (double)(cheapEnd + BigInteger.One) : minK));
 		if (nextK < minK)
 		{
 			nextK = minK;
@@ -935,6 +1210,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		}
 
 		ulong current = (ulong)Math.Ceiling(nextK);
+#if DivisorSet_Predictive
 		bool loggedProgressive = false;
 		while (current <= maxKAllowed)
 		{
@@ -980,10 +1256,149 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 
 			current = (ulong)advanced;
 		}
+#elif DivisorSet_Percentile
+		ulong k10 = plan.K10 > 0d ? (ulong)Math.Ceiling(plan.K10) : current;
+		ulong k25 = plan.K25 > 0d ? (ulong)Math.Ceiling(plan.K25) : k10 + 1UL;
+		ulong k50 = plan.K50 > 0d ? (ulong)Math.Ceiling(plan.K50) : k25 + 1UL;
+		ulong k75 = plan.K75 > 0d ? (ulong)Math.Ceiling(plan.K75) : k50 + 1UL;
+
+		ReadOnlySpan<ulong> stops = stackalloc ulong[3]
+		{
+			k25 > 0UL ? k25 - 1UL : 0UL,
+			k50 > 0UL ? k50 - 1UL : 0UL,
+			k75 > 0UL ? k75 - 1UL : 0UL,
+		};
+
+		ulong rangeStart = current > k10 ? current : k10;
+		for (int i = 0; i < stops.Length; i++)
+		{
+			ulong stop = stops[i];
+			if (stop < rangeStart)
+			{
+				continue;
+			}
+
+			ulong currentK = rangeStart;
+			bool composite = CheckDivisors64Range(
+				prime,
+				step64,
+				effectiveAllowed,
+				rangeStart,
+				stop,
+				ref currentK,
+				out bool processedRange,
+				out ulong foundRange);
+			if (composite)
+			{
+				foundDivisor = foundRange;
+				return true;
+			}
+
+			if (!processedRange)
+			{
+				processedAll = false;
+				return false;
+			}
+
+			rangeStart = stop + 1UL;
+			if (rangeStart > maxKAllowed)
+			{
+				return false;
+			}
+		}
+
+		ulong geoStart = rangeStart < k75 ? k75 : rangeStart;
+		while (geoStart <= maxKAllowed)
+		{
+			ulong currentK = geoStart;
+			bool composite = CheckDivisors64Range(
+				prime,
+				step64,
+				effectiveAllowed,
+				currentK,
+				currentK,
+				ref currentK,
+				out bool processedSingle,
+				out ulong foundSingle);
+			if (composite)
+			{
+				foundDivisor = foundSingle;
+				return true;
+			}
+
+			if (!processedSingle)
+			{
+				processedAll = false;
+				return false;
+			}
+
+			double advanced = Math.Ceiling(geoStart * plan.Rho2);
+			if (advanced <= geoStart)
+			{
+				advanced = geoStart + 1d;
+			}
+
+			if (advanced > maxKAllowed)
+			{
+				break;
+			}
+
+			geoStart = (ulong)advanced;
+		}
+#else
+		ulong delta = plan.DeltaK > 0d ? (ulong)Math.Ceiling(plan.DeltaK) : 1UL;
+		if (delta == 0UL)
+		{
+			delta = 1UL;
+		}
+
+		if (delta > maxKAllowed)
+		{
+			delta = maxKAllowed;
+		}
+
+		while (current <= maxKAllowed)
+		{
+			ulong currentK = current;
+			bool composite = CheckDivisors64Range(
+				prime,
+				step64,
+				effectiveAllowed,
+				currentK,
+				currentK,
+				ref currentK,
+				out bool processedSingle,
+				out ulong foundSingle);
+			if (composite)
+			{
+				foundDivisor = foundSingle;
+				return true;
+			}
+
+			if (!processedSingle)
+			{
+				processedAll = false;
+				return false;
+			}
+
+			ulong advanced = current + delta;
+			if (advanced <= current || advanced == 0UL)
+			{
+				advanced = current + 1UL;
+			}
+
+			if (advanced > maxKAllowed)
+			{
+				break;
+			}
+
+			current = advanced;
+		}
+#endif
 
 		return false;
 	}
-	#endif
+#endif
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private bool CheckDivisors64Bit(
@@ -1809,13 +2224,17 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			return;
 		}
 
-		string? directory = Path.GetDirectoryName(targetPath);
-		if (!string.IsNullOrEmpty(directory))
+		if (!string.IsNullOrEmpty(targetPath))
 		{
-			Directory.CreateDirectory(directory);
+			string? directory = Path.GetDirectoryName(targetPath);
+			if (!string.IsNullOrEmpty(directory))
+			{
+				Directory.CreateDirectory(directory);
+			}
+
+			File.AppendAllText(targetPath, k.ToString(CultureInfo.InvariantCulture) + Environment.NewLine);
 		}
 
-		File.AppendAllText(targetPath, k.ToString(CultureInfo.InvariantCulture) + Environment.NewLine);
 		counter = 0;
 		last = k;
 	}
@@ -2103,6 +2522,162 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			out foundDivisor);
 	}
 
+#if DivisorSet_TopDown
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private bool CheckDivisorsTopDown(
+		ulong prime,
+		BigInteger allowedMax,
+		BigInteger minK,
+		out bool processedAll,
+		out BigInteger foundDivisor)
+	{
+		foundDivisor = BigInteger.Zero;
+		processedAll = false;
+
+		BigInteger normalizedMinK = minK >= BigInteger.One ? minK : BigInteger.One;
+		ulong step = prime << 1;
+		ulong allowedMax64 = allowedMax.IsZero ? ulong.MaxValue : (allowedMax > ulong.MaxValue ? ulong.MaxValue : (ulong)allowedMax);
+		if (allowedMax64 <= 1UL)
+		{
+			processedAll = true;
+			return false;
+		}
+
+		ulong maxKAllowed = (allowedMax64 - 1UL) / step;
+		{
+			BigInteger maxKBig = maxKAllowed;
+			if (TryClampMaxKForMersenneTail(prime, (BigInteger)step, ref maxKBig))
+			{
+				maxKAllowed = maxKBig > ulong.MaxValue ? ulong.MaxValue : (ulong)maxKBig;
+			}
+		}
+
+		if (maxKAllowed < 1UL)
+		{
+			processedAll = true;
+			return false;
+		}
+
+		if (normalizedMinK > maxKAllowed)
+		{
+			processedAll = true;
+			return false;
+		}
+
+		ulong minK64 = normalizedMinK > ulong.MaxValue ? ulong.MaxValue : (ulong)normalizedMinK;
+		if (minK64 < 1UL)
+		{
+			minK64 = 1UL;
+		}
+
+		ulong cursor = _topDownCursor > ulong.MaxValue ? ulong.MaxValue : (ulong)_topDownCursor;
+		ulong currentK = maxKAllowed;
+		if (cursor > 0 && cursor <= maxKAllowed)
+		{
+			currentK = maxKAllowed - cursor;
+		}
+
+		if (currentK < minK64)
+		{
+			processedAll = true;
+			return false;
+		}
+
+		UInt128 step128 = step;
+		UInt128 divisor = (step128 * currentK) + UInt128.One;
+		var residueStepper = new MersenneDivisorResidueStepperDescending(prime, new GpuUInt128(step), new GpuUInt128(divisor));
+		while (currentK >= minK64)
+		{
+			if (divisor > allowedMax64)
+			{
+				processedAll = true;
+				return false;
+			}
+
+			if (residueStepper.IsAdmissible())
+			{
+				ulong divisor64 = (ulong)divisor;
+				MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor64);
+#if DEVICE_GPU
+				bool computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentGpu(
+					divisor64,
+					Accelerator,
+					prime,
+					divisorData,
+					out ulong computedCycle,
+					out bool primeOrderFailed);
+#elif DEVICE_HYBRID
+				bool computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentHybrid(
+					divisor64,
+					Accelerator,
+					prime,
+					divisorData,
+					out ulong computedCycle,
+					out bool primeOrderFailed);
+#else
+				bool computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentCpu(
+					divisor64,
+					prime,
+					divisorData,
+					out ulong computedCycle,
+					out bool primeOrderFailed);
+#endif
+				ulong divisorCycle;
+				if (!computed || computedCycle == 0UL)
+				{
+#if DEVICE_GPU
+					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthGpu(
+						divisor64,
+						Accelerator,
+						divisorData,
+						skipPrimeOrderHeuristic: primeOrderFailed);
+#elif DEVICE_HYBRID
+					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthHybrid(
+						divisor64,
+						Accelerator,
+						divisorData,
+						skipPrimeOrderHeuristic: primeOrderFailed);
+#else
+					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthCpu(
+						divisor64,
+						divisorData,
+						skipPrimeOrderHeuristic: primeOrderFailed);
+#endif
+				}
+				else
+				{
+					divisorCycle = computedCycle;
+				}
+
+				RecordState(cursor);
+				if (divisorCycle == prime && !IsMersenneValue(prime, divisor64))
+				{
+					foundDivisor = divisor64;
+					return true;
+				}
+			}
+
+			cursor++;
+			if (cursor > maxKAllowed)
+			{
+				break;
+			}
+
+			if (currentK == minK64)
+			{
+				break;
+			}
+
+			currentK--;
+			divisor -= step128;
+			residueStepper.Retreat();
+		}
+
+		processedAll = true;
+		return false;
+	}
+#endif
+
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private bool CheckDivisors64(
 			ulong prime,
@@ -2234,28 +2809,76 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private void RecordState(BigInteger k)
 	{
+#if DivisorSet_TopDown
+		if (_currentPrime != 0UL)
+		{
+			if (k > _lastSavedK)
+			{
+				int next = _stateCounter + 1;
+				if (next >= PerfectNumberConstants.ByDivisorStateSaveInterval)
+				{
+					_kRepository.Upsert(_currentPrime, k);
+					_stateCounter = 0;
+					_lastSavedK = k;
+					_topDownCursor = k;
+				}
+				else
+				{
+					_stateCounter = next;
+				}
+				_topDownCursor = k;
+			}
+		}
+		return;
+#endif
 #if DivisorSet_Pow2Groups
 		if (_currentPow2Phase == Pow2Phase.Special)
 		{
-			RecordStateInternal(k, _specialStateFilePath, ref _specialStateCounter, ref _specialLastSavedK, _currentPow2Phase);
+			RecordStatePow2(k, _specialRepository, ref _specialStateCounter, ref _specialLastSavedK);
 			return;
 		}
 
 		if (_currentPow2Phase == Pow2Phase.Groups)
 		{
-			RecordStateInternal(k, _groupsStateFilePath, ref _groupsStateCounter, ref _groupsLastSavedK, _currentPow2Phase);
+			RecordStatePow2(k, _groupsRepository, ref _groupsStateCounter, ref _groupsLastSavedK);
 			return;
 		}
 #endif
-		RecordStateInternal(k, StateFilePath, ref _stateCounter, ref _lastSavedK, default);
+		if (_currentPrime != 0UL)
+		{
+			if (k > _lastSavedK)
+			{
+				_kRepository.Upsert(_currentPrime, k);
+				_lastSavedK = k;
+			}
+			_stateCounter = 0;
+		}
 	}
 
 #if DivisorSet_Pow2Groups
-	private void RecordStateInternal(BigInteger k, string path, ref int counter, ref BigInteger lastSavedK, Pow2Phase phase)
-#else
-	private void RecordStateInternal(BigInteger k, string path, ref int counter, ref BigInteger lastSavedK, object _)
-#endif
+	private void RecordState(BigInteger k, Pow2Phase phase)
 	{
+		switch (phase)
+		{
+			case Pow2Phase.Special:
+				RecordStatePow2(k, _specialRepository, ref _specialStateCounter, ref _specialLastSavedK);
+				break;
+			case Pow2Phase.Groups:
+				RecordStatePow2(k, _groupsRepository, ref _groupsStateCounter, ref _groupsLastSavedK);
+				break;
+			default:
+				RecordState(k);
+				break;
+		}
+	}
+
+	private void RecordStatePow2(BigInteger k, KStateRepository? repo, ref int counter, ref BigInteger lastSavedK)
+	{
+		if (_currentPrime == 0UL || repo is null)
+		{
+			return;
+		}
+
 		if (k <= lastSavedK)
 		{
 			return;
@@ -2264,37 +2887,13 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		int next = counter + 1;
 		if (next >= PerfectNumberConstants.ByDivisorStateSaveInterval)
 		{
-			string? directory = Path.GetDirectoryName(path);
-			if (!string.IsNullOrEmpty(directory))
-			{
-				Directory.CreateDirectory(directory);
-			}
-
-			File.AppendAllText(path, k.ToString(CultureInfo.InvariantCulture) + Environment.NewLine);
+			repo.Upsert(_currentPrime, k);
 			counter = 0;
 			lastSavedK = k;
 		}
 		else
 		{
 			counter = next;
-		}
-	}
-
-#if DivisorSet_Pow2Groups
-	// Overload used from CheckDivisors64Range through RecordState with current phase routed automatically.
-	private void RecordState(BigInteger k, Pow2Phase phase)
-	{
-		switch (phase)
-		{
-			case Pow2Phase.Special:
-				RecordStateInternal(k, _specialStateFilePath, ref _specialStateCounter, ref _specialLastSavedK, phase);
-				break;
-			case Pow2Phase.Groups:
-				RecordStateInternal(k, _groupsStateFilePath, ref _groupsStateCounter, ref _groupsLastSavedK, phase);
-				break;
-			default:
-				RecordStateInternal(k, StateFilePath, ref _stateCounter, ref _lastSavedK, phase);
-				break;
 		}
 	}
 
@@ -2714,22 +3313,9 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	private void MarkPow2MinusOneChecked()
 	{
 		_pow2MinusOneChecked = true;
-		if (!string.IsNullOrEmpty(_pow2MinusOneStateFilePath))
+		if (_currentPrime != 0UL)
 		{
-			try
-			{
-				string? directory = Path.GetDirectoryName(_pow2MinusOneStateFilePath);
-				if (!string.IsNullOrEmpty(directory))
-				{
-					Directory.CreateDirectory(directory);
-				}
-
-				File.WriteAllText(_pow2MinusOneStateFilePath, "checked");
-			}
-			catch
-			{
-				// Best-effort persistence; ignore IO errors.
-			}
+			_pow2MinusOneRepository?.MarkChecked(_currentPrime);
 		}
 	}
 
@@ -2797,6 +3383,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		}
 
 		_checkedPow2MinusOne[prime] = 1;
+		_currentPrime = prime;
 		MarkPow2MinusOneChecked();
 		return false;
 	}

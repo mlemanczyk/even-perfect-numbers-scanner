@@ -19,6 +19,8 @@
     <PackageReference Include="Open.Numeric.Primes" Version="4.0.4" />
     <PackageReference Include="ILGPU" Version="1.5.3" />
     <PackageReference Include="ILGPU.Algorithms" Version="1.5.3" />
+    <PackageReference Include="LightningDB" Version="0.21.0" />
+    <PackageReference Include="Microsoft.FASTER.Core" Version="2.4.0" />
   </ItemGroup>
 
   <ItemGroup>

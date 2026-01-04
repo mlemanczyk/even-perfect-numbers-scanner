@@ -36,6 +36,7 @@ The source code relays on selected functionality from the following packages:
 * [FluentAssertions](https://www.nuget.org/packages/FluentAssertions)
 * [ILGPU](https://www.nuget.org/packages/ILGPU)
 * [ILGPU.Algorithms](https://www.nuget.org/packages/ILGPU.Algorithms)
+* [LightningDB](https://www.nuget.org/packages/LightningDB) (LMDB-backed repositories for by-divisor state)
 * [Open.Numeric.Primes](https://www.nuget.org/packages/Open.Numeric.Primes)
 * [PeterO.Numbers](https://www.nuget.org/packages/PeterO.Numbers)
 * [xunit](https://www.nuget.org/packages/xunit)

@@ -10,15 +10,25 @@ using PerfectNumbers.Core.Cpu;
 using PerfectNumbers.Core.ByDivisor;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
-using MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForCpuOrder;
-using MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForHybridOrder;
-using MersenneNumberDivisorByDivisorCpuTesterWithGpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForGpuOrder;
+using PerfectNumbers.Core.Persistence;
+using MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForSequentialDivisorSetForCpuOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForSequentialDivisorSetForHybridOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithGpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForSequentialDivisorSetForGpuOrder;
 using ByDivisorCpuOrderPow2 = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPow2GroupsDivisorSetForCpuOrder;
 using ByDivisorHybridOrderPow2 = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPow2GroupsDivisorSetForHybridOrder;
 using ByDivisorGpuOrderPow2 = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPow2GroupsDivisorSetForGpuOrder;
 using ByDivisorCpuOrderPredictive = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPredictiveDivisorSetForCpuOrder;
 using ByDivisorHybridOrderPredictive = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPredictiveDivisorSetForHybridOrder;
 using ByDivisorGpuOrderPredictive = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPredictiveDivisorSetForGpuOrder;
+using ByDivisorCpuOrderPercentile = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPercentileDivisorSetForCpuOrder;
+using ByDivisorHybridOrderPercentile = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPercentileDivisorSetForHybridOrder;
+using ByDivisorGpuOrderPercentile = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPercentileDivisorSetForGpuOrder;
+using ByDivisorCpuOrderAdditive = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForAdditiveDivisorSetForCpuOrder;
+using ByDivisorHybridOrderAdditive = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForAdditiveDivisorSetForHybridOrder;
+using ByDivisorGpuOrderAdditive = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForAdditiveDivisorSetForGpuOrder;
+using ByDivisorCpuOrderTopDown = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForTopDownDivisorSetForCpuOrder;
+using ByDivisorHybridOrderTopDown = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForTopDownDivisorSetForHybridOrder;
+using ByDivisorGpuOrderTopDown = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForTopDownDivisorSetForGpuOrder;
 using System.Globalization;
 
 namespace EvenPerfectBitScanner;
@@ -39,8 +49,18 @@ private static ThreadLocal<object>? MersenneTesters;
 	private static ByDivisorCpuOrderPredictive _byDivisorCpuOrderTesterPredictive;
 	private static ByDivisorHybridOrderPredictive _byDivisorHybridOrderTesterPredictive;
 	private static ByDivisorGpuOrderPredictive _byDivisorGpuOrderTesterPredictive;
+	private static ByDivisorCpuOrderPercentile _byDivisorCpuOrderTesterPercentile;
+	private static ByDivisorHybridOrderPercentile _byDivisorHybridOrderTesterPercentile;
+	private static ByDivisorGpuOrderPercentile _byDivisorGpuOrderTesterPercentile;
+	private static ByDivisorCpuOrderAdditive _byDivisorCpuOrderTesterAdditive;
+	private static ByDivisorHybridOrderAdditive _byDivisorHybridOrderTesterAdditive;
+	private static ByDivisorGpuOrderAdditive _byDivisorGpuOrderTesterAdditive;
+	private static ByDivisorCpuOrderTopDown _byDivisorCpuOrderTesterTopDown;
+	private static ByDivisorHybridOrderTopDown _byDivisorHybridOrderTesterTopDown;
+	private static ByDivisorGpuOrderTopDown _byDivisorGpuOrderTesterTopDown;
 	private static Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? _byDivisorPreviousResults;
 	private static string? _byDivisorModelPath;
+	private static bool _byDivisorModeUsesModel;
 	private static bool _limitReached;
 	private static ulong _byDivisorStartPrime;
 	private static CliArguments _cliArguments;
@@ -87,7 +107,7 @@ private static ThreadLocal<object>? MersenneTesters;
 		EnvironmentConfiguration.GpuBatchSize = Math.Max(1, _cliArguments.ScanBatchSize);
 		EnvironmentConfiguration.GpuRatio = _cliArguments.GpuRatio;
 		EnvironmentConfiguration.OrderDevice = _cliArguments.OrderDevice;
-		EnvironmentConfiguration.UsePow2GroupDivisors = _cliArguments.UseDivisorPow2Increment;
+		EnvironmentConfiguration.UsePow2GroupDivisors = _cliArguments.ByDivisorKIncrementMode == ByDivisorKIncrementMode.Pow2Groups;
 		EnvironmentConfiguration.ByDivisorSpecialRange = _cliArguments.ByDivisorSpecialRange;
 		EnvironmentConfiguration.RollingAccelerators = Math.Min(Math.Min(PerfectNumberConstants.RollingAccelerators, gpuPrimeThreads), threadCount);
 		EnvironmentConfiguration.Initialize();
@@ -289,51 +309,77 @@ private static ThreadLocal<object>? MersenneTesters;
 					throw new NotSupportedException("--mersenne-device=gpu is not supported for --mersenne=bydivisor on this execution path.");
 				}
 
-				bool usePow2Divisors = _cliArguments.UseDivisorPow2Increment;
-				bool usePredictiveDivisors = _cliArguments.UseDivisorPredictiveIncrement;
+				ByDivisorKIncrementMode kIncrementMode = _cliArguments.ByDivisorKIncrementMode;
 				if (EnvironmentConfiguration.UseCpuOrder)
 				{
-					if (usePow2Divisors)
+					switch (kIncrementMode)
 					{
-						_byDivisorCpuOrderTesterPow2 = new ByDivisorCpuOrderPow2();
-					}
-					else if (usePredictiveDivisors)
-					{
-						_byDivisorCpuOrderTesterPredictive = new ByDivisorCpuOrderPredictive();
-					}
-					else
-					{
-						_byDivisorCpuOrderTester = new MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder();
+						case ByDivisorKIncrementMode.Pow2Groups:
+							_byDivisorCpuOrderTesterPow2 = new ByDivisorCpuOrderPow2();
+							break;
+						case ByDivisorKIncrementMode.Predictive:
+							_byDivisorCpuOrderTesterPredictive = new ByDivisorCpuOrderPredictive();
+							break;
+						case ByDivisorKIncrementMode.Percentile:
+							_byDivisorCpuOrderTesterPercentile = new ByDivisorCpuOrderPercentile();
+							break;
+						case ByDivisorKIncrementMode.Additive:
+							_byDivisorCpuOrderTesterAdditive = new ByDivisorCpuOrderAdditive();
+							break;
+						case ByDivisorKIncrementMode.TopDown:
+							_byDivisorCpuOrderTesterTopDown = new ByDivisorCpuOrderTopDown();
+							break;
+						default:
+							_byDivisorCpuOrderTester = new MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder();
+							break;
 					}
 				}
 				else if (EnvironmentConfiguration.UseHybridOrder)
 				{
-					if (usePow2Divisors)
+					switch (kIncrementMode)
 					{
-						_byDivisorHybridOrderTesterPow2 = new ByDivisorHybridOrderPow2();
-					}
-					else if (usePredictiveDivisors)
-					{
-						_byDivisorHybridOrderTesterPredictive = new ByDivisorHybridOrderPredictive();
-					}
-					else
-					{
-						_byDivisorHybridOrderTester = new MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder();
+						case ByDivisorKIncrementMode.Pow2Groups:
+							_byDivisorHybridOrderTesterPow2 = new ByDivisorHybridOrderPow2();
+							break;
+						case ByDivisorKIncrementMode.Predictive:
+							_byDivisorHybridOrderTesterPredictive = new ByDivisorHybridOrderPredictive();
+							break;
+						case ByDivisorKIncrementMode.Percentile:
+							_byDivisorHybridOrderTesterPercentile = new ByDivisorHybridOrderPercentile();
+							break;
+						case ByDivisorKIncrementMode.Additive:
+							_byDivisorHybridOrderTesterAdditive = new ByDivisorHybridOrderAdditive();
+							break;
+						case ByDivisorKIncrementMode.TopDown:
+							_byDivisorHybridOrderTesterTopDown = new ByDivisorHybridOrderTopDown();
+							break;
+						default:
+							_byDivisorHybridOrderTester = new MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder();
+							break;
 					}
 				}
 				else
 				{
-					if (usePow2Divisors)
+					switch (kIncrementMode)
 					{
-						_byDivisorGpuOrderTesterPow2 = new ByDivisorGpuOrderPow2();
-					}
-					else if (usePredictiveDivisors)
-					{
-						_byDivisorGpuOrderTesterPredictive = new ByDivisorGpuOrderPredictive();
-					}
-					else
-					{
-						_byDivisorGpuOrderTester = new MersenneNumberDivisorByDivisorCpuTesterWithGpuOrder();
+						case ByDivisorKIncrementMode.Pow2Groups:
+							_byDivisorGpuOrderTesterPow2 = new ByDivisorGpuOrderPow2();
+							break;
+						case ByDivisorKIncrementMode.Predictive:
+							_byDivisorGpuOrderTesterPredictive = new ByDivisorGpuOrderPredictive();
+							break;
+						case ByDivisorKIncrementMode.Percentile:
+							_byDivisorGpuOrderTesterPercentile = new ByDivisorGpuOrderPercentile();
+							break;
+						case ByDivisorKIncrementMode.Additive:
+							_byDivisorGpuOrderTesterAdditive = new ByDivisorGpuOrderAdditive();
+							break;
+						case ByDivisorKIncrementMode.TopDown:
+							_byDivisorGpuOrderTesterTopDown = new ByDivisorGpuOrderTopDown();
+							break;
+						default:
+							_byDivisorGpuOrderTester = new MersenneNumberDivisorByDivisorCpuTesterWithGpuOrder();
+							break;
 					}
 				}
 			}
@@ -437,25 +483,79 @@ private static ThreadLocal<object>? MersenneTesters;
 
 			if (useByDivisor)
 			{
-				_byDivisorModelPath = Path.Combine(PerfectNumberConstants.ByDivisorStateDirectory, "bydivisor_k10_model.json");
+				ByDivisorKIncrementMode kIncrementMode = _cliArguments.ByDivisorKIncrementMode;
+				_byDivisorModeUsesModel = kIncrementMode is ByDivisorKIncrementMode.Predictive or ByDivisorKIncrementMode.Percentile or ByDivisorKIncrementMode.Additive;
 				var byDivisorTuning = new ByDivisorScanTuning
 				{
 					CheapLimit = EnvironmentConfiguration.ByDivisorCheapKLimit,
 				};
 				EnvironmentConfiguration.ByDivisorScanTuning = byDivisorTuning;
-				bool modelExists = File.Exists(_byDivisorModelPath);
-				bool resultsExist = File.Exists(resultsFileName);
-				bool needsBuild = !modelExists || (resultsExist && File.GetLastWriteTimeUtc(resultsFileName) > File.GetLastWriteTimeUtc(_byDivisorModelPath));
-				Console.WriteLine(needsBuild
-					? $"Building by-divisor class model from {resultsFileName}..."
-					: $"Loading by-divisor class model from {_byDivisorModelPath}...");
-				EnvironmentConfiguration.ByDivisorClassModel = ByDivisorClassModelLoader.LoadOrBuild(
-					_byDivisorModelPath,
-					resultsFileName,
-					byDivisorTuning,
-					byDivisorTuning.CheapLimit,
-					rebuildWhenResultsNewer: true);
-				Console.WriteLine($"By-divisor class model ready (cheap<={byDivisorTuning.CheapLimit:F0}).");
+
+				EnvironmentConfiguration.ByDivisorClassModel = null;
+				EnvironmentConfiguration.ByDivisorClassModelRepository = null;
+				if (_byDivisorModeUsesModel)
+				{
+					string modelRepoFile = "bydivisor_model.faster";
+					var modelRepo = ByDivisorClassModelRepository.Open(PerfectNumberConstants.ByDivisorStateDirectory, modelRepoFile);
+					EnvironmentConfiguration.ByDivisorClassModelRepository = modelRepo;
+					if (!modelRepo.TryLoad(out var loadedModel) || loadedModel is null)
+					{
+						_byDivisorModelPath = Path.Combine(PerfectNumberConstants.ByDivisorStateDirectory, "bydivisor_k10_model.json");
+						Console.WriteLine($"Building by-divisor class model from {resultsFileName}...");
+						ByDivisorClassModel model = ByDivisorClassModelLoader.LoadOrBuild(
+							_byDivisorModelPath,
+							resultsFileName,
+							byDivisorTuning,
+							byDivisorTuning.CheapLimit,
+							rebuildWhenResultsNewer: true);
+						modelRepo.Save(model);
+						modelRepo.Commit();
+						try
+						{
+							File.Delete(_byDivisorModelPath);
+						}
+						catch
+						{
+							// best-effort cleanup
+						}
+						EnvironmentConfiguration.ByDivisorClassModel = model;
+						Console.WriteLine($"By-divisor class model ready (cheap<={byDivisorTuning.CheapLimit:F0}).");
+					}
+					else
+					{
+						loadedModel.CheapLimit = byDivisorTuning.CheapLimit;
+						EnvironmentConfiguration.ByDivisorClassModel = loadedModel;
+						Console.WriteLine($"By-divisor class model loaded from LMDB (cheap<={byDivisorTuning.CheapLimit:F0}).");
+					}
+				}
+
+				// Initialize LMDB repositories for by-divisor state
+				string checksDir = PerfectNumberConstants.ByDivisorStateDirectory;
+				string kRepoFile = kIncrementMode switch
+				{
+					ByDivisorKIncrementMode.Pow2Groups => "pow2groups.kstate.faster",
+					ByDivisorKIncrementMode.Predictive => "predictive.kstate.faster",
+					ByDivisorKIncrementMode.Percentile => "percentile.kstate.faster",
+					ByDivisorKIncrementMode.Additive => "additive.kstate.faster",
+					ByDivisorKIncrementMode.TopDown => "topdown.kstate.faster",
+					_ => "sequential.kstate.faster",
+				};
+				string lmdbPath = Path.Combine(checksDir, Path.ChangeExtension(kRepoFile, ".lmdb"));
+				EnvironmentConfiguration.ByDivisorKStateRepository = KStateRepository.Open(checksDir, kRepoFile, lmdbPath, checksDir);
+				EnvironmentConfiguration.ByDivisorCheapKStateRepository = KStateRepository.Open(checksDir, "cheaplimit.kstate.faster", Path.Combine(checksDir, "cheaplimit.kstate.lmdb"), checksDir);
+				string pow2MinusLmdb = Path.Combine(checksDir, "pow2minus1.lmdb");
+				EnvironmentConfiguration.ByDivisorPow2Minus1Repository ??= Pow2Minus1StateRepository.Open(Path.Combine(checksDir, "pow2minus1.faster"), pow2MinusLmdb, checksDir);
+
+				if (kIncrementMode == ByDivisorKIncrementMode.Pow2Groups)
+				{
+					EnvironmentConfiguration.ByDivisorSpecialStateRepository = KStateRepository.Open(checksDir, "pow2groups.special.kstate.faster", Path.Combine(checksDir, "pow2groups.special.kstate.lmdb"), checksDir);
+					EnvironmentConfiguration.ByDivisorGroupsStateRepository = KStateRepository.Open(checksDir, "pow2groups.groups.kstate.faster", Path.Combine(checksDir, "pow2groups.groups.kstate.lmdb"), checksDir);
+				}
+				else
+				{
+					EnvironmentConfiguration.ByDivisorSpecialStateRepository = null;
+					EnvironmentConfiguration.ByDivisorGroupsStateRepository = null;
+				}
 			}
 
 			bool useFilter = !testMode && !string.IsNullOrEmpty(filterFile);
@@ -573,138 +673,215 @@ private static ThreadLocal<object>? MersenneTesters;
 			if (useByDivisor)
 			{
 				int byDivisorPrimeRange = Math.Max(1, _cliArguments.BlockSize);
-				bool usePow2Divisors = _cliArguments.UseDivisorPow2Increment;
-				bool usePredictiveDivisors = _cliArguments.UseDivisorPredictiveIncrement;
+				ByDivisorKIncrementMode kIncrementMode = _cliArguments.ByDivisorKIncrementMode;
 				if (EnvironmentConfiguration.UseCpuOrder)
 				{
-					if (usePow2Divisors)
+					switch (kIncrementMode)
 					{
-						Console.WriteLine("Using by-divisor pow2groups increment (CPU order).");
-						MersenneNumberDivisorByDivisorTester.Run(
-							byDivisorCandidates,
-							ref _byDivisorCpuOrderTesterPow2,
-							_byDivisorPreviousResults,
-							_byDivisorStartPrime,
-							static () => _lastCompositeP = true,
-							static () => _lastCompositeP = false,
-							HandleByDivisorResult,
-							threadCount,
-							byDivisorPrimeRange);
-					}
-					else if (usePredictiveDivisors)
-					{
-						Console.WriteLine("Using by-divisor predictive increment (CPU order).");
-						MersenneNumberDivisorByDivisorTester.Run(
-							byDivisorCandidates,
-							ref _byDivisorCpuOrderTesterPredictive,
-							_byDivisorPreviousResults,
-							_byDivisorStartPrime,
-							static () => _lastCompositeP = true,
-							static () => _lastCompositeP = false,
-							HandleByDivisorResult,
-							threadCount,
-							byDivisorPrimeRange);
-					}
-					else
-					{
-						MersenneNumberDivisorByDivisorTester.Run(
-							byDivisorCandidates,
-							ref _byDivisorCpuOrderTester,
-							_byDivisorPreviousResults,
-							_byDivisorStartPrime,
-							static () => _lastCompositeP = true,
-							static () => _lastCompositeP = false,
-							HandleByDivisorResult,
-							threadCount,
-							byDivisorPrimeRange);
+						case ByDivisorKIncrementMode.Pow2Groups:
+							Console.WriteLine("Using by-divisor pow2groups increment (CPU order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorCpuOrderTesterPow2,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						case ByDivisorKIncrementMode.Predictive:
+							Console.WriteLine("Using by-divisor predictive increment (CPU order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorCpuOrderTesterPredictive,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						case ByDivisorKIncrementMode.Percentile:
+							Console.WriteLine("Using by-divisor percentile increment (CPU order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorCpuOrderTesterPercentile,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						case ByDivisorKIncrementMode.Additive:
+							Console.WriteLine("Using by-divisor additive increment (CPU order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorCpuOrderTesterAdditive,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						default:
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorCpuOrderTester,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
 					}
 				}
 				else if (EnvironmentConfiguration.UseHybridOrder)
 				{
-					if (usePow2Divisors)
+					switch (kIncrementMode)
 					{
-						Console.WriteLine("Using by-divisor pow2groups increment (Hybrid order).");
-						MersenneNumberDivisorByDivisorTester.Run(
-							byDivisorCandidates,
-							ref _byDivisorHybridOrderTesterPow2,
-							_byDivisorPreviousResults,
-							_byDivisorStartPrime,
-							static () => _lastCompositeP = true,
-							static () => _lastCompositeP = false,
-							HandleByDivisorResult,
-							threadCount,
-							byDivisorPrimeRange);
-					}
-					else if (usePredictiveDivisors)
-					{
-						Console.WriteLine("Using by-divisor predictive increment (Hybrid order).");
-						MersenneNumberDivisorByDivisorTester.Run(
-							byDivisorCandidates,
-							ref _byDivisorHybridOrderTesterPredictive,
-							_byDivisorPreviousResults,
-							_byDivisorStartPrime,
-							static () => _lastCompositeP = true,
-							static () => _lastCompositeP = false,
-							HandleByDivisorResult,
-							threadCount,
-							byDivisorPrimeRange);
-					}
-					else
-					{
-						MersenneNumberDivisorByDivisorTester.Run(
-							byDivisorCandidates,
-							ref _byDivisorHybridOrderTester,
-							_byDivisorPreviousResults,
-							_byDivisorStartPrime,
-							static () => _lastCompositeP = true,
-							static () => _lastCompositeP = false,
-							HandleByDivisorResult,
-							threadCount,
-							byDivisorPrimeRange);
+						case ByDivisorKIncrementMode.Pow2Groups:
+							Console.WriteLine("Using by-divisor pow2groups increment (Hybrid order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorHybridOrderTesterPow2,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						case ByDivisorKIncrementMode.Predictive:
+							Console.WriteLine("Using by-divisor predictive increment (Hybrid order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorHybridOrderTesterPredictive,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						case ByDivisorKIncrementMode.Percentile:
+							Console.WriteLine("Using by-divisor percentile increment (Hybrid order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorHybridOrderTesterPercentile,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						case ByDivisorKIncrementMode.Additive:
+							Console.WriteLine("Using by-divisor additive increment (Hybrid order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorHybridOrderTesterAdditive,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						default:
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorHybridOrderTester,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
 					}
 				}
 				else
 				{
-					if (usePow2Divisors)
+					switch (kIncrementMode)
 					{
-						Console.WriteLine("Using by-divisor pow2groups increment (GPU order).");
-						MersenneNumberDivisorByDivisorTester.Run(
-							byDivisorCandidates,
-							ref _byDivisorGpuOrderTesterPow2,
-							_byDivisorPreviousResults,
-							_byDivisorStartPrime,
-							static () => _lastCompositeP = true,
-							static () => _lastCompositeP = false,
-							HandleByDivisorResult,
-							threadCount,
-							byDivisorPrimeRange);
-					}
-					else if (usePredictiveDivisors)
-					{
-						Console.WriteLine("Using by-divisor predictive increment (GPU order).");
-						MersenneNumberDivisorByDivisorTester.Run(
-							byDivisorCandidates,
-							ref _byDivisorGpuOrderTesterPredictive,
-							_byDivisorPreviousResults,
-							_byDivisorStartPrime,
-							static () => _lastCompositeP = true,
-							static () => _lastCompositeP = false,
-							HandleByDivisorResult,
-							threadCount,
-							byDivisorPrimeRange);
-					}
-					else
-					{
-						MersenneNumberDivisorByDivisorTester.Run(
-							byDivisorCandidates,
-							ref _byDivisorGpuOrderTester,
-							_byDivisorPreviousResults,
-							_byDivisorStartPrime,
-							static () => _lastCompositeP = true,
-							static () => _lastCompositeP = false,
-							HandleByDivisorResult,
-							threadCount,
-							byDivisorPrimeRange);
+						case ByDivisorKIncrementMode.Pow2Groups:
+							Console.WriteLine("Using by-divisor pow2groups increment (GPU order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorGpuOrderTesterPow2,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						case ByDivisorKIncrementMode.Predictive:
+							Console.WriteLine("Using by-divisor predictive increment (GPU order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorGpuOrderTesterPredictive,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						case ByDivisorKIncrementMode.Percentile:
+							Console.WriteLine("Using by-divisor percentile increment (GPU order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorGpuOrderTesterPercentile,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						case ByDivisorKIncrementMode.Additive:
+							Console.WriteLine("Using by-divisor additive increment (GPU order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorGpuOrderTesterAdditive,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						default:
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorGpuOrderTester,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
 					}
 				}
 
@@ -1092,25 +1269,43 @@ private static ThreadLocal<object>? MersenneTesters;
 		if (_cliArguments.UseByDivisor)
 		{
 			// Windowed pow2mod kernel handles by-divisor scans.
-			bool usePow2Divisors = _cliArguments.UseDivisorPow2Increment;
+			ByDivisorKIncrementMode mode = _cliArguments.ByDivisorKIncrementMode;
 			if (EnvironmentConfiguration.UseCpuOrder)
-			{
-				return usePow2Divisors
-					? _byDivisorCpuOrderTesterPow2.IsPrime(p, out detailedCheck, out _)
-					: _byDivisorCpuOrderTester.IsPrime(p, out detailedCheck, out _);
-			}
+				{
+					return mode switch
+					{
+						ByDivisorKIncrementMode.Pow2Groups => _byDivisorCpuOrderTesterPow2.IsPrime(p, out detailedCheck, out _),
+						ByDivisorKIncrementMode.Predictive => _byDivisorCpuOrderTesterPredictive.IsPrime(p, out detailedCheck, out _),
+						ByDivisorKIncrementMode.Percentile => _byDivisorCpuOrderTesterPercentile.IsPrime(p, out detailedCheck, out _),
+						ByDivisorKIncrementMode.Additive => _byDivisorCpuOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
+						ByDivisorKIncrementMode.TopDown => _byDivisorCpuOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
+						_ => _byDivisorCpuOrderTester.IsPrime(p, out detailedCheck, out _),
+					};
+				}
 
-			if (EnvironmentConfiguration.UseHybridOrder)
-			{
-				return usePow2Divisors
-					? _byDivisorHybridOrderTesterPow2.IsPrime(p, out detailedCheck, out _)
-					: _byDivisorHybridOrderTester.IsPrime(p, out detailedCheck, out _);
-			}
+				if (EnvironmentConfiguration.UseHybridOrder)
+				{
+					return mode switch
+					{
+						ByDivisorKIncrementMode.Pow2Groups => _byDivisorHybridOrderTesterPow2.IsPrime(p, out detailedCheck, out _),
+						ByDivisorKIncrementMode.Predictive => _byDivisorHybridOrderTesterPredictive.IsPrime(p, out detailedCheck, out _),
+						ByDivisorKIncrementMode.Percentile => _byDivisorHybridOrderTesterPercentile.IsPrime(p, out detailedCheck, out _),
+						ByDivisorKIncrementMode.Additive => _byDivisorHybridOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
+						ByDivisorKIncrementMode.TopDown => _byDivisorHybridOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
+						_ => _byDivisorHybridOrderTester.IsPrime(p, out detailedCheck, out _),
+					};
+				}
 
-			return usePow2Divisors
-				? _byDivisorGpuOrderTesterPow2.IsPrime(p, out detailedCheck, out _)
-				: _byDivisorGpuOrderTester.IsPrime(p, out detailedCheck, out _);
-		}
+				return mode switch
+				{
+					ByDivisorKIncrementMode.Pow2Groups => _byDivisorGpuOrderTesterPow2.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.Predictive => _byDivisorGpuOrderTesterPredictive.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.Percentile => _byDivisorGpuOrderTesterPercentile.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.Additive => _byDivisorGpuOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.TopDown => _byDivisorGpuOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
+					_ => _byDivisorGpuOrderTester.IsPrime(p, out detailedCheck, out _),
+				};
+			}
 
 		detailedCheck = IsMersennePrime(gpu, p);
 		return detailedCheck;
@@ -1119,7 +1314,7 @@ private static ThreadLocal<object>? MersenneTesters;
 	private static void HandleByDivisorResult(ulong candidate, bool searchedMersenne, bool detailedCheck, bool passedAllTests, BigInteger divisor)
 	{
 		CalculationResultHandler.HandleResult(candidate, divisor, searchedMersenne, detailedCheck, passedAllTests, _lastCompositeP);
-		if (divisor.IsZero || _byDivisorModelPath is null || EnvironmentConfiguration.ByDivisorClassModel is null)
+		if (divisor.IsZero || !_byDivisorModeUsesModel || EnvironmentConfiguration.ByDivisorClassModel is null)
 		{
 			return;
 		}
@@ -1129,14 +1324,14 @@ private static ThreadLocal<object>? MersenneTesters;
 
 	private static void TryRefreshByDivisorModel()
 	{
-		string? modelPath = _byDivisorModelPath;
-		if (modelPath is null)
+		if (!_byDivisorModeUsesModel)
 		{
 			return;
 		}
 
+		var repository = EnvironmentConfiguration.ByDivisorClassModelRepository;
 		string resultsPath = CalculationResultHandler.ResultsFileName;
-		if (string.IsNullOrEmpty(resultsPath))
+		if (repository is null || string.IsNullOrEmpty(resultsPath))
 		{
 			return;
 		}
@@ -1165,13 +1360,25 @@ private static ThreadLocal<object>? MersenneTesters;
 			{
 				double cheapLimit = EnvironmentConfiguration.ByDivisorCheapKLimit;
 				Console.WriteLine("Refreshing by-divisor class model from results...");
-				ByDivisorClassModelLoader.RebuildAndSave(modelPath, resultsPath, cheapLimit);
-				EnvironmentConfiguration.ByDivisorClassModel = ByDivisorClassModelLoader.LoadOrBuild(
-					modelPath,
+				string tempModelPath = Path.Combine(PerfectNumberConstants.ByDivisorStateDirectory, "bydivisor_k10_model.json");
+				ByDivisorClassModelLoader.RebuildAndSave(tempModelPath, resultsPath, cheapLimit);
+				ByDivisorClassModel refreshed = ByDivisorClassModelLoader.LoadOrBuild(
+					tempModelPath,
 					resultsPath,
 					EnvironmentConfiguration.ByDivisorScanTuning,
 					cheapLimit,
 					rebuildWhenResultsNewer: false);
+				repository.Save(refreshed);
+				repository.Commit();
+				EnvironmentConfiguration.ByDivisorClassModel = refreshed;
+				try
+				{
+					File.Delete(tempModelPath);
+				}
+				catch
+				{
+					// ignore cleanup errors
+				}
 				Console.WriteLine($"By-divisor class model refreshed (cheap<={cheapLimit:F0}).");
 			}
 			catch (Exception ex)

@@ -15,10 +15,18 @@ using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTeste
 using TesterCpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPredictiveDivisorSetForCpuOrder;
 using TesterHybrid = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPredictiveDivisorSetForHybridOrder;
 using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPredictiveDivisorSetForGpuOrder;
+#elif DivisorSet_Percentile
+using TesterCpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPercentileDivisorSetForCpuOrder;
+using TesterHybrid = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPercentileDivisorSetForHybridOrder;
+using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForPercentileDivisorSetForGpuOrder;
+#elif DivisorSet_Additive
+using TesterCpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForAdditiveDivisorSetForCpuOrder;
+using TesterHybrid = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForAdditiveDivisorSetForHybridOrder;
+using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForAdditiveDivisorSetForGpuOrder;
 #else
-using TesterCpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForCpuOrder;
-using TesterHybrid = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForHybridOrder;
-using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForGpuOrder;
+using TesterCpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForSequentialDivisorSetForCpuOrder;
+using TesterHybrid = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForSequentialDivisorSetForHybridOrder;
+using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForSequentialDivisorSetForGpuOrder;
 #endif
 
 namespace PerfectNumbers.Core.Cpu;
@@ -71,10 +79,14 @@ internal struct MersenneNumberDivisorByDivisorPrimeScanSessionWithTemplate
 			string extension = ".bin";
 #if DivisorSet_Predictive
 			extension = ".predictive";
+#elif DivisorSet_Percentile
+			extension = ".percentile";
+#elif DivisorSet_Additive
+			extension = ".additive";
+#elif DivisorSet_TopDown
+			extension = ".topdown";
 #endif
-			string stateFile = Path.Combine(
-				PerfectNumberConstants.ByDivisorStateDirectory,
-				prime.ToString(CultureInfo.InvariantCulture) + extension);
+			string stateFile = prime.ToString(CultureInfo.InvariantCulture) + extension;
 
 			ConfigureForPrime(stateFile);
 
@@ -82,11 +94,6 @@ internal struct MersenneNumberDivisorByDivisorPrimeScanSessionWithTemplate
 
 			if (!isPrime)
 			{
-				if (!string.IsNullOrEmpty(stateFile) && File.Exists(stateFile))
-				{
-					File.Delete(stateFile);
-				}
-
 				_markComposite();
 				_printResult(prime, true, true, false, divisor);
 				Console.WriteLine($"Finished processing {prime}");
@@ -106,25 +113,39 @@ internal struct MersenneNumberDivisorByDivisorPrimeScanSessionWithTemplate
 
 	private void ConfigureForPrime(string stateFile)
 	{
+#if DivisorSet_TopDown
 		BigInteger resumeK = EnvironmentConfiguration.MinK;
-		if (File.Exists(stateFile))
+		BigInteger lastK = BigInteger.Zero;
+		if (EnvironmentConfiguration.ByDivisorKStateRepository is not null)
 		{
-			if (MersenneNumberDivisorByDivisorTester.TryReadLastSavedK(stateFile, out BigInteger lastK))
+			if (ulong.TryParse(Path.GetFileNameWithoutExtension(stateFile), NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsedPrime) &&
+				EnvironmentConfiguration.ByDivisorKStateRepository.TryGet(parsedPrime, out BigInteger storedK) &&
+				storedK > BigInteger.Zero)
 			{
-				resumeK = lastK + BigInteger.One;
-				_tester.ResumeFromState(stateFile, lastK, resumeK);
+				lastK = storedK;
 			}
-			else
-			{
-				_tester.ResumeFromState(stateFile, BigInteger.Zero, resumeK);
-			}
-		}
-		else
-		{
-			_tester.ResumeFromState(stateFile, BigInteger.Zero, resumeK);
 		}
 
+		_tester.ResumeFromState(stateFile, lastK, resumeK);
 		_tester.ResetStateTracking();
+		return;
+#else
+		BigInteger resumeK = EnvironmentConfiguration.MinK;
+		BigInteger lastK = BigInteger.Zero;
+		if (EnvironmentConfiguration.ByDivisorKStateRepository is not null)
+		{
+			if (ulong.TryParse(Path.GetFileNameWithoutExtension(stateFile), NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsedPrime) &&
+				EnvironmentConfiguration.ByDivisorKStateRepository.TryGet(parsedPrime, out BigInteger storedK) &&
+				storedK > BigInteger.Zero)
+			{
+				lastK = storedK;
+				resumeK = storedK + BigInteger.One;
+			}
+		}
+
+		_tester.ResumeFromState(stateFile, lastK, resumeK);
+		_tester.ResetStateTracking();
+#endif
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]

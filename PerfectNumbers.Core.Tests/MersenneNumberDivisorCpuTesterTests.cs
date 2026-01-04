@@ -2,7 +2,7 @@ using System.Numerics;
 using System.Reflection;
 using FluentAssertions;
 using PerfectNumbers.Core.Cpu;
-using MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForOneByOneDivisorSetForCpuOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForSequentialDivisorSetForCpuOrder;
 using Xunit;
 
 namespace PerfectNumbers.Core.Tests;

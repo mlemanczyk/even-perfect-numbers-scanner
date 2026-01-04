@@ -22,7 +22,13 @@ public static class EnvironmentConfiguration
 	public static int ByDivisorSpecialRange;
 	public static ByDivisor.ByDivisorClassModel? ByDivisorClassModel;
 	public static ByDivisor.ByDivisorScanTuning ByDivisorScanTuning = ByDivisor.ByDivisorScanTuning.Default;
-	public static double ByDivisorCheapKLimit = 100_000d;
+	public static double ByDivisorCheapKLimit = 10_000d;
+	public static Persistence.ByDivisorClassModelRepository? ByDivisorClassModelRepository;
+	public static Persistence.KStateRepository? ByDivisorKStateRepository;
+	public static Persistence.KStateRepository? ByDivisorCheapKStateRepository;
+	public static Persistence.KStateRepository? ByDivisorSpecialStateRepository;
+	public static Persistence.KStateRepository? ByDivisorGroupsStateRepository;
+	public static Persistence.Pow2Minus1StateRepository? ByDivisorPow2Minus1Repository;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static void Initialize()

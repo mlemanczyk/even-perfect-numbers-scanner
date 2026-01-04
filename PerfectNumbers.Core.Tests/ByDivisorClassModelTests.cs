@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using FluentAssertions;
 using PerfectNumbers.Core.ByDivisor;
@@ -88,6 +89,70 @@ public sealed class ByDivisorClassModelTests
         plan.Target.Should().Be(2800d);
         plan.Rho1.Should().Be(1.35d);
         plan.Rho2.Should().Be(1.8d);
+    }
+
+    [Fact]
+    public void BuildPlan_exposes_percentiles_and_additive_delta()
+    {
+        var model = new ByDivisorClassModel
+        {
+            CheapLimit = 10_000,
+        };
+        var entries = new ByDivisorClassEntry[1024];
+        entries[0] = new ByDivisorClassEntry
+        {
+            K10 = 10d,
+            K25 = 20d,
+            K50 = 30d,
+            K75 = 40d,
+            GapProbability = 0.1d,
+            Stability = "stable",
+        };
+        model.Entries = entries;
+
+        ByDivisorScanTuning tuning = ByDivisorScanTuning.Default;
+
+        ByDivisorScanPlan plan = model.BuildPlan(0UL, BigInteger.Zero, tuning);
+
+        plan.K10.Should().Be(10d);
+        plan.K25.Should().Be(20d);
+        plan.K50.Should().Be(30d);
+        plan.K75.Should().Be(40d);
+        plan.Start.Should().Be(24d); // ceil(0.8 * 30)
+        plan.Target.Should().Be(48d); // ceil(1.2 * 40)
+        plan.DeltaK.Should().Be(4d); // ceil(24 * 0.15)
+    }
+
+    [Fact]
+    public void BuildPlan_clamps_all_ranges_to_allowed_max()
+    {
+        var model = new ByDivisorClassModel
+        {
+            CheapLimit = 1000d,
+        };
+        var entries = new ByDivisorClassEntry[1024];
+        entries[0] = new ByDivisorClassEntry
+        {
+            K10 = 50d,
+            K25 = 60d,
+            K50 = 70d,
+            K75 = 80d,
+            GapProbability = 0.1d,
+        };
+        model.Entries = entries;
+
+        ByDivisorScanTuning tuning = ByDivisorScanTuning.Default;
+        // allowedMax = 41 => maxKAllowed = (41-1)/(2*5) = 4
+        ByDivisorScanPlan plan = model.BuildPlan(5UL, new BigInteger(41), tuning);
+
+        plan.CheapLimit.Should().Be(4d);
+        plan.K10.Should().Be(4d);
+        plan.K25.Should().Be(4d);
+        plan.K50.Should().Be(4d);
+        plan.K75.Should().Be(4d);
+        plan.Start.Should().Be(4d);
+        plan.Target.Should().Be(4d);
+        plan.DeltaK.Should().Be(4d);
     }
 
     [Fact]

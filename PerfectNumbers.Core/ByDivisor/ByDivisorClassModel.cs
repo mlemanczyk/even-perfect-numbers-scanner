@@ -11,6 +11,8 @@ namespace PerfectNumbers.Core.ByDivisor;
 
 public sealed class ByDivisorClassEntry
 {
+    public double K10 { get; set; }
+    public double K25 { get; set; }
     public double K50 { get; set; }
     public double K75 { get; set; }
     public double GapProbability { get; set; }
@@ -26,6 +28,11 @@ public sealed class ByDivisorScanPlan
     public double Target { get; init; }
     public double Rho1 { get; init; }
     public double Rho2 { get; init; }
+    public double K10 { get; init; }
+    public double K25 { get; init; }
+    public double K50 { get; init; }
+    public double K75 { get; init; }
+    public double DeltaK { get; init; }
 }
 
 public sealed class ByDivisorScanTuning
@@ -39,6 +46,7 @@ public sealed class ByDivisorScanTuning
     public double Rho2 { get; init; } = 1.6d;
     public double AggressiveRho2 { get; init; } = 1.8d;
     public double HardGapThreshold { get; init; } = 0.75d;
+    public double DeltaFraction { get; init; } = 0.15d;
 
     [JsonIgnore]
     public static ByDivisorScanTuning Default => new();
@@ -47,10 +55,10 @@ public sealed class ByDivisorScanTuning
 public sealed class ByDivisorClassModel
 {
     private const int ClassCount = 1024;
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
     public double CheapLimit { get; set; } = 10_000d;
     public ByDivisorClassEntry[] Entries { get; set; } = Enumerable.Range(0, ClassCount)
-        .Select(_ => new ByDivisorClassEntry { K50 = 1d, K75 = 1d })
+        .Select(_ => new ByDivisorClassEntry { K10 = 1d, K25 = 1d, K50 = 1d, K75 = 1d })
         .ToArray();
 
     public ByDivisorScanPlan BuildPlan(ulong prime, BigInteger allowedMax, in ByDivisorScanTuning tuning)
@@ -58,6 +66,8 @@ public sealed class ByDivisorClassModel
         int suffix = (int)(prime & 1023UL);
         ByDivisorClassEntry entry = Entries[suffix];
 
+        double k10 = entry.K10 > 1d ? entry.K10 : 1d;
+        double k25 = entry.K25 > 1d ? entry.K25 : Math.Max(k10, 1d);
         double k50 = entry.K50 > 1d ? entry.K50 : 1d;
         double k75 = entry.K75 > 1d ? entry.K75 : Math.Max(k50, 1d);
         bool isHard = entry.GapProbability >= tuning.HardGapThreshold || string.Equals(entry.Stability, "escaping", StringComparison.OrdinalIgnoreCase);
@@ -69,6 +79,7 @@ public sealed class ByDivisorClassModel
 
         double cheap = tuning.CheapLimit > 1d ? tuning.CheapLimit : CheapLimit;
         double rho2 = isHard ? tuning.AggressiveRho2 : tuning.Rho2;
+        double deltaK = Math.Max(1d, Math.Ceiling(start * Math.Max(0d, tuning.DeltaFraction)));
 
         double maxKAllowed = ComputeMaxKAllowed(prime, allowedMax);
         if (maxKAllowed > 0d)
@@ -76,6 +87,11 @@ public sealed class ByDivisorClassModel
             cheap = Math.Min(cheap, maxKAllowed);
             start = Math.Min(start, maxKAllowed);
             target = Math.Min(target, maxKAllowed);
+            k10 = Math.Min(k10, maxKAllowed);
+            k25 = Math.Min(k25, maxKAllowed);
+            k50 = Math.Min(k50, maxKAllowed);
+            k75 = Math.Min(k75, maxKAllowed);
+            deltaK = Math.Min(deltaK, maxKAllowed);
         }
 
         return new ByDivisorScanPlan
@@ -85,6 +101,11 @@ public sealed class ByDivisorClassModel
             Target = target,
             Rho1 = tuning.Rho1,
             Rho2 = rho2,
+            K10 = k10,
+            K25 = k25,
+            K50 = k50,
+            K75 = k75,
+            DeltaK = deltaK,
         };
     }
 
@@ -149,6 +170,7 @@ public static class ByDivisorClassModelLoader
 
     private static void Save(string modelPath, ByDivisorClassModel model)
     {
+        string tempPath = modelPath + ".tmp";
         string? directory = Path.GetDirectoryName(modelPath);
         if (!string.IsNullOrEmpty(directory))
         {
@@ -160,10 +182,12 @@ public static class ByDivisorClassModelLoader
             WriteIndented = true,
         };
         string json = JsonSerializer.Serialize(model, options);
-        string tempPath = modelPath + ".tmp";
-        File.WriteAllText(tempPath, json);
-        File.Copy(tempPath, modelPath, overwrite: true);
-        File.Delete(tempPath);
+        lock (IoLock)
+        {
+            File.WriteAllText(tempPath, json);
+            File.Copy(tempPath, modelPath, overwrite: true);
+            File.Delete(tempPath);
+        }
     }
 
     private static ByDivisorClassModel BuildFromResults(string resultsPath, double cheapLimit)
@@ -251,11 +275,15 @@ public static class ByDivisorClassModelLoader
         for (int i = 0; i < 1024; i++)
         {
             List<double>? classSamples = samples[i];
+            double k10 = 1d;
+            double k25 = 1d;
             double k50 = 1d;
             double k75 = 1d;
             if (classSamples is not null && classSamples.Count > 0)
             {
                 classSamples.Sort();
+                k10 = ComputePercentile(classSamples, 0.10d);
+                k25 = ComputePercentile(classSamples, 0.25d);
                 k50 = ComputePercentile(classSamples, 0.5d);
                 k75 = ComputePercentile(classSamples, 0.75d);
             }
@@ -266,6 +294,8 @@ public static class ByDivisorClassModelLoader
 
             model.Entries[i] = new ByDivisorClassEntry
             {
+                K10 = k10,
+                K25 = k25,
                 K50 = k50,
                 K75 = k75,
                 GapProbability = gapProb,
@@ -341,4 +371,6 @@ public static class ByDivisorClassModelLoader
         double fraction = index - lower;
         return values[lower] + ((values[upper] - values[lower]) * fraction);
     }
+
+    private static readonly object IoLock = new();
 }

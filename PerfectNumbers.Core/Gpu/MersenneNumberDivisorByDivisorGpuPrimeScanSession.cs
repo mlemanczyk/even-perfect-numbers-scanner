@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO;
 using System.Numerics;
 
 namespace PerfectNumbers.Core.Gpu;
@@ -34,9 +35,7 @@ internal struct MersenneNumberDivisorByDivisorGpuPrimeScanSession
 		try
 		{
 			Console.WriteLine($"Processing {prime}");
-			string stateFile = Path.Combine(
-				PerfectNumberConstants.ByDivisorStateDirectory,
-				prime.ToString(CultureInfo.InvariantCulture) + ".bin");
+			string stateFile = prime.ToString(CultureInfo.InvariantCulture) + ".bin";
 
 			ConfigureForPrime(stateFile);
 
@@ -44,11 +43,6 @@ internal struct MersenneNumberDivisorByDivisorGpuPrimeScanSession
 
 			if (!isPrime)
 			{
-				if (!string.IsNullOrEmpty(stateFile) && File.Exists(stateFile))
-				{
-					File.Delete(stateFile);
-				}
-
 				_markComposite();
 				_printResult(prime, true, true, false, divisor);
 				Console.WriteLine($"Finished processing {prime}");
@@ -68,25 +62,39 @@ internal struct MersenneNumberDivisorByDivisorGpuPrimeScanSession
 
 	private void ConfigureForPrime(string stateFile)
 	{
+#if DivisorSet_TopDown
 		BigInteger resumeK = EnvironmentConfiguration.MinK;
-		if (File.Exists(stateFile))
+		BigInteger lastK = BigInteger.Zero;
+		if (EnvironmentConfiguration.ByDivisorKStateRepository is not null)
 		{
-			if (MersenneNumberDivisorByDivisorTester.TryReadLastSavedK(stateFile, out BigInteger lastK))
+			if (ulong.TryParse(Path.GetFileNameWithoutExtension(stateFile), NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsedPrime) &&
+				EnvironmentConfiguration.ByDivisorKStateRepository.TryGet(parsedPrime, out BigInteger storedK) &&
+				storedK > BigInteger.Zero)
 			{
-				resumeK = lastK + BigInteger.One;
-				_tester.ResumeFromState(stateFile, lastK, resumeK);
+				lastK = storedK;
 			}
-			else
-			{
-				_tester.ResumeFromState(stateFile, BigInteger.Zero, resumeK);
-			}
-		}
-		else
-		{
-			_tester.ResumeFromState(stateFile, BigInteger.Zero, resumeK);
 		}
 
+		_tester.ResumeFromState(stateFile, lastK, resumeK);
 		_tester.ResetStateTracking();
+		return;
+#else
+		BigInteger resumeK = EnvironmentConfiguration.MinK;
+		BigInteger lastK = BigInteger.Zero;
+		if (EnvironmentConfiguration.ByDivisorKStateRepository is not null)
+		{
+			if (ulong.TryParse(Path.GetFileNameWithoutExtension(stateFile), NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsedPrime) &&
+				EnvironmentConfiguration.ByDivisorKStateRepository.TryGet(parsedPrime, out BigInteger storedK) &&
+				storedK > BigInteger.Zero)
+			{
+				lastK = storedK;
+				resumeK = storedK + BigInteger.One;
+			}
+		}
+
+		_tester.ResumeFromState(stateFile, lastK, resumeK);
+		_tester.ResetStateTracking();
+#endif
 	}
 
 	public void Dispose()
