@@ -29,6 +29,7 @@ public static class EnvironmentConfiguration
 	public static Persistence.KStateRepository? ByDivisorSpecialStateRepository;
 	public static Persistence.KStateRepository? ByDivisorGroupsStateRepository;
 	public static Persistence.Pow2Minus1StateRepository? ByDivisorPow2Minus1Repository;
+	public static Persistence.BitContradictionStateRepository? BitContradictionStateRepository;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static void Initialize()

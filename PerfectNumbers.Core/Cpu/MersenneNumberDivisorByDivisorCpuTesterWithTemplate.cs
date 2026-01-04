@@ -19,6 +19,7 @@ public enum DivisorSet
 	Percentile,
 	Additive,
 	TopDown,
+	BitContradiction,
 }
 
 [EnumDependentTemplate(typeof(DivisorSet))]
@@ -49,6 +50,9 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	private GpuUInt128WorkSet _divisorScanGpuWorkSet;
 private static readonly ConcurrentDictionary<ulong, byte> _checkedPow2MinusOne = new();
 private ulong _currentPrime;
+#if DivisorSet_BitContradiction
+	private static Persistence.BitContradictionStateRepository? _bitContradictionStateRepository;
+#endif
 #if DivisorSet_TopDown
 	private BigInteger _topDownCursor;
 #endif
@@ -329,6 +333,9 @@ private ulong _currentPrime;
 		_currentPow2Phase = Pow2Phase.None;
 		_preparedSpecialsInitialized = false;
 #endif
+#if DivisorSet_BitContradiction
+		_bitContradictionStateRepository = EnvironmentConfiguration.BitContradictionStateRepository;
+#endif
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
@@ -432,6 +439,17 @@ private ulong _currentPrime;
 			// Console.WriteLine($"[by-divisor-plan] p={prime} suffix={(prime & 1023UL)} using pow2-groups plan; model skipped.");
 			return compositePow2;
 #else
+#if DivisorSet_BitContradiction
+		bool compositeBitContradiction = CheckDivisorsBitContradiction(
+			prime,
+			primeDecimalMask,
+			allowedMax,
+			normalizedMinK,
+			step,
+			out processedAll,
+			out foundDivisor);
+		return compositeBitContradiction;
+#endif
 #if DivisorSet_TopDown
 		bool compositeTopDown = CheckDivisorsTopDown(
 			prime,
@@ -3306,6 +3324,176 @@ private ulong _currentPrime;
 		processedAll = true;
 		foundDivisor = BigInteger.Zero;
 		return false;
+	}
+#endif
+
+#if DivisorSet_BitContradiction
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private bool CheckDivisorsBitContradiction(
+		ulong prime,
+		ushort primeDecimalMask,
+		BigInteger allowedMax,
+		BigInteger minK,
+		BigInteger step,
+		out bool processedAll,
+		out BigInteger foundDivisor)
+	{
+		processedAll = true;
+		foundDivisor = BigInteger.Zero;
+
+		BigInteger currentK = minK;
+		bool hasLimit = !allowedMax.IsZero;
+		BigInteger maxK = hasLimit ? (allowedMax - BigInteger.One) / step : BigInteger.Zero;
+
+		while (true)
+		{
+			BigInteger divisor = (step * currentK) + BigInteger.One;
+			bool decided = TryExactBitContradictionCheck(prime, divisor, out bool divides);
+			if (!decided)
+			{
+				throw new InvalidOperationException($"BitContradiction check did not decide for p={prime}, divisor={divisor} (k={currentK}).");
+			}
+
+			if (divides)
+			{
+				foundDivisor = divisor;
+				return true;
+			}
+
+			if (hasLimit && currentK >= maxK)
+			{
+				break;
+			}
+
+			currentK += BigInteger.One;
+		}
+
+		return false;
+
+		bool fits64 = minK <= ulong.MaxValue;
+		bool limitFits64 = allowedMax.IsZero || allowedMax <= ulong.MaxValue;
+
+		if (fits64 && limitFits64)
+		{
+			ulong allowedMax64 = allowedMax.IsZero ? ulong.MaxValue : (ulong)allowedMax;
+			return CheckDivisors64Bit(
+				prime,
+				primeDecimalMask,
+				allowedMax64,
+				(ulong)minK,
+				out processedAll,
+				out ulong found64);
+		}
+
+		if (fits64 && allowedMax > ulong.MaxValue)
+		{
+			ulong allowedMax64 = ulong.MaxValue;
+			bool composite64 = CheckDivisors64Bit(
+				prime,
+				primeDecimalMask,
+				allowedMax64,
+				(ulong)minK,
+				out processedAll,
+				out ulong found64);
+			if (composite64)
+			{
+				foundDivisor = found64;
+				return true;
+			}
+
+			BigInteger iterations = ((BigInteger)(allowedMax64 - (((ulong)prime << 1) * (ulong)minK) - 1UL) / (ulong)step) + BigInteger.One;
+			BigInteger nextK = minK + iterations;
+			return CheckDivisorsLarge(
+				prime,
+				primeDecimalMask,
+				allowedMax,
+				nextK,
+				step,
+				out processedAll,
+				out foundDivisor);
+		}
+
+		return CheckDivisorsLarge(
+			prime,
+			primeDecimalMask,
+			allowedMax,
+			minK,
+			step,
+			out processedAll,
+			out foundDivisor);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool TryExactBitContradictionCheck(ulong prime, BigInteger divisor, out bool divides)
+	{
+		divides = false;
+
+		if (prime == 0 || divisor <= BigInteger.One)
+		{
+			Console.WriteLine($"[bitcontradiction] invalid inputs {prime} / {divisor}");
+			return false;
+		}
+
+		int qBitLength = GetBitLengthPortable(divisor);
+		if (qBitLength > (int)prime)
+		{
+			divides = false;
+			return true;
+		}
+
+		// Fast structural contradictions only: q must be odd and the implied maximum length of a must be positive.
+		if ((divisor & BigInteger.One) == BigInteger.Zero)
+		{
+			divides = false;
+			return true;
+		}
+
+		if (prime <= (ulong)qBitLength)
+		{
+			divides = false;
+			return true;
+		}
+
+		// Iterative column-wise propagation without storing all columns; we only keep assigned bits of 'a'.
+		Span<int> oneOffsets = stackalloc int[qBitLength];
+		int oneCount = 0;
+		for (int i = 0; i < qBitLength; i++)
+		{
+			if (((divisor >> i) & BigInteger.One) == BigInteger.One)
+			{
+				oneOffsets[oneCount++] = i;
+			}
+		}
+
+		if (oneCount == 0)
+		{
+			divides = false;
+			return true;
+		}
+
+		ReadOnlySpan<int> oneOffsetsSlice = oneOffsets[..oneCount];
+		bool decided = BitContradictionSolver.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, prime, out divides, out var reason);
+		if (decided && divides)
+		{
+			// Verify to avoid false positives on structurally admissible but non-dividing q.
+			bool structuralOk = ((divisor - BigInteger.One) % (((BigInteger)prime) << 1)) == BigInteger.Zero;
+			bool dividesExact = structuralOk && BigInteger.ModPow(2, prime, divisor) == BigInteger.One;
+			if (!dividesExact)
+			{
+				divides = false;
+				reason = BitContradictionSolver.ContradictionReason.ParityUnreachable;
+			}
+		}
+
+		if (decided && !divides)
+		{
+			string message = $"[bit-contradiction] p={prime} ruled out divisor={divisor} ({reason})";
+			Console.WriteLine(message);
+			_bitContradictionStateRepository?.Upsert(prime, message);
+		}
+
+		Console.WriteLine($"[bitcontradiction] Prime={prime}, Divisor={divisor} Decided={decided} Divides={divides}");
+		return decided;
 	}
 #endif
 

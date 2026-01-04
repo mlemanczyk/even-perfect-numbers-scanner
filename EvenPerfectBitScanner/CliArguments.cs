@@ -13,6 +13,7 @@ namespace EvenPerfectBitScanner;
 		Percentile,
 	Additive,
 	TopDown,
+	BitContradiction,
 }
 
 	internal readonly struct CliArguments
@@ -330,23 +331,27 @@ namespace EvenPerfectBitScanner;
                 {
                     byDivisorKIncrementMode = ByDivisorKIncrementMode.Predictive;
                 }
-                else if (value.Equals("percentile", StringComparison.OrdinalIgnoreCase))
-                {
-                    byDivisorKIncrementMode = ByDivisorKIncrementMode.Percentile;
-                }
-                else if (value.Equals("additive", StringComparison.OrdinalIgnoreCase))
-                {
-                    byDivisorKIncrementMode = ByDivisorKIncrementMode.Additive;
-                }
-                else if (value.Equals("topdown", StringComparison.OrdinalIgnoreCase))
-                {
-                    byDivisorKIncrementMode = ByDivisorKIncrementMode.TopDown;
-                }
-                else
-                {
-                    Console.WriteLine("Invalid value for --bydivisor-k-increment. Use sequential, pow2groups, predictive, percentile, additive, or topdown.");
-                    return default;
-                }
+				else if (value.Equals("percentile", StringComparison.OrdinalIgnoreCase))
+				{
+					byDivisorKIncrementMode = ByDivisorKIncrementMode.Percentile;
+				}
+				else if (value.Equals("additive", StringComparison.OrdinalIgnoreCase))
+				{
+					byDivisorKIncrementMode = ByDivisorKIncrementMode.Additive;
+				}
+				else if (value.Equals("topdown", StringComparison.OrdinalIgnoreCase))
+				{
+					byDivisorKIncrementMode = ByDivisorKIncrementMode.TopDown;
+				}
+				else if (value.Equals("bitcontradiction", StringComparison.OrdinalIgnoreCase))
+				{
+					byDivisorKIncrementMode = ByDivisorKIncrementMode.BitContradiction;
+				}
+				else
+				{
+					Console.WriteLine("Invalid value for --bydivisor-k-increment. Use sequential, pow2groups, predictive, percentile, additive, topdown, or bitcontradiction.");
+					return default;
+				}
 
                 continue;
             }
@@ -710,7 +715,7 @@ namespace EvenPerfectBitScanner;
         Console.WriteLine("  --increment=bit|add    exponent increment method (default add)");
         Console.WriteLine("  --threads=<value>      number of worker threads");
         Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
-        Console.WriteLine("  --bydivisor-k-increment=sequential|pow2groups|predictive|percentile|additive|topdown  k iteration strategy for --mersenne=bydivisor (default sequential)");
+		Console.WriteLine("  --bydivisor-k-increment=sequential|pow2groups|predictive|percentile|additive|topdown|bitcontradiction  k iteration strategy for --mersenne=bydivisor (default sequential)");
         Console.WriteLine("  --bydivisor-special-range=<n>  widen pow2groups special values to +/- n percent (default 0 = points)");
         Console.WriteLine("  --max-k=<value> max k for Mersenne tests (q = 2*p*k + 1), including --mersenne=bydivisor");
         Console.WriteLine("  --mersenne-device=cpu|gpu|hybrid  Device for Mersenne method (default gpu)");

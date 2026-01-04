@@ -29,6 +29,9 @@ using ByDivisorGpuOrderAdditive = PerfectNumbers.Core.Cpu.MersenneNumberDivisorB
 using ByDivisorCpuOrderTopDown = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForTopDownDivisorSetForCpuOrder;
 using ByDivisorHybridOrderTopDown = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForTopDownDivisorSetForHybridOrder;
 using ByDivisorGpuOrderTopDown = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForTopDownDivisorSetForGpuOrder;
+using ByDivisorCpuOrderBitContradiction = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitContradictionDivisorSetForCpuOrder;
+using ByDivisorHybridOrderBitContradiction = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitContradictionDivisorSetForHybridOrder;
+using ByDivisorGpuOrderBitContradiction = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitContradictionDivisorSetForGpuOrder;
 using System.Globalization;
 
 namespace EvenPerfectBitScanner;
@@ -58,6 +61,9 @@ private static ThreadLocal<object>? MersenneTesters;
 	private static ByDivisorCpuOrderTopDown _byDivisorCpuOrderTesterTopDown;
 	private static ByDivisorHybridOrderTopDown _byDivisorHybridOrderTesterTopDown;
 	private static ByDivisorGpuOrderTopDown _byDivisorGpuOrderTesterTopDown;
+	private static ByDivisorCpuOrderBitContradiction _byDivisorCpuOrderTesterBitContradiction;
+	private static ByDivisorHybridOrderBitContradiction _byDivisorHybridOrderTesterBitContradiction;
+	private static ByDivisorGpuOrderBitContradiction _byDivisorGpuOrderTesterBitContradiction;
 	private static Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? _byDivisorPreviousResults;
 	private static string? _byDivisorModelPath;
 	private static bool _byDivisorModeUsesModel;
@@ -538,6 +544,7 @@ private static ThreadLocal<object>? MersenneTesters;
 					ByDivisorKIncrementMode.Percentile => "percentile.kstate.faster",
 					ByDivisorKIncrementMode.Additive => "additive.kstate.faster",
 					ByDivisorKIncrementMode.TopDown => "topdown.kstate.faster",
+					ByDivisorKIncrementMode.BitContradiction => "bitcontradiction.kstate.faster",
 					_ => "sequential.kstate.faster",
 				};
 				string lmdbPath = Path.Combine(checksDir, Path.ChangeExtension(kRepoFile, ".lmdb"));
@@ -545,17 +552,18 @@ private static ThreadLocal<object>? MersenneTesters;
 				EnvironmentConfiguration.ByDivisorCheapKStateRepository = KStateRepository.Open(checksDir, "cheaplimit.kstate.faster", Path.Combine(checksDir, "cheaplimit.kstate.lmdb"), checksDir);
 				string pow2MinusLmdb = Path.Combine(checksDir, "pow2minus1.lmdb");
 				EnvironmentConfiguration.ByDivisorPow2Minus1Repository ??= Pow2Minus1StateRepository.Open(Path.Combine(checksDir, "pow2minus1.faster"), pow2MinusLmdb, checksDir);
+				EnvironmentConfiguration.BitContradictionStateRepository ??= BitContradictionStateRepository.Open(checksDir);
 
-				if (kIncrementMode == ByDivisorKIncrementMode.Pow2Groups)
-				{
-					EnvironmentConfiguration.ByDivisorSpecialStateRepository = KStateRepository.Open(checksDir, "pow2groups.special.kstate.faster", Path.Combine(checksDir, "pow2groups.special.kstate.lmdb"), checksDir);
-					EnvironmentConfiguration.ByDivisorGroupsStateRepository = KStateRepository.Open(checksDir, "pow2groups.groups.kstate.faster", Path.Combine(checksDir, "pow2groups.groups.kstate.lmdb"), checksDir);
-				}
-				else
-				{
-					EnvironmentConfiguration.ByDivisorSpecialStateRepository = null;
-					EnvironmentConfiguration.ByDivisorGroupsStateRepository = null;
-				}
+			if (kIncrementMode == ByDivisorKIncrementMode.Pow2Groups)
+			{
+				EnvironmentConfiguration.ByDivisorSpecialStateRepository = KStateRepository.Open(checksDir, "pow2groups.special.kstate.faster", Path.Combine(checksDir, "pow2groups.special.kstate.lmdb"), checksDir);
+				EnvironmentConfiguration.ByDivisorGroupsStateRepository = KStateRepository.Open(checksDir, "pow2groups.groups.kstate.faster", Path.Combine(checksDir, "pow2groups.groups.kstate.lmdb"), checksDir);
+			}
+			else
+			{
+				EnvironmentConfiguration.ByDivisorSpecialStateRepository = null;
+				EnvironmentConfiguration.ByDivisorGroupsStateRepository = null;
+			}
 			}
 
 			bool useFilter = !testMode && !string.IsNullOrEmpty(filterFile);
@@ -730,6 +738,19 @@ private static ThreadLocal<object>? MersenneTesters;
 								threadCount,
 								byDivisorPrimeRange);
 							break;
+						case ByDivisorKIncrementMode.BitContradiction:
+							Console.WriteLine("Using by-divisor bit-contradiction increment (CPU order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorCpuOrderTesterBitContradiction,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
 						default:
 							MersenneNumberDivisorByDivisorTester.Run(
 								byDivisorCandidates,
@@ -800,6 +821,19 @@ private static ThreadLocal<object>? MersenneTesters;
 								threadCount,
 								byDivisorPrimeRange);
 							break;
+						case ByDivisorKIncrementMode.BitContradiction:
+							Console.WriteLine("Using by-divisor bit-contradiction increment (Hybrid order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorHybridOrderTesterBitContradiction,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
 						default:
 							MersenneNumberDivisorByDivisorTester.Run(
 								byDivisorCandidates,
@@ -862,6 +896,19 @@ private static ThreadLocal<object>? MersenneTesters;
 							MersenneNumberDivisorByDivisorTester.Run(
 								byDivisorCandidates,
 								ref _byDivisorGpuOrderTesterAdditive,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						case ByDivisorKIncrementMode.BitContradiction:
+							Console.WriteLine("Using by-divisor bit-contradiction increment (GPU order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorGpuOrderTesterBitContradiction,
 								_byDivisorPreviousResults,
 								_byDivisorStartPrime,
 								static () => _lastCompositeP = true,
@@ -1279,6 +1326,7 @@ private static ThreadLocal<object>? MersenneTesters;
 						ByDivisorKIncrementMode.Percentile => _byDivisorCpuOrderTesterPercentile.IsPrime(p, out detailedCheck, out _),
 						ByDivisorKIncrementMode.Additive => _byDivisorCpuOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
 						ByDivisorKIncrementMode.TopDown => _byDivisorCpuOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
+						ByDivisorKIncrementMode.BitContradiction => _byDivisorCpuOrderTesterBitContradiction.IsPrime(p, out detailedCheck, out _),
 						_ => _byDivisorCpuOrderTester.IsPrime(p, out detailedCheck, out _),
 					};
 				}
@@ -1292,6 +1340,7 @@ private static ThreadLocal<object>? MersenneTesters;
 						ByDivisorKIncrementMode.Percentile => _byDivisorHybridOrderTesterPercentile.IsPrime(p, out detailedCheck, out _),
 						ByDivisorKIncrementMode.Additive => _byDivisorHybridOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
 						ByDivisorKIncrementMode.TopDown => _byDivisorHybridOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
+						ByDivisorKIncrementMode.BitContradiction => _byDivisorHybridOrderTesterBitContradiction.IsPrime(p, out detailedCheck, out _),
 						_ => _byDivisorHybridOrderTester.IsPrime(p, out detailedCheck, out _),
 					};
 				}
@@ -1303,6 +1352,7 @@ private static ThreadLocal<object>? MersenneTesters;
 					ByDivisorKIncrementMode.Percentile => _byDivisorGpuOrderTesterPercentile.IsPrime(p, out detailedCheck, out _),
 					ByDivisorKIncrementMode.Additive => _byDivisorGpuOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
 					ByDivisorKIncrementMode.TopDown => _byDivisorGpuOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.BitContradiction => _byDivisorGpuOrderTesterBitContradiction.IsPrime(p, out detailedCheck, out _),
 					_ => _byDivisorGpuOrderTester.IsPrime(p, out detailedCheck, out _),
 				};
 			}
