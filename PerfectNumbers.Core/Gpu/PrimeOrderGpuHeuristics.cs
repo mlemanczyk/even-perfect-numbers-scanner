@@ -272,27 +272,27 @@ internal static partial class PrimeOrderGpuHeuristics
 		var kernelConfig = new CalculateOrderKernelConfig(previousValue, hasPrevious, limit, config.MaxPowChecks, config.StrictMode);
 		ref var buffers = ref gpu.CalculateOrderKernelBuffers;
 
-		var kernelLauncher = gpu.CalculateOrderKernelLauncher;
+		// var kernelLauncher = gpu.CalculateOrderKernelLauncher;
 
 		AcceleratorStream stream = AcceleratorStreamPool.Rent(acceleratorIndex);
 		// TODO: Remove the cleaning after the order kernel is modified to always set the result.
 		resultBufferView.MemSetToZero(stream);
 		statusBufferView.MemSetToZero(stream);
 
-		kernelLauncher(
-			stream,
-			1,
-			prime,
-			kernelConfig,
-			divisorData.Modulus,
-			divisorData.NPrime,
-			divisorData.MontgomeryOne,
-			divisorData.MontgomeryTwo,
-			divisorData.MontgomeryTwoSquared,
-			smallPrimesView,
-			smallSquaresView,
-			(int)smallPrimesView.Length,
-			buffers);
+		// kernelLauncher(
+		// 	stream,
+		// 	1,
+		// 	prime,
+		// 	kernelConfig,
+		// 	divisorData.Modulus,
+		// 	divisorData.NPrime,
+		// 	divisorData.MontgomeryOne,
+		// 	divisorData.MontgomeryTwo,
+		// 	divisorData.MontgomeryTwoSquared,
+		// 	smallPrimesView,
+		// 	smallSquaresView,
+		// 	(int)smallPrimesView.Length,
+		// 	buffers);
 
 
 		byte status = 0;

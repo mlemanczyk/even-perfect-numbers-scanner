@@ -1,9 +1,15 @@
+// #define DivisorSet_BitContradiction
+#define DivisorSet_BitTree
+
 using System;
 using System.Numerics;
+using System.IO;
+using System.Text;
 using System.Runtime.CompilerServices;
 using System.Globalization;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Buffers;
 using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
 using PerfectNumbers.Core.ByDivisor;
@@ -20,6 +26,7 @@ public enum DivisorSet
 	Additive,
 	TopDown,
 	BitContradiction,
+	BitTree,
 }
 
 [EnumDependentTemplate(typeof(DivisorSet))]
@@ -48,10 +55,13 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	private BigInteger _cheapResumeK;
 
 	private GpuUInt128WorkSet _divisorScanGpuWorkSet;
-private static readonly ConcurrentDictionary<ulong, byte> _checkedPow2MinusOne = new();
-private ulong _currentPrime;
+	private static readonly ConcurrentDictionary<ulong, byte> _checkedPow2MinusOne = new();
+	private ulong _currentPrime;
 #if DivisorSet_BitContradiction
 	private static Persistence.BitContradictionStateRepository? _bitContradictionStateRepository;
+#endif
+#if DivisorSet_BitTree
+	private static Persistence.BitContradictionStateRepository? _bitTreeStateRepository;
 #endif
 #if DivisorSet_TopDown
 	private BigInteger _topDownCursor;
@@ -336,6 +346,9 @@ private ulong _currentPrime;
 #if DivisorSet_BitContradiction
 		_bitContradictionStateRepository = EnvironmentConfiguration.BitContradictionStateRepository;
 #endif
+#if DivisorSet_BitTree
+		_bitTreeStateRepository = EnvironmentConfiguration.BitContradictionStateRepository;
+#endif
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
@@ -344,11 +357,11 @@ private ulong _currentPrime;
 		_currentPrime = prime;
 		BigInteger allowedMax = MersenneNumberDivisorByDivisorTester.ComputeAllowedMaxDivisorBig(prime, DivisorLimit);
 
-		if (TryFindPowerOfTwoMinusOneDivisor(prime, allowedMax, out divisor))
-		{
-			divisorsExhausted = true;
-			return false;
-		}
+		// if (TryFindPowerOfTwoMinusOneDivisor(prime, allowedMax, out divisor))
+		// {
+		// 	divisorsExhausted = true;
+		// 	return false;
+		// }
 
 		// The CPU by-divisor run always hands us primes with enormous divisor limits, so the fallback below never executes.
 		// if (allowedMax < 3UL)
@@ -413,9 +426,9 @@ private ulong _currentPrime;
 			out BigInteger foundDivisor)
 	{
 		// TODO: Is minK ever < 1? Can this be optimized - normalizedMinK is always >= 1 after this
-		BigInteger normalizedMinK = minK >= BigInteger.One ? minK : BigInteger.One,
-				   step = ((BigInteger)prime) << 1,
-				   firstDivisor = (step * normalizedMinK) + BigInteger.One;
+		BigInteger normalizedMinK = minK >= BigInteger.One ? minK : BigInteger.One;
+		BigInteger step = ((BigInteger)prime) << 1;
+		BigInteger firstDivisor = (step * normalizedMinK) + BigInteger.One;
 
 		bool primeLastIsSeven = (prime & 3UL) == 3UL;
 		ushort primeDecimalMask = DivisorGenerator.GetDecimalMask(primeLastIsSeven);
@@ -449,6 +462,17 @@ private ulong _currentPrime;
 			out processedAll,
 			out foundDivisor);
 		return compositeBitContradiction;
+#endif
+#if DivisorSet_BitTree
+		bool compositeBitTree = CheckDivisorsBitTree(
+			prime,
+			primeDecimalMask,
+			allowedMax,
+			normalizedMinK,
+			step,
+			out processedAll,
+			out foundDivisor);
+		return compositeBitTree;
 #endif
 #if DivisorSet_TopDown
 		bool compositeTopDown = CheckDivisorsTopDown(
@@ -707,6 +731,941 @@ private ulong _currentPrime;
 
 		return false;
 	}
+#endif
+#if DivisorSet_BitTree
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private bool CheckDivisorsBitTree(
+		ulong prime,
+		ushort primeDecimalMask,
+		BigInteger allowedMax,
+		BigInteger minK,
+		BigInteger step,
+		out bool processedAll,
+		out BigInteger foundDivisor)
+	{
+		processedAll = true;
+		foundDivisor = BigInteger.Zero;
+
+		// Default: frontier/windowed scan over (q,a) space.
+		MersenneCombinedDivisorScannerFullStreamExtended.QNibbleGenerator16.SelfTest(138000001);
+		MersenneCombinedDivisorScannerFullStreamExtended.ScanResult scanResult = MersenneCombinedDivisorScannerFullStreamExtended.TryFindDivisorByStreamingScan(prime, 128, false, out BigInteger branchDivisor);
+		// if (TryExactBitTreeCheck(prime, allowedMax, minK, step, out BigInteger branchDivisor))
+		if (scanResult == MersenneCombinedDivisorScannerFullStreamExtended.ScanResult.FoundDivisor)
+		{
+			foundDivisor = branchDivisor;
+			return true;
+		}
+		else if (scanResult == MersenneCombinedDivisorScannerFullStreamExtended.ScanResult.Candidate)
+		{
+			processedAll = false;
+		}
+
+		return false;
+	}
+
+	private bool TryBitTreeBranchScan(ulong prime, BigInteger allowedMax, out BigInteger divisor)
+	{
+		divisor = BigInteger.Zero;
+
+		if (prime == 0UL)
+		{
+			return false;
+		}
+
+		int pBits = checked((int)prime);
+		var stack = new Stack<(int Index, int Carry, BigInteger Q, BigInteger A)>();
+		// q0 = 1, a0 = 1 (to make r0 = 1)
+		stack.Push((Index: 1, Carry: 0, Q: BigInteger.One, A: BigInteger.One));
+
+		while (stack.Count > 0)
+		{
+			var state = stack.Pop();
+			int j = state.Index;
+			int carry = state.Carry;
+			BigInteger qVal = state.Q;
+			BigInteger aVal = state.A;
+
+			if (j >= pBits)
+			{
+				if (carry == 0)
+				{
+					if (allowedMax.IsZero || qVal <= allowedMax)
+					{
+						divisor = qVal;
+						return true;
+					}
+				}
+				continue;
+			}
+
+			for (int qBit = 0; qBit <= 1; qBit++)
+			{
+				BigInteger qCandidate = qVal;
+				if (qBit == 1)
+				{
+					qCandidate |= (BigInteger.One << j);
+				}
+
+				// Sum over assigned bits up to column j (a_i and q_{j-i} known up to j).
+				int sum = carry;
+				for (int i = 0; i <= j; i++)
+				{
+					bool aBit = ((aVal >> i) & BigInteger.One) == BigInteger.One;
+					bool qBitVal = ((qCandidate >> (j - i)) & BigInteger.One) == BigInteger.One;
+					if (aBit && qBitVal)
+					{
+						sum += 1;
+					}
+				}
+
+				// Required result bit = 1 for columns < p
+				if ((sum & 1) != 1)
+				{
+					continue;
+				}
+
+				// Set a_j to satisfy parity (already implied by sum&1==1)
+				BigInteger aNext = aVal;
+				if (((aVal >> j) & BigInteger.One) == BigInteger.Zero)
+				{
+					// keep as 0; sum already odd
+				}
+
+				int carryNext = (sum - 1) >> 1;
+
+				if (!allowedMax.IsZero && qCandidate > allowedMax)
+				{
+					continue;
+				}
+
+				stack.Push((j + 1, carryNext, qCandidate, aNext));
+			}
+		}
+
+		return false;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private static bool TryBitTreeFrontierScan(ulong prime, in BigInteger allowedMax, out BigInteger divisor)
+	{
+		divisor = BigInteger.Zero;
+
+		const int WindowSize = 200_000_000;
+		const int MemoryFrontierLimit = 1_000_000;
+		const int DiskBatchMax = 100_000;
+
+		int pBits;
+		try
+		{
+			pBits = checked((int)prime);
+		}
+		catch (OverflowException)
+		{
+			Console.WriteLine($"[bittree-frontier] exponent too large to check p={prime}");
+			return false;
+		}
+
+		int maxQBits = allowedMax.IsZero ? pBits : GetBitLengthPortable(allowedMax);
+		if (maxQBits <= 0)
+		{
+			return false;
+		}
+
+		int hardLimit = pBits + maxQBits + 2;
+		Span<int> initialOnes = stackalloc int[1];
+		initialOnes[0] = 0;
+
+		var frontier = new Queue<BitTreeFrontierState>(capacity: MemoryFrontierLimit);
+		BigInteger initialQ = BigInteger.One;
+		BigInteger initialA = BigInteger.One;
+		frontier.Enqueue(new BitTreeFrontierState(
+			column: 1,
+			carry: 0,
+			baseIndex: 0,
+			qSuffix: initialQ,
+			aSuffix: initialA,
+			maxQIndex: 0,
+			lastNonZeroA: 0,
+			qOnes: initialOnes.ToArray()));
+		using BitTreeFrontierRepository frontierRepo = BitTreeFrontierRepository.Open(Path.Combine("Checks"), "bittree.frontier.faster");
+
+		Console.WriteLine($"[bittree-frontier] p={prime} active_paths=1 column=1");
+
+		long prunedPaths = 0;
+		long pruneLogThreshold = 1_000_000;
+		const int ColumnLogStep = 1_000_000;
+		int lastLoggedColumn = 1;
+		void TrackPrune(int column)
+		{
+			prunedPaths++;
+			if (prunedPaths >= pruneLogThreshold)
+			{
+				Console.WriteLine($"[bittree-frontier] p={prime} pruned_paths={prunedPaths} column={column}");
+				pruneLogThreshold <<= 1;
+			}
+			if (column - lastLoggedColumn >= ColumnLogStep)
+			{
+				lastLoggedColumn = column;
+				Console.WriteLine($"[bittree-frontier] p={prime} exploring_column={column}");
+			}
+		}
+
+		int maxFrontier = 1;
+		int printCount = 0;
+
+		static byte[] SerializeState(in BitTreeFrontierState state)
+		{
+			using var ms = new MemoryStream();
+			using var bw = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true);
+			bw.Write(state.Column);
+			bw.Write(state.Carry);
+			bw.Write(state.BaseIndex);
+			bw.Write(state.MaxQIndex);
+			bw.Write(state.LastNonZeroA);
+			bw.Write(state.QOnes.Length);
+			for (int i = 0; i < state.QOnes.Length; i++)
+			{
+				bw.Write(state.QOnes[i]);
+			}
+			byte[] qBytes = state.QSuffix.ToByteArray(isUnsigned: true, isBigEndian: false);
+			bw.Write(qBytes.Length);
+			bw.Write(qBytes);
+			byte[] aBytes = state.ASuffix.ToByteArray(isUnsigned: true, isBigEndian: false);
+			bw.Write(aBytes.Length);
+			bw.Write(aBytes);
+			bw.Flush();
+			return ms.ToArray();
+		}
+
+		static BitTreeFrontierState DeserializeState(BinaryReader br)
+		{
+			int column = br.ReadInt32();
+			int carry = br.ReadInt32();
+			int baseIndex = br.ReadInt32();
+			int maxQIndex = br.ReadInt32();
+			int lastNonZeroA = br.ReadInt32();
+			int onesLength = br.ReadInt32();
+			int[] qOnes = new int[onesLength];
+			for (int i = 0; i < onesLength; i++)
+			{
+				qOnes[i] = br.ReadInt32();
+			}
+			int qLen = br.ReadInt32();
+			byte[] qBytes = br.ReadBytes(qLen);
+			int aLen = br.ReadInt32();
+			byte[] aBytes = br.ReadBytes(aLen);
+			BigInteger qSuffix = new BigInteger(qBytes, isUnsigned: true, isBigEndian: false);
+			BigInteger aSuffix = new BigInteger(aBytes, isUnsigned: true, isBigEndian: false);
+			return new BitTreeFrontierState(column, carry, baseIndex, qSuffix, aSuffix, maxQIndex, lastNonZeroA, qOnes);
+		}
+
+		static byte[] SerializeBatch(IEnumerable<BitTreeFrontierState> states)
+		{
+			using var ms = new MemoryStream();
+			using var bw = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true);
+			foreach (var s in states)
+			{
+				byte[] payload = SerializeState(in s);
+				bw.Write(payload.Length);
+				bw.Write(payload);
+			}
+			bw.Flush();
+			return ms.ToArray();
+		}
+
+		static List<BitTreeFrontierState> DeserializeBatch(byte[] batch)
+		{
+			var list = new List<BitTreeFrontierState>();
+			using var ms = new MemoryStream(batch);
+			using var br = new BinaryReader(ms, Encoding.UTF8, leaveOpen: true);
+			while (ms.Position < ms.Length)
+			{
+				int len = br.ReadInt32();
+				byte[] payload = br.ReadBytes(len);
+				using var itemStream = new MemoryStream(payload);
+				using var itemReader = new BinaryReader(itemStream, Encoding.UTF8, leaveOpen: true);
+				list.Add(DeserializeState(itemReader));
+			}
+			return list;
+		}
+
+		void SpillFrontierIfNeeded()
+		{
+			if (frontier.Count <= MemoryFrontierLimit)
+			{
+				return;
+			}
+
+			int toSpill = frontier.Count - MemoryFrontierLimit;
+			if (toSpill <= 0 || toSpill < DiskBatchMax)
+			{
+				return;
+			}
+
+			var batchStates = new List<BitTreeFrontierState>(toSpill);
+			for (int i = 0; i < toSpill && frontier.Count > 0; i++)
+			{
+				batchStates.Add(frontier.Dequeue());
+			}
+
+			byte[] batchBytes = SerializeBatch(batchStates);
+			frontierRepo.AppendBatch(batchBytes);
+			// Console.WriteLine($"[bittree-frontier] spilled {batchStates.Count} states to disk; in-memory={frontier.Count}");
+		}
+
+		bool ReloadFrontierFromRepo()
+		{
+			if (frontier.Count > 0)
+			{
+				return true;
+			}
+
+			if (frontierRepo.TryDequeueBatch(1, out List<byte[]> batches) && batches.Count > 0)
+			{
+				foreach (byte[] b in batches)
+				{
+					foreach (var s in DeserializeBatch(b))
+					{
+						frontier.Enqueue(s);
+					}
+				}
+				Console.WriteLine($"[bittree-frontier] reloaded {frontier.Count} states from disk.");
+				return frontier.Count > 0;
+			}
+
+			return false;
+		}
+
+
+		while (frontier.Count > 0)
+		{
+			BitTreeFrontierState state = frontier.Dequeue();
+			if (state.Column > hardLimit)
+			{
+				TrackPrune(state.Column);
+				continue;
+			}
+
+			state = SlideWindow(state, WindowSize);
+
+			for (int qBitChoice = 0; qBitChoice <= 1; qBitChoice++)
+			{
+				BigInteger qCandidate = state.QSuffix;
+				int maxQIndex = state.MaxQIndex;
+				int[] qOnes = state.QOnes;
+
+				if (qBitChoice == 1)
+				{
+					int bitIndex = state.Column - state.BaseIndex;
+					qCandidate |= BigInteger.One << bitIndex;
+					maxQIndex = Math.Max(maxQIndex, state.Column);
+
+					int[] extended = new int[qOnes.Length + 1];
+					Array.Copy(qOnes, extended, qOnes.Length);
+					extended[qOnes.Length] = state.Column;
+					qOnes = extended;
+				}
+
+				BigInteger absoluteQ = qCandidate << state.BaseIndex;
+				if (!allowedMax.IsZero && absoluteQ > allowedMax)
+				{
+					TrackPrune(state.Column);
+					continue;
+				}
+
+				int qBitLength = maxQIndex + 1;
+				if (qBitLength > maxQBits)
+				{
+					TrackPrune(state.Column);
+					continue;
+				}
+
+				int maxAIndexAllowed = pBits - qBitLength;
+				if (maxAIndexAllowed < 0)
+				{
+					TrackPrune(state.Column);
+					continue;
+				}
+
+				int sum = state.Carry;
+				for (int i = 0; i < qOnes.Length; i++)
+				{
+					int offset = qOnes[i];
+					if (offset == 0 || offset > state.Column)
+					{
+						continue;
+					}
+
+					int aIndex = state.Column - offset;
+					int aBitIndex = aIndex - state.BaseIndex;
+					if (aBitIndex >= 0 && aBitIndex < WindowSize && ((state.ASuffix >> aBitIndex) & BigInteger.One) == BigInteger.One)
+					{
+						sum += 1;
+					}
+				}
+
+				int requiredParity = state.Column < pBits ? 1 : 0;
+				int parity = sum & 1;
+				int aBit = parity == requiredParity ? 0 : 1;
+
+				BigInteger aCandidate = state.ASuffix;
+				int aBitIndexCurrent = state.Column - state.BaseIndex;
+				if (aBit == 1)
+				{
+					if (aBitIndexCurrent >= WindowSize)
+					{
+						TrackPrune(state.Column);
+						continue;
+					}
+					aCandidate |= BigInteger.One << aBitIndexCurrent;
+				}
+
+				int lastNonZeroA = aBit == 1 ? state.Column : state.LastNonZeroA;
+				if (lastNonZeroA > maxAIndexAllowed)
+				{
+					TrackPrune(state.Column);
+					continue;
+				}
+
+				int columnTotal = sum + aBit;
+				int carry = columnTotal >> 1;
+
+				bool doneWithOnes = lastNonZeroA < 0 || (state.Column + 1 - lastNonZeroA) > maxQIndex;
+				if (state.Column + 1 >= pBits && carry == 0 && doneWithOnes)
+				{
+					divisor = absoluteQ;
+					return true;
+				}
+
+				if (state.Column + 1 > hardLimit)
+				{
+					TrackPrune(state.Column);
+					continue;
+				}
+
+				int[] nextOnes = qOnes;
+				if (qBitChoice == 1)
+				{
+					nextOnes = new int[qOnes.Length + 1];
+					Array.Copy(qOnes, nextOnes, qOnes.Length);
+					nextOnes[^1] = state.Column;
+				}
+
+				frontier.Enqueue(new BitTreeFrontierState(
+					column: state.Column + 1,
+					carry: carry,
+					baseIndex: state.BaseIndex,
+					qSuffix: qCandidate,
+					aSuffix: aCandidate,
+					maxQIndex: maxQIndex,
+					lastNonZeroA: lastNonZeroA,
+					qOnes: nextOnes));
+
+				SpillFrontierIfNeeded();
+
+				if (frontier.Count > maxFrontier)
+				{
+					maxFrontier = frontier.Count;
+					printCount++;
+					if (printCount == 10_000_000)
+					{
+						printCount = 0;
+						Console.WriteLine($"[bittree-frontier] p={prime} active_paths={maxFrontier} column={state.Column + 1}");
+					}
+				}
+			}
+
+			if (frontier.Count == 0 && !ReloadFrontierFromRepo())
+			{
+				break;
+			}
+		}
+
+		return false;
+	}
+
+	private readonly struct BitTreeFrontierState
+	{
+		public BitTreeFrontierState(
+			int column,
+			int carry,
+			int baseIndex,
+			BigInteger qSuffix,
+			BigInteger aSuffix,
+			int maxQIndex,
+			int lastNonZeroA,
+			int[] qOnes)
+		{
+			Column = column;
+			Carry = carry;
+			BaseIndex = baseIndex;
+			QSuffix = qSuffix;
+			ASuffix = aSuffix;
+			MaxQIndex = maxQIndex;
+			LastNonZeroA = lastNonZeroA;
+			QOnes = qOnes;
+		}
+
+		public readonly int Column;
+		public readonly int Carry;
+		public readonly int BaseIndex;
+		public readonly BigInteger QSuffix;
+		public readonly BigInteger ASuffix;
+		public readonly int MaxQIndex;
+		public readonly int LastNonZeroA;
+		public readonly int[] QOnes;
+	}
+
+	private readonly struct BitTreeBacktrackFrame
+	{
+		public BitTreeBacktrackFrame(BitTreeFrontierState state, int nextChoice)
+		{
+			State = state;
+			NextChoice = nextChoice;
+		}
+
+	public BitTreeFrontierState State { get; }
+	public int NextChoice { get; }
+
+	public BitTreeBacktrackFrame WithNextChoice(int nextChoice)
+	{
+		return new BitTreeBacktrackFrame(State, nextChoice);
+	}
+}
+
+
+	private static BitTreeFrontierState SlideWindow(in BitTreeFrontierState state, int windowSize)
+	{
+		int span = state.Column - state.BaseIndex + 1;
+		if (span < windowSize)
+		{
+			return state;
+		}
+
+		int shift = span - (windowSize - 1);
+		int newBase = state.BaseIndex + shift;
+
+		BigInteger qSuffix = state.QSuffix >> shift;
+		BigInteger aSuffix = state.ASuffix >> shift;
+
+		List<int> filtered = null;
+		for (int i = 0; i < state.QOnes.Length; i++)
+		{
+			int pos = state.QOnes[i];
+			if (pos >= newBase)
+			{
+				filtered ??= new List<int>(state.QOnes.Length - i);
+				filtered.Add(pos);
+			}
+		}
+
+		int[] qOnes = filtered == null ? Array.Empty<int>() : filtered.ToArray();
+
+		int lastNonZeroA = state.LastNonZeroA;
+		if (lastNonZeroA < newBase)
+		{
+			lastNonZeroA = -1;
+		}
+
+		return new BitTreeFrontierState(
+			column: state.Column,
+			carry: state.Carry,
+			baseIndex: newBase,
+			qSuffix: qSuffix,
+			aSuffix: aSuffix,
+			maxQIndex: state.MaxQIndex,
+			lastNonZeroA: lastNonZeroA,
+			qOnes: qOnes);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	private bool TryExactBitTreeCheck(
+		ulong prime,
+		BigInteger allowedMax,
+		BigInteger currentK,
+		BigInteger step,
+		out BigInteger foundDivisor)
+	{
+		foundDivisor = BigInteger.Zero;
+
+		bool hasLimit = !allowedMax.IsZero;
+		BigInteger maxK = hasLimit ? (allowedMax - BigInteger.One) / step : BigInteger.Zero;
+		ulong computedCycle;
+
+		bool decided;
+		bool divides;
+		BigInteger divisor = (step * currentK) + BigInteger.One;
+		while (true)
+		{
+// 			if (divisor <= ulong.MaxValue)
+// 			{
+// 				ulong divisor64 = (ulong)divisor;
+// 				MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor64);
+// 				// We're reusing divides variable to limit registry pressure as primeOrderFailed flag.
+// #if DEVICE_GPU
+// 				decided = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentGpu(
+// 					divisor64,
+// 					Accelerator,
+// 					prime,
+// 					divisorData,
+// 					out computedCycle,
+// 					out divides);
+// #elif DEVICE_HYBRID
+// 				decided = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentHybrid(
+// 					divisor64,
+// 					Accelerator,
+// 					prime,
+// 					divisorData,
+// 					out computedCycle,
+// 					out divides);
+// #else
+// 				decided = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentCpu(
+// 					divisor64,
+// 					prime,
+// 					divisorData,
+// 					out computedCycle,
+// 					out divides);
+// #endif
+
+// 				if (!decided)
+// 				{
+// #if DEVICE_GPU
+// 					computedCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthGpu(
+// 						divisor64,
+// 						Accelerator,
+// 						divisorData,
+// 						skipPrimeOrderHeuristic: divides);
+// #elif DEVICE_HYBRID
+// 					computedCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthHybrid(
+// 						divisor64,
+// 						Accelerator,
+// 						divisorData,
+// 						skipPrimeOrderHeuristic: divides);
+// #else
+// 					computedCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthCpu(
+// 						divisor64,
+// 						divisorData,
+// 						skipPrimeOrderHeuristic: divides);
+// #endif
+// 				}
+
+// 				if (computedCycle > 0UL)
+// 				{
+// 					if ((prime % computedCycle) != 0UL)
+// 					{
+// 						goto MOVE_NEXT;
+// 					}
+// 				}
+// 				else
+// 				{
+// 					computedCycle = prime;
+// 				}
+// 			}
+// 			else
+// 			{
+				computedCycle = prime;
+			// }
+
+			decided = TryExactBitTreeCheck(computedCycle, divisor, out divides);
+			if (!decided)
+			{
+				throw new InvalidOperationException($"BitTree check did not decide for p={prime}, divisor={divisor} (k={currentK}).");
+			}
+
+			if (divides)
+			{
+				foundDivisor = divisor;
+				return true;
+			}
+
+			RecordState(currentK);
+
+		MOVE_NEXT:
+			if (hasLimit && currentK >= maxK)
+			{
+				break;
+			}
+
+			currentK += BigInteger.One;
+			divisor += step;
+		}
+
+		return false;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private bool TryExactBitTreeCheck(ulong exponent, BigInteger divisor, out bool divides)
+	{
+		int qBitLength = GetBitLengthPortable(divisor);
+		int aBitLength = GetBitLengthPortable(exponent);
+
+		ArrayPool<int> intPool = ThreadStaticPools.IntPool;
+		int pBits = checked((int)exponent);
+
+		int[] oneOffsetsArr = intPool.Rent(qBitLength);
+		int oneCount = 0;
+		int i;
+		for (i = 0; i < qBitLength; i++)
+		{
+			if (((divisor >> i) & BigInteger.One) == BigInteger.One)
+			{
+				oneOffsetsArr[oneCount++] = i;
+			}
+		}
+
+		// This condition will never trigger on EvenPerfectBitScanner execution paths. We always provide valid q != 0.
+		// if (oneCount == 0)
+		// {
+		// 	divides = false;
+		// 	intPool.Return(oneOffsetsArr);
+		// 	return true;
+		// }
+
+		// i's in oneOffsetsArr are built in ascending order by i. We don't need to sort it.
+		// Array.Sort(oneOffsetsArr, 0, oneCount);
+		ReadOnlySpan<int> oneOffsets = oneOffsetsArr.AsSpan(0, oneCount);
+		int maxOffset = oneOffsets[^1];
+
+		int windowSize = qBitLength;
+		byte[] aWindowArray = ArrayPool<byte>.Shared.Rent(windowSize);
+		Span<byte> aWindow = aWindowArray.AsSpan(0, windowSize);
+		aWindow.Clear();
+
+		long lastNonZeroA = -1;
+		int carry = 0;
+		int column = 0;
+
+		while (true)
+		{
+			bool targetOne = column < pBits;
+			int sum = carry;
+
+			for (i = 0; i < oneCount; i++)
+			{
+				int offset = oneOffsets[i];
+				if (offset == 0)
+				{
+					continue; // a_bit for current column, handled below
+				}
+
+				if (offset > column)
+				{
+					break;
+				}
+
+				int aIndex = column - offset;
+				byte aBit = aWindow[aIndex % windowSize];
+				sum += aBit;
+			}
+
+			int requiredParity = targetOne ? 1 : 0;
+			int parity = sum & 1;
+			byte aCurrent = (byte)(parity == requiredParity ? 0 : 1);
+			int columnTotal = sum + aCurrent;
+
+			if ((columnTotal & 1) != requiredParity)
+			{
+				ArrayPool<byte>.Shared.Return(aWindowArray);
+
+				divides = false;
+				intPool.Return(oneOffsetsArr);
+				return true;
+			}
+
+			aWindow[column % windowSize] = aCurrent;
+			if (aCurrent == 1)
+			{
+				lastNonZeroA = column;
+			}
+
+			carry = columnTotal >> 1;
+			column++;
+
+			bool doneWithOnes = lastNonZeroA < 0 || column - lastNonZeroA > maxOffset;
+			if (column >= pBits && carry == 0 && doneWithOnes)
+			{
+				break;
+			}
+
+			if (column > pBits + maxOffset + 2 && carry == 0 && doneWithOnes)
+			{
+				break;
+			}
+
+			if (column > pBits + maxOffset + aBitLength + 2)
+			{
+				ArrayPool<byte>.Shared.Return(aWindowArray);
+
+				divides = false;
+				intPool.Return(oneOffsetsArr);
+				return true;
+			}
+		}
+
+		ArrayPool<byte>.Shared.Return(aWindowArray);
+
+		divides = carry == 0;
+		Console.WriteLine($"[bittree] Prime={exponent}, Divisor={divisor} Decided=True Divides={divides}");
+		if (!divides)
+		{
+			string message = $"[bittree] p={exponent} ruled out divisor={divisor} (parity/carry exhaustion)";
+			_bitTreeStateRepository?.Upsert(exponent, message);
+		}
+
+		intPool.Return(oneOffsetsArr);
+		return true;
+	}
+
+	// [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	// private bool TryExactBitTreeCheck(ulong prime, BigInteger divisor, ulong effectiveExponent, out bool divides)
+	// {
+	// 	divides = false;
+
+	// 	// These conditions below will never be met on EvenPerfectBitScanner execution paths.
+	// 	// if (prime == 0 || divisor <= BigInteger.One)
+	// 	// {
+	// 	// 	Console.WriteLine($"[bittree] invalid inputs {prime} / {divisor}");
+	// 	// 	return false;
+	// 	// }
+
+	// 	// if ((divisor & BigInteger.One) == BigInteger.Zero)
+	// 	// {
+	// 	// 	divides = false;
+	// 	// 	return true;
+	// 	// }
+
+	// 	int qBitLength = GetBitLengthPortable(divisor);
+	// 	if (prime <= (ulong)qBitLength)
+	// 	{
+	// 		divides = false;
+	// 		return true;
+	// 	}
+
+	// 	ulong exponent = effectiveExponent > 0UL ? effectiveExponent : prime;
+	// 	int pBits;
+	// 	try
+	// 	{
+	// 		pBits = checked((int)exponent);
+	// 	}
+	// 	catch (OverflowException)
+	// 	{
+	// 		Console.WriteLine($"[bittree] exponent too large to check p={exponent}");
+	// 		return false;
+	// 	}
+
+	// 	int[] oneOffsetsArr = new int[qBitLength];
+	// 	int oneCount = 0;
+	// 	for (int i = 0; i < qBitLength; i++)
+	// 	{
+	// 		if (((divisor >> i) & BigInteger.One) == BigInteger.One)
+	// 		{
+	// 			oneOffsetsArr[oneCount++] = i;
+	// 		}
+	// 	}
+
+	// 	if (oneCount == 0)
+	// 	{
+	// 		divides = false;
+	// 		return true;
+	// 	}
+
+	// 	Array.Sort(oneOffsetsArr, 0, oneCount);
+	// 	ReadOnlySpan<int> oneOffsets = oneOffsetsArr.AsSpan(0, oneCount);
+	// 	int maxOffset = oneOffsets[^1];
+
+	// 	int windowSize = qBitLength;
+	// 	bool rented = windowSize <= 1024;
+	// 	byte[] aWindowArray = rented ? ArrayPool<byte>.Shared.Rent(1024) : new byte[windowSize];
+	// 	Span<byte> aWindow = aWindowArray.AsSpan(0, windowSize);
+	// 	aWindow.Clear();
+
+	// 	long lastNonZeroA = -1;
+	// 	int carry = 0;
+	// 	int column = 0;
+
+	// 	while (true)
+	// 	{
+	// 		bool targetOne = column < pBits;
+	// 		int sum = carry;
+
+	// 		for (int idx = 0; idx < oneCount; idx++)
+	// 		{
+	// 			int offset = oneOffsets[idx];
+	// 			if (offset == 0)
+	// 			{
+	// 				continue; // a_bit for current column, handled below
+	// 			}
+
+	// 			if (offset > column)
+	// 			{
+	// 				break;
+	// 			}
+
+	// 			int aIndex = column - offset;
+	// 			byte aBit = aWindow[aIndex % windowSize];
+	// 			sum += aBit;
+	// 		}
+
+	// 		int requiredParity = targetOne ? 1 : 0;
+	// 		int parity = sum & 1;
+	// 		byte aCurrent = (byte)(parity == requiredParity ? 0 : 1);
+	// 		int columnTotal = sum + aCurrent;
+
+	// 		if ((columnTotal & 1) != requiredParity)
+	// 		{
+	// 			if (rented)
+	// 			{
+	// 				ArrayPool<byte>.Shared.Return(aWindowArray);
+	// 			}
+	// 			divides = false;
+	// 			return true;
+	// 		}
+
+	// 		aWindow[column % windowSize] = aCurrent;
+	// 		if (aCurrent == 1)
+	// 		{
+	// 			lastNonZeroA = column;
+	// 		}
+
+	// 		carry = columnTotal >> 1;
+	// 		column++;
+
+	// 		bool doneWithOnes = lastNonZeroA < 0 || column - lastNonZeroA > maxOffset;
+	// 		if (column >= pBits && carry == 0 && doneWithOnes)
+	// 		{
+	// 			break;
+	// 		}
+
+	// 		if (column > pBits + maxOffset + 2 && carry == 0 && doneWithOnes)
+	// 		{
+	// 			break;
+	// 		}
+
+	// 		if (column > pBits + maxOffset + windowSize + 2)
+	// 		{
+	// 			if (rented)
+	// 			{
+	// 				ArrayPool<byte>.Shared.Return(aWindowArray);
+	// 			}
+	// 			divides = false;
+	// 			return true;
+	// 		}
+	// 	}
+
+	// 	if (rented)
+	// 	{
+	// 		ArrayPool<byte>.Shared.Return(aWindowArray);
+	// 	}
+	// 	divides = carry == 0;
+	// 	Console.WriteLine($"[bittree] Prime={prime}, Divisor={divisor} Decided=True Divides={divides}");
+	// 	if (!divides)
+	// 	{
+	// 		string message = $"[bittree] p={prime} ruled out divisor={divisor} (parity/carry exhaustion)";
+	// 		_bitTreeStateRepository?.Upsert(prime, message);
+	// 	}
+
+	// 	return true;
+	// }
 #endif
 
 #if !DivisorSet_Pow2Groups && (DivisorSet_Predictive || DivisorSet_Percentile || DivisorSet_Additive)
@@ -1121,7 +2080,8 @@ private ulong _currentPrime;
 						{
 							RecordState(currentK);
 							BigInteger powResult = BigInteger.ModPow(BigIntegerNumbers.Two, primeBig, divisor);
-							if (powResult.IsOne && !IsMersenneValue(prime, divisor))
+							// if (powResult.IsOne && !IsMersenneValue(prime, divisor))
+							if (powResult.IsOne)
 							{
 								foundDivisor = divisor;
 								return true;
@@ -1746,7 +2706,8 @@ private ulong _currentPrime;
 				}
 
 				RecordState(currentK);
-				if (divisorCycle == prime && !IsMersenneValue(prime, candidate))
+				// if (divisorCycle == prime && !IsMersenneValue(prime, candidate))
+				if (divisorCycle == prime)
 				{
 					// A cycle equal to the tested exponent (which is prime in this path) guarantees that the candidate divides
 					// the corresponding Mersenne number because the order of 2 modulo the divisor is exactly p.
@@ -2310,7 +3271,8 @@ private ulong _currentPrime;
 					BigInteger divisorBig = (BigInteger)divisor;
 					RecordState((BigInteger)k);
 					BigInteger powResult = BigInteger.ModPow(2, prime, divisorBig);
-					if (powResult.IsOne && !IsMersenneValue(prime, divisorBig))
+					// if (powResult.IsOne && !IsMersenneValue(prime, divisorBig))
+					if (powResult.IsOne)
 					{
 						foundDivisor = divisorBig;
 						return true;
@@ -2432,7 +3394,7 @@ private ulong _currentPrime;
 			bool passesSmallModuli = remainder10 == 1 || remainder10 == 7;
 			if (passesSmallModuli && ((primeDecimalMask >> remainder10) & 1) != 0)
 			{
-				if (rem3.NextIsNotDivisible(divisor) && 
+				if (rem3.NextIsNotDivisible(divisor) &&
 					rem7.NextIsNotDivisible(divisor) &&
 					rem11.NextIsNotDivisible(divisor) &&
 					rem13.NextIsNotDivisible(divisor) &&
@@ -2444,7 +3406,8 @@ private ulong _currentPrime;
 					{
 						RecordState(currentK);
 						BigInteger powResult = BigInteger.ModPow(BigIntegerNumbers.Two, primeBig, divisor);
-						if (powResult.IsOne && !IsMersenneValue(prime, divisor))
+						// if (powResult.IsOne && !IsMersenneValue(prime, divisor))
+						if (powResult.IsOne)
 						{
 							foundDivisor = divisor;
 							processedAll = true;
@@ -2866,10 +3829,18 @@ private ulong _currentPrime;
 		{
 			if (k > _lastSavedK)
 			{
-				_kRepository.Upsert(_currentPrime, k);
-				_lastSavedK = k;
+				int next = _stateCounter + 1;
+				if (next >= PerfectNumberConstants.ByDivisorStateSaveInterval)
+				{
+					_kRepository.Upsert(_currentPrime, k);
+					_lastSavedK = k;
+					_stateCounter = 0;
+				}
+				else
+				{
+					_stateCounter = next;
+				}
 			}
-			_stateCounter = 0;
 		}
 	}
 
@@ -3328,6 +4299,8 @@ private ulong _currentPrime;
 #endif
 
 #if DivisorSet_BitContradiction
+	private static readonly BigInteger Five = (BigInteger)5;
+
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private bool CheckDivisorsBitContradiction(
 		ulong prime,
@@ -3348,7 +4321,88 @@ private ulong _currentPrime;
 		while (true)
 		{
 			BigInteger divisor = (step * currentK) + BigInteger.One;
-			bool decided = TryExactBitContradictionCheck(prime, divisor, out bool divides);
+			if (
+					divisor <= ulong.MaxValue &&
+					!PrimeTesterByLastDigit.IsPrimeCpu((ulong)divisor)
+				)
+			{
+				goto MOVE_NEXT;
+			}
+
+			ulong effectiveExponent = 0UL;
+// 			if (divisor <= ulong.MaxValue)
+// 			{
+// 				ulong divisor64 = (ulong)divisor;
+// 				MontgomeryDivisorData divisorData = MontgomeryDivisorData.FromModulus(divisor64);
+// #if DEVICE_GPU
+// 				bool computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentGpu(
+// 					divisor64,
+// 					Accelerator,
+// 					prime,
+// 					divisorData,
+// 					out ulong computedCycle,
+// 					out bool primeOrderFailed);
+// #elif DEVICE_HYBRID
+// 				bool computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentHybrid(
+// 					divisor64,
+// 					Accelerator,
+// 					prime,
+// 					divisorData,
+// 					out ulong computedCycle,
+// 					out bool primeOrderFailed);
+// #else
+// 				bool computed = MersenneNumberDivisorByDivisorTester.TryCalculateCycleLengthForExponentCpu(
+// 					divisor64,
+// 					prime,
+// 					divisorData,
+// 					out ulong computedCycle,
+// 					out bool primeOrderFailed);
+// #endif
+// 				ulong divisorCycle;
+// 				if (!computed || computedCycle == 0UL)
+// 				{
+// #if DEVICE_GPU
+// 					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthGpu(
+// 						divisor64,
+// 						Accelerator,
+// 						divisorData,
+// 						skipPrimeOrderHeuristic: primeOrderFailed);
+// #elif DEVICE_HYBRID
+// 					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthHybrid(
+// 						divisor64,
+// 						Accelerator,
+// 						divisorData,
+// 						skipPrimeOrderHeuristic: primeOrderFailed);
+// #else
+// 					divisorCycle = MersenneNumberDivisorByDivisorTester.CalculateCycleLengthCpu(
+// 						divisor64,
+// 						divisorData,
+// 						skipPrimeOrderHeuristic: primeOrderFailed);
+// #endif
+// 				}
+// 				else
+// 				{
+// 					divisorCycle = computedCycle;
+// 				}
+
+// 				if (divisorCycle > 0UL && (prime % divisorCycle) != 0UL)
+// 				{
+// 					if (hasLimit && currentK >= maxK)
+// 					{
+// 						break;
+// 					}
+
+// 					currentK += BigInteger.One;
+// 					continue;
+// 				}
+
+// 				if (divisorCycle > 0UL)
+// 				{
+// 					effectiveExponent = divisorCycle;
+// 				}
+// 			}
+
+			bool decided = TryExactBitContradictionCheck(prime, divisor, effectiveExponent, out bool divides);
 			if (!decided)
 			{
 				throw new InvalidOperationException($"BitContradiction check did not decide for p={prime}, divisor={divisor} (k={currentK}).");
@@ -3360,6 +4414,8 @@ private ulong _currentPrime;
 				return true;
 			}
 
+			RecordState(currentK);
+		MOVE_NEXT:
 			if (hasLimit && currentK >= maxK)
 			{
 				break;
@@ -3424,7 +4480,7 @@ private ulong _currentPrime;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static bool TryExactBitContradictionCheck(ulong prime, BigInteger divisor, out bool divides)
+	private static bool TryExactBitContradictionCheck(ulong prime, BigInteger divisor, ulong effectiveExponent, out bool divides)
 	{
 		divides = false;
 
@@ -3472,7 +4528,8 @@ private ulong _currentPrime;
 		}
 
 		ReadOnlySpan<int> oneOffsetsSlice = oneOffsets[..oneCount];
-		bool decided = BitContradictionSolver.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, prime, out divides, out var reason);
+		ulong exponent = effectiveExponent > 0UL ? effectiveExponent : prime;
+		bool decided = BitContradictionSolver.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, exponent, out divides, out var reason);
 		if (decided && divides)
 		{
 			// Verify to avoid false positives on structurally admissible but non-dividing q.

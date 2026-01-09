@@ -21,6 +21,9 @@ using MersenneNumberDivisorByDivisorCpuTesterWithAdditiveGpuOrder = PerfectNumbe
 using MersenneNumberDivisorByDivisorCpuTesterWithBitContradictionCpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitContradictionDivisorSetForCpuOrder;
 using MersenneNumberDivisorByDivisorCpuTesterWithBitContradictionHybridOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitContradictionDivisorSetForHybridOrder;
 using MersenneNumberDivisorByDivisorCpuTesterWithBitContradictionGpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitContradictionDivisorSetForGpuOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithBitTreeCpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitTreeDivisorSetForCpuOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithBitTreeHybridOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitTreeDivisorSetForHybridOrder;
+using MersenneNumberDivisorByDivisorCpuTesterWithBitTreeGpuOrder = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitTreeDivisorSetForGpuOrder;
 
 namespace PerfectNumbers.Core;
 
@@ -87,6 +90,37 @@ public static class MersenneNumberDivisorByDivisorTester
 				Action cc,
 				Action<ulong, bool, bool, bool, BigInteger> pr) =>
 				RunBitContradictionCpuOrderFiltered(filteredPrimes, prototype, workerCount, partitionSize, mc, cc, pr));
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static void Run(
+		List<ulong> candidates,
+		ref MersenneNumberDivisorByDivisorCpuTesterWithBitTreeCpuOrder tester,
+		Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
+		ulong startPrime,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult,
+		int threadCount,
+		int primesPerTask)
+		=> RunStructTester(
+			candidates,
+			ref tester,
+			previousResults,
+			startPrime,
+			markComposite,
+			clearComposite,
+			printResult,
+			threadCount,
+			primesPerTask,
+			static (
+				List<ulong> filteredPrimes,
+				in MersenneNumberDivisorByDivisorCpuTesterWithBitTreeCpuOrder prototype,
+				int workerCount,
+				int partitionSize,
+				Action mc,
+				Action cc,
+				Action<ulong, bool, bool, bool, BigInteger> pr) =>
+				RunBitTreeCpuOrderFiltered(filteredPrimes, prototype, workerCount, partitionSize, mc, cc, pr));
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static void Run(
@@ -246,6 +280,37 @@ public static class MersenneNumberDivisorByDivisorTester
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static void Run(
 		List<ulong> candidates,
+		ref MersenneNumberDivisorByDivisorCpuTesterWithBitTreeHybridOrder tester,
+		Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
+		ulong startPrime,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult,
+		int threadCount,
+		int primesPerTask)
+		=> RunStructTester(
+			candidates,
+			ref tester,
+			previousResults,
+			startPrime,
+			markComposite,
+			clearComposite,
+			printResult,
+			threadCount,
+			primesPerTask,
+			static (
+				List<ulong> filteredPrimes,
+				in MersenneNumberDivisorByDivisorCpuTesterWithBitTreeHybridOrder prototype,
+				int workerCount,
+				int partitionSize,
+				Action mc,
+				Action cc,
+				Action<ulong, bool, bool, bool, BigInteger> pr) =>
+				RunBitTreeHybridOrderFiltered(filteredPrimes, prototype, workerCount, partitionSize, mc, cc, pr));
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static void Run(
+		List<ulong> candidates,
 		ref MersenneNumberDivisorByDivisorCpuTesterWithPredictiveHybridOrder tester,
 		Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
 		ulong startPrime,
@@ -397,6 +462,37 @@ public static class MersenneNumberDivisorByDivisorTester
 				Action cc,
 				Action<ulong, bool, bool, bool, BigInteger> pr) =>
 				RunBitContradictionGpuOrderFiltered(filteredPrimes, prototype, workerCount, partitionSize, mc, cc, pr));
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	public static void Run(
+		List<ulong> candidates,
+		ref MersenneNumberDivisorByDivisorCpuTesterWithBitTreeGpuOrder tester,
+		Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? previousResults,
+		ulong startPrime,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult,
+		int threadCount,
+		int primesPerTask)
+		=> RunStructTester(
+			candidates,
+			ref tester,
+			previousResults,
+			startPrime,
+			markComposite,
+			clearComposite,
+			printResult,
+			threadCount,
+			primesPerTask,
+			static (
+				List<ulong> filteredPrimes,
+				in MersenneNumberDivisorByDivisorCpuTesterWithBitTreeGpuOrder prototype,
+				int workerCount,
+				int partitionSize,
+				Action mc,
+				Action cc,
+				Action<ulong, bool, bool, bool, BigInteger> pr) =>
+				RunBitTreeGpuOrderFiltered(filteredPrimes, prototype, workerCount, partitionSize, mc, cc, pr));
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public static void Run(
@@ -2568,6 +2664,150 @@ public static class MersenneNumberDivisorByDivisorTester
 				int startIndex = partitionIndex * partitionSize;
 				int count = Math.Min(partitionSize, totalCount - startIndex);
 				var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitContradictionDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+				for (int i = 0; i < count; i++)
+				{
+					session.ProcessPrime(filteredPrimes[startIndex + i]);
+				}
+			}));
+	}
+
+	private static void RunBitTreeCpuOrderFiltered(
+		List<ulong> filteredPrimes,
+		in MersenneNumberDivisorByDivisorCpuTesterWithBitTreeCpuOrder prototype,
+		int workerCount,
+		int partitionSize,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult)
+	{
+		MersenneNumberDivisorByDivisorCpuTesterWithBitTreeCpuOrder prototypeCopy = prototype;
+		int totalCount = filteredPrimes.Count;
+		if (partitionSize > totalCount)
+		{
+			partitionSize = totalCount;
+		}
+
+		if (workerCount <= 1 || totalCount <= partitionSize)
+		{
+			var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitTreeDivisorSetForCpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+			for (int i = 0; i < totalCount; i++)
+			{
+				session.ProcessPrime(filteredPrimes[i]);
+			}
+
+			return;
+		}
+
+		var options = new ParallelOptions
+		{
+			MaxDegreeOfParallelism = workerCount,
+		};
+
+		Parallel.For(
+			0,
+			(int)Math.Ceiling((double)totalCount / partitionSize),
+			options,
+			new Action<int>(partitionIndex =>
+			{
+				int startIndex = partitionIndex * partitionSize;
+				int count = Math.Min(partitionSize, totalCount - startIndex);
+				var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitTreeDivisorSetForCpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+				for (int i = 0; i < count; i++)
+				{
+					session.ProcessPrime(filteredPrimes[startIndex + i]);
+				}
+			}));
+	}
+
+	private static void RunBitTreeHybridOrderFiltered(
+		List<ulong> filteredPrimes,
+		in MersenneNumberDivisorByDivisorCpuTesterWithBitTreeHybridOrder prototype,
+		int workerCount,
+		int partitionSize,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult)
+	{
+		MersenneNumberDivisorByDivisorCpuTesterWithBitTreeHybridOrder prototypeCopy = prototype;
+		int totalCount = filteredPrimes.Count;
+		if (partitionSize > totalCount)
+		{
+			partitionSize = totalCount;
+		}
+
+		if (workerCount <= 1 || totalCount <= partitionSize)
+		{
+			var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitTreeDivisorSetForHybridOrder(prototypeCopy, markComposite, clearComposite, printResult);
+			for (int i = 0; i < totalCount; i++)
+			{
+				session.ProcessPrime(filteredPrimes[i]);
+			}
+
+			return;
+		}
+
+		var options = new ParallelOptions
+		{
+			MaxDegreeOfParallelism = workerCount,
+		};
+
+		Parallel.For(
+			0,
+			(int)Math.Ceiling((double)totalCount / partitionSize),
+			options,
+			new Action<int>(partitionIndex =>
+			{
+				int startIndex = partitionIndex * partitionSize;
+				int count = Math.Min(partitionSize, totalCount - startIndex);
+				var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitTreeDivisorSetForHybridOrder(prototypeCopy, markComposite, clearComposite, printResult);
+				for (int i = 0; i < count; i++)
+				{
+					session.ProcessPrime(filteredPrimes[startIndex + i]);
+				}
+			}));
+	}
+
+	private static void RunBitTreeGpuOrderFiltered(
+		List<ulong> filteredPrimes,
+		in MersenneNumberDivisorByDivisorCpuTesterWithBitTreeGpuOrder prototype,
+		int workerCount,
+		int partitionSize,
+		Action markComposite,
+		Action clearComposite,
+		Action<ulong, bool, bool, bool, BigInteger> printResult)
+	{
+		MersenneNumberDivisorByDivisorCpuTesterWithBitTreeGpuOrder prototypeCopy = prototype;
+		int totalCount = filteredPrimes.Count;
+		if (partitionSize > totalCount)
+		{
+			partitionSize = totalCount;
+		}
+
+		if (workerCount <= 1 || totalCount <= partitionSize)
+		{
+			var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitTreeDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+			for (int i = 0; i < totalCount; i++)
+			{
+				session.ProcessPrime(filteredPrimes[i]);
+			}
+
+			return;
+		}
+
+		var options = new ParallelOptions
+		{
+			MaxDegreeOfParallelism = workerCount,
+		};
+
+		Parallel.For(
+			0,
+			(int)Math.Ceiling((double)totalCount / partitionSize),
+			options,
+			new Action<int>(partitionIndex =>
+			{
+				int startIndex = partitionIndex * partitionSize;
+				int count = Math.Min(partitionSize, totalCount - startIndex);
+				var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitTreeDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
 				for (int i = 0; i < count; i++)
 				{
 					session.ProcessPrime(filteredPrimes[startIndex + i]);

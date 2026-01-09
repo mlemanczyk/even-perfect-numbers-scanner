@@ -32,6 +32,9 @@ using ByDivisorGpuOrderTopDown = PerfectNumbers.Core.Cpu.MersenneNumberDivisorBy
 using ByDivisorCpuOrderBitContradiction = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitContradictionDivisorSetForCpuOrder;
 using ByDivisorHybridOrderBitContradiction = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitContradictionDivisorSetForHybridOrder;
 using ByDivisorGpuOrderBitContradiction = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitContradictionDivisorSetForGpuOrder;
+using ByDivisorCpuOrderBitTree = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitTreeDivisorSetForCpuOrder;
+using ByDivisorHybridOrderBitTree = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitTreeDivisorSetForHybridOrder;
+using ByDivisorGpuOrderBitTree = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitTreeDivisorSetForGpuOrder;
 using System.Globalization;
 
 namespace EvenPerfectBitScanner;
@@ -64,6 +67,9 @@ private static ThreadLocal<object>? MersenneTesters;
 	private static ByDivisorCpuOrderBitContradiction _byDivisorCpuOrderTesterBitContradiction;
 	private static ByDivisorHybridOrderBitContradiction _byDivisorHybridOrderTesterBitContradiction;
 	private static ByDivisorGpuOrderBitContradiction _byDivisorGpuOrderTesterBitContradiction;
+	private static ByDivisorCpuOrderBitTree _byDivisorCpuOrderTesterBitTree;
+	private static ByDivisorHybridOrderBitTree _byDivisorHybridOrderTesterBitTree;
+	private static ByDivisorGpuOrderBitTree _byDivisorGpuOrderTesterBitTree;
 	private static Dictionary<ulong, (bool DetailedCheck, bool PassedAllTests)>? _byDivisorPreviousResults;
 	private static string? _byDivisorModelPath;
 	private static bool _byDivisorModeUsesModel;
@@ -335,6 +341,12 @@ private static ThreadLocal<object>? MersenneTesters;
 						case ByDivisorKIncrementMode.TopDown:
 							_byDivisorCpuOrderTesterTopDown = new ByDivisorCpuOrderTopDown();
 							break;
+						case ByDivisorKIncrementMode.BitContradiction:
+							_byDivisorCpuOrderTesterBitContradiction = new ByDivisorCpuOrderBitContradiction();
+							break;
+						case ByDivisorKIncrementMode.BitTree:
+							_byDivisorCpuOrderTesterBitTree = new ByDivisorCpuOrderBitTree();
+							break;
 						default:
 							_byDivisorCpuOrderTester = new MersenneNumberDivisorByDivisorCpuTesterWithCpuOrder();
 							break;
@@ -359,6 +371,12 @@ private static ThreadLocal<object>? MersenneTesters;
 						case ByDivisorKIncrementMode.TopDown:
 							_byDivisorHybridOrderTesterTopDown = new ByDivisorHybridOrderTopDown();
 							break;
+						case ByDivisorKIncrementMode.BitContradiction:
+							_byDivisorHybridOrderTesterBitContradiction = new ByDivisorHybridOrderBitContradiction();
+							break;
+						case ByDivisorKIncrementMode.BitTree:
+							_byDivisorHybridOrderTesterBitTree = new ByDivisorHybridOrderBitTree();
+							break;
 						default:
 							_byDivisorHybridOrderTester = new MersenneNumberDivisorByDivisorCpuTesterWithHybridOrder();
 							break;
@@ -382,6 +400,12 @@ private static ThreadLocal<object>? MersenneTesters;
 							break;
 						case ByDivisorKIncrementMode.TopDown:
 							_byDivisorGpuOrderTesterTopDown = new ByDivisorGpuOrderTopDown();
+							break;
+						case ByDivisorKIncrementMode.BitContradiction:
+							_byDivisorGpuOrderTesterBitContradiction = new ByDivisorGpuOrderBitContradiction();
+							break;
+						case ByDivisorKIncrementMode.BitTree:
+							_byDivisorGpuOrderTesterBitTree = new ByDivisorGpuOrderBitTree();
 							break;
 						default:
 							_byDivisorGpuOrderTester = new MersenneNumberDivisorByDivisorCpuTesterWithGpuOrder();
@@ -545,6 +569,7 @@ private static ThreadLocal<object>? MersenneTesters;
 					ByDivisorKIncrementMode.Additive => "additive.kstate.faster",
 					ByDivisorKIncrementMode.TopDown => "topdown.kstate.faster",
 					ByDivisorKIncrementMode.BitContradiction => "bitcontradiction.kstate.faster",
+					ByDivisorKIncrementMode.BitTree => "bittree.kstate.faster",
 					_ => "sequential.kstate.faster",
 				};
 				string lmdbPath = Path.Combine(checksDir, Path.ChangeExtension(kRepoFile, ".lmdb"));
@@ -664,7 +689,7 @@ private static ThreadLocal<object>? MersenneTesters;
 			CalculationResultHandler.InitializeOutputBuffer();
 
 			// Limit GPU concurrency only for prime checks (LL/NTT & GPU order scans).
-			GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
+			GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads * PerfectNumberConstants.ThreadsByAccelerator);
 			// Configure batch size for GPU primality sieve
 			PrimeTester.GpuBatchSize = gpuPrimeBatch;
 
@@ -743,6 +768,19 @@ private static ThreadLocal<object>? MersenneTesters;
 							MersenneNumberDivisorByDivisorTester.Run(
 								byDivisorCandidates,
 								ref _byDivisorCpuOrderTesterBitContradiction,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						case ByDivisorKIncrementMode.BitTree:
+							Console.WriteLine("Using by-divisor bit-tree increment (CPU order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorCpuOrderTesterBitTree,
 								_byDivisorPreviousResults,
 								_byDivisorStartPrime,
 								static () => _lastCompositeP = true,
@@ -834,6 +872,19 @@ private static ThreadLocal<object>? MersenneTesters;
 								threadCount,
 								byDivisorPrimeRange);
 							break;
+						case ByDivisorKIncrementMode.BitTree:
+							Console.WriteLine("Using by-divisor bit-tree increment (Hybrid order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorHybridOrderTesterBitTree,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
 						default:
 							MersenneNumberDivisorByDivisorTester.Run(
 								byDivisorCandidates,
@@ -909,6 +960,19 @@ private static ThreadLocal<object>? MersenneTesters;
 							MersenneNumberDivisorByDivisorTester.Run(
 								byDivisorCandidates,
 								ref _byDivisorGpuOrderTesterBitContradiction,
+								_byDivisorPreviousResults,
+								_byDivisorStartPrime,
+								static () => _lastCompositeP = true,
+								static () => _lastCompositeP = false,
+								HandleByDivisorResult,
+								threadCount,
+								byDivisorPrimeRange);
+							break;
+						case ByDivisorKIncrementMode.BitTree:
+							Console.WriteLine("Using by-divisor bit-tree increment (GPU order).");
+							MersenneNumberDivisorByDivisorTester.Run(
+								byDivisorCandidates,
+								ref _byDivisorGpuOrderTesterBitTree,
 								_byDivisorPreviousResults,
 								_byDivisorStartPrime,
 								static () => _lastCompositeP = true,
@@ -1327,6 +1391,7 @@ private static ThreadLocal<object>? MersenneTesters;
 						ByDivisorKIncrementMode.Additive => _byDivisorCpuOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
 						ByDivisorKIncrementMode.TopDown => _byDivisorCpuOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
 						ByDivisorKIncrementMode.BitContradiction => _byDivisorCpuOrderTesterBitContradiction.IsPrime(p, out detailedCheck, out _),
+						ByDivisorKIncrementMode.BitTree => _byDivisorCpuOrderTesterBitTree.IsPrime(p, out detailedCheck, out _),
 						_ => _byDivisorCpuOrderTester.IsPrime(p, out detailedCheck, out _),
 					};
 				}
@@ -1341,6 +1406,7 @@ private static ThreadLocal<object>? MersenneTesters;
 						ByDivisorKIncrementMode.Additive => _byDivisorHybridOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
 						ByDivisorKIncrementMode.TopDown => _byDivisorHybridOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
 						ByDivisorKIncrementMode.BitContradiction => _byDivisorHybridOrderTesterBitContradiction.IsPrime(p, out detailedCheck, out _),
+						ByDivisorKIncrementMode.BitTree => _byDivisorHybridOrderTesterBitTree.IsPrime(p, out detailedCheck, out _),
 						_ => _byDivisorHybridOrderTester.IsPrime(p, out detailedCheck, out _),
 					};
 				}
@@ -1353,6 +1419,7 @@ private static ThreadLocal<object>? MersenneTesters;
 					ByDivisorKIncrementMode.Additive => _byDivisorGpuOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
 					ByDivisorKIncrementMode.TopDown => _byDivisorGpuOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
 					ByDivisorKIncrementMode.BitContradiction => _byDivisorGpuOrderTesterBitContradiction.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.BitTree => _byDivisorGpuOrderTesterBitTree.IsPrime(p, out detailedCheck, out _),
 					_ => _byDivisorGpuOrderTester.IsPrime(p, out detailedCheck, out _),
 				};
 			}

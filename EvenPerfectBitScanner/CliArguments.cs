@@ -5,19 +5,20 @@ using PerfectNumbers.Core.Gpu;
 
 namespace EvenPerfectBitScanner;
 
-	internal enum ByDivisorKIncrementMode
-	{
-		Sequential,
-		Pow2Groups,
-		Predictive,
-		Percentile,
-	Additive,
-	TopDown,
-	BitContradiction,
+internal enum ByDivisorKIncrementMode
+{
+    Sequential,
+    Pow2Groups,
+    Predictive,
+    Percentile,
+    Additive,
+    TopDown,
+    BitContradiction,
+    BitTree,
 }
 
-	internal readonly struct CliArguments
-	{
+internal readonly struct CliArguments
+{
     private const string DefaultCyclesPath = "divisor_cycles.bin";
 
     internal readonly ulong StartPrime;
@@ -35,19 +36,19 @@ namespace EvenPerfectBitScanner;
     internal readonly bool UseLucas;
     internal readonly bool UseResidue;
     internal readonly bool UseDivisor;
-	internal readonly bool UseByDivisor;
-	internal readonly ByDivisorKIncrementMode ByDivisorKIncrementMode;
-	internal readonly int ByDivisorSpecialRange;
-	internal readonly bool UseGcdFilter;
-	internal readonly bool TestMode;
-	internal readonly bool UseGpuCycles;
-	internal readonly ComputationDevice MersenneDevice;
-	internal readonly ComputationDevice OrderDevice;
-	internal readonly int ScanBatchSize;
-	internal readonly int SliceSize;
-	internal readonly ulong MaxKLimit;
+    internal readonly bool UseByDivisor;
+    internal readonly ByDivisorKIncrementMode ByDivisorKIncrementMode;
+    internal readonly int ByDivisorSpecialRange;
+    internal readonly bool UseGcdFilter;
+    internal readonly bool TestMode;
+    internal readonly bool UseGpuCycles;
+    internal readonly ComputationDevice MersenneDevice;
+    internal readonly ComputationDevice OrderDevice;
+    internal readonly int ScanBatchSize;
+    internal readonly int SliceSize;
+    internal readonly ulong MaxKLimit;
     internal readonly bool MaxKConfigured;
-	internal readonly string FilterFile;
+    internal readonly string FilterFile;
     internal readonly bool ForcePrimeKernelsOnCpu;
     internal readonly ModReductionMode ModReductionMode;
     internal readonly NttBackend NttBackend;
@@ -66,56 +67,56 @@ namespace EvenPerfectBitScanner;
     internal readonly double ZeroFractionConjecture;
     internal readonly int MaxZeroConjecture;
     internal readonly BigInteger MinK;
-	internal readonly int GpuRatio;
+    internal readonly int GpuRatio;
 
-	private CliArguments(
-            ulong startPrime,
-            bool startPrimeProvided,
-            UInt128 maxPrimeLimit,
-            bool maxPrimeConfigured,
-            int threadCount,
-            int blockSize,
-            int gpuPrimeThreads,
-            int gpuPrimeBatch,
-            GpuKernelType kernelType,
-            bool useOrder,
-            bool showHelp,
-            bool useBitTransform,
-            bool useLucas,
-            bool useResidue,
-            bool useDivisor,
-            bool useByDivisor,
-            bool useGcdFilter,
-            ByDivisorKIncrementMode byDivisorKIncrementMode,
-            int byDivisorSpecialRange,
-            bool testMode,
-            bool useGpuCycles,
-            ComputationDevice mersenneDevice,
-            ComputationDevice orderDevice,
-            int scanBatchSize,
-            int sliceSize,
-            ulong maxKLimit,
-            bool maxKConfigured,
-            string filterFile,
-            bool forcePrimeKernelsOnCpu,
-            ModReductionMode modReductionMode,
-            NttBackend nttBackend,
-            string? resultsDirectory,
-            string? resultsPrefix,
-            int writeBatchSize,
-            string cyclesPath,
-            bool continueCyclesGeneration,
-            int cyclesBatchSize,
-            ulong divisorCyclesSearchLimit,
-            ulong? orderWarmupLimitOverride,
-            string? rleBlacklistPath,
-            ulong rleHardMaxP,
-            bool rleOnlyLast7,
-            double zeroFractionHard,
-            double zeroFractionConjecture,
-            int maxZeroConjecture,
-            BigInteger minK,
-			int gpuRatio)
+    private CliArguments(
+        ulong startPrime,
+        bool startPrimeProvided,
+        UInt128 maxPrimeLimit,
+        bool maxPrimeConfigured,
+        int threadCount,
+        int blockSize,
+        int gpuPrimeThreads,
+        int gpuPrimeBatch,
+        GpuKernelType kernelType,
+        bool useOrder,
+        bool showHelp,
+        bool useBitTransform,
+        bool useLucas,
+        bool useResidue,
+        bool useDivisor,
+        bool useByDivisor,
+        bool useGcdFilter,
+        ByDivisorKIncrementMode byDivisorKIncrementMode,
+        int byDivisorSpecialRange,
+        bool testMode,
+        bool useGpuCycles,
+        ComputationDevice mersenneDevice,
+        ComputationDevice orderDevice,
+        int scanBatchSize,
+        int sliceSize,
+        ulong maxKLimit,
+        bool maxKConfigured,
+        string filterFile,
+        bool forcePrimeKernelsOnCpu,
+        ModReductionMode modReductionMode,
+        NttBackend nttBackend,
+        string? resultsDirectory,
+        string? resultsPrefix,
+        int writeBatchSize,
+        string cyclesPath,
+        bool continueCyclesGeneration,
+        int cyclesBatchSize,
+        ulong divisorCyclesSearchLimit,
+        ulong? orderWarmupLimitOverride,
+        string? rleBlacklistPath,
+        ulong rleHardMaxP,
+        bool rleOnlyLast7,
+        double zeroFractionHard,
+        double zeroFractionConjecture,
+        int maxZeroConjecture,
+        BigInteger minK,
+        int gpuRatio)
     {
         StartPrime = startPrime;
         StartPrimeProvided = startPrimeProvided;
@@ -163,7 +164,7 @@ namespace EvenPerfectBitScanner;
         ZeroFractionConjecture = zeroFractionConjecture;
         MaxZeroConjecture = maxZeroConjecture;
         MinK = minK;
-		GpuRatio = gpuRatio;
+        GpuRatio = gpuRatio;
     }
 
     internal bool UseFilter => !TestMode && !string.IsNullOrEmpty(FilterFile);
@@ -204,7 +205,7 @@ namespace EvenPerfectBitScanner;
         string? resultsDirectory = null;
         string? resultsPrefix = null;
         int writeBatchSize = CalculationResultHandler.DefaultWriteBatchSize;
-            string cyclesPath = DefaultCyclesPath;
+        string cyclesPath = DefaultCyclesPath;
         bool continueCyclesGeneration = false;
         int cyclesBatchSize = 512;
         ulong divisorCyclesSearchLimit = PerfectNumberConstants.ExtraDivisorCycleSearchLimit;
@@ -216,7 +217,7 @@ namespace EvenPerfectBitScanner;
         double zeroFractionConjecture = -1.0;
         int maxZeroConjecture = -1;
         BigInteger minK = BigInteger.One;
-		int gpuRatio = PerfectNumberConstants.GpuRatio;
+        int gpuRatio = PerfectNumberConstants.GpuRatio;
 
         foreach (string argument in args)
         {
@@ -279,6 +280,19 @@ namespace EvenPerfectBitScanner;
                 continue;
             }
 
+            if (argument.Equals("--use-order", StringComparison.OrdinalIgnoreCase))
+            {
+                useOrder = true;
+                continue;
+            }
+
+            if (argument.StartsWith("--max-k=", StringComparison.OrdinalIgnoreCase))
+            {
+                maxKLimit = Utf8CliParser.ParseUInt64(argument.AsSpan("--max-k=".Length));
+                maxKConfigured = true;
+                continue;
+            }
+
             if (argument.StartsWith("--mersenne=", StringComparison.OrdinalIgnoreCase))
             {
                 ReadOnlySpan<char> value = argument.AsSpan("--mersenne=".Length);
@@ -318,138 +332,46 @@ namespace EvenPerfectBitScanner;
 
             if (argument.StartsWith("--bydivisor-k-increment=", StringComparison.OrdinalIgnoreCase))
             {
-                string value = argument["--bydivisor-k-increment=".Length..].Trim();
+                ReadOnlySpan<char> value = argument.AsSpan("--bydivisor-k-increment=".Length);
                 if (value.Equals("pow2groups", StringComparison.OrdinalIgnoreCase))
                 {
                     byDivisorKIncrementMode = ByDivisorKIncrementMode.Pow2Groups;
-                }
-                else if (value.Equals("sequential", StringComparison.OrdinalIgnoreCase))
-                {
-                    byDivisorKIncrementMode = ByDivisorKIncrementMode.Sequential;
                 }
                 else if (value.Equals("predictive", StringComparison.OrdinalIgnoreCase))
                 {
                     byDivisorKIncrementMode = ByDivisorKIncrementMode.Predictive;
                 }
-				else if (value.Equals("percentile", StringComparison.OrdinalIgnoreCase))
-				{
-					byDivisorKIncrementMode = ByDivisorKIncrementMode.Percentile;
-				}
-				else if (value.Equals("additive", StringComparison.OrdinalIgnoreCase))
-				{
-					byDivisorKIncrementMode = ByDivisorKIncrementMode.Additive;
-				}
-				else if (value.Equals("topdown", StringComparison.OrdinalIgnoreCase))
-				{
-					byDivisorKIncrementMode = ByDivisorKIncrementMode.TopDown;
-				}
-				else if (value.Equals("bitcontradiction", StringComparison.OrdinalIgnoreCase))
-				{
-					byDivisorKIncrementMode = ByDivisorKIncrementMode.BitContradiction;
-				}
-				else
-				{
-					Console.WriteLine("Invalid value for --bydivisor-k-increment. Use sequential, pow2groups, predictive, percentile, additive, topdown, or bitcontradiction.");
-					return default;
-				}
+                else if (value.Equals("percentile", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorKIncrementMode = ByDivisorKIncrementMode.Percentile;
+                }
+                else if (value.Equals("additive", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorKIncrementMode = ByDivisorKIncrementMode.Additive;
+                }
+                else if (value.Equals("topdown", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorKIncrementMode = ByDivisorKIncrementMode.TopDown;
+                }
+                else if (value.Equals("bitcontradiction", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorKIncrementMode = ByDivisorKIncrementMode.BitContradiction;
+                }
+                else if (value.Equals("bittree", StringComparison.OrdinalIgnoreCase))
+                {
+                    byDivisorKIncrementMode = ByDivisorKIncrementMode.BitTree;
+                }
+                else
+                {
+                    byDivisorKIncrementMode = ByDivisorKIncrementMode.Sequential;
+                }
 
                 continue;
             }
 
             if (argument.StartsWith("--bydivisor-special-range=", StringComparison.OrdinalIgnoreCase))
             {
-                if (Utf8CliParser.TryParseInt32(argument.AsSpan("--bydivisor-special-range=".Length), out int parsedRange) && parsedRange >= 0)
-                {
-                    byDivisorSpecialRange = parsedRange;
-                }
-                else
-                {
-                    Console.WriteLine("Invalid value for --bydivisor-special-range. Use a non-negative integer.");
-                    return default;
-                }
-
-                continue;
-            }
-
-            if (argument.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
-            {
-                if (Utf8CliParser.TryParseUInt64(argument.AsSpan("--divisor-cycles-limit=".Length), out ulong parsedLimit))
-                {
-                    divisorCyclesSearchLimit = parsedLimit;
-                }
-
-                continue;
-            }
-
-            if (argument.StartsWith("--max-k=", StringComparison.OrdinalIgnoreCase))
-            {
-                if (Utf8CliParser.TryParseUInt64(argument.AsSpan("--max-k=".Length), out ulong parsedMaxK))
-                {
-                    maxKLimit = parsedMaxK;
-                    maxKConfigured = true;
-                }
-
-                continue;
-            }
-
-            if (argument.StartsWith("--min-k=", StringComparison.OrdinalIgnoreCase))
-            {
-                ReadOnlySpan<char> minKSpan = argument.AsSpan("--min-k=".Length);
-                if (Utf8CliParser.TryParseUInt64(minKSpan, out ulong parsedMinK) && parsedMinK > 0UL)
-                {
-                    minK = parsedMinK;
-                }
-                else
-                {
-                    try
-                    {
-                        BigInteger parsedMinKBig = BigInteger.Parse(minKSpan, CultureInfo.InvariantCulture);
-                        if (parsedMinKBig > BigInteger.Zero)
-                        {
-                            minK = parsedMinKBig;
-                        }
-                        else
-                        {
-                            Console.WriteLine("Invalid value for --min-k.");
-                            return default;
-                        }
-                    }
-                    catch
-                    {
-                        Console.WriteLine("Invalid value for --min-k.");
-                        return default;
-                    }
-                }
-
-                continue;
-            }
-
-            if (argument.StartsWith("--mersenne-device=", StringComparison.OrdinalIgnoreCase))
-            {
-                ReadOnlySpan<char> value = argument.AsSpan("--mersenne-device=".Length);
-                mersenneDevice = ParseDevice(value);
-                continue;
-            }
-
-            if (argument.Equals("--test", StringComparison.OrdinalIgnoreCase))
-            {
-                testMode = true;
-                continue;
-            }
-
-            if (argument.Equals("--use-order", StringComparison.OrdinalIgnoreCase))
-            {
-                useOrder = true;
-                continue;
-            }
-
-            if (argument.StartsWith("--order-warmup-limit=", StringComparison.OrdinalIgnoreCase))
-            {
-                if (Utf8CliParser.TryParseUInt64(argument.AsSpan("--order-warmup-limit=".Length), out ulong parsedLimit))
-                {
-                    orderWarmupLimitOverride = parsedLimit;
-                }
-
+                byDivisorSpecialRange = Utf8CliParser.ParseInt32(argument.AsSpan("--bydivisor-special-range=".Length));
                 continue;
             }
 
@@ -459,144 +381,42 @@ namespace EvenPerfectBitScanner;
                 continue;
             }
 
-            if (argument.StartsWith("--ntt=", StringComparison.OrdinalIgnoreCase))
+            if (argument.Equals("--test-mode", StringComparison.OrdinalIgnoreCase))
             {
-                ReadOnlySpan<char> value = argument.AsSpan("--ntt=".Length);
-                nttBackend = value.Equals("staged", StringComparison.OrdinalIgnoreCase) ? NttBackend.Staged : NttBackend.Reference;
+                testMode = true;
                 continue;
             }
 
-            if (argument.StartsWith("--mod-reduction=", StringComparison.OrdinalIgnoreCase))
+            if (argument.StartsWith("--mersenne-device=", StringComparison.OrdinalIgnoreCase))
             {
-                ReadOnlySpan<char> value = argument.AsSpan("--mod-reduction=".Length);
-                if (value.Equals("mont64", StringComparison.OrdinalIgnoreCase))
-                {
-                    modReductionMode = ModReductionMode.Mont64;
-                }
-                else if (value.Equals("barrett128", StringComparison.OrdinalIgnoreCase))
-                {
-                    modReductionMode = ModReductionMode.Barrett128;
-                }
-                else if (value.Equals("uint128", StringComparison.OrdinalIgnoreCase))
-                {
-                    modReductionMode = ModReductionMode.GpuUInt128;
-                }
-                else
-                {
-                    modReductionMode = ModReductionMode.Auto;
-                }
-
+                mersenneDevice = ParseDevice(argument.AsSpan("--mersenne-device=".Length));
                 continue;
             }
 
-            if (argument.StartsWith("--primes-device=", StringComparison.OrdinalIgnoreCase))
+            if (argument.StartsWith("--primes=", StringComparison.OrdinalIgnoreCase) ||
+                argument.StartsWith("--gpu-kernels=", StringComparison.OrdinalIgnoreCase) ||
+                argument.StartsWith("--accelerator=", StringComparison.OrdinalIgnoreCase))
             {
-                forcePrimeKernelsOnCpu = argument.AsSpan("--primes-device=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
+                ReadOnlySpan<char> value = argument.Contains('=') ? argument.AsSpan(argument.IndexOf('=') + 1) : argument.AsSpan();
+                forcePrimeKernelsOnCpu = value.Equals("cpu", StringComparison.OrdinalIgnoreCase);
                 continue;
             }
 
             if (argument.StartsWith("--order-device=", StringComparison.OrdinalIgnoreCase))
             {
-                ReadOnlySpan<char> value = argument.AsSpan("--order-device=".Length);
-                orderDevice = ParseDevice(value);
-                continue;
-            }
-
-            if (argument.StartsWith("--rle-blacklist=", StringComparison.OrdinalIgnoreCase))
-            {
-                rleBlacklistPath = argument["--rle-blacklist=".Length..];
-                continue;
-            }
-
-            if (argument.StartsWith("--rle-hard-max=", StringComparison.OrdinalIgnoreCase))
-            {
-                if (Utf8CliParser.TryParseUInt64(argument.AsSpan("--rle-hard-max=".Length), out ulong parsedMax))
-                {
-                    rleHardMaxP = parsedMax;
-                }
-
-                continue;
-            }
-
-            if (argument.StartsWith("--rle-only-last7=", StringComparison.OrdinalIgnoreCase))
-            {
-                ReadOnlySpan<char> value = argument.AsSpan("--rle-only-last7=".Length);
-                rleOnlyLast7 = !value.Equals("false", StringComparison.OrdinalIgnoreCase) && !value.Equals("0", StringComparison.OrdinalIgnoreCase);
-                continue;
-            }
-
-            if (argument.StartsWith("--zero-hard=", StringComparison.OrdinalIgnoreCase))
-            {
-                if (Utf8CliParser.TryParseDouble(argument.AsSpan("--zero-hard=".Length), out double zeroFraction))
-                {
-                    zeroFractionHard = zeroFraction;
-                }
-
-                continue;
-            }
-
-            if (argument.StartsWith("--zero-conj=", StringComparison.OrdinalIgnoreCase))
-            {
-                ReadOnlySpan<char> value = argument.AsSpan("--zero-conj=".Length);
-                int colon = value.IndexOf(':');
-                if (colon > 0)
-                {
-                    if (Utf8CliParser.TryParseDouble(value[..colon], out double zeroFrac) &&
-                        Utf8CliParser.TryParseInt32(value[(colon + 1)..], out int maxZero))
-                    {
-                        zeroFractionConjecture = zeroFrac;
-                        maxZeroConjecture = maxZero;
-                    }
-                }
-
-                continue;
-            }
-
-            if (argument.StartsWith("--lucas=", StringComparison.OrdinalIgnoreCase))
-            {
-                mersenneDevice = ParseDevice(argument.AsSpan("--lucas=".Length));
-                continue;
-            }
-
-            if (argument.StartsWith("--primes=", StringComparison.OrdinalIgnoreCase))
-            {
-                forcePrimeKernelsOnCpu = argument.AsSpan("--primes=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
-                continue;
-            }
-
-            if (argument.StartsWith("--gpu-kernels=", StringComparison.OrdinalIgnoreCase))
-            {
-                forcePrimeKernelsOnCpu = argument.AsSpan("--gpu-kernels=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
-                continue;
-            }
-
-            if (argument.StartsWith("--accelerator=", StringComparison.OrdinalIgnoreCase))
-            {
-                forcePrimeKernelsOnCpu = argument.AsSpan("--accelerator=".Length).Equals("cpu", StringComparison.OrdinalIgnoreCase);
-                continue;
-            }
-
-            if (argument.StartsWith("--results-dir=", StringComparison.OrdinalIgnoreCase))
-            {
-                resultsDirectory = argument["--results-dir=".Length..];
-                continue;
-            }
-
-            if (argument.StartsWith("--results-prefix=", StringComparison.OrdinalIgnoreCase))
-            {
-                resultsPrefix = argument["--results-prefix=".Length..];
-                continue;
-            }
-
-            if (argument.StartsWith("--gpu-prime-threads=", StringComparison.OrdinalIgnoreCase))
-            {
-                gpuPrimeThreads = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan("--gpu-prime-threads=".Length)));
+                orderDevice = ParseDevice(argument.AsSpan("--order-device=".Length));
                 continue;
             }
 
             if (argument.StartsWith("--gpu-prime-batch=", StringComparison.OrdinalIgnoreCase))
             {
                 gpuPrimeBatch = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan("--gpu-prime-batch=".Length)));
+                continue;
+            }
+
+            if (argument.StartsWith("--gpu-prime-threads=", StringComparison.OrdinalIgnoreCase))
+            {
+                gpuPrimeThreads = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan("--gpu-prime-threads=".Length)));
                 continue;
             }
 
@@ -615,6 +435,54 @@ namespace EvenPerfectBitScanner;
             if (argument.StartsWith("--block-size=", StringComparison.OrdinalIgnoreCase))
             {
                 blockSize = Math.Max(1, Utf8CliParser.ParseInt32(argument.AsSpan("--block-size=".Length)));
+                continue;
+            }
+
+            if (argument.StartsWith("--mod-reduction=", StringComparison.OrdinalIgnoreCase))
+            {
+                ReadOnlySpan<char> value = argument.AsSpan("--mod-reduction=".Length);
+                if (value.Equals("uint128", StringComparison.OrdinalIgnoreCase))
+                {
+                    modReductionMode = ModReductionMode.GpuUInt128;
+                }
+                else if (value.Equals("mont64", StringComparison.OrdinalIgnoreCase))
+                {
+                    modReductionMode = ModReductionMode.Mont64;
+                }
+                else if (value.Equals("barrett128", StringComparison.OrdinalIgnoreCase))
+                {
+                    modReductionMode = ModReductionMode.Barrett128;
+                }
+                else
+                {
+                    modReductionMode = ModReductionMode.Auto;
+                }
+
+                continue;
+            }
+
+            if (argument.StartsWith("--ntt=", StringComparison.OrdinalIgnoreCase))
+            {
+                ReadOnlySpan<char> value = argument.AsSpan("--ntt=".Length);
+                nttBackend = value.Equals("staged", StringComparison.OrdinalIgnoreCase) ? NttBackend.Staged : NttBackend.Reference;
+                continue;
+            }
+
+            if (argument.StartsWith("--order-warmup-limit=", StringComparison.OrdinalIgnoreCase))
+            {
+                orderWarmupLimitOverride = Utf8CliParser.ParseUInt64(argument.AsSpan("--order-warmup-limit=".Length));
+                continue;
+            }
+
+            if (argument.StartsWith("--divisor-cycles-limit=", StringComparison.OrdinalIgnoreCase))
+            {
+                divisorCyclesSearchLimit = Utf8CliParser.ParseUInt64(argument.AsSpan("--divisor-cycles-limit=".Length));
+                continue;
+            }
+
+            if (argument.StartsWith("--min-k=", StringComparison.OrdinalIgnoreCase))
+            {
+                minK = BigInteger.Parse(argument.AsSpan("--min-k=".Length), NumberStyles.None, CultureInfo.InvariantCulture);
                 continue;
             }
 
@@ -651,6 +519,7 @@ namespace EvenPerfectBitScanner;
             if (argument.Equals("--divisor-cycles-continue", StringComparison.OrdinalIgnoreCase))
             {
                 continueCyclesGeneration = true;
+                continue;
             }
         }
 
@@ -659,15 +528,15 @@ namespace EvenPerfectBitScanner;
             startPrimeProvided,
             maxPrimeLimit,
             maxPrimeConfigured,
-                threadCount,
-                blockSize,
-                gpuPrimeThreads,
-                gpuPrimeBatch,
-                kernelType,
-                useOrder,
-                showHelp,
-                useBitTransform,
-                useLucas,
+            threadCount,
+            blockSize,
+            gpuPrimeThreads,
+            gpuPrimeBatch,
+            kernelType,
+            useOrder,
+            showHelp,
+            useBitTransform,
+            useLucas,
             useResidue,
             useDivisor,
             useByDivisor,
@@ -701,7 +570,7 @@ namespace EvenPerfectBitScanner;
             zeroFractionConjecture,
             maxZeroConjecture,
             minK,
-			gpuRatio);
+            gpuRatio);
     }
 
     internal static void PrintHelp()
@@ -715,14 +584,14 @@ namespace EvenPerfectBitScanner;
         Console.WriteLine("  --increment=bit|add    exponent increment method (default add)");
         Console.WriteLine("  --threads=<value>      number of worker threads");
         Console.WriteLine("  --mersenne=pow2mod|incremental|lucas|residue|divisor|bydivisor  Mersenne test method");
-		Console.WriteLine("  --bydivisor-k-increment=sequential|pow2groups|predictive|percentile|additive|topdown|bitcontradiction  k iteration strategy for --mersenne=bydivisor (default sequential)");
+        Console.WriteLine("  --bydivisor-k-increment=sequential|pow2groups|predictive|percentile|additive|topdown|bitcontradiction|bittree  k iteration strategy for --mersenne=bydivisor (default sequential)");
         Console.WriteLine("  --bydivisor-special-range=<n>  widen pow2groups special values to +/- n percent (default 0 = points)");
         Console.WriteLine("  --max-k=<value> max k for Mersenne tests (q = 2*p*k + 1), including --mersenne=bydivisor");
         Console.WriteLine("  --mersenne-device=cpu|gpu|hybrid  Device for Mersenne method (default gpu)");
         Console.WriteLine("  --primes-device=cpu|gpu device for prime-scan kernels (default gpu)");
-        Console.WriteLine("  --gpu-prime-batch=<n>   batch size for GPU primality sieve (default 262144)");
-        Console.WriteLine($"  --gpu-ratio=<n>      	ratio of GPU operations vs CPU in hybrid device mode (default {PerfectNumberConstants.GpuRatio})");
+        Console.WriteLine($"  --gpu-ratio=<n>          ratio of GPU operations vs CPU in hybrid device mode (default {PerfectNumberConstants.GpuRatio})");
         Console.WriteLine("  --gpu-prime-threads=<value>  max concurrent GPU prime checks (default 1)");
+        Console.WriteLine("  --gpu-prime-batch=<n>    batch size for GPU primality sieve (default 262144)");
         Console.WriteLine("  --gpu-scan-batch=<value>  GPU q-scan batch size (default 2_097_152)");
         Console.WriteLine("  --order-device=cpu|gpu|hybrid  Device for order computations (default gpu)");
         Console.WriteLine("  --ll-slice=<value>     Lucas–Lehmer iterations per slice (default 32)");

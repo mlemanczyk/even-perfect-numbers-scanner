@@ -27,6 +27,10 @@ using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTeste
 using TesterCpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitContradictionDivisorSetForCpuOrder;
 using TesterHybrid = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitContradictionDivisorSetForHybridOrder;
 using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitContradictionDivisorSetForGpuOrder;
+#elif DivisorSet_BitTree
+using TesterCpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitTreeDivisorSetForCpuOrder;
+using TesterHybrid = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitTreeDivisorSetForHybridOrder;
+using TesterGpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForBitTreeDivisorSetForGpuOrder;
 #else
 using TesterCpu = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForSequentialDivisorSetForCpuOrder;
 using TesterHybrid = PerfectNumbers.Core.Cpu.MersenneNumberDivisorByDivisorCpuTesterWithForSequentialDivisorSetForHybridOrder;
@@ -91,6 +95,8 @@ internal struct MersenneNumberDivisorByDivisorPrimeScanSessionWithTemplate
 			extension = ".topdown";
 #elif DivisorSet_BitContradiction
 			extension = ".bitcontradiction";
+#elif DivisorSet_BitTree
+			extension = ".bittree";
 #endif
 			string stateFile = prime.ToString(CultureInfo.InvariantCulture) + extension;
 
