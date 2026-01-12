@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 
 namespace PerfectNumbers.Core.ByDivisor;
 
@@ -9,57 +10,38 @@ namespace PerfectNumbers.Core.ByDivisor;
 /// </summary>
 internal static class BitContradictionSolver
 {
-    internal enum BitState
+    private const int PingPongBlockColumns = 64;
+    private const int TailCarryBatchColumns = 1024;
+    private const int TailCarryBatchRepeats = 1;
+
+    [ThreadStatic]
+    private static Dictionary<long, sbyte>? _aBitsBuffer;
+    [ThreadStatic]
+    private static TopDownPruneFailure? _lastTopDownFailure;
+
+    internal readonly struct TopDownPruneFailure(long column, long carryMin, long carryMax, long unknown)
     {
-        Zero = 0,
-        One = 1,
-        Unknown = 2,
+        public readonly long Column = column;
+        public readonly long CarryMin = carryMin;
+        public readonly long CarryMax = carryMax;
+        public readonly long Unknown = unknown;
     }
 
-    internal readonly struct ColumnBounds
-    {
-        public readonly long ForcedOnes;
-        public readonly long PossibleOnes;
+    internal static TopDownPruneFailure? LastTopDownFailure => _lastTopDownFailure;
 
-        public ColumnBounds(long forcedOnes, long possibleOnes)
-        {
-            if (forcedOnes < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(forcedOnes));
-            }
+    internal readonly struct ColumnBounds(long forcedOnes, long possibleOnes)
+	{
+        public readonly long ForcedOnes = forcedOnes;
+        public readonly long PossibleOnes = possibleOnes;
+	}
 
-            if (possibleOnes < forcedOnes)
-            {
-                throw new ArgumentOutOfRangeException(nameof(possibleOnes), "possibleOnes must be >= forcedOnes.");
-            }
+    internal readonly struct CarryRange(long min, long max)
+	{
+        public readonly long Min = min;
+        public readonly long Max = max;
 
-            ForcedOnes = forcedOnes;
-            PossibleOnes = possibleOnes;
-        }
-    }
-
-    internal readonly struct CarryRange
-    {
-        public readonly long Min;
-        public readonly long Max;
-
-        public CarryRange(long min, long max)
-        {
-            if (min < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(min));
-            }
-
-            if (max < min)
-            {
-                throw new ArgumentOutOfRangeException(nameof(max), "max must be >= min.");
-            }
-
-            Min = min;
-            Max = max;
-        }
-
-        public static CarryRange Single(long value) => new(value, value);
+		public static CarryRange Single(long value) => new(value, value);
+		public static readonly CarryRange Zero = Single(0);
     }
 
     internal enum ContradictionReason
@@ -71,33 +53,27 @@ internal static class BitContradictionSolver
     }
 
     internal static ColumnBounds ComputeColumnBounds(
-        ReadOnlySpan<BitState> multiplicand,
-        ReadOnlySpan<BitState> multiplier,
+        ReadOnlySpan<bool> multiplicand,
+        ReadOnlySpan<bool> multiplier,
         int columnIndex)
     {
-        if (columnIndex < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(columnIndex));
-        }
-
         long forced = 0;
         long possible = 0;
 
+		int multiplicandLength = multiplicand.Length;
+		int multiplierLength = multiplier.Length;
         for (int i = 0; i <= columnIndex; i++)
         {
-            BitState a = i < multiplicand.Length ? multiplicand[i] : BitState.Zero;
-            BitState q = columnIndex - i < multiplier.Length ? multiplier[columnIndex - i] : BitState.Zero;
-
-            if (a == BitState.Zero || q == BitState.Zero)
+			bool a = i < multiplicandLength && multiplicand[i];
+			bool q = columnIndex - i < multiplierLength && multiplier[columnIndex - i];
+            if (!a && !q)
             {
                 continue;
             }
 
-            if (a == BitState.One && q == BitState.One)
+            if (a && q)
             {
                 forced++;
-                possible++;
-                continue;
             }
 
             possible++;
@@ -114,26 +90,21 @@ internal static class BitContradictionSolver
         out CarryRange nextCarry,
         out ContradictionReason reason)
     {
-        if (forcedOnes < 0 || possibleOnes < forcedOnes)
-        {
-            throw new ArgumentOutOfRangeException(nameof(possibleOnes), "possibleOnes must be >= forcedOnes and both non-negative.");
-        }
-
         long minSum = currentCarry.Min + forcedOnes;
         long maxSum = currentCarry.Max + possibleOnes;
         int parity = requiredResultBit & 1;
 
-        long minAligned = AlignUpToParity(minSum, parity);
-        long maxAligned = AlignDownToParity(maxSum, parity);
+        minSum = AlignUpToParity(minSum, parity);
+        maxSum = AlignDownToParity(maxSum, parity);
 
-        if (minAligned > maxAligned)
+        if (minSum > maxSum)
         {
             nextCarry = default;
             reason = ContradictionReason.ParityUnreachable;
             return false;
         }
 
-        nextCarry = new CarryRange((minAligned - requiredResultBit) >> 1, (maxAligned - requiredResultBit) >> 1);
+        nextCarry = new CarryRange((minSum - requiredResultBit) >> 1, (maxSum - requiredResultBit) >> 1);
         reason = ContradictionReason.None;
         return true;
     }
@@ -149,65 +120,164 @@ internal static class BitContradictionSolver
         out ContradictionReason reason)
     {
         divides = false;
-        reason = ContradictionReason.None;
+        _lastTopDownFailure = null;
 
-        if (p == 0 || qOneOffsets.Length == 0)
-        {
-            reason = ContradictionReason.ParityUnreachable;
-            return true;
-        }
+		// These conditions will never be true on EvenPerfectBitScanner execution path.
+        // if (p == 0 || qOneOffsets.Length == 0)
+        // {
+        //     reason = ContradictionReason.ParityUnreachable;
+        //     return true;
+        // }
 
+		// While the scanner supports p >= 31, it's a tiny subset of all checked exponents. No need to support it.
         // Exact small-case evaluation to short-circuit both success and failure deterministically.
-        int highestBit = qOneOffsets[^1];
-        if (p <= 64 && highestBit < 63)
-        {
-            ulong q = 0;
-            foreach (int bit in qOneOffsets)
-            {
-                q |= 1UL << bit;
-            }
+        // int highestBit = qOneOffsets[^1];
+        // if (p <= 64 && highestBit < 63)
+        // {
+        //     ulong q = 0;
+        //     foreach (int bit in qOneOffsets)
+        //     {
+        //         q |= 1UL << bit;
+        //     }
 
-            ulong mersenne = (1UL << (int)p) - 1UL;
-            divides = q != 0 && (mersenne % q == 0);
-            reason = divides ? ContradictionReason.None : ContradictionReason.ParityUnreachable;
-            return true;
-        }
+        //     ulong mersenne = (1UL << (int)p) - 1UL;
+        //     divides = q != 0 && (mersenne % q == 0);
+        //     reason = divides ? ContradictionReason.None : ContradictionReason.ParityUnreachable;
+        //     return true;
+        // }
 
-        int maxOffset = qOneOffsets[^1];
+		int qOneOffsetsLength = qOneOffsets.Length;
+        int maxOffset = qOneOffsets[qOneOffsetsLength - 1];
         if ((ulong)(maxOffset + 1) >= p)
         {
-            divides = false;
             reason = ContradictionReason.TruncatedLength;
             return true;
         }
 
-        if (qOneOffsets[0] != 0)
+		// q from EvenPerfectBitScanner will always have the correct 2kp+1 form.
+        // if (qOneOffsets[0] != 0)
+        // {
+        //     reason = ContradictionReason.ParityUnreachable;
+        //     return true;
+        // }
+
+		Dictionary<long, sbyte> aBits = _aBitsBuffer ??= new Dictionary<long, sbyte>(capacity: qOneOffsetsLength << 2);
+        // aBits.EnsureCapacity(qOneOffsetsLength << 2);
+        aBits.Clear();
+        long maxKnownA = -1L;
+		long pLong = (long)p;
+		long maxAllowedA = pLong - (maxOffset + 1L);
+        if (maxAllowedA < 0)
+        {
+            reason = ContradictionReason.TruncatedLength;
+            return true;
+        }
+
+        if (!TryTopDownCarryPrune(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA, out _lastTopDownFailure))
+        {
+            reason = ContradictionReason.ParityUnreachable;
+            return true;
+        }
+
+        long lowColumn = 0;
+        long highColumn = pLong - 1;
+        CarryRange carryLow = CarryRange.Zero;
+        CarryRange carryHigh = CarryRange.Zero;
+        bool processTop = true;
+
+        while (lowColumn <= highColumn)
+        {
+            int remaining = (int)(highColumn - lowColumn + 1);
+            int blockSize = remaining < PingPongBlockColumns ? remaining : PingPongBlockColumns;
+
+            if (processTop)
+            {
+                if (!TryProcessTopDownBlock(qOneOffsets, qOneOffsetsLength, maxAllowedA, highColumn, blockSize, carryHigh, out carryHigh, out _lastTopDownFailure))
+                {
+                    reason = ContradictionReason.ParityUnreachable;
+                    return true;
+                }
+
+                highColumn -= blockSize;
+            }
+            else
+            {
+                if (!TryProcessBottomUpBlock(qOneOffsets, aBits, maxAllowedA, lowColumn, blockSize, ref carryLow, ref maxKnownA, out reason))
+                {
+                    return true;
+                }
+
+                lowColumn += blockSize;
+            }
+
+            processTop = !processTop;
+        }
+
+        long carryMin = carryLow.Min > carryHigh.Min ? carryLow.Min : carryHigh.Min;
+        long carryMax = carryLow.Max < carryHigh.Max ? carryLow.Max : carryHigh.Max;
+        if (carryMin > carryMax)
         {
             divides = false;
             reason = ContradictionReason.ParityUnreachable;
             return true;
         }
 
-        var aBits = new Dictionary<long, sbyte>(capacity: qOneOffsets.Length * 4);
-        long carryMin = 0;
-        long carryMax = 0;
-        long maxKnownA = -1;
-        long maxAllowedA = (long)p - (maxOffset + 1L);
-        if (maxAllowedA < 0)
+        divides = true;
+        reason = ContradictionReason.None;
+        return true;
+    }
+
+	internal static bool TryCheckDivisibilityFromOneOffsets(
+		ReadOnlySpan<int> qOneOffsets,
+		ulong p,
+		out bool divides) => TryCheckDivisibilityFromOneOffsets(qOneOffsets, p, out divides, out _);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static bool TryAdvanceZeroColumns(ref CarryRange carry, int columnCount)
+    {
+        long carryMin = carry.Min;
+        long carryMax = carry.Max;
+        while (columnCount > 0)
         {
-            divides = false;
-            reason = ContradictionReason.TruncatedLength;
-            return true;
+            int step = columnCount > 62 ? 62 : columnCount;
+            long add = (1L << step) - 1L;
+            long nextMin = (carryMin + add) >> step;
+            long nextMax = carryMax >> step;
+            if (nextMin > nextMax)
+            {
+                return false;
+            }
+
+            carryMin = nextMin;
+            carryMax = nextMax;
+            columnCount -= step;
         }
 
-        for (long column = 0; column < (long)p; column++)
-        {
-            long forced = 0;
-            long unknown = 0;
-            long chosenIndex = -1;
+        carry = new CarryRange(carryMin, carryMax);
+        return true;
+    }
 
-            foreach (int offset in qOneOffsets)
+    private static bool TryProcessBottomUpBlock(
+        ReadOnlySpan<int> qOneOffsets,
+        Dictionary<long, sbyte> aBits,
+        long maxAllowedA,
+        long startColumn,
+        int columnCount,
+        ref CarryRange carry,
+        ref long maxKnownA,
+        out ContradictionReason reason)
+    {
+        long endColumn = startColumn + columnCount;
+		int qOneOffsetsLength = qOneOffsets.Length;
+        for (long column = startColumn; column < endColumn; column++)
+        {
+            long forced = 0L;
+            long unknown = 0L;
+            long chosenIndex = -1L;
+
+            for (int offsetIndex = 0; offsetIndex < qOneOffsetsLength; offsetIndex++)
             {
+				int offset = qOneOffsets[offsetIndex];
                 long aIndex = column - offset;
                 if (aIndex < 0)
                 {
@@ -229,29 +299,51 @@ internal static class BitContradictionSolver
                 else
                 {
                     unknown++;
-                    if (chosenIndex == -1)
+                    if (chosenIndex == -1L)
                     {
                         chosenIndex = aIndex;
                     }
                 }
             }
 
-            long minSum = carryMin + forced;
-            long maxSum = carryMax + forced + unknown;
+			long minSum = carry.Min;
+			long maxSum = carry.Max;
+			if (unknown == 1 && ((minSum ^ maxSum) & 1) == 0)
+            {
+                int requiredUnknownParity = 1 ^ ((int)minSum & 1) ^ ((int)forced & 1);
+                if (requiredUnknownParity != 0)
+                {
+                    if (chosenIndex >= 0)
+                    {
+                        aBits[chosenIndex] = 1;
+                        forced++;
+                        unknown = 0;
+                        if (chosenIndex > maxKnownA)
+                        {
+                            maxKnownA = chosenIndex;
+                        }
+                    }
+                }
+                else
+                {
+                    unknown = 0;
+                }
+            }
+
+            minSum += forced;
+            maxSum += forced + unknown;
             const int requiredParity = 1;
 
             if (minSum == maxSum)
             {
                 if ((minSum & 1) != requiredParity)
                 {
-                    divides = false;
                     reason = ContradictionReason.ParityUnreachable;
-                    return true;
+                    return false;
                 }
 
                 long nextCarry = (minSum - requiredParity) >> 1;
-                carryMin = nextCarry;
-                carryMax = nextCarry;
+                carry = CarryRange.Single(nextCarry);
             }
             else
             {
@@ -259,8 +351,8 @@ internal static class BitContradictionSolver
                 {
                     if (unknown == 0)
                     {
-                        divides = false;
-                        return true;
+                        reason = ContradictionReason.ParityUnreachable;
+                        return false;
                     }
 
                     if (chosenIndex >= 0)
@@ -276,25 +368,22 @@ internal static class BitContradictionSolver
                 }
 
                 if (!TryPropagateCarry(
-                        new CarryRange(carryMin, carryMax),
+                        carry,
                         forced,
                         forced + unknown,
                         requiredParity,
                         out var next,
                         out var propagateReason))
                 {
-                    divides = false;
                     reason = propagateReason;
-                    return true;
+                    return false;
                 }
 
-                carryMin = next.Min;
-                carryMax = next.Max;
+                carry = next;
             }
 
-            if (chosenIndex >= 0 && !aBits.ContainsKey(chosenIndex))
+            if (chosenIndex >= 0 && !aBits.TryAdd(chosenIndex, 1))
             {
-                aBits[chosenIndex] = 1;
                 if (chosenIndex > maxKnownA)
                 {
                     maxKnownA = chosenIndex;
@@ -302,74 +391,155 @@ internal static class BitContradictionSolver
             }
         }
 
-        // Tail: keep propagating until carry collapses to zero. No fixed budget; carry halves every column when no ones remain.
-        for (long column = (long)p; carryMax > 0; column++)
-        {
-            long forced = 0;
-            long unknown = 0;
-            foreach (int offset in qOneOffsets)
-            {
-                long aIndex = column - offset;
-                if (aIndex < 0)
-                {
-                    break;
-                }
-
-                if (aIndex > maxAllowedA)
-                {
-                    continue; // forced zero
-                }
-
-                if (aBits.TryGetValue(aIndex, out sbyte aVal))
-                {
-                    if (aVal == 1)
-                    {
-                        forced++;
-                    }
-                }
-                else
-                {
-                    unknown++;
-                }
-            }
-
-            if (!TryPropagateCarry(
-                    new CarryRange(carryMin, carryMax),
-                    forced,
-                    forced + unknown,
-                    requiredResultBit: 0,
-                    out var next,
-                    out var reasonTail))
-            {
-                divides = false;
-                reason = reasonTail;
-                return true;
-            }
-
-            carryMin = next.Min;
-            carryMax = next.Max;
-        }
-
-        divides = carryMin == 0 && carryMax == 0;
-        reason = divides ? ContradictionReason.None : ContradictionReason.TailNotZero;
+        reason = ContradictionReason.None;
         return true;
     }
 
-    internal static bool TryCheckDivisibilityFromOneOffsets(
+    private static bool TryProcessTopDownBlock(
         ReadOnlySpan<int> qOneOffsets,
-        ulong p,
-        out bool divides)
+        int qOneOffsetsLength,
+        long maxAllowedA,
+        long startHighColumn,
+        int columnCount,
+        CarryRange carryOut,
+        out CarryRange nextCarryOut,
+        out TopDownPruneFailure? failure)
     {
-        return TryCheckDivisibilityFromOneOffsets(qOneOffsets, p, out divides, out _);
+        failure = null;
+        long carryOutMin = carryOut.Min,
+			 carryOutMax = carryOut.Max,
+			 value;
+        int windowStart = qOneOffsetsLength;
+        int windowEnd = qOneOffsetsLength;
+        long endColumn = startHighColumn - columnCount + 1;
+
+        for (long column = startHighColumn; column >= endColumn; column--)
+        {
+			// value is used as high column index
+            value = column;
+            while (windowEnd > 0 && qOneOffsets[windowEnd - 1] > value)
+            {
+                windowEnd--;
+            }
+
+			// value is used as low column index
+            value = column - maxAllowedA;
+            if (value < 0)
+            {
+                value = 0;
+            }
+
+            while (windowStart > 0 && qOneOffsets[windowStart - 1] >= value)
+            {
+                windowStart--;
+            }
+
+            if (windowStart > windowEnd)
+            {
+                windowStart = windowEnd;
+            }
+
+			// value is unknown bits count here
+            value = windowEnd - windowStart;
+			// carryOutMin now becomes nextCarryMin to limit registry pressure
+            carryOutMin = (carryOutMin << 1) + 1 - value;
+			// carryOutMax now becomes nextCarryMax to limit registry pressure
+            carryOutMax = (carryOutMax << 1) + 1;
+            if (carryOutMin < 0)
+            {
+                carryOutMin = 0;
+            }
+
+            if (carryOutMax < 0)
+            {
+                carryOutMax = 0;
+            }
+
+            if (carryOutMin > carryOutMax)
+            {
+                failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+                nextCarryOut = default;
+                return false;
+            }
+        }
+
+        nextCarryOut = new CarryRange(carryOutMin, carryOutMax);
+        return true;
     }
 
-    private static long AlignUpToParity(long value, int parity)
-    {
-        return (value & 1) == parity ? value : value + 1;
-    }
+    private static long AlignUpToParity(long value, int parity) => (value & 1) == parity ? value : value + 1;
 
-    private static long AlignDownToParity(long value, int parity)
+	private static long AlignDownToParity(long value, int parity) => (value & 1) == parity ? value : value - 1;
+
+    private static bool TryTopDownCarryPrune(
+        ReadOnlySpan<int> qOneOffsets,
+        int qOneOffsetsLength,
+        long pLong,
+        long maxAllowedA,
+        out TopDownPruneFailure? failure)
     {
-        return (value & 1) == parity ? value : value - 1;
+        failure = null;
+        long carryOutMin = 0,
+			 carryOutMax = 0,
+			 value;
+        int windowStart = qOneOffsetsLength;
+        int windowEnd = qOneOffsetsLength;
+
+        for (long column = pLong - 1; column >= 0; column--)
+        {
+			// value is used as high column index
+            value = column;
+            while (windowEnd > 0 && qOneOffsets[windowEnd - 1] > value)
+            {
+                windowEnd--;
+            }
+
+			// value is used as low column index
+            value = column - maxAllowedA;
+            if (value < 0)
+            {
+                value = 0;
+            }
+
+            while (windowStart > 0 && qOneOffsets[windowStart - 1] >= value)
+            {
+                windowStart--;
+            }
+
+            if (windowStart > windowEnd)
+            {
+                windowStart = windowEnd;
+            }
+
+			// value is used as unknown bits count here
+            value = windowEnd - windowStart;
+			// carryOutMin now becomes nextCarryMin to limit registry pressure
+            carryOutMin = (carryOutMin << 1) + 1 - value;
+			// carryOutMax now becomes nextCarryMax to limit registry pressure
+            carryOutMax = (carryOutMax << 1) + 1;
+            if (carryOutMin < 0)
+            {
+                carryOutMin = 0;
+            }
+
+            if (carryOutMax < 0)
+            {
+                carryOutMax = 0;
+            }
+
+            if (carryOutMin > carryOutMax)
+            {
+                failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+                return false;
+            }
+        }
+
+        if (carryOutMin > 0)
+        {
+            failure = new TopDownPruneFailure(0, carryOutMin, carryOutMax, 0);
+            return false;
+        }
+
+        return true;
     }
 }

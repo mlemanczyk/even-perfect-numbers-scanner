@@ -1,7 +1,8 @@
 // #define DivisorSet_BitContradiction
-#define DivisorSet_BitTree
+// #define DivisorSet_BitTree
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.IO;
 using System.Text;
@@ -1396,6 +1397,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private bool TryExactBitTreeCheck(ulong exponent, BigInteger divisor, out bool divides)
 	{
+		Stopwatch sw = Stopwatch.StartNew();
 		int qBitLength = GetBitLengthPortable(divisor);
 		int aBitLength = GetBitLengthPortable(exponent);
 
@@ -1501,11 +1503,13 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				return true;
 			}
 		}
+		sw.Stop();
 
 		ArrayPool<byte>.Shared.Return(aWindowArray);
 
 		divides = carry == 0;
-		Console.WriteLine($"[bittree] Prime={exponent}, Divisor={divisor} Decided=True Divides={divides}");
+		var elapsed = sw.Elapsed;
+		Console.WriteLine($"[bittree ({elapsed})] Prime={exponent}, Divisor={divisor} Decided=True Divides={divides}");
 		if (!divides)
 		{
 			string message = $"[bittree] p={exponent} ruled out divisor={divisor} (parity/carry exhaustion)";
@@ -4317,10 +4321,18 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		BigInteger currentK = minK;
 		bool hasLimit = !allowedMax.IsZero;
 		BigInteger maxK = hasLimit ? (allowedMax - BigInteger.One) / step : BigInteger.Zero;
+		int stepMod8 = (int)(step % 8);
+		int kRem8 = (int)(currentK % 8);
 
+		BigInteger divisor = (step * currentK) + BigInteger.One;
 		while (true)
 		{
-			BigInteger divisor = (step * currentK) + BigInteger.One;
+			int remainder8 = (stepMod8 * kRem8 + 1) & 7;
+			if (remainder8 != 1 && remainder8 != 7)
+			{
+				goto MOVE_NEXT;
+			}
+
 			if (
 					divisor <= ulong.MaxValue &&
 					!PrimeTesterByLastDigit.IsPrimeCpu((ulong)divisor)
@@ -4422,6 +4434,8 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			}
 
 			currentK += BigInteger.One;
+			divisor += step;
+			kRem8 = (kRem8 + 1) & 7;
 		}
 
 		return false;
@@ -4482,7 +4496,9 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static bool TryExactBitContradictionCheck(ulong prime, BigInteger divisor, ulong effectiveExponent, out bool divides)
 	{
+		Stopwatch sw = Stopwatch.StartNew();
 		divides = false;
+		const ulong DebugTopDownDivisor = 1209708008767UL;
 
 		if (prime == 0 || divisor <= BigInteger.One)
 		{
@@ -4542,14 +4558,27 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			}
 		}
 
+		sw.Stop();
 		if (decided && !divides)
 		{
+			if (reason == BitContradictionSolver.ContradictionReason.ParityUnreachable &&
+				divisor <= ulong.MaxValue &&
+				(ulong)divisor == DebugTopDownDivisor)
+			{
+				var failure = BitContradictionSolver.LastTopDownFailure;
+				if (failure.HasValue)
+				{
+					var info = failure.Value;
+					Console.WriteLine($"[bit-contradiction] top-down prune failed at column={info.Column} carry=[{info.CarryMin},{info.CarryMax}] unknown={info.Unknown}");
+				}
+			}
+
 			string message = $"[bit-contradiction] p={prime} ruled out divisor={divisor} ({reason})";
-			Console.WriteLine(message);
+			// Console.WriteLine(message);
 			_bitContradictionStateRepository?.Upsert(prime, message);
 		}
 
-		Console.WriteLine($"[bitcontradiction] Prime={prime}, Divisor={divisor} Decided={decided} Divides={divides}");
+		Console.WriteLine($"[bitcontradiction ({sw.Elapsed})] Prime={prime}, Divisor={divisor} Decided={decided} Divides={divides} Reason={reason}");
 		return decided;
 	}
 #endif

@@ -10,50 +10,46 @@ public class BitContradictionSolverTests
     [Fact]
     public void ComputeColumnBounds_TracksForcedAndPossibleOnes()
     {
-        BitState[] a = [BitState.One, BitState.Unknown];
-        BitState[] q = [BitState.One, BitState.One];
+        bool[] a = [true, false];
+        bool[] q = [true, true];
 
         ColumnBounds bounds = ComputeColumnBounds(a, q, 1);
 
         bounds.ForcedOnes.Should().Be(1);
-        bounds.PossibleOnes.Should().Be(2);
+        bounds.PossibleOnes.Should().Be(1);
     }
 
     [Fact]
     public void TryPropagateCarry_FailsWhenParityUnreachable()
     {
-        CarryRange carry = CarryRange.Single(0);
-
         bool success = TryPropagateCarry(
-            carry,
+            currentCarry: CarryRange.Single(0),
             forcedOnes: 0,
             possibleOnes: 0,
             requiredResultBit: 1,
-            out CarryRange next,
+            out var nextCarry,
             out ContradictionReason reason);
 
         success.Should().BeFalse();
         reason.Should().Be(ContradictionReason.ParityUnreachable);
-        next.Min.Should().Be(0);
-        next.Max.Should().Be(0);
+        nextCarry.Min.Should().Be(0);
+        nextCarry.Max.Should().Be(0);
     }
 
     [Fact]
     public void TryPropagateCarry_ComputesNextCarryRange()
     {
-        CarryRange carry = new(0, 1);
-
         bool success = TryPropagateCarry(
-            carry,
+            currentCarry: new CarryRange(0, 1),
             forcedOnes: 1,
             possibleOnes: 3,
             requiredResultBit: 1,
-            out CarryRange next,
+            out var nextCarry,
             out ContradictionReason reason);
 
         success.Should().BeTrue();
         reason.Should().Be(ContradictionReason.None);
-        next.Min.Should().Be(0);
-        next.Max.Should().Be(1);
+        nextCarry.Min.Should().Be(0);
+        nextCarry.Max.Should().Be(1);
     }
 }
