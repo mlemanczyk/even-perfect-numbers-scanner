@@ -8,49 +8,20 @@ namespace PerfectNumbers.Core.ByDivisor;
 /// interval-based carry propagation described in the BitContradictions plan document.
 /// The solver itself will build on top of these primitives.
 /// </summary>
-internal static class BitContradictionSolver
+internal static class BitContradictionSolverWithAMultiplier
 {
     private const int PingPongBlockColumns = 64;
     private const int TailCarryBatchColumns = 1024;
     private const int TailCarryBatchRepeats = 1;
 
     [ThreadStatic]
-    private static Dictionary<long, sbyte>? _aBitsBuffer;
-    [ThreadStatic]
     private static TopDownPruneFailure? _lastTopDownFailure;
-
-    internal readonly struct TopDownPruneFailure(long column, long carryMin, long carryMax, long unknown)
-    {
-        public readonly long Column = column;
-        public readonly long CarryMin = carryMin;
-        public readonly long CarryMax = carryMax;
-        public readonly long Unknown = unknown;
-    }
+    private static bool _debugEnabled = true;
+    private static int _parityZeroLogCount;
 
     internal static TopDownPruneFailure? LastTopDownFailure => _lastTopDownFailure;
 
-    internal readonly struct ColumnBounds(long forcedOnes, long possibleOnes)
-	{
-        public readonly long ForcedOnes = forcedOnes;
-        public readonly long PossibleOnes = possibleOnes;
-	}
-
-    internal readonly struct CarryRange(long min, long max)
-	{
-        public readonly long Min = min;
-        public readonly long Max = max;
-
-		public static CarryRange Single(long value) => new(value, value);
-		public static readonly CarryRange Zero = Single(0);
-    }
-
-    internal enum ContradictionReason
-    {
-        None,
-        ParityUnreachable,
-        TruncatedLength,
-        TailNotZero,
-    }
+    internal static void SetDebugEnabled(bool enabled) => _debugEnabled = enabled;
 
     internal static ColumnBounds ComputeColumnBounds(
         ReadOnlySpan<bool> multiplicand,
@@ -161,9 +132,10 @@ internal static class BitContradictionSolver
         //     return true;
         // }
 
-		Dictionary<long, sbyte> aBits = _aBitsBuffer ??= new Dictionary<long, sbyte>(capacity: qOneOffsetsLength << 2);
-        // aBits.EnsureCapacity(qOneOffsetsLength << 2);
-        aBits.Clear();
+        int windowSize = maxOffset + 1;
+        var segmentState0 = new sbyte[windowSize];
+        var segmentState1 = new sbyte[windowSize];
+        long segmentBase = 0;
         long maxKnownA = -1L;
 		long pLong = (long)p;
 		long maxAllowedA = pLong - (maxOffset + 1L);
@@ -202,7 +174,7 @@ internal static class BitContradictionSolver
             }
             else
             {
-                if (!TryProcessBottomUpBlock(qOneOffsets, aBits, maxAllowedA, lowColumn, blockSize, ref carryLow, ref maxKnownA, out reason))
+                if (!TryProcessBottomUpBlock(qOneOffsets, maxAllowedA, lowColumn, blockSize, ref carryLow, ref maxKnownA, ref segmentBase, segmentState0, segmentState1, out reason))
                 {
                     return true;
                 }
@@ -259,21 +231,40 @@ internal static class BitContradictionSolver
 
     private static bool TryProcessBottomUpBlock(
         ReadOnlySpan<int> qOneOffsets,
-        Dictionary<long, sbyte> aBits,
         long maxAllowedA,
         long startColumn,
         int columnCount,
         ref CarryRange carry,
         ref long maxKnownA,
+        ref long segmentBase,
+        sbyte[] segmentState0,
+        sbyte[] segmentState1,
         out ContradictionReason reason)
     {
         long endColumn = startColumn + columnCount;
 		int qOneOffsetsLength = qOneOffsets.Length;
+        int windowSize = segmentState0.Length;
         for (long column = startColumn; column < endColumn; column++)
         {
             long forced = 0L;
             long unknown = 0L;
             long chosenIndex = -1L;
+            long newBase = (column / windowSize) * windowSize;
+            if (newBase != segmentBase)
+            {
+                if (newBase == segmentBase + windowSize)
+                {
+                    (segmentState0, segmentState1) = (segmentState1, segmentState0);
+                    Array.Clear(segmentState0);
+                }
+                else
+                {
+                    Array.Clear(segmentState0);
+                    Array.Clear(segmentState1);
+                }
+
+                segmentBase = newBase;
+            }
 
             for (int offsetIndex = 0; offsetIndex < qOneOffsetsLength; offsetIndex++)
             {
@@ -289,11 +280,38 @@ internal static class BitContradictionSolver
                     continue; // a must be zero here
                 }
 
-                if (aBits.TryGetValue(aIndex, out sbyte aVal))
+                if (aIndex >= segmentBase)
                 {
-                    if (aVal == 1)
+                    int slot = (int)(aIndex - segmentBase);
+                    sbyte state = segmentState0[slot];
+                    if (state == 1)
                     {
                         forced++;
+                    }
+                    else if (state == 0)
+                    {
+                        unknown++;
+                        if (chosenIndex == -1L)
+                        {
+                            chosenIndex = aIndex;
+                        }
+                    }
+                }
+                else if (aIndex >= segmentBase - windowSize)
+                {
+                    int slot = (int)(aIndex - (segmentBase - windowSize));
+                    sbyte state = segmentState1[slot];
+                    if (state == 1)
+                    {
+                        forced++;
+                    }
+                    else if (state == 0)
+                    {
+                        unknown++;
+                        if (chosenIndex == -1L)
+                        {
+                            chosenIndex = aIndex;
+                        }
                     }
                 }
                 else
@@ -315,7 +333,16 @@ internal static class BitContradictionSolver
                 {
                     if (chosenIndex >= 0)
                     {
-                        aBits[chosenIndex] = 1;
+                        if (chosenIndex >= segmentBase)
+                        {
+                            int slot = (int)(chosenIndex - segmentBase);
+                            segmentState0[slot] = 1;
+                        }
+                        else
+                        {
+                            int slot = (int)(chosenIndex - (segmentBase - windowSize));
+                            segmentState1[slot] = 1;
+                        }
                         forced++;
                         unknown = 0;
                         if (chosenIndex > maxKnownA)
@@ -326,6 +353,13 @@ internal static class BitContradictionSolver
                 }
                 else
                 {
+                    // if (_debugEnabled && _parityZeroLogCount < 8)
+                    // {
+                    //     _parityZeroLogCount++;
+                    //     Console.WriteLine($"[bit-contradiction] unknown==1 parity forces zero at column={column} carry=[{minSum},{maxSum}] forced={forced} chosenIndex={chosenIndex}");
+                    // }
+
+                    // Treat the single unknown as 0 for parity, but do not record it as fixed.
                     unknown = 0;
                 }
             }
@@ -363,24 +397,10 @@ internal static class BitContradictionSolver
             }
             else
             {
-                if ((minSum & 1) != requiredParity)
+                if ((minSum & 1) != requiredParity && unknown == 0)
                 {
-                    if (unknown == 0)
-                    {
-                        reason = ContradictionReason.ParityUnreachable;
-                        return false;
-                    }
-
-                    if (chosenIndex >= 0)
-                    {
-                        aBits[chosenIndex] = 1;
-                        forced++;
-                        unknown--;
-                        if (chosenIndex > maxKnownA)
-                        {
-                            maxKnownA = chosenIndex;
-                        }
-                    }
+                    reason = ContradictionReason.ParityUnreachable;
+                    return false;
                 }
 
                 if (!TryPropagateCarry(
@@ -398,13 +418,6 @@ internal static class BitContradictionSolver
                 carry = next;
             }
 
-            if (chosenIndex >= 0 && !aBits.TryAdd(chosenIndex, 1))
-            {
-                if (chosenIndex > maxKnownA)
-                {
-                    maxKnownA = chosenIndex;
-                }
-            }
         }
 
         reason = ContradictionReason.None;
@@ -688,15 +701,16 @@ internal static class BitContradictionSolver
         while (steps > 0)
         {
             int step = steps > 62 ? 62 : steps;
-            if (carryOutMin > (long.MaxValue >> step) || carryOutMax > (long.MaxValue >> step))
+            long add = (1L << step) - 1L;
+            if (carryOutMin > ((long.MaxValue - add) >> step) || carryOutMax > ((long.MaxValue - add) >> step))
             {
                 carryOutMin = 0;
                 carryOutMax = long.MaxValue;
                 return true;
             }
 
-            carryOutMin <<= step;
-            carryOutMax <<= step;
+            carryOutMin = (carryOutMin << step) + add;
+            carryOutMax = (carryOutMax << step) + add;
             steps -= step;
         }
 

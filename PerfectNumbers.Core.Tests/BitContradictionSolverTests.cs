@@ -1,7 +1,7 @@
 using FluentAssertions;
 using PerfectNumbers.Core.ByDivisor;
 using Xunit;
-using static PerfectNumbers.Core.ByDivisor.BitContradictionSolver;
+using static PerfectNumbers.Core.ByDivisor.BitContradictionSolverWithAMultiplier;
 
 namespace PerfectNumbers.Core.Tests;
 

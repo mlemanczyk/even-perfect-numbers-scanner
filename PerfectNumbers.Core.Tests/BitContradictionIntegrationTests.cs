@@ -63,7 +63,7 @@ public class BitContradictionIntegrationTests
             }
         }
 
-        return BitContradictionSolver.TryCheckDivisibilityFromOneOffsets(offsets[..count], p, out divides);
+        return BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromOneOffsets(offsets[..count], p, out divides);
     }
 
     private static int GetBitLength(BigInteger value)
