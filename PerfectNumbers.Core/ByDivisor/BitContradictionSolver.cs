@@ -330,6 +330,22 @@ internal static class BitContradictionSolver
                 }
             }
 
+			if (unknown == 0)
+			{
+				int requiredCarryParity = 1 ^ ((int)forced & 1);
+				long carryMin = AlignUpToParity(carry.Min, requiredCarryParity);
+				long carryMax = AlignDownToParity(carry.Max, requiredCarryParity);
+				if (carryMin > carryMax)
+				{
+					reason = ContradictionReason.ParityUnreachable;
+					return false;
+				}
+
+				carry = new CarryRange(carryMin, carryMax);
+				minSum = carry.Min;
+				maxSum = carry.Max;
+			}
+
             minSum += forced;
             maxSum += forced + unknown;
             const int requiredParity = 1;
@@ -413,7 +429,8 @@ internal static class BitContradictionSolver
         int windowEnd = qOneOffsetsLength;
         long endColumn = startHighColumn - columnCount + 1;
 
-        for (long column = startHighColumn; column >= endColumn; column--)
+        long column = startHighColumn;
+        while (column >= endColumn)
         {
 			// value is used as high column index
             value = column;
@@ -441,6 +458,55 @@ internal static class BitContradictionSolver
 
 			// value is unknown bits count here
             value = windowEnd - windowStart;
+            if (value == 0)
+            {
+                long lastEnd = windowEnd > 0 ? qOneOffsets[windowEnd - 1] : long.MinValue;
+                long lastStart = windowStart > 0 ? qOneOffsets[windowStart - 1] + maxAllowedA : long.MinValue;
+                long chunkEnd = lastEnd > lastStart ? lastEnd : lastStart;
+                if (chunkEnd < endColumn)
+                {
+                    chunkEnd = endColumn;
+                }
+
+                int steps = (int)(column - chunkEnd + 1);
+                if (steps > 1)
+                {
+                    if (!AdvanceTopDownUnknown0(ref carryOutMin, ref carryOutMax, steps))
+                    {
+                        failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+                        nextCarryOut = default;
+                        return false;
+                    }
+
+                    column = chunkEnd - 1;
+                    continue;
+                }
+            }
+            else if (value == 1)
+            {
+                long lastEnd = windowEnd > 0 ? qOneOffsets[windowEnd - 1] : long.MinValue;
+                long lastStart = windowStart > 0 ? qOneOffsets[windowStart - 1] + maxAllowedA : long.MinValue;
+                long chunkEnd = lastEnd > lastStart ? lastEnd : lastStart;
+                if (chunkEnd < endColumn)
+                {
+                    chunkEnd = endColumn;
+                }
+
+                int steps = (int)(column - chunkEnd + 1);
+                if (steps > 1)
+                {
+                    if (!AdvanceTopDownUnknown1(ref carryOutMin, ref carryOutMax, steps))
+                    {
+                        failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+                        nextCarryOut = default;
+                        return false;
+                    }
+
+                    column = chunkEnd - 1;
+                    continue;
+                }
+            }
+
 			// carryOutMin now becomes nextCarryMin to limit registry pressure
             carryOutMin = (carryOutMin << 1) + 1 - value;
 			// carryOutMax now becomes nextCarryMax to limit registry pressure
@@ -461,6 +527,8 @@ internal static class BitContradictionSolver
                 nextCarryOut = default;
                 return false;
             }
+
+            column--;
         }
 
         nextCarryOut = new CarryRange(carryOutMin, carryOutMax);
@@ -485,7 +553,8 @@ internal static class BitContradictionSolver
         int windowStart = qOneOffsetsLength;
         int windowEnd = qOneOffsetsLength;
 
-        for (long column = pLong - 1; column >= 0; column--)
+        long column = pLong - 1;
+        while (column >= 0)
         {
 			// value is used as high column index
             value = column;
@@ -513,6 +582,53 @@ internal static class BitContradictionSolver
 
 			// value is used as unknown bits count here
             value = windowEnd - windowStart;
+            if (value == 0)
+            {
+                long lastEnd = windowEnd > 0 ? qOneOffsets[windowEnd - 1] : long.MinValue;
+                long lastStart = windowStart > 0 ? qOneOffsets[windowStart - 1] + maxAllowedA : long.MinValue;
+                long chunkEnd = lastEnd > lastStart ? lastEnd : lastStart;
+                if (chunkEnd < 0)
+                {
+                    chunkEnd = 0;
+                }
+
+                int steps = (int)(column - chunkEnd + 1);
+                if (steps > 1)
+                {
+                    if (!AdvanceTopDownUnknown0(ref carryOutMin, ref carryOutMax, steps))
+                    {
+                        failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+                        return false;
+                    }
+
+                    column = chunkEnd - 1;
+                    continue;
+                }
+            }
+            else if (value == 1)
+            {
+                long lastEnd = windowEnd > 0 ? qOneOffsets[windowEnd - 1] : long.MinValue;
+                long lastStart = windowStart > 0 ? qOneOffsets[windowStart - 1] + maxAllowedA : long.MinValue;
+                long chunkEnd = lastEnd > lastStart ? lastEnd : lastStart;
+                if (chunkEnd < 0)
+                {
+                    chunkEnd = 0;
+                }
+
+                int steps = (int)(column - chunkEnd + 1);
+                if (steps > 1)
+                {
+                    if (!AdvanceTopDownUnknown1(ref carryOutMin, ref carryOutMax, steps))
+                    {
+                        failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+                        return false;
+                    }
+
+                    column = chunkEnd - 1;
+                    continue;
+                }
+            }
+
 			// carryOutMin now becomes nextCarryMin to limit registry pressure
             carryOutMin = (carryOutMin << 1) + 1 - value;
 			// carryOutMax now becomes nextCarryMax to limit registry pressure
@@ -532,12 +648,56 @@ internal static class BitContradictionSolver
                 failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
                 return false;
             }
+
+            column--;
         }
 
         if (carryOutMin > 0)
         {
             failure = new TopDownPruneFailure(0, carryOutMin, carryOutMax, 0);
             return false;
+        }
+
+        return true;
+    }
+
+    private static bool AdvanceTopDownUnknown1(ref long carryOutMin, ref long carryOutMax, int steps)
+    {
+        while (steps > 0)
+        {
+            int step = steps > 62 ? 62 : steps;
+            long pow = 1L << step;
+
+            if (carryOutMin > (long.MaxValue >> step) || carryOutMax > ((long.MaxValue - (pow - 1)) >> step))
+            {
+                carryOutMin = 0;
+                carryOutMax = long.MaxValue;
+                return true;
+            }
+
+            carryOutMin <<= step;
+            carryOutMax = (carryOutMax << step) + (pow - 1);
+            steps -= step;
+        }
+
+        return true;
+    }
+
+    private static bool AdvanceTopDownUnknown0(ref long carryOutMin, ref long carryOutMax, int steps)
+    {
+        while (steps > 0)
+        {
+            int step = steps > 62 ? 62 : steps;
+            if (carryOutMin > (long.MaxValue >> step) || carryOutMax > (long.MaxValue >> step))
+            {
+                carryOutMin = 0;
+                carryOutMax = long.MaxValue;
+                return true;
+            }
+
+            carryOutMin <<= step;
+            carryOutMax <<= step;
+            steps -= step;
         }
 
         return true;
