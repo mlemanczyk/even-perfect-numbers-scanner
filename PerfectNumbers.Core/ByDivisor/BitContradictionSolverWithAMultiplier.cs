@@ -325,6 +325,13 @@ internal static class BitContradictionSolverWithAMultiplier
             return true;
         }
 
+        long topIndex0 = maxAllowedA;
+        long topIndex1 = maxAllowedA - 1L;
+        bool top0KnownOne = topIndex0 == 0L;
+        bool top1KnownOne = topIndex1 == 0L;
+        bool top0KnownZero = false;
+        bool top1KnownZero = false;
+
         if (!TryModularPrefilter(qOneOffsets, p, maxAllowedA))
         {
             reason = ContradictionReason.ParityUnreachable;
@@ -382,7 +389,7 @@ internal static class BitContradictionSolverWithAMultiplier
             }
             else
             {
-                if (!TryProcessBottomUpBlock(qOneOffsets, maxAllowedA, lowColumn, blockSize, ref carryLow, ref maxKnownA, ref segmentBase, ref bottomWindowStart, ref bottomWindowEnd, segmentState0, segmentState1, out reason))
+                if (!TryProcessBottomUpBlock(qOneOffsets, maxAllowedA, lowColumn, blockSize, ref carryLow, ref maxKnownA, ref segmentBase, ref bottomWindowStart, ref bottomWindowEnd, segmentState0, segmentState1, topIndex0, topIndex1, ref top0KnownOne, ref top1KnownOne, ref top0KnownZero, ref top1KnownZero, out reason))
                 {
                     return true;
                 }
@@ -449,6 +456,12 @@ internal static class BitContradictionSolverWithAMultiplier
         ref int windowEndIdx,
         sbyte[] segmentState0,
         sbyte[] segmentState1,
+        long topIndex0,
+        long topIndex1,
+        ref bool top0KnownOne,
+        ref bool top1KnownOne,
+        ref bool top0KnownZero,
+        ref bool top1KnownZero,
         out ContradictionReason reason)
     {
         long endColumn = startColumn + columnCount;
@@ -615,6 +628,26 @@ internal static class BitContradictionSolverWithAMultiplier
                         {
                             maxKnownA = chosenIndex;
                         }
+                        if (chosenIndex == topIndex0)
+                        {
+                            if (top0KnownZero)
+                            {
+                                reason = ContradictionReason.ParityUnreachable;
+                                return false;
+                            }
+
+                            top0KnownOne = true;
+                        }
+                        else if (chosenIndex == topIndex1)
+                        {
+                            if (top1KnownZero)
+                            {
+                                reason = ContradictionReason.ParityUnreachable;
+                                return false;
+                            }
+
+                            top1KnownOne = true;
+                        }
                     }
                 }
                 else
@@ -625,9 +658,50 @@ internal static class BitContradictionSolverWithAMultiplier
                     //     Console.WriteLine($"[bit-contradiction] unknown==1 parity forces zero at column={column} carry=[{minSum},{maxSum}] forced={forced} chosenIndex={chosenIndex}");
                     // }
 
-                    // Treat the single unknown as 0 for parity, but do not record it as fixed.
+                    // Treat the single unknown as 0 for parity.
                     unknown = 0;
+
+                    if (chosenIndex == topIndex0)
+                    {
+                        if (top0KnownOne)
+                        {
+                            reason = ContradictionReason.ParityUnreachable;
+                            return false;
+                        }
+
+                        top0KnownZero = true;
+                    }
+                    else if (chosenIndex == topIndex1)
+                    {
+                        if (top1KnownOne)
+                        {
+                            reason = ContradictionReason.ParityUnreachable;
+                            return false;
+                        }
+
+                        top1KnownZero = true;
+                    }
                 }
+            }
+
+            if ((top0KnownZero && top0KnownOne) || (top1KnownZero && top1KnownOne))
+            {
+                reason = ContradictionReason.ParityUnreachable;
+                return false;
+            }
+
+            if (topIndex1 < 0)
+            {
+                if (top0KnownZero)
+                {
+                    reason = ContradictionReason.ParityUnreachable;
+                    return false;
+                }
+            }
+            else if (top0KnownZero && top1KnownZero)
+            {
+                reason = ContradictionReason.ParityUnreachable;
+                return false;
             }
 
 			if (unknown == 0)
