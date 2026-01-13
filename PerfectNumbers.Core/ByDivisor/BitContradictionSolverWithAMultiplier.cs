@@ -389,6 +389,7 @@ internal static class BitContradictionSolverWithAMultiplier
         bool top1KnownOne = topIndex1 == 0L;
         bool top0KnownZero = false;
         bool top1KnownZero = false;
+        long zeroTailStart = maxAllowedA + 1L;
 
         if (!TryModularPrefilter(qOneOffsets, p, maxAllowedA))
         {
@@ -477,7 +478,7 @@ internal static class BitContradictionSolverWithAMultiplier
             }
             else
             {
-                if (!TryProcessBottomUpBlock(qOneOffsets, runStarts, runLengths, runCount, maxAllowedA, lowColumn, blockSize, ref carryLow, ref maxKnownA, ref segmentBase, ref bottomRunStart, ref bottomRunEnd, knownOne0, knownOne1, knownZero0, knownZero1, windowSize, topIndex0, topIndex1, ref top0KnownOne, ref top1KnownOne, ref top0KnownZero, ref top1KnownZero, out reason))
+                if (!TryProcessBottomUpBlock(qOneOffsets, runStarts, runLengths, runCount, maxAllowedA, lowColumn, blockSize, ref carryLow, ref maxKnownA, ref segmentBase, ref bottomRunStart, ref bottomRunEnd, knownOne0, knownOne1, knownZero0, knownZero1, windowSize, topIndex0, topIndex1, ref top0KnownOne, ref top1KnownOne, ref top0KnownZero, ref top1KnownZero, ref zeroTailStart, out reason))
                 {
                     return true;
                 }
@@ -634,11 +635,11 @@ internal static class BitContradictionSolverWithAMultiplier
         ref bool top1KnownOne,
         ref bool top0KnownZero,
         ref bool top1KnownZero,
+        ref long zeroTailStart,
         out ContradictionReason reason)
     {
         long endColumn = startColumn + columnCount;
 		int qOneOffsetsLength = qOneOffsets.Length;
-        int wordCount = knownOne0.Length;
         int maxOffset = qOneOffsets[qOneOffsetsLength - 1];
         long stableUnknown = qOneOffsetsLength;
         long column = startColumn;
@@ -817,6 +818,23 @@ internal static class BitContradictionSolverWithAMultiplier
                 {
                     unknown += rangeLength - knownTotal;
                 }
+
+                if (zeroTailStart <= aEnd)
+                {
+                    long tailStart = aStart > zeroTailStart ? aStart : zeroTailStart;
+                    if (tailStart <= aEnd)
+                    {
+                        long tailZeros = aEnd - tailStart + 1;
+                        if (tailZeros > 0)
+                        {
+                            unknown -= tailZeros;
+                            if (unknown < 0)
+                            {
+                                unknown = 0;
+                            }
+                        }
+                    }
+                }
             }
 
 			long minSum = carry.Min;
@@ -892,6 +910,7 @@ internal static class BitContradictionSolverWithAMultiplier
                         }
 
                         top0KnownZero = true;
+                        UpdateZeroTailFromTop(ref zeroTailStart, topIndex0, topIndex1, top0KnownZero, top1KnownZero);
                     }
                     else if (chosenIndex == topIndex1)
                     {
@@ -902,6 +921,7 @@ internal static class BitContradictionSolverWithAMultiplier
                         }
 
                         top1KnownZero = true;
+                        UpdateZeroTailFromTop(ref zeroTailStart, topIndex0, topIndex1, top0KnownZero, top1KnownZero);
                     }
                 }
             }
@@ -1352,5 +1372,24 @@ internal static class BitContradictionSolverWithAMultiplier
 
         index = -1;
         return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void UpdateZeroTailFromTop(ref long zeroTailStart, long topIndex0, long topIndex1, bool top0KnownZero, bool top1KnownZero)
+    {
+        if (!top0KnownZero)
+        {
+            return;
+        }
+
+        if (zeroTailStart > topIndex0)
+        {
+            zeroTailStart = topIndex0;
+        }
+
+        if (top1KnownZero && topIndex1 == topIndex0 - 1 && zeroTailStart > topIndex1)
+        {
+            zeroTailStart = topIndex1;
+        }
     }
 }
