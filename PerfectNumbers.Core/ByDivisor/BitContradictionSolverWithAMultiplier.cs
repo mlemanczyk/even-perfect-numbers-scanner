@@ -444,6 +444,84 @@ internal static class BitContradictionSolverWithAMultiplier
         return true;
     }
 
+    [ThreadStatic]
+    private static Dictionary<int, int[]>? _stableUnknownDelta8;
+
+    private static int[] GetStableUnknownDelta8(int unknown)
+    {
+        _stableUnknownDelta8 ??= new Dictionary<int, int[]>();
+        if (_stableUnknownDelta8.TryGetValue(unknown, out int[]? cached))
+        {
+            return cached;
+        }
+
+        int[] delta = new int[256];
+        for (int low = 0; low < 256; low++)
+        {
+            long value = low;
+            for (int i = 0; i < 8; i++)
+            {
+                int sMax = (((unknown ^ (int)value) & 1) != 0) ? unknown : unknown - 1;
+                value = (value + sMax - 1) >> 1;
+            }
+
+            delta[low] = (int)((value << 8) - low);
+        }
+
+        _stableUnknownDelta8[unknown] = delta;
+        return delta;
+    }
+
+    private static bool TryAdvanceStableUnknown(ref CarryRange carry, int unknown, int columnCount, out ContradictionReason reason)
+    {
+        if (columnCount <= 0)
+        {
+            reason = ContradictionReason.None;
+            return true;
+        }
+
+        if (unknown <= 0)
+        {
+            if (!TryAdvanceZeroColumns(ref carry, columnCount))
+            {
+                reason = ContradictionReason.ParityUnreachable;
+                return false;
+            }
+
+            reason = ContradictionReason.None;
+            return true;
+        }
+
+        long carryMin = carry.Min >> columnCount;
+        long carryMax = carry.Max;
+        int remaining = columnCount;
+        int[] delta = GetStableUnknownDelta8(unknown);
+
+        while (remaining >= 8)
+        {
+            int low = (int)(carryMax & 255);
+            carryMax = (carryMax + delta[low]) >> 8;
+            remaining -= 8;
+        }
+
+        while (remaining > 0)
+        {
+            int sMax = (((unknown ^ (int)carryMax) & 1) != 0) ? unknown : unknown - 1;
+            carryMax = (carryMax + sMax - 1) >> 1;
+            remaining--;
+        }
+
+        if (carryMax < carryMin)
+        {
+            reason = ContradictionReason.ParityUnreachable;
+            return false;
+        }
+
+        carry = new CarryRange(carryMin, carryMax);
+        reason = ContradictionReason.None;
+        return true;
+    }
+
     private static bool TryProcessBottomUpBlock(
         ReadOnlySpan<int> qOneOffsets,
         long maxAllowedA,
@@ -488,15 +566,10 @@ internal static class BitContradictionSolverWithAMultiplier
                     while (remaining > 0)
                     {
                         int step = remaining > TailCarryBatchColumns ? TailCarryBatchColumns : (int)remaining;
-                        for (int i = 0; i < step; i++)
+                        if (!TryAdvanceStableUnknown(ref carry, (int)stableUnknown, step, out var propagateReason))
                         {
-                            if (!TryPropagateCarry(carry, 0, stableUnknown, 1, out var next, out var propagateReason))
-                            {
-                                reason = propagateReason;
-                                return false;
-                            }
-
-                            carry = next;
+                            reason = propagateReason;
+                            return false;
                         }
 
                         column += step;
