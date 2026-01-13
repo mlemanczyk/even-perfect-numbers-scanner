@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Numerics;
 
 namespace PerfectNumbers.Core.ByDivisor;
 
@@ -50,7 +51,7 @@ internal static class BitContradictionSolverWithAMultiplier
 
     private static long ComputeQOffsetsHash(ReadOnlySpan<int> qOneOffsets)
     {
-        const long fnvOffset = unchecked((long)1469598103934665603);
+        const long fnvOffset = unchecked(1469598103934665603);
         const long fnvPrime = 1099511628211;
         long hash = fnvOffset;
         for (int i = 0; i < qOneOffsets.Length; i++)
@@ -174,7 +175,8 @@ internal static class BitContradictionSolverWithAMultiplier
         }
 
         long maxAValue = (1L << bitCount) - 1L;
-        for (int i = 0; i < ModLocalPrefilterModuli.Length; i++)
+		int modLocalPrefilterModuliLength = ModLocalPrefilterModuli.Length;
+        for (int i = 0; i < modLocalPrefilterModuliLength; i++)
         {
             int mod = ModLocalPrefilterModuli[i];
             int qMod = ComputeQMod(qOneOffsets, mod);
@@ -190,7 +192,7 @@ internal static class BitContradictionSolverWithAMultiplier
             }
 
             int inverse = ModPow(qMod, mod - 2, mod);
-            long x = (long)((long)target * inverse % mod);
+            long x = (long)target * inverse % mod;
             if (x > maxAValue)
             {
                 return false;
@@ -231,6 +233,7 @@ internal static class BitContradictionSolverWithAMultiplier
         }
 
         int[] diffLut = GetPow2DiffLut(mod);
+		int diffLutLength = diffLut.Length;
         long sum = 0;
         int prevOffset = qOneOffsets[0];
         long pow = PowMod2((ulong)prevOffset, mod);
@@ -246,13 +249,13 @@ internal static class BitContradictionSolverWithAMultiplier
                 continue;
             }
 
-            if (diff < diffLut.Length)
+            if (diff < diffLutLength)
             {
-                pow = (pow * diffLut[diff]) % mod;
+                pow = pow * diffLut[diff] % mod;
             }
             else
             {
-                pow = (pow * PowMod2((ulong)diff, mod)) % mod;
+                pow = pow * PowMod2((ulong)diff, mod) % mod;
             }
 
             sum += pow;
@@ -365,8 +368,11 @@ internal static class BitContradictionSolverWithAMultiplier
         // }
 
         int windowSize = maxOffset + 1;
-        var segmentState0 = new sbyte[windowSize];
-        var segmentState1 = new sbyte[windowSize];
+        int wordCount = (windowSize + 63) >> 6;
+        var knownOne0 = new ulong[wordCount];
+        var knownOne1 = new ulong[wordCount];
+        var knownZero0 = new ulong[wordCount];
+        var knownZero1 = new ulong[wordCount];
         long segmentBase = 0;
         long maxKnownA = -1L;
 		long pLong = (long)p;
@@ -391,6 +397,36 @@ internal static class BitContradictionSolverWithAMultiplier
         }
 
         long qHash = ComputeQOffsetsHash(qOneOffsets);
+        Span<int> runStarts = qOneOffsetsLength <= 256 ? stackalloc int[qOneOffsetsLength] : new int[qOneOffsetsLength];
+        Span<int> runLengths = qOneOffsetsLength <= 256 ? stackalloc int[qOneOffsetsLength] : new int[qOneOffsetsLength];
+        int runCount = 0;
+        {
+            int prev = qOneOffsets[0];
+            int currentStart = prev;
+            int currentLength = 1;
+            for (int i = 1; i < qOneOffsetsLength; i++)
+            {
+                int offset = qOneOffsets[i];
+                if (offset == prev + 1)
+                {
+                    currentLength++;
+                }
+                else
+                {
+                    runStarts[runCount] = currentStart;
+                    runLengths[runCount] = currentLength;
+                    runCount++;
+                    currentStart = offset;
+                    currentLength = 1;
+                }
+
+                prev = offset;
+            }
+
+            runStarts[runCount] = currentStart;
+            runLengths[runCount] = currentLength;
+            runCount++;
+        }
         var cacheKey = new TopDownCacheKey(qHash, qOneOffsetsLength, maxAllowedA, pLong);
         if (TryGetTopDownCache(in cacheKey, out var cached))
         {
@@ -417,8 +453,8 @@ internal static class BitContradictionSolverWithAMultiplier
         long highColumn = pLong - 1;
         CarryRange carryLow = CarryRange.Zero;
         CarryRange carryHigh = CarryRange.Zero;
-        int bottomWindowStart = 0;
-        int bottomWindowEnd = 0;
+        int bottomRunStart = 0;
+        int bottomRunEnd = 0;
         int topWindowStart = qOneOffsetsLength;
         int topWindowEnd = qOneOffsetsLength;
 
@@ -441,7 +477,7 @@ internal static class BitContradictionSolverWithAMultiplier
             }
             else
             {
-                if (!TryProcessBottomUpBlock(qOneOffsets, maxAllowedA, lowColumn, blockSize, ref carryLow, ref maxKnownA, ref segmentBase, ref bottomWindowStart, ref bottomWindowEnd, segmentState0, segmentState1, topIndex0, topIndex1, ref top0KnownOne, ref top1KnownOne, ref top0KnownZero, ref top1KnownZero, out reason))
+                if (!TryProcessBottomUpBlock(qOneOffsets, runStarts, runLengths, runCount, maxAllowedA, lowColumn, blockSize, ref carryLow, ref maxKnownA, ref segmentBase, ref bottomRunStart, ref bottomRunEnd, knownOne0, knownOne1, knownZero0, knownZero1, windowSize, topIndex0, topIndex1, ref top0KnownOne, ref top1KnownOne, ref top0KnownZero, ref top1KnownZero, out reason))
                 {
                     return true;
                 }
@@ -576,16 +612,22 @@ internal static class BitContradictionSolverWithAMultiplier
 
     private static bool TryProcessBottomUpBlock(
         ReadOnlySpan<int> qOneOffsets,
+        ReadOnlySpan<int> runStarts,
+        ReadOnlySpan<int> runLengths,
+        int runCount,
         long maxAllowedA,
         long startColumn,
         int columnCount,
         ref CarryRange carry,
         ref long maxKnownA,
         ref long segmentBase,
-        ref int windowStartIdx,
-        ref int windowEndIdx,
-        sbyte[] segmentState0,
-        sbyte[] segmentState1,
+        ref int runStartIdx,
+        ref int runEndIdx,
+        ulong[] knownOne0,
+        ulong[] knownOne1,
+        ulong[] knownZero0,
+        ulong[] knownZero1,
+        int windowSize,
         long topIndex0,
         long topIndex1,
         ref bool top0KnownOne,
@@ -596,7 +638,7 @@ internal static class BitContradictionSolverWithAMultiplier
     {
         long endColumn = startColumn + columnCount;
 		int qOneOffsetsLength = qOneOffsets.Length;
-        int windowSize = segmentState0.Length;
+        int wordCount = knownOne0.Length;
         int maxOffset = qOneOffsets[qOneOffsetsLength - 1];
         long stableUnknown = qOneOffsetsLength;
         long column = startColumn;
@@ -613,8 +655,8 @@ internal static class BitContradictionSolverWithAMultiplier
                 long remaining = batchEnd - column + 1;
                 if (remaining > 0)
                 {
-                    windowStartIdx = 0;
-                    windowEndIdx = qOneOffsetsLength;
+                    runStartIdx = 0;
+                    runEndIdx = runCount;
                     while (remaining > 0)
                     {
                         int step = remaining > TailCarryBatchColumns ? TailCarryBatchColumns : (int)remaining;
@@ -631,8 +673,10 @@ internal static class BitContradictionSolverWithAMultiplier
                     long batchBase = (column / windowSize) * windowSize;
                     if (batchBase != segmentBase)
                     {
-                        Array.Clear(segmentState0);
-                        Array.Clear(segmentState1);
+                        Array.Clear(knownOne0);
+                        Array.Clear(knownOne1);
+                        Array.Clear(knownZero0);
+                        Array.Clear(knownZero1);
                         segmentBase = batchBase;
                     }
 
@@ -647,84 +691,131 @@ internal static class BitContradictionSolverWithAMultiplier
             {
                 if (newBase == segmentBase + windowSize)
                 {
-                    (segmentState0, segmentState1) = (segmentState1, segmentState0);
-                    Array.Clear(segmentState0);
+                    (knownOne0, knownOne1) = (knownOne1, knownOne0);
+                    (knownZero0, knownZero1) = (knownZero1, knownZero0);
+                    Array.Clear(knownOne0);
+                    Array.Clear(knownZero0);
                 }
                 else
                 {
-                    Array.Clear(segmentState0);
-                    Array.Clear(segmentState1);
+                    Array.Clear(knownOne0);
+                    Array.Clear(knownOne1);
+                    Array.Clear(knownZero0);
+                    Array.Clear(knownZero1);
                 }
 
                 segmentBase = newBase;
             }
 
-            while (windowEndIdx < qOneOffsetsLength && qOneOffsets[windowEndIdx] <= column)
-            {
-                windowEndIdx++;
-            }
-
             long lowerBound = column - maxAllowedA;
-            while (windowStartIdx < windowEndIdx && qOneOffsets[windowStartIdx] < lowerBound)
+            while (runEndIdx < runCount && runStarts[runEndIdx] <= column)
             {
-                windowStartIdx++;
+                runEndIdx++;
             }
 
-            for (int offsetIndex = windowStartIdx; offsetIndex < windowEndIdx; offsetIndex++)
+            while (runStartIdx < runEndIdx)
             {
-				int offset = qOneOffsets[offsetIndex];
-                long aIndex = column - offset;
-                if (aIndex < 0)
+                int runStart = runStarts[runStartIdx];
+                int runEnd = runStart + runLengths[runStartIdx] - 1;
+                if (runEnd < lowerBound)
+                {
+                    runStartIdx++;
+                    continue;
+                }
+
+                break;
+            }
+
+            for (int runIndex = runStartIdx; runIndex < runEndIdx; runIndex++)
+            {
+                int runStart = runStarts[runIndex];
+                int runEnd = runStart + runLengths[runIndex] - 1;
+                if (runStart > column)
                 {
                     break;
                 }
 
-                if (aIndex > maxAllowedA)
+                if (runEnd > column)
                 {
-                    continue; // a must be zero here
+                    runEnd = (int)column;
                 }
 
-                if (aIndex >= segmentBase)
+                if (runStart < lowerBound)
                 {
-                    int slot = (int)(aIndex - segmentBase);
-                    sbyte state = segmentState0[slot];
-                    if (state == 1)
+                    runStart = (int)lowerBound;
+                }
+
+                if (runStart > runEnd)
+                {
+                    continue;
+                }
+
+                long aStart = column - runEnd;
+                long aEnd = column - runStart;
+                if (aStart > maxAllowedA)
+                {
+                    continue;
+                }
+
+                if (aEnd > maxAllowedA)
+                {
+                    aEnd = maxAllowedA;
+                }
+
+                long rangeLength = aEnd - aStart + 1;
+                if (rangeLength <= 0)
+                {
+                    continue;
+                }
+
+                long seg0Start = segmentBase;
+                long seg0End = segmentBase + windowSize - 1;
+                long seg1Start = segmentBase - windowSize;
+                long seg1End = segmentBase - 1;
+
+                long overlap0Start = aStart > seg0Start ? aStart : seg0Start;
+                long overlap0End = aEnd < seg0End ? aEnd : seg0End;
+                long overlap1Start = aStart > seg1Start ? aStart : seg1Start;
+                long overlap1End = aEnd < seg1End ? aEnd : seg1End;
+
+                long known0Len = 0;
+                if (overlap0Start <= overlap0End)
+                {
+                    int relStart = (int)(overlap0Start - seg0Start);
+                    int len = (int)(overlap0End - overlap0Start + 1);
+                    long ones = CountBitsInRange(knownOne0, relStart, len);
+                    long zeros = CountBitsInRange(knownZero0, relStart, len);
+                    forced += ones;
+                    unknown += len - ones - zeros;
+                    known0Len = len;
+
+                    if (chosenIndex == -1L && len > ones + zeros && TryFindFirstUnknown(knownOne0, knownZero0, relStart, len, out int idx))
                     {
-                        forced++;
-                    }
-                    else if (state == 0)
-                    {
-                        unknown++;
-                        if (chosenIndex == -1L)
-                        {
-                            chosenIndex = aIndex;
-                        }
+                        chosenIndex = seg0Start + idx;
                     }
                 }
-                else if (aIndex >= segmentBase - windowSize)
+
+                long known1Len = 0;
+                if (overlap1Start <= overlap1End)
                 {
-                    int slot = (int)(aIndex - (segmentBase - windowSize));
-                    sbyte state = segmentState1[slot];
-                    if (state == 1)
+                    int relStart = (int)(overlap1Start - seg1Start);
+                    int len = (int)(overlap1End - overlap1Start + 1);
+                    long ones = CountBitsInRange(knownOne1, relStart, len);
+                    long zeros = CountBitsInRange(knownZero1, relStart, len);
+                    forced += ones;
+                    unknown += len - ones - zeros;
+                    known1Len = len;
+
+                    if (chosenIndex == -1L && len > ones + zeros && TryFindFirstUnknown(knownOne1, knownZero1, relStart, len, out int idx))
                     {
-                        forced++;
-                    }
-                    else if (state == 0)
-                    {
-                        unknown++;
-                        if (chosenIndex == -1L)
-                        {
-                            chosenIndex = aIndex;
-                        }
+                        chosenIndex = seg1Start + idx;
                     }
                 }
-                else
+
+                long knownTotal = known0Len + known1Len;
+                if (knownTotal < rangeLength)
                 {
-                    unknown++;
-                    if (chosenIndex == -1L)
-                    {
-                        chosenIndex = aIndex;
-                    }
+                    unknown += rangeLength - knownTotal;
                 }
             }
 
@@ -740,12 +831,18 @@ internal static class BitContradictionSolverWithAMultiplier
                         if (chosenIndex >= segmentBase)
                         {
                             int slot = (int)(chosenIndex - segmentBase);
-                            segmentState0[slot] = 1;
+                            int word = slot >> 6;
+                            ulong mask = 1UL << (slot & 63);
+                            knownOne0[word] |= mask;
+                            knownZero0[word] &= ~mask;
                         }
                         else
                         {
                             int slot = (int)(chosenIndex - (segmentBase - windowSize));
-                            segmentState1[slot] = 1;
+                            int word = slot >> 6;
+                            ulong mask = 1UL << (slot & 63);
+                            knownOne1[word] |= mask;
+                            knownZero1[word] &= ~mask;
                         }
                         forced++;
                         unknown = 0;
@@ -1181,5 +1278,79 @@ internal static class BitContradictionSolverWithAMultiplier
         }
 
         return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long CountBitsInRange(ulong[] bits, int start, int length)
+    {
+        if (length <= 0)
+        {
+            return 0;
+        }
+
+        int end = start + length - 1;
+        int firstWord = start >> 6;
+        int lastWord = end >> 6;
+        int startBit = start & 63;
+        int endBit = end & 63;
+
+        if (firstWord == lastWord)
+        {
+            ulong mask = (endBit == 63 ? ulong.MaxValue : ((1UL << (endBit + 1)) - 1UL)) & (ulong.MaxValue << startBit);
+            return BitOperations.PopCount(bits[firstWord] & mask);
+        }
+
+        long count = 0;
+        ulong firstMask = ulong.MaxValue << startBit;
+        count += BitOperations.PopCount(bits[firstWord] & firstMask);
+
+        for (int word = firstWord + 1; word < lastWord; word++)
+        {
+            count += BitOperations.PopCount(bits[word]);
+        }
+
+        ulong lastMask = endBit == 63 ? ulong.MaxValue : ((1UL << (endBit + 1)) - 1UL);
+        count += BitOperations.PopCount(bits[lastWord] & lastMask);
+        return count;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryFindFirstUnknown(ulong[] knownOne, ulong[] knownZero, int start, int length, out int index)
+    {
+        if (length <= 0)
+        {
+            index = -1;
+            return false;
+        }
+
+        int end = start + length - 1;
+        int firstWord = start >> 6;
+        int lastWord = end >> 6;
+        int startBit = start & 63;
+        int endBit = end & 63;
+
+        ulong firstMask = ulong.MaxValue << startBit;
+        ulong lastMask = endBit == 63 ? ulong.MaxValue : ((1UL << (endBit + 1)) - 1UL);
+
+        for (int word = firstWord; word <= lastWord; word++)
+        {
+            ulong mask = word == firstWord ? firstMask : ulong.MaxValue;
+            if (word == lastWord)
+            {
+                mask &= lastMask;
+            }
+
+            ulong known = (knownOne[word] | knownZero[word]) & mask;
+            ulong unknown = mask & ~known;
+            if (unknown != 0)
+            {
+                int bit = BitOperations.TrailingZeroCount(unknown);
+                index = (word << 6) + bit;
+                return true;
+            }
+        }
+
+        index = -1;
+        return false;
     }
 }
