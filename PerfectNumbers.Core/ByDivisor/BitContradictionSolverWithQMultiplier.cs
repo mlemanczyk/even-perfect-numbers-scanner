@@ -52,6 +52,79 @@ internal static class BitContradictionSolverWithQMultiplier
     [ThreadStatic]
     private static bool _debugEnabled;
 
+    private const int TopDownCacheCapacity = 16;
+
+    private readonly struct TopDownCacheKey(long hash, int length, long maxAllowedA, long pLong)
+    {
+        public readonly long Hash = hash;
+        public readonly int Length = length;
+        public readonly long MaxAllowedA = maxAllowedA;
+        public readonly long PLong = pLong;
+
+        public bool Equals(TopDownCacheKey other) => Hash == other.Hash && Length == other.Length && MaxAllowedA == other.MaxAllowedA && PLong == other.PLong;
+        public override bool Equals(object? obj) => obj is TopDownCacheKey other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(Hash, Length, MaxAllowedA, PLong);
+    }
+
+    private readonly struct TopDownCacheValue(bool success, TopDownPruneFailure? failure)
+    {
+        public readonly bool Success = success;
+        public readonly TopDownPruneFailure? Failure = failure;
+    }
+
+    [ThreadStatic]
+    private static Dictionary<TopDownCacheKey, TopDownCacheValue>? _topDownCache;
+    [ThreadStatic]
+    private static List<TopDownCacheKey>? _topDownCacheOrder;
+
+    private static long ComputeQOffsetsHash(ReadOnlySpan<int> qOneOffsets)
+    {
+        const long fnvOffset = unchecked((long)1469598103934665603);
+        const long fnvPrime = 1099511628211;
+        long hash = fnvOffset;
+        for (int i = 0; i < qOneOffsets.Length; i++)
+        {
+            hash ^= qOneOffsets[i];
+            hash *= fnvPrime;
+        }
+
+        return hash;
+    }
+
+    private static bool TryGetTopDownCache(in TopDownCacheKey key, out TopDownCacheValue value)
+    {
+        if (_topDownCache == null)
+        {
+            value = default;
+            return false;
+        }
+
+        return _topDownCache.TryGetValue(key, out value);
+    }
+
+    private static void StoreTopDownCache(in TopDownCacheKey key, in TopDownCacheValue value)
+    {
+        _topDownCache ??= new Dictionary<TopDownCacheKey, TopDownCacheValue>();
+        _topDownCacheOrder ??= new List<TopDownCacheKey>(TopDownCacheCapacity + 1);
+
+        if (_topDownCache.ContainsKey(key))
+        {
+            _topDownCache[key] = value;
+            return;
+        }
+
+        if (_topDownCacheOrder.Count >= TopDownCacheCapacity)
+        {
+            var evict = _topDownCacheOrder[0];
+            _topDownCacheOrder.RemoveAt(0);
+            _topDownCache.Remove(evict);
+        }
+
+        _topDownCache[key] = value;
+        _topDownCacheOrder.Add(key);
+    }
+
+
     internal static TopDownPruneFailure? LastTopDownFailure => _lastTopDownFailure;
     internal static BottomUpFailure? LastBottomUpFailure => _lastBottomUpFailure;
 
@@ -188,17 +261,40 @@ internal static class BitContradictionSolverWithQMultiplier
             return true;
         }
 
-        if (!TryTopDownCarryPrune(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA, out _lastTopDownFailure))
+        long qHash = ComputeQOffsetsHash(qOneOffsets);
+        var cacheKey = new TopDownCacheKey(qHash, qOneOffsetsLength, maxAllowedA, pLong);
+        if (TryGetTopDownCache(in cacheKey, out var cached))
         {
-            reason = ContradictionReason.ParityUnreachable;
-            Console.WriteLine($"[bit-contradiction] parity unreachable in top-down prune (failure={_lastTopDownFailure.HasValue})");
-            return true;
+            _lastTopDownFailure = cached.Failure;
+            if (!cached.Success)
+            {
+                reason = ContradictionReason.ParityUnreachable;
+                Console.WriteLine($"[bit-contradiction] parity unreachable in top-down prune (failure={_lastTopDownFailure.HasValue})");
+                return true;
+            }
+        }
+        else
+        {
+            if (!TryTopDownCarryPrune(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA, out _lastTopDownFailure))
+            {
+                StoreTopDownCache(in cacheKey, new TopDownCacheValue(false, _lastTopDownFailure));
+                reason = ContradictionReason.ParityUnreachable;
+                Console.WriteLine($"[bit-contradiction] parity unreachable in top-down prune (failure={_lastTopDownFailure.HasValue})");
+                return true;
+            }
+
+            StoreTopDownCache(in cacheKey, new TopDownCacheValue(true, null));
         }
 
         long lowColumn = 0;
         long highColumn = pLong - 1;
         CarryRange carryLow = CarryRange.Zero;
         CarryRange carryHigh = CarryRange.Zero;
+        int bottomWindowStart = 0;
+        int bottomWindowEnd = 0;
+        int topWindowStart = qOneOffsetsLength;
+        int topWindowEnd = qOneOffsetsLength;
+
         bool processTop = true;
 
         while (lowColumn <= highColumn)
@@ -208,7 +304,7 @@ internal static class BitContradictionSolverWithQMultiplier
 
             if (processTop)
             {
-                if (!TryProcessTopDownBlock(qOneOffsets, qOneOffsetsLength, maxAllowedA, highColumn, blockSize, carryHigh, out carryHigh, out _lastTopDownFailure))
+                if (!TryProcessTopDownBlock(qOneOffsets, qOneOffsetsLength, maxAllowedA, highColumn, blockSize, carryHigh, ref topWindowStart, ref topWindowEnd, out carryHigh, out _lastTopDownFailure))
                 {
                     reason = ContradictionReason.ParityUnreachable;
                     return true;
@@ -218,7 +314,7 @@ internal static class BitContradictionSolverWithQMultiplier
             }
             else
             {
-                if (!TryProcessBottomUpBlock(qOneOffsets, maxAllowedA, lowColumn, blockSize, ref carryLow, ref segmentBase, segmentState0, segmentState1, out reason))
+                if (!TryProcessBottomUpBlock(qOneOffsets, maxAllowedA, lowColumn, blockSize, ref carryLow, ref segmentBase, ref bottomWindowStart, ref bottomWindowEnd, segmentState0, segmentState1, out reason))
                 {
                     return true;
                 }
@@ -281,6 +377,8 @@ internal static class BitContradictionSolverWithQMultiplier
         int columnCount,
         ref CarryRange carry,
         ref long segmentBase,
+        ref int windowStartIdx,
+        ref int windowEndIdx,
         sbyte[] segmentState0,
         sbyte[] segmentState1,
         out ContradictionReason reason)
@@ -310,7 +408,18 @@ internal static class BitContradictionSolverWithQMultiplier
                 segmentBase = newBase;
             }
 
-            for (int offsetIndex = 0; offsetIndex < qOneOffsetsLength; offsetIndex++)
+            while (windowEndIdx < qOneOffsetsLength && qOneOffsets[windowEndIdx] <= column)
+            {
+                windowEndIdx++;
+            }
+
+            long lowerBound = column - maxAllowedA;
+            while (windowStartIdx < windowEndIdx && qOneOffsets[windowStartIdx] < lowerBound)
+            {
+                windowStartIdx++;
+            }
+
+            for (int offsetIndex = windowStartIdx; offsetIndex < windowEndIdx; offsetIndex++)
             {
 			int offset = qOneOffsets[offsetIndex];
                 long aIndex = column - offset;
@@ -480,6 +589,8 @@ internal static class BitContradictionSolverWithQMultiplier
         long startHighColumn,
         int columnCount,
         CarryRange carryOut,
+        ref int windowStart,
+        ref int windowEnd,
         out CarryRange nextCarryOut,
         out TopDownPruneFailure? failure)
     {
@@ -487,8 +598,6 @@ internal static class BitContradictionSolverWithQMultiplier
         long carryOutMin = carryOut.Min,
 			 carryOutMax = carryOut.Max,
 			 value;
-        int windowStart = qOneOffsetsLength;
-        int windowEnd = qOneOffsetsLength;
         long endColumn = startHighColumn - columnCount + 1;
 
         long column = startHighColumn;
@@ -612,6 +721,7 @@ internal static class BitContradictionSolverWithQMultiplier
         long carryOutMin = 0,
 			 carryOutMax = 0,
 			 value;
+
         int windowStart = qOneOffsetsLength;
         int windowEnd = qOneOffsetsLength;
 
