@@ -200,16 +200,68 @@ internal static class BitContradictionSolverWithAMultiplier
         return true;
     }
 
+    [ThreadStatic]
+    private static Dictionary<int, int[]>? _pow2DiffModCache;
+
+    private static int[] GetPow2DiffLut(int mod)
+    {
+        _pow2DiffModCache ??= new Dictionary<int, int[]>();
+        if (_pow2DiffModCache.TryGetValue(mod, out int[]? lut))
+        {
+            return lut;
+        }
+
+        int[] values = new int[256];
+        values[0] = 1 % mod;
+        for (int i = 1; i < values.Length; i++)
+        {
+            values[i] = (values[i - 1] * 2) % mod;
+        }
+
+        _pow2DiffModCache[mod] = values;
+        return values;
+    }
+
     private static int ComputeQMod(ReadOnlySpan<int> qOneOffsets, int mod)
     {
-        long sum = 0;
-        for (int i = 0; i < qOneOffsets.Length; i++)
+        int count = qOneOffsets.Length;
+        if (count == 0)
         {
-            sum += PowMod2((ulong)qOneOffsets[i], mod);
+            return 0;
+        }
+
+        int[] diffLut = GetPow2DiffLut(mod);
+        long sum = 0;
+        int prevOffset = qOneOffsets[0];
+        long pow = PowMod2((ulong)prevOffset, mod);
+        sum += pow;
+
+        for (int i = 1; i < count; i++)
+        {
+            int offset = qOneOffsets[i];
+            int diff = offset - prevOffset;
+            if (diff <= 0)
+            {
+                prevOffset = offset;
+                continue;
+            }
+
+            if (diff < diffLut.Length)
+            {
+                pow = (pow * diffLut[diff]) % mod;
+            }
+            else
+            {
+                pow = (pow * PowMod2((ulong)diff, mod)) % mod;
+            }
+
+            sum += pow;
             if (sum >= mod)
             {
                 sum %= mod;
             }
+
+            prevOffset = offset;
         }
 
         return (int)(sum % mod);
