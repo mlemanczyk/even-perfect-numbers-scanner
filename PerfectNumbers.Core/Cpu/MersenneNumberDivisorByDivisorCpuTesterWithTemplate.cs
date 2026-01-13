@@ -4586,7 +4586,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				}
 			}
 
-			string mesfsage = $"[bit-contradiction] p={prime} ruled out divisor={divisor} ({reason})";
+			string message = $"[bit-contradiction] p={prime} ruled out divisor={divisor} ({reason})";
 			// Console.WriteLine(message);
 			_bitContradictionStateRepository?.Upsert(prime, message);
 		}
