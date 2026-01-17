@@ -24,7 +24,7 @@ internal static class DivisorGenerator
     private const ushort DecimalMaskWhenLastIsSeven = (1 << 3) | (1 << 7) | (1 << 9);
     private const ushort DecimalMaskWhenLastIsThree = (1 << 1) | (1 << 3) | (1 << 7) | (1 << 9);
     private const ushort DecimalMaskWhenLastIsNine = (1 << 1) | (1 << 3) | (1 << 7) | (1 << 9);
-    private const ushort DecimalMaskOtherwise = (1 << 1) | (1 << 3) | (1 << 9);
+    private const ushort DecimalMaskOtherwise = (1 << 1) | (1 << 3) | (1 << 7) | (1 << 9);
 
     static DivisorGenerator()
     {

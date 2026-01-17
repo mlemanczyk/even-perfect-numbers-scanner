@@ -7,7 +7,7 @@ namespace PerfectNumbers.Core;
 internal struct MersenneDivisorResidueStepper(ulong prime, in GpuUInt128 step, in GpuUInt128 firstDivisor)
 {
     private const ushort DecimalMaskWhenLastIsSeven = (1 << 3) | (1 << 7) | (1 << 9);
-    private const ushort DecimalMaskOtherwise = (1 << 1) | (1 << 3) | (1 << 9);
+    private const ushort DecimalMaskOtherwise = (1 << 1) | (1 << 3) | (1 << 7) | (1 << 9);
 
     private readonly ushort decimalMask = (prime & 3UL) == 3UL ? DecimalMaskWhenLastIsSeven : DecimalMaskOtherwise;
     private readonly byte step10 = ComputeModulo(step, 10, multiplier: 6);
@@ -92,7 +92,7 @@ internal struct MersenneDivisorResidueStepper(ulong prime, in GpuUInt128 step, i
 internal struct MersenneDivisorResidueStepperDescending(ulong prime, in GpuUInt128 step, in GpuUInt128 firstDivisor)
 {
     private const ushort DecimalMaskWhenLastIsSeven = (1 << 3) | (1 << 7) | (1 << 9);
-    private const ushort DecimalMaskOtherwise = (1 << 1) | (1 << 3) | (1 << 9);
+    private const ushort DecimalMaskOtherwise = (1 << 1) | (1 << 3) | (1 << 7) | (1 << 9);
 
     private readonly ushort decimalMask = (prime & 3UL) == 3UL ? DecimalMaskWhenLastIsSeven : DecimalMaskOtherwise;
     private readonly byte step10 = ComputeModulo(step, 10, multiplier: 6);

@@ -58,6 +58,30 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	private GpuUInt128WorkSet _divisorScanGpuWorkSet;
 	private static readonly ConcurrentDictionary<ulong, byte> _checkedPow2MinusOne = new();
 	private ulong _currentPrime;
+	[ThreadStatic]
+	private static Dictionary<ulong, ulong>? _pow2DivisorPowModCache;
+#if DETAILED_LOG
+	[ThreadStatic]
+	private static long _pow2CacheHits;
+	[ThreadStatic]
+	private static long _pow2CacheMisses;
+	[ThreadStatic]
+	private static long _pow2CacheLookups;
+	[ThreadStatic]
+	private static long _pow2CacheEligible;
+#endif
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static void ResetPow2Cache()
+	{
+		_pow2DivisorPowModCache?.Clear();
+#if DETAILED_LOG
+		_pow2CacheHits = 0;
+		_pow2CacheMisses = 0;
+		_pow2CacheLookups = 0;
+		_pow2CacheEligible = 0;
+#endif
+	}
+
 #if DivisorSet_BitContradiction
 	private static Persistence.BitContradictionStateRepository? _bitContradictionStateRepository;
 #endif
@@ -125,14 +149,15 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static int GetBitLengthPortable(in BigInteger value)
 	{
-		if (value.IsZero)
-		{
-			return 0;
-		}
+		// if (value.IsZero)
+		// {
+		// 	return 0;
+		// }
 
-		byte[] bytes = value.ToByteArray(isUnsigned: true, isBigEndian: false);
-		byte msb = bytes[^1];
-		return ((bytes.Length - 1) * 8) + (BitOperations.Log2(msb) + 1);
+		// byte[] bytes = value.ToByteArray(isUnsigned: true, isBigEndian: false);
+		// byte msb = bytes[^1];
+		// return ((bytes.Length - 1) * 8) + (BitOperations.Log2(msb) + 1);
+		return (int)(value.GetBitLength());
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -152,25 +177,8 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			return false;
 		}
 
-		int bits;
-		try
-		{
-			bits = checked((int)prime);
-		}
-		catch (OverflowException)
-		{
-			throw;
-		}
-
-		BigInteger mersenne;
-		try
-		{
-			mersenne = (BigInteger.One << bits) - BigInteger.One;
-		}
-		catch (OutOfMemoryException)
-		{
-			throw;
-		}
+		int bits = checked((int)prime);
+		BigInteger mersenne = (BigInteger.One << bits) - BigInteger.One;
 		BigInteger denominator = step;
 		if (denominator <= BigInteger.Zero)
 		{
@@ -271,6 +279,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public void ResetStateTracking()
 	{
+		ResetPow2Cache();
 		_stateCounter = 0;
 		_pow2MinusOneChecked = false;
 		_currentPrime = 0UL;
@@ -290,6 +299,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 	public void ResumeFromState(in string stateFile, in BigInteger lastSavedK, in BigInteger minK)
 	{
+		ResetPow2Cache();
 		StateFilePath = stateFile;
 		_lastSavedK = lastSavedK;
 		MinK = minK;
@@ -356,6 +366,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	public bool IsPrime(ulong prime, out bool divisorsExhausted, out BigInteger divisor)
 	{
 		_currentPrime = prime;
+		ResetPow2Cache();
 		BigInteger allowedMax = MersenneNumberDivisorByDivisorTester.ComputeAllowedMaxDivisorBig(prime, DivisorLimit);
 
 		// if (TryFindPowerOfTwoMinusOneDivisor(prime, allowedMax, out divisor))
@@ -454,6 +465,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			return compositePow2;
 #else
 #if DivisorSet_BitContradiction
+		BitContradictionSolverWithAMultiplier.Initialize();
 		bool compositeBitContradiction = CheckDivisorsBitContradiction(
 			prime,
 			primeDecimalMask,
@@ -514,7 +526,14 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		if (fits64 && composite64)
 		{
 			allowedMax64 = unlimited ? ulong.MaxValue : (ulong)allowedMax;
-			composite64 = CheckDivisors64Bit(
+			// composite64 = CheckDivisors64Bit(
+			// 	prime,
+			// 	primeDecimalMask,
+			// 	allowedMax64,
+			// 	(ulong)normalizedMinK,
+			// 	out processedAll,
+			// 	out foundDivisor64);
+			composite64 = CheckDivisorsSequentialPow2Cache64(
 				prime,
 				primeDecimalMask,
 				allowedMax64,
@@ -528,7 +547,14 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		if (fits64 && allowedMax > ulong.MaxValue)
 		{
 			allowedMax64 = ulong.MaxValue;
-			composite64 = CheckDivisors64Bit(
+			// composite64 = CheckDivisors64Bit(
+			// 	prime,
+			// 	primeDecimalMask,
+			// 	allowedMax64,
+			// 	(ulong)normalizedMinK,
+			// 	out processedAll,
+			// 	out foundDivisor64);
+			composite64 = CheckDivisorsSequentialPow2Cache64(
 				prime,
 				primeDecimalMask,
 				allowedMax64,
@@ -554,7 +580,15 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		}
 #endif
 
-		return CheckDivisorsLarge(
+		// return CheckDivisorsLarge(
+		// 	prime,
+		// 	primeDecimalMask,
+		// 	allowedMax,
+		// 	normalizedMinK,
+		// 	step,
+		// 	out processedAll,
+		// 	out foundDivisor);
+		return CheckDivisorsSequentialPow2CacheBig(
 			prime,
 			primeDecimalMask,
 			allowedMax,
@@ -750,16 +784,23 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		// Default: frontier/windowed scan over (q,a) space.
 		MersenneCombinedDivisorScannerFullStreamExtended.QNibbleGenerator16.SelfTest(138000001);
 		// MersenneBitTreeDivisorScannerWithAMultiplier.ScanResult scanResult = MersenneBitTreeDivisorScannerWithAMultiplier.TryFindDivisorByStreamingScan(prime, 128, false, out BigInteger branchDivisor);
-		MersenneCombinedDivisorScannerFullStreamExtended.ScanResult scanResult = MersenneCombinedDivisorScannerFullStreamExtended.TryFindDivisorByStreamingScan(prime, 128, false, out BigInteger branchDivisor);
+		// MersenneCombinedDivisorScannerFullStreamExtended.ScanResult scanResult = MersenneCombinedDivisorScannerFullStreamExtended.TryFindDivisorByStreamingScan(prime, 128, false, out BigInteger branchDivisor);
+		// MersenneResidueNibbleAutomatonScanner.ScanResult scanResult = MersenneResidueNibbleAutomatonScanner.TryFindDivisorByResidueAutomaton(prime, 4096, false, out BigInteger branchDivisor);
+		MersenneShiftedPJumpResidueScanner64.ScanResult scanResult = MersenneShiftedPJumpResidueScanner64.TryFindDivisorBySparseShiftU(prime, 4096, 10, out BigInteger branchDivisor);
+
 		// if (TryExactBitTreeCheck(prime, allowedMax, minK, step, out BigInteger branchDivisor))
-		if (scanResult == MersenneCombinedDivisorScannerFullStreamExtended.ScanResult.FoundDivisor)
+		// if (scanResult == MersenneCombinedDivisorScannerFullStreamExtended.ScanResult.FoundDivisor)
+		// if (scanResult == MersenneResidueNibbleAutomatonScanner.ScanResult.FoundDivisor)
+		if (scanResult == MersenneShiftedPJumpResidueScanner64.ScanResult.FoundDivisor)
 		{
 			foundDivisor = branchDivisor;
 			return true;
 		}
-		else if (scanResult == MersenneCombinedDivisorScannerFullStreamExtended.ScanResult.Candidate)
+		else if (scanResult == MersenneShiftedPJumpResidueScanner64.ScanResult.RuledOut)
+		// else if (scanResult == MersenneResidueNibbleAutomatonScanner.ScanResult.Candidate)
+		// else if (scanResult == MersenneCombinedDivisorScannerFullStreamExtended.ScanResult.Candidate)
 		{
-			processedAll = false;
+			processedAll = true;
 		}
 
 		return false;
@@ -1552,7 +1593,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	// 		return true;
 	// 	}
 
-	// 	ulong exponent = effectiveExponent > 0UL ? effectiveExponent : prime;
+	// 	ulong exponent64 = effectiveExponent > 0UL ? effectiveExponent : prime;
 	// 	int pBits;
 	// 	try
 	// 	{
@@ -2742,6 +2783,227 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		foundDivisor = 0UL;
 		return false;
 #endif
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool IsPowerOfTwo(ulong value) => value != 0 && (value & (value - 1)) == 0;
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static ulong PowModUlong(ulong exponent, ulong modulus)
+	{
+		ulong result = 1 % modulus;
+		ulong baseVal = 2 % modulus;
+		ulong exp = exponent;
+		while (exp > 0)
+		{
+			if ((exp & 1UL) != 0)
+			{
+				result = (ulong)(((UInt128)result * baseVal) % modulus);
+			}
+
+			baseVal = (ulong)(((UInt128)baseVal * baseVal) % modulus);
+			exp >>= 1;
+		}
+
+		return result;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool TryGetPow2PowModCached(ulong divisor, out ulong powMod)
+	{
+#if DETAILED_LOG
+		_pow2CacheLookups++;
+#endif
+		_pow2DivisorPowModCache ??= new Dictionary<ulong, ulong>(64);
+		if (_pow2DivisorPowModCache.TryGetValue(divisor, out powMod))
+		{
+#if DETAILED_LOG
+			_pow2CacheHits++;
+#endif
+			return true;
+		}
+
+#if DETAILED_LOG
+		_pow2CacheMisses++;
+#endif
+		return false;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static void StorePow2PowModCached(ulong divisor, ulong powMod)
+	{
+		// EvenPerfectBitScanner's logic forces the divisor to be initialized here. We first get, then store.
+		_pow2DivisorPowModCache![divisor] = powMod;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private bool CheckDivisorsSequentialPow2Cache64(
+			ulong prime,
+			ushort primeDecimalMask,
+			ulong allowedMax,
+			ulong minK,
+			out bool processedAll,
+			out ulong foundDivisor)
+	{
+		processedAll = true;
+		foundDivisor = 0UL;
+
+		ulong step = prime << 1;
+		if (step == 0UL)
+		{
+			return false;
+		}
+
+		ulong effectiveMax = allowedMax == 0UL ? ulong.MaxValue : allowedMax;
+		ulong maxKAllowed = (effectiveMax - 1UL) / step;
+		if (maxKAllowed < 1UL || minK > maxKAllowed)
+		{
+			return false;
+		}
+
+		UInt128 step128 = step;
+		UInt128 divisor128 = (step128 * minK) + UInt128.One;
+		if (divisor128 > effectiveMax)
+		{
+			return false;
+		}
+
+		ulong divisor = (ulong)divisor128;
+		ulong currentK = minK;
+		var residueStepper = new MersenneDivisorResidueStepper(prime, new GpuUInt128(step), new GpuUInt128(divisor));
+
+		while (divisor <= effectiveMax)
+		{
+			if (residueStepper.IsAdmissible())
+			{
+				// Stopwatch sw = Stopwatch.StartNew();
+				RecordState(currentK);
+				ulong powMod;
+				bool isPow2 = IsPowerOfTwo(currentK);
+#if DETAILED_LOG
+				if (isPow2)
+				{
+					_pow2CacheEligible++;
+				}
+#endif
+				if (!isPow2 || !TryGetPow2PowModCached(divisor, out powMod))
+				{
+					powMod = PowModUlong(prime, divisor);
+					if (isPow2)
+					{
+						StorePow2PowModCached(divisor, powMod);
+					}
+				}
+
+				if (powMod == 1UL)
+				{
+					// sw.Stop();
+					foundDivisor = divisor;
+					return true;
+				}
+
+				// sw.Stop();
+				// Console.WriteLine($"[sequential-pow2] p={prime} divisor={divisor} powmod={powMod} isPow2={isPow2} pow2Eligible={_pow2CacheEligible} lookups={_pow2CacheLookups} cacheHits={_pow2CacheHits} cacheMisses={_pow2CacheMisses} elapsed={sw.Elapsed}");
+			}
+
+			if (currentK == maxKAllowed)
+			{
+				break;
+			}
+
+			divisor += step;
+			currentK++;
+			residueStepper.Advance();
+		}
+
+		return false;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private bool CheckDivisorsSequentialPow2CacheBig(
+		ulong prime,
+		ushort primeDecimalMask,
+		BigInteger allowedMax,
+		BigInteger currentK,
+		BigInteger step,
+		out bool processedAll,
+		out BigInteger foundDivisor)
+	{
+		foundDivisor = BigInteger.Zero;
+		if (allowedMax.IsZero)
+		{
+			processedAll = false;
+			return false;
+		}
+
+		processedAll = true;
+		BigInteger divisor = (step * currentK) + BigInteger.One;
+		if (divisor > allowedMax)
+		{
+			return false;
+		}
+
+		BigInteger maxKAllowed = (allowedMax - BigInteger.One) / step;
+		TryClampMaxKForMersenneTail(prime, step, ref maxKAllowed);
+		if (currentK > maxKAllowed)
+		{
+			return false;
+		}
+
+		BigInteger remainingIterationsBig = maxKAllowed - currentK + BigInteger.One;
+
+		var rem10 = new BigIntegerCycleRemainderStepper(10);
+		var rem8 = new BigIntegerCycleRemainderStepper(8);
+		var rem3 = new BigIntegerCycleRemainderStepper(3);
+		var rem7 = new BigIntegerCycleRemainderStepper(7);
+		var rem11 = new BigIntegerCycleRemainderStepper(11);
+		var rem13 = new BigIntegerCycleRemainderStepper(13);
+		var rem17 = new BigIntegerCycleRemainderStepper(17);
+		var rem19 = new BigIntegerCycleRemainderStepper(19);
+
+		byte remainder10 = rem10.Initialize(divisor);
+		BigInteger primeBig = (BigInteger)prime;
+		while (remainingIterationsBig.Sign > 0)
+		{
+			bool passesSmallModuli = remainder10 == 1 || remainder10 == 7;
+			if (passesSmallModuli && ((primeDecimalMask >> remainder10) & 1) != 0)
+			{
+				if (rem3.NextIsNotDivisible(divisor) &&
+					rem7.NextIsNotDivisible(divisor) &&
+					rem11.NextIsNotDivisible(divisor) &&
+					rem13.NextIsNotDivisible(divisor) &&
+					rem17.NextIsNotDivisible(divisor) &&
+					rem19.NextIsNotDivisible(divisor))
+				{
+					byte remainder8 = rem8.ComputeNext(divisor);
+					if (remainder8 == 1 || remainder8 == 7)
+					{
+						RecordState(currentK);
+						BigInteger powResult = BigInteger.ModPow(BigIntegerNumbers.Two, primeBig, divisor);
+						if (powResult.IsOne)
+						{
+							foundDivisor = divisor;
+							processedAll = true;
+							return true;
+						}
+					}
+				}
+			}
+
+			currentK++;
+			divisor += step;
+			remainder10 = rem10.ComputeNext(divisor);
+
+			remainingIterationsBig--;
+			if (remainingIterationsBig.IsZero)
+			{
+				break;
+			}
+		}
+
+		processedAll = true;
+		foundDivisor = BigInteger.Zero;
+		return false;
 	}
 
 #if DivisorSet_Pow2Groups
@@ -4311,6 +4573,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 
 #if DivisorSet_BitContradiction
 	private static readonly BigInteger Five = (BigInteger)5;
+	private static int _consolePrintOut;
 
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private bool CheckDivisorsBitContradiction(
@@ -4332,7 +4595,9 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		int kRem8 = (int)(currentK % 8);
 
 		BigInteger divisor = (step * currentK) + BigInteger.One;
+		_qBits = new int[(int)prime];
 		Stopwatch sw = new Stopwatch();
+		// sw.Start();
 		while (true)
 		{
 			int remainder8 = (stepMod8 * kRem8 + 1) & 7;
@@ -4341,21 +4606,20 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				goto MOVE_NEXT;
 			}
 
-			if (
-					divisor <= ulong.MaxValue &&
-					!PrimeTesterByLastDigit.IsPrimeCpu((ulong)divisor)
-				)
-			{
-				goto MOVE_NEXT;
-			}
+			// if (
+			// 		divisor <= ulong.MaxValue &&
+			// 		!PrimeTesterByLastDigit.IsPrimeCpu((ulong)divisor)
+			// 	)
+			// {
+			// 	goto MOVE_NEXT;
+			// }
 
 			bool divides;
 			// divides = BigInteger.ModPow(BigIntegerNumbers.Two, prime, divisor) == 1;
 
-			ulong effectiveExponent = 0UL;
 			sw.Reset();
 			sw.Start();
-			bool decided = TryExactBitContradictionCheck(prime, divisor, effectiveExponent, out divides);
+			bool decided = TryExactBitContradictionCheck(prime, divisor, out divides);
 			sw.Stop();
 			if (!decided)
 			{
@@ -4367,18 +4631,27 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				foundDivisor = divisor;
 				return true;
 			}
-			else {
-				Console.WriteLine($"Prime {prime} ({sw.Elapsed}), excluded {divisor}");
-			}
-
-			RecordState(currentK);
-		MOVE_NEXT:
-			if (hasLimit && currentK >= maxK)
+			else
 			{
-				break;
+				// var printToConsole = (_consolePrintOut++) == 1;
+				// if (printToConsole)
+				// {
+					// sw.Stop();
+					Console.WriteLine($"Prime {prime} ({sw.Elapsed}: {divisor})");
+					_consolePrintOut = 0;
+					// sw.Reset();
+					// sw.Start();
+				// }
 			}
 
-			currentK += BigInteger.One;
+			// RecordState(currentK);
+		MOVE_NEXT:
+			// if (hasLimit && currentK >= maxK)
+			// {
+			// 	break;
+			// }
+
+			// currentK += BigInteger.One;
 			divisor += step;
 			kRem8 = (kRem8 + 1) & 7;
 		}
@@ -4438,12 +4711,12 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		// 	out foundDivisor);
 	}
 
+	[ThreadStatic]
+	private static int[]? _qBits;
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static bool TryExactBitContradictionCheck(ulong prime, BigInteger divisor, ulong effectiveExponent, out bool divides)
+	private static bool TryExactBitContradictionCheck(ulong prime, BigInteger divisor, out bool divides)
 	{
-#if DETAILED_LOG
-		Stopwatch sw = Stopwatch.StartNew();
-#endif
 		divides = false;
 		// const ulong DebugTopDownDivisor = 1209708008767UL;
 		// const ulong DebugTopDownDivisor = 1007991562955719UL;
@@ -4477,8 +4750,31 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			return true;
 		}
 
+		// if (divisor <= ulong.MaxValue)
+		// {
+		// 	// ulong exponent64 = effectiveExponent > 0UL ? effectiveExponent : prime;
+		// 	// ContradictionReason reason64;
+		// 	// bool decided64 = BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromDivisor((ulong)divisor, exponent64, out divides, out reason64);
+		// 	// if (decided64 && divides)
+		// 	// {
+		// 	// 	bool structuralOk = ((divisor - BigInteger.One) % (((BigInteger)prime) << 1)) == BigInteger.Zero;
+		// 		// bool dividesExact = structuralOk && BigInteger.ModPow(2, prime, divisor) == BigInteger.One;
+		// 		divides = BigInteger.ModPow(2, prime, divisor) == BigInteger.One;
+		// 		return true;
+		// 		// if (!dividesExact)
+		// 		// {
+		// 		// 	divides = false;
+		// 		// 	reason64 = ContradictionReason.ParityUnreachable;
+		// 		// }
+		// 	// }
+
+		// 	// return decided64;
+		// }
+
+		// Console.WriteLine($"Switching to bit-contradiction mode for {prime}");
 		// Iterative column-wise propagation without storing all columns; we only keep assigned bits of 'a'.
-		Span<int> oneOffsets = stackalloc int[qBitLength];
+		int[] oneOffsets = _qBits;
+		// Span<int> oneOffsets = stackalloc int[qBitLength];
 		int oneCount = 0;
 		for (int i = 0; i < qBitLength; i++)
 		{
@@ -4495,9 +4791,8 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		}
 
 		ReadOnlySpan<int> oneOffsetsSlice = oneOffsets[..oneCount];
-		ulong exponent = effectiveExponent > 0UL ? effectiveExponent : prime;
 		// BitContradictionSolverWithQMultiplier.SetDebugEnabled(true);
-		bool decided = BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, exponent, out divides, out var reason);
+		bool decided = BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, prime, out divides, out var reason);
 		// BitContradictionSolverWithQMultiplier.SetDebugEnabled(false);
 		// bool decided = BitContradictionSolverBaseline.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, exponent, out divides, out var reason);
 		if (decided && divides)
@@ -4511,32 +4806,28 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				reason = ContradictionReason.ParityUnreachable;
 			}
 		}
-
-#if DETAILED_LOG
-		sw.Stop();
-#endif
 		if (decided && !divides)
 		{
 #if DETAILED_LOG
 			if (reason == ContradictionReason.ParityUnreachable)
 			{
-				var failure = BitContradictionSolverWithQMultiplier.LastTopDownFailure;
-				if (failure.HasValue)
-				{
-					var info = failure.Value;
-					Console.WriteLine($"[bit-contradiction] top-down prune failed at column={info.Column} carry=[{info.CarryMin},{info.CarryMax}] unknown={info.Unknown}");
-				}
+				// var failure = BitContradictionSolverWithQMultiplier.LastTopDownFailure;
+				// if (failure.HasValue)
+				// {
+				// 	var info = failure.Value;
+				// 	Console.WriteLine($"[bit-contradiction] top-down prune failed at column={info.Column} carry=[{info.CarryMin},{info.CarryMax}] unknown={info.Unknown}");
+				// }
 
-				var bottomUp = BitContradictionSolverWithQMultiplier.LastBottomUpFailure;
-				if (bottomUp.HasValue)
-				{
-					var info = bottomUp.Value;
-					Console.WriteLine($"[bit-contradiction] bottom-up failed at column={info.Column} carry=[{info.CarryMin},{info.CarryMax}] forced={info.Forced} unknown={info.Unknown}");
-				}
+				// var bottomUp = BitContradictionSolverWithQMultiplier.LastBottomUpFailure;
+				// if (bottomUp.HasValue)
+				// {
+				// 	var info = bottomUp.Value;
+				// 	Console.WriteLine($"[bit-contradiction] bottom-up failed at column={info.Column} carry=[{info.CarryMin},{info.CarryMax}] forced={info.Forced} unknown={info.Unknown}");
+				// }
 			}
 #endif
 
-			_bitContradictionStateRepository?.Upsert(prime, "excluded");
+			// _bitContradictionStateRepository?.Upsert(prime, "excluded");
 		}
 
 #if DETAILED_LOG

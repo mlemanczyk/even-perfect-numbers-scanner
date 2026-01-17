@@ -2,8 +2,38 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Numerics;
+using Open.Collections;
 
 namespace PerfectNumbers.Core.ByDivisor;
+
+// internal readonly struct PrivateWorkSet
+// {
+// 	private const int MaxSupportedBitLength = 200_000_000;
+
+// 	public PrivateWorkSet()
+// 	{
+// 		int windowSize = MaxSupportedBitLength + 1;
+// 		QBits = new int[windowSize];
+// 		int wordCount = (windowSize + 63) >> 6;
+// 		KnownOne0 = new ulong[wordCount];
+// 		KnownOne1 = new ulong[wordCount];
+// 		KnownZero0 = new ulong[wordCount];
+// 		KnownZero1 = new ulong[wordCount];
+// 		RunStarts = new int[windowSize];
+// 		RunLengths = new int[windowSize];
+// 		StableUnknownDelta8Cache = [];
+// 	}
+
+// 	internal readonly int[] QBits;
+// 	internal readonly int[] RunStarts;
+// 	internal readonly int[] RunLengths;
+// 	internal readonly ulong[] KnownOne0;
+// 	internal readonly ulong[] KnownOne1;
+// 	internal readonly ulong[] KnownZero0;
+// 	internal readonly ulong[] KnownZero1;
+// 	internal readonly Dictionary<int, int[]> StableUnknownDelta8Cache;
+// }
+
 
 /// <summary>
 /// Helper utilities for the BitContradiction divisor search. These methods implement the
@@ -12,945 +42,2736 @@ namespace PerfectNumbers.Core.ByDivisor;
 /// </summary>
 internal static class BitContradictionSolverWithAMultiplier
 {
-    private const int PingPongBlockColumns = 64;
-    private const int TailCarryBatchColumns = 1024;
-    private const int TailCarryBatchRepeats = 1;
+	private const int PingPongBlockColumns = 4096;
+	private const int TailCarryBatchColumns = 16384;
+	private const int TailCarryBatchRepeats = 1;
+	private const int TopDownBorrowColumns = 4096;
+	private const int TopDownBorrowMinUnknown = 12;
+	private const int PrefixRunCacheOffsets = 256;
+	private const int PrefixRunCacheCapacity = 256;
+	private const int ModLocalPrefilterMaxABits = 20;
+	private const int TopDownCacheCapacity = 16;
+	private const int HighBitCarryPrefilterColumns = 16;
+	private const int MiniPingPongPrefilterColumns = 60;
 
-    private const int ModLocalPrefilterMaxABits = 20;
-    private static readonly int[] ModLocalPrefilterModuli = { 65537, 65521 };
+	private static readonly int[] ModLocalPrefilterModuli = { 65537, 65521 };
 
-    [ThreadStatic]
-    private static TopDownPruneFailure? _lastTopDownFailure;
-    private static bool _debugEnabled = true;
-
-
-    private const int TopDownCacheCapacity = 16;
-
-    private readonly struct TopDownCacheKey(long hash, int length, long maxAllowedA, long pLong)
+#if DETAILED_LOG
+    public readonly struct TopDownPruneFailure(long column, long carryMin, long carryMax, long unknown)
     {
-        public readonly long Hash = hash;
-        public readonly int Length = length;
-        public readonly long MaxAllowedA = maxAllowedA;
-        public readonly long PLong = pLong;
-
-        public bool Equals(TopDownCacheKey other) => Hash == other.Hash && Length == other.Length && MaxAllowedA == other.MaxAllowedA && PLong == other.PLong;
-        public override bool Equals(object? obj) => obj is TopDownCacheKey other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(Hash, Length, MaxAllowedA, PLong);
+        public readonly long Column = column;
+        public readonly long CarryMin = carryMin;
+        public readonly long CarryMax = carryMax;
+        public readonly long Unknown = unknown;
     }
 
-    private readonly struct TopDownCacheValue(bool success, TopDownPruneFailure? failure)
-    {
-        public readonly bool Success = success;
-        public readonly TopDownPruneFailure? Failure = failure;
-    }
+	private readonly struct TopDownCacheValue(bool success, TopDownPruneFailure? failure)
+	{
+		public readonly bool Success = success;
+		public readonly TopDownPruneFailure? Failure = failure;
+	}
 
-    [ThreadStatic]
-    private static Dictionary<TopDownCacheKey, TopDownCacheValue>? _topDownCache;
-    [ThreadStatic]
-    private static List<TopDownCacheKey>? _topDownCacheOrder;
+	[ThreadStatic]
+	private static Dictionary<TopDownCacheKey, TopDownCacheValue>? _topDownCache;
 
-    private static long ComputeQOffsetsHash(ReadOnlySpan<int> qOneOffsets)
-    {
-        const long fnvOffset = unchecked(1469598103934665603);
-        const long fnvPrime = 1099511628211;
-        long hash = fnvOffset;
-        for (int i = 0; i < qOneOffsets.Length; i++)
-        {
-            hash ^= qOneOffsets[i];
-            hash *= fnvPrime;
-        }
+	[ThreadStatic]
+	private static TopDownPruneFailure? _lastTopDownFailure;
+	internal static TopDownPruneFailure? LastTopDownFailure => _lastTopDownFailure;
+#else
+	[ThreadStatic]
+	private static Dictionary<TopDownCacheKey, bool>? _topDownCache;
+#endif
+	[ThreadStatic]
+	private static long _dynamicModChecks;
+	[ThreadStatic]
+	private static long _dynamicModFailures;
+	[ThreadStatic]
+	private static Dictionary<QModCacheKey, int>? _qModCache;
+	[ThreadStatic]
+	private static List<TopDownCacheKey>? _topDownCacheOrder;
+	[ThreadStatic]
+	private static Dictionary<long, PrefixRunCacheEntry>? _prefixRunCache;
+	[ThreadStatic]
+	private static List<long>? _prefixRunCacheOrder;
+	[ThreadStatic]
+	private static Dictionary<int, int[]>? _pow2DiffModCache;
 
-        return hash;
-    }
+	private readonly struct QModCacheKey(long hash, int mod)
+	{
+		public readonly long Hash = hash;
+		public readonly int Mod = mod;
 
-    private static bool TryGetTopDownCache(in TopDownCacheKey key, out TopDownCacheValue value)
-    {
-        if (_topDownCache == null)
-        {
-            value = default;
-            return false;
-        }
+		public bool Equals(QModCacheKey other) => Hash == other.Hash && Mod == other.Mod;
+		public override bool Equals(object? obj) => obj is QModCacheKey other && Equals(other);
+		public override int GetHashCode() => HashCode.Combine(Hash, Mod);
+	}
 
-        return _topDownCache.TryGetValue(key, out value);
-    }
+	private readonly struct TopDownCacheKey(long hash, int length, long maxAllowedA, long pLong)
+	{
+		public readonly long Hash = hash;
+		public readonly int Length = length;
+		public readonly long MaxAllowedA = maxAllowedA;
+		public readonly long PLong = pLong;
 
-    private static void StoreTopDownCache(in TopDownCacheKey key, in TopDownCacheValue value)
-    {
-        _topDownCache ??= new Dictionary<TopDownCacheKey, TopDownCacheValue>();
-        _topDownCacheOrder ??= new List<TopDownCacheKey>(TopDownCacheCapacity + 1);
+		public bool Equals(TopDownCacheKey other) => Hash == other.Hash && Length == other.Length && MaxAllowedA == other.MaxAllowedA && PLong == other.PLong;
+		public override bool Equals(object? obj) => obj is TopDownCacheKey other && Equals(other);
+		public override int GetHashCode() => HashCode.Combine(Hash, Length, MaxAllowedA, PLong);
+	}
 
-        if (_topDownCache.ContainsKey(key))
-        {
-            _topDownCache[key] = value;
-            return;
-        }
+	private readonly struct PrefixRunCacheEntry(
+		int prefixCount,
+		int runCount,
+		int lastOffset,
+		int lastRunStart,
+		int lastRunLength,
+		int[] runStarts,
+		int[] runLengths)
+	{
+		public readonly int PrefixCount = prefixCount;
+		public readonly int RunCount = runCount;
+		public readonly int LastOffset = lastOffset;
+		public readonly int LastRunStart = lastRunStart;
+		public readonly int LastRunLength = lastRunLength;
+		public readonly int[] RunStarts = runStarts;
+		public readonly int[] RunLengths = runLengths;
+	}
 
-        if (_topDownCacheOrder.Count >= TopDownCacheCapacity)
-        {
-            var evict = _topDownCacheOrder[0];
-            _topDownCacheOrder.RemoveAt(0);
-            _topDownCache.Remove(evict);
-        }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static void ComputeForcedRemainingAndClean(
+		ulong[] qMask,
+		ulong[] oneWin,
+		ulong[] zeroWin,
+		int wordCount,
+		out int forced,
+		out int remaining,
+		out bool clean)
+	{
+		forced = 0;
+		remaining = 0;
+		clean = true;
 
-        _topDownCache[key] = value;
-        _topDownCacheOrder.Add(key);
-    }
-    private static int _parityZeroLogCount;
+		for (int i = 0; i < wordCount; i++)
+		{
+			ulong q = qMask[i];
+			ulong one = oneWin[i];
+			ulong known = one | zeroWin[i];
 
-    internal static TopDownPruneFailure? LastTopDownFailure => _lastTopDownFailure;
+			ulong forcedBits = q & one;
+			ulong unknownBits = q & ~known;
 
-    internal static void SetDebugEnabled(bool enabled) => _debugEnabled = enabled;
+			forced += BitOperations.PopCount(forcedBits);
+			remaining += BitOperations.PopCount(unknownBits);
 
-    internal static ColumnBounds ComputeColumnBounds(
-        ReadOnlySpan<bool> multiplicand,
-        ReadOnlySpan<bool> multiplier,
-        int columnIndex)
-    {
-        long forced = 0;
-        long possible = 0;
+			if ((q & known) != 0)
+				clean = false;
+		}
+	}
+
+	private static long ComputeQOffsetsHash(in ReadOnlySpan<int> qOneOffsets)
+	{
+		const long fnvOffset = unchecked(1469598103934665603);
+		const long fnvPrime = 1099511628211;
+		long hash = fnvOffset;
+		int qOneOffsetsLength = qOneOffsets.Length;
+		for (int i = 0; i < qOneOffsetsLength; i++)
+		{
+			hash ^= qOneOffsets[i];
+			hash *= fnvPrime;
+		}
+
+		return hash;
+	}
+
+	private static int GetQModCached(ReadOnlySpan<int> qOneOffsets, long qHash, int mod)
+	{
+		Dictionary<QModCacheKey, int>? cache = _qModCache;
+		if (cache is null)
+		{
+			cache = [];
+			_qModCache = cache;
+
+		}
+		var key = new QModCacheKey(qHash, mod);
+		if (cache.TryGetValue(key, out int cached))
+		{
+			return cached;
+		}
+
+		int value = ComputeQMod(qOneOffsets, mod);
+		cache[key] = value;
+		return value;
+	}
+
+	private static long ComputeQOffsetsPrefixHash(in ReadOnlySpan<int> qOneOffsets, int count)
+	{
+		const long fnvOffset = unchecked(1469598103934665603);
+		const long fnvPrime = 1099511628211;
+		long hash = fnvOffset;
+		for (int i = 0; i < count; i++)
+		{
+			hash ^= qOneOffsets[i];
+			hash *= fnvPrime;
+		}
+
+		hash ^= count;
+		hash *= fnvPrime;
+		return hash;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool IsCleanInQ(in ulong[] qMask, in ulong[] oneWin, in ulong[] zeroWin, int wordCount)
+	{
+		for (int i = 0; i < wordCount; i++)
+		{
+			if ((qMask[i] & (oneWin[i] | zeroWin[i])) != 0)
+				return false;
+		}
+
+		return true;
+	}
+
+	private static bool TryGetPrefixRunCache(long key, out PrefixRunCacheEntry entry)
+	{
+		var cache = _prefixRunCache;
+		if (cache is null)
+		{
+			cache = [];
+			_prefixRunCache = cache;
+		}
+
+		return cache.TryGetValue(key, out entry);
+	}
+
+	private static void StorePrefixRunCache(long key, in PrefixRunCacheEntry entry)
+	{
+		_prefixRunCacheOrder ??= new List<long>(PrefixRunCacheCapacity + 1);
+
+		if (_prefixRunCache!.ContainsKey(key))
+		{
+			_prefixRunCache[key] = entry;
+			return;
+		}
+
+		if (_prefixRunCacheOrder.Count >= PrefixRunCacheCapacity)
+		{
+			long evict = _prefixRunCacheOrder[0];
+			_prefixRunCacheOrder.RemoveAt(0);
+			_prefixRunCache.Remove(evict);
+		}
+
+		_prefixRunCache[key] = entry;
+		_prefixRunCacheOrder.Add(key);
+	}
+
+	private static PrefixRunCacheEntry BuildPrefixRunCache(in ReadOnlySpan<int> qOneOffsets, int prefixCount)
+	{
+		// TODO: Remove per-call allocations
+		int[] starts = new int[prefixCount];
+		int[] lengths = new int[prefixCount];
+		int runCount = 0;
+		int prev = qOneOffsets[0];
+		int currentStart = prev;
+		int currentLength = 1;
+
+		for (int i = 1; i < prefixCount; i++)
+		{
+			int offset = qOneOffsets[i];
+			if (offset == prev + 1)
+			{
+				currentLength++;
+			}
+			else
+			{
+				starts[runCount] = currentStart;
+				lengths[runCount] = currentLength;
+				runCount++;
+				currentStart = offset;
+				currentLength = 1;
+			}
+
+			prev = offset;
+		}
+
+		starts[runCount] = currentStart;
+		lengths[runCount] = currentLength;
+		runCount++;
+
+		int[] cachedStarts = new int[runCount];
+		int[] cachedLengths = new int[runCount];
+		Array.Copy(starts, cachedStarts, runCount);
+		Array.Copy(lengths, cachedLengths, runCount);
+
+		return new PrefixRunCacheEntry(
+			prefixCount,
+			runCount,
+			prev,
+			currentStart,
+			currentLength,
+			cachedStarts,
+			cachedLengths);
+	}
+
+#if DETAILED_LOG
+	private static bool TryGetTopDownCache(in TopDownCacheKey key, out TopDownCacheValue value)
+#else
+	private static bool TryGetTopDownCache(in TopDownCacheKey key, out bool value)
+#endif
+	{
+		// TODO: Remove this check after Initialize
+		if (_topDownCache == null)
+		{
+			value = default;
+			return false;
+		}
+
+		return _topDownCache.TryGetValue(key, out value);
+	}
+
+#if DETAILED_LOG
+	private static void StoreTopDownCache(in TopDownCacheKey key, in TopDownCacheValue value)
+#else
+	private static void StoreTopDownCache(in TopDownCacheKey key, in bool value)
+#endif
+	{
+		// TODO: Remove this check after Initialize
+		_topDownCache ??= [];
+		_topDownCacheOrder ??= new List<TopDownCacheKey>(TopDownCacheCapacity + 1);
+
+		if (_topDownCache.ContainsKey(key))
+		{
+			_topDownCache[key] = value;
+			return;
+		}
+
+		if (_topDownCacheOrder.Count >= TopDownCacheCapacity)
+		{
+			var evict = _topDownCacheOrder[0];
+			_topDownCacheOrder.RemoveAt(0);
+			_topDownCache.Remove(evict);
+		}
+
+		_topDownCache[key] = value;
+		_topDownCacheOrder.Add(key);
+	}
+
+	internal static ColumnBounds ComputeColumnBounds(
+		ReadOnlySpan<bool> multiplicand,
+		ReadOnlySpan<bool> multiplier,
+		int columnIndex)
+	{
+		int forced = 0;
+		int possible = 0;
 
 		int multiplicandLength = multiplicand.Length;
 		int multiplierLength = multiplier.Length;
-        for (int i = 0; i <= columnIndex; i++)
-        {
+		for (int i = 0; i <= columnIndex; i++)
+		{
 			bool a = i < multiplicandLength && multiplicand[i];
 			bool q = columnIndex - i < multiplierLength && multiplier[columnIndex - i];
-            if (!a && !q)
-            {
-                continue;
-            }
+			if (!a && !q)
+			{
+				continue;
+			}
 
-            if (a && q)
-            {
-                forced++;
-            }
+			if (a && q)
+			{
+				forced++;
+			}
 
-            possible++;
-        }
+			possible++;
+		}
 
-        return new ColumnBounds(forced, possible);
-    }
+		return new ColumnBounds(forced, possible);
+	}
 
-    internal static bool TryPropagateCarry(
-        CarryRange currentCarry,
-        long forcedOnes,
-        long possibleOnes,
-        int requiredResultBit,
-        out CarryRange nextCarry,
-        out ContradictionReason reason)
-    {
-        long minSum = currentCarry.Min + forcedOnes;
-        long maxSum = currentCarry.Max + possibleOnes;
-        int parity = requiredResultBit & 1;
+	internal static bool TryPropagateCarry(
+		ref CarryRange currentCarry,
+		int forcedOnes,
+		int possibleOnes,
+		int requiredResultBit)
+	{
+		long minSum = currentCarry.Min + forcedOnes;
+		long maxSum = currentCarry.Max + possibleOnes;
+		int parity = requiredResultBit & 1;
 
-        minSum = AlignUpToParity(minSum, parity);
-        maxSum = AlignDownToParity(maxSum, parity);
+		minSum = AlignUpToParity(minSum, parity);
+		maxSum = AlignDownToParity(maxSum, parity);
 
-        if (minSum > maxSum)
-        {
-            nextCarry = default;
-            reason = ContradictionReason.ParityUnreachable;
-            return false;
-        }
+		if (minSum > maxSum)
+		{
+			return false;
+		}
 
-        nextCarry = new CarryRange((minSum - requiredResultBit) >> 1, (maxSum - requiredResultBit) >> 1);
-        reason = ContradictionReason.None;
-        return true;
-    }
+		currentCarry = new CarryRange((minSum - requiredResultBit) >> 1, (maxSum - requiredResultBit) >> 1);
+		return true;
+	}
 
-    private static bool TryModularPrefilter(
-        ReadOnlySpan<int> qOneOffsets,
-        ulong p,
-        long maxAllowedA)
-    {
-        if (maxAllowedA < 0 || maxAllowedA > ModLocalPrefilterMaxABits)
-        {
-            return true;
-        }
+	/// <summary>
+	/// Mini ping-pong (Option B): compute a conservative allowed carry range after walking
+	/// top-down for a given number of columns starting at <paramref name="startColumn"/>.
+	///
+	/// Semantics:
+	/// - We treat "carryOut at column = startColumn+1" as the starting set (seed).
+	/// - Each step processes one column (carryOut -> carryIn) moving downward.
+	/// - After <paramref name="steps"/> columns, the resulting set corresponds to carry-in
+	///   at column (startColumn - steps + 1).
+	/// </summary>
+	private static bool TryHighBitCarryRangeToColumnJ(
+		ReadOnlySpan<int> qOneOffsets,
+		int qOneOffsetsLength,
+		int pLong,
+		int maxAllowedA,
+		int startColumn,          // e.g. p-1, then J1-1, ...
+		int steps,                // number of columns to process downward
+		long startCarryOutMin,    // seed carryOut range
+		long startCarryOutMax,
+		out long allowedMin,
+		out long allowedMax)
+	{
+		allowedMin = 0;
+		allowedMax = long.MaxValue;
 
-        int bitCount = (int)(maxAllowedA + 1);
-        if (bitCount <= 0 || bitCount >= 62)
-        {
-            return true;
-        }
+		if (steps <= 0)
+		{
+			// No processing: carry-in == seed (conservative)
+			allowedMin = startCarryOutMin < 0 ? 0 : startCarryOutMin;
+			allowedMax = startCarryOutMax < 0 ? 0 : startCarryOutMax;
+			if (allowedMax < allowedMin) (allowedMin, allowedMax) = (0, long.MaxValue);
+			return true;
+		}
 
-        long maxAValue = (1L << bitCount) - 1L;
+		// Clamp startColumn to legal high column range. If outside, be conservative.
+		int maxHigh = pLong - 1;
+		if (startColumn > maxHigh || startColumn < 0)
+		{
+			allowedMin = 0;
+			allowedMax = long.MaxValue;
+			return true;
+		}
+
+		// Determine last processed column.
+		int endColumn = startColumn - (steps - 1);
+		if (endColumn < 0)
+		{
+			// Processing would go past column 0. We can clamp steps to reach column 0 exactly.
+			steps = startColumn + 1;
+			endColumn = 0;
+			if (steps <= 0)
+			{
+				allowedMin = 0;
+				allowedMax = 0;
+				return true;
+			}
+		}
+
+		// Two fixed interval buffers on stack: each interval is [lo, hi], disjoint and sorted.
+		Span<long> lo0 = stackalloc long[64];
+		Span<long> hi0 = stackalloc long[64];
+		Span<long> lo1 = stackalloc long[64];
+		Span<long> hi1 = stackalloc long[64];
+
+		Span<long> outLo = lo0, outHi = hi0;
+		Span<long> inLo = lo1, inHi = hi1;
+
+		int outCount = 1;
+		outLo[0] = startCarryOutMin;
+		outHi[0] = startCarryOutMax;
+
+		int inCount = 0;
+		bool flip = false;
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		static bool AddInterval(ref int count, Span<long> loArr, Span<long> hiArr, long lo, long hi)
+		{
+			if (hi < lo) return true;
+			if (lo < 0) lo = 0;
+			if (hi < 0) return true;
+
+			if (count == 0)
+			{
+				loArr[0] = lo;
+				hiArr[0] = hi;
+				count = 1;
+				return true;
+			}
+
+			long lastHi = hiArr[count - 1];
+			if (lo <= lastHi + 1)
+			{
+				if (hi > lastHi) hiArr[count - 1] = hi;
+				return true;
+			}
+
+			if ((uint)count >= (uint)loArr.Length)
+			{
+				// Too many intervals: stop filtering conservatively.
+				return false;
+			}
+
+			loArr[count] = lo;
+			hiArr[count] = hi;
+			count++;
+			return true;
+		}
+
+		for (int step = 0; step < steps; step++)
+		{
+			int column = startColumn - step;
+
+			// n = count of q-offsets t such that 0 <= column - t <= maxAllowedA
+			// <=> column - maxAllowedA <= t <= column
+			int lowerT;
+			long lowerTLong = (long)column - (long)maxAllowedA;
+			if (lowerTLong <= 0) lowerT = 0;
+			else if (lowerTLong >= int.MaxValue) lowerT = int.MaxValue;
+			else lowerT = (int)lowerTLong;
+
+			int upperT = column <= 0 ? 0 : column;
+
+			int left = LowerBound(qOneOffsets, lowerT);
+			int right = UpperBound(qOneOffsets, upperT);
+			int n = right - left;
+			if (n < 0) return false;
+
+			inCount = 0;
+
+			for (int i = 0; i < outCount; i++)
+			{
+				long a = outLo[i];
+				long b = outHi[i];
+
+				if (b < 0) continue;
+				if (a < 0) a = 0;
+				if (b < a) continue;
+
+				const long TwicePlusOneOverflowLimit = (long.MaxValue - 1) >> 1;
+
+				// If carryOut is too large for safe 2*x+1 in long, we must remain conservative.
+				if (a > TwicePlusOneOverflowLimit || b > TwicePlusOneOverflowLimit)
+				{
+					allowedMin = 0;
+					allowedMax = long.MaxValue;
+					return true;
+				}
+
+				long rMin = (a << 1) + 1;
+				long rMax = (b << 1) + 1;
+
+				// carryIn ∈ [ max(0, r-n), r ]
+				if (n <= 0)
+				{
+					if (!AddInterval(ref inCount, inLo, inHi, rMin, rMax))
+					{
+						allowedMin = 0;
+						allowedMax = long.MaxValue;
+						return true;
+					}
+					continue;
+				}
+
+				long lo = rMin - n;
+				if (lo < 0) lo = 0;
+
+				if (!AddInterval(ref inCount, inLo, inHi, lo, rMax))
+				{
+					allowedMin = 0;
+					allowedMax = long.MaxValue;
+					return true;
+				}
+			}
+
+			if (inCount <= 0)
+			{
+				return false;
+			}
+
+			// Swap buffers for next step.
+			outCount = inCount;
+			flip = !flip;
+			if (!flip)
+			{
+				outLo = lo0; outHi = hi0;
+				inLo = lo1; inHi = hi1;
+			}
+			else
+			{
+				outLo = lo1; outHi = hi1;
+				inLo = lo0; inHi = hi0;
+			}
+		}
+
+		// After steps, 'out' corresponds to carry-in at the last processed column (endColumn).
+		allowedMin = outLo[0];
+		allowedMax = outHi[outCount - 1];
+		return true;
+	}
+
+	private static bool TryModularPrefilter(
+		ReadOnlySpan<int> qOneOffsets,
+		long qHash,
+		ulong p,
+		long maxAllowedA)
+	{
+		if (maxAllowedA < 0 || maxAllowedA > ModLocalPrefilterMaxABits)
+		{
+			return true;
+		}
+
+		int bitCount = (int)(maxAllowedA + 1);
+		if (bitCount <= 0 || bitCount >= 62)
+		{
+			return true;
+		}
+
+		long maxAValue = (1L << bitCount) - 1L;
 		int modLocalPrefilterModuliLength = ModLocalPrefilterModuli.Length;
-        for (int i = 0; i < modLocalPrefilterModuliLength; i++)
-        {
-            int mod = ModLocalPrefilterModuli[i];
-            int qMod = ComputeQMod(qOneOffsets, mod);
-            int target = ModPow2Minus1(p, mod);
-            if (qMod == 0)
-            {
-                if (target != 0)
-                {
-                    return false;
-                }
+		for (int i = 0; i < modLocalPrefilterModuliLength; i++)
+		{
+			int mod = ModLocalPrefilterModuli[i];
+			int qMod = GetQModCached(qOneOffsets, qHash, mod);
+			int target = ModPow2Minus1(p, mod);
+			if (qMod == 0)
+			{
+				if (target != 0)
+				{
+					return false;
+				}
 
-                continue;
-            }
+				continue;
+			}
 
-            int inverse = ModPow(qMod, mod - 2, mod);
-            long x = (long)target * inverse % mod;
-            if (x > maxAValue)
-            {
-                return false;
-            }
-        }
+			int inverse = ModPow(qMod, mod - 2, mod);
+			long x = (long)target * inverse % mod;
+			if (x > maxAValue)
+			{
+				return false;
+			}
+		}
 
-        return true;
-    }
+		return true;
+	}
 
-    [ThreadStatic]
-    private static Dictionary<int, int[]>? _pow2DiffModCache;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static int LowerBound(ReadOnlySpan<int> values, int target)
+	{
+		int lo = 0;
+		int hi = values.Length;
+		while (lo < hi)
+		{
+			int mid = lo + ((hi - lo) >> 1);
+			if (values[mid] < target)
+			{
+				lo = mid + 1;
+			}
+			else
+			{
+				hi = mid;
+			}
+		}
+		return lo;
+	}
 
-    private static int[] GetPow2DiffLut(int mod)
-    {
-        _pow2DiffModCache ??= new Dictionary<int, int[]>();
-        if (_pow2DiffModCache.TryGetValue(mod, out int[]? lut))
-        {
-            return lut;
-        }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static int UpperBound(ReadOnlySpan<int> values, int target)
+	{
+		int lo = 0;
+		int hi = values.Length;
+		while (lo < hi)
+		{
+			int mid = lo + ((hi - lo) >> 1);
+			if (values[mid] <= target)
+			{
+				lo = mid + 1;
+			}
+			else
+			{
+				hi = mid;
+			}
+		}
+		return lo;
+	}
 
-        int[] values = new int[256];
-        values[0] = 1 % mod;
-        for (int i = 1; i < values.Length; i++)
-        {
-            values[i] = (values[i - 1] * 2) % mod;
-        }
+	/// <summary>
+	/// Extremely small, allocation-free prefilter over the last few columns (near p-1).
+	///
+	/// It uses only the fact that the product must have no carry beyond column p-1 (i.e. carry-out from
+	/// column p-1 is zero) and that bits 0..p-1 of M_p are all ones.
+	///
+	/// This is intentionally conservative (never rejects a valid divisor). In practice it can still
+	/// remove some q with "awkward" high-bit geometry where the required carry values near the top
+	/// become impossible given the availability of contributions implied by qOneOffsets and maxAllowedA.
+	/// </summary>
+	private static bool TryHighBitTopCarryPrefilter(
+		ReadOnlySpan<int> qOneOffsets,
+		int qOneOffsetsLength,
+		long pLong,
+		long maxAllowedA)
+	{
+		// We process last K columns: (p-1), (p-2), ...
+		int columns = HighBitCarryPrefilterColumns;
+		long maxPossibleColumns = pLong - 1;
+		if (columns > maxPossibleColumns)
+			columns = (int)maxPossibleColumns;
 
-        _pow2DiffModCache[mod] = values;
-        return values;
-    }
+		// Two fixed interval buffers on stack.
+		// Each interval is [lo, hi], disjoint and sorted.
+		// 32 is intentionally small: in practice this stays tiny (often 1-2 intervals).
+		Span<long> lo0 = stackalloc long[64];
+		Span<long> hi0 = stackalloc long[64];
+		Span<long> lo1 = stackalloc long[64];
+		Span<long> hi1 = stackalloc long[64];
 
-    private static int ComputeQMod(ReadOnlySpan<int> qOneOffsets, int mod)
-    {
-        int count = qOneOffsets.Length;
-        if (count == 0)
-        {
-            return 0;
-        }
+		// "out" = carryOut set for current column (start at top with {0})
+		Span<long> outLo = lo0, outHi = hi0;
+		Span<long> inLo = lo1, inHi = hi1;
 
-        int[] diffLut = GetPow2DiffLut(mod);
+		int outCount = 1;
+		outLo[0] = 0;
+		outHi[0] = 0;
+
+		int inCount = 0;
+		bool flip = false;
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		static void AddInterval(ref int count, Span<long> loArr, Span<long> hiArr, long lo, long hi)
+		{
+			if (hi < lo) return;
+
+			if (lo < 0) lo = 0;
+			if (hi < 0) return;
+
+			if (count == 0)
+			{
+				loArr[0] = lo;
+				hiArr[0] = hi;
+				count = 1;
+				return;
+			}
+
+			// Merge into last interval if overlapping/adjacent.
+			long lastHi = hiArr[count - 1];
+			if (lo <= lastHi + 1)
+			{
+				if (hi > lastHi)
+					hiArr[count - 1] = hi;
+				return;
+			}
+
+			// Append
+			if ((uint)count >= (uint)loArr.Length)
+			{
+				// If this ever happens, we conservatively stop filtering (do not reject).
+				// Returning "true" keeps correctness (prefilter is optional).
+				count = 0;
+				return;
+			}
+
+			loArr[count] = lo;
+			hiArr[count] = hi;
+			count++;
+		}
+
+		for (int step = 0; step < columns; step++)
+		{
+			long column = maxPossibleColumns - step;
+			if (column < 0)
+				break;
+
+			// n = count of q-offsets t such that 0 <= column - t <= maxAllowedA
+			// <=> column - maxAllowedA <= t <= column
+			long lowerTLong = column - maxAllowedA;
+
+			int lowerT =
+				lowerTLong <= 0 ? 0 :
+				(lowerTLong >= int.MaxValue ? int.MaxValue : (int)lowerTLong);
+
+			int upperT =
+				column <= 0 ? 0 :
+				(column >= int.MaxValue ? int.MaxValue : (int)column);
+
+			int left = LowerBound(qOneOffsets, lowerT);
+			int right = UpperBound(qOneOffsets, upperT);
+			int n = right - left;
+
+			if (n < 0)
+			{
+				// Console.WriteLine("n < 0 - excluding in pre-filter");
+				return false;
+			}
+
+			// Build carryIn set into inLo/inHi
+			inCount = 0;
+
+			// For M_p, bit in columns [0..p-1] is 1:
+			// carryIn + ones = 1 + 2*carryOut
+			// carryIn = (2*carryOut + 1) - ones, with ones in [0..min(n, 2*carryOut+1)].
+			//
+			// That yields carryIn interval:
+			//   r = 2*carryOut + 1
+			//   carryIn ∈ [ r - min(n, r), r ] = [ max(0, r-n), r ].
+			//
+			// Union over carryOut intervals is merged cheaply.
+
+			for (int i = 0; i < outCount; i++)
+			{
+				long a = outLo[i];
+				long b = outHi[i];
+
+				if (b < 0) continue;
+				if (a < 0) a = 0;
+				if (b < a) continue;
+
+				const long TwicePlusOneOverflowLimit = (long.MaxValue - 1) >> 1;
+				// Jeśli carryOut jest już zbyt duże, top-down robi się bezużyteczny w long.
+				// Prefilter MUSI pozostać konserwatywny => przerywamy filtrowanie.
+				if (a > TwicePlusOneOverflowLimit || b > TwicePlusOneOverflowLimit)
+				{
+					return true;
+				}
+
+				// r ranges from rMin..rMax over carryOut in [a..b]
+				long rMin = (a << 1) + 1;
+				long rMax = (b << 1) + 1;
+
+				if (n <= 0)
+				{
+					// ones=0 only -> carryIn=r (odd sequence). Conservatively interval [rMin..rMax].
+					AddInterval(ref inCount, inLo, inHi, rMin, rMax);
+					if (inCount == 0) return true; // overflow of intervals -> stop filtering
+					continue;
+				}
+
+				if (n == 1)
+				{
+					// ones in {0,1} -> carryIn in {r, r-1}. Conservatively [rMin-1 .. rMax].
+					AddInterval(ref inCount, inLo, inHi, rMin - 1, rMax);
+					if (inCount == 0) return true;
+					continue;
+				}
+
+				// n >= 2 : union becomes dense enough that interval bounds are safe conservative approximations.
+				if (rMax <= n)
+				{
+					// For all r<=n, lower bound is 0.
+					AddInterval(ref inCount, inLo, inHi, 0, rMax);
+					if (inCount == 0) return true;
+				}
+				else if (rMin > n)
+				{
+					// Always r>n => [r-n .. r]
+					AddInterval(ref inCount, inLo, inHi, rMin - n, rMax);
+					if (inCount == 0) return true;
+				}
+				else
+				{
+					// Crossing: part uses [0..r], later [r-n..r]. For n>=2 union is [0..rMax].
+					AddInterval(ref inCount, inLo, inHi, 0, rMax);
+					if (inCount == 0) return true;
+				}
+			}
+
+			if (inCount <= 0)
+			{
+				// Console.WriteLine("inCount <= 0 - excluding in pre-filter");
+				return false;
+			}
+
+			// Prepare for next column: carryOut := carryIn (shift down one column)
+			outCount = inCount;
+
+			// Toggle which buffers are used for out vs in.
+			// Avoid tuple swap / temp Span to satisfy Span lifetime rules.
+			flip = !flip;
+			if (!flip)
+			{
+				outLo = lo0; outHi = hi0;
+				inLo = lo1; inHi = hi1;
+			}
+			else
+			{
+				outLo = lo1; outHi = hi1;
+				inLo = lo0; inHi = hi0;
+			}
+		}
+
+		return true;
+	}
+
+
+	private static int[] GetPow2DiffLut(int mod)
+	{
+		_pow2DiffModCache ??= new Dictionary<int, int[]>();
+		if (_pow2DiffModCache.TryGetValue(mod, out int[]? lut))
+		{
+			return lut;
+		}
+
+		int[] values = new int[256];
+		values[0] = mod > 1 ? 1 : 0;
+		for (int i = 1; i < values.Length; i++)
+		{
+			values[i] = (values[i - 1] << 1) % mod;
+		}
+
+		_pow2DiffModCache[mod] = values;
+		return values;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static void ComputeForcedRemainingAndClean_Prefix(
+		ulong[] qMask, ulong[] oneWin, ulong[] zeroWin,
+		int words, ulong lastMask,
+		out int forced, out int remaining, out bool clean)
+	{
+		forced = 0;
+		remaining = 0;
+		clean = true;
+
+		for (int i = 0; i < words; i++)
+		{
+			ulong q = qMask[i];
+			if (i == words - 1) q &= lastMask;
+
+			ulong one = oneWin[i];
+			ulong known = one | zeroWin[i];
+
+			ulong forcedBits = q & one;
+			ulong unknownBits = q & ~known;
+
+			forced += BitOperations.PopCount(forcedBits);
+			remaining += BitOperations.PopCount(unknownBits);
+
+			if ((q & known) != 0) clean = false;
+		}
+	}
+	private static int ComputeQMod(ReadOnlySpan<int> qOneOffsets, int mod)
+	{
+		int count = qOneOffsets.Length;
+		if (count == 0)
+		{
+			return 0;
+		}
+
+		int[] diffLut = GetPow2DiffLut(mod);
 		int diffLutLength = diffLut.Length;
-        long sum = 0;
-        int prevOffset = qOneOffsets[0];
-        long pow = PowMod2((ulong)prevOffset, mod);
-        sum += pow;
+		long sum = 0;
+		int prevOffset = qOneOffsets[0];
+		long pow = PowMod2((ulong)prevOffset, mod);
+		sum += pow;
 
-        for (int i = 1; i < count; i++)
-        {
-            int offset = qOneOffsets[i];
-            int diff = offset - prevOffset;
-            if (diff <= 0)
-            {
-                prevOffset = offset;
-                continue;
-            }
+		for (int i = 1; i < count; i++)
+		{
+			int offset = qOneOffsets[i];
+			int diff = offset - prevOffset;
+			if (diff <= 0)
+			{
+				prevOffset = offset;
+				continue;
+			}
 
-            if (diff < diffLutLength)
-            {
-                pow = pow * diffLut[diff] % mod;
-            }
-            else
-            {
-                pow = pow * PowMod2((ulong)diff, mod) % mod;
-            }
+			if (diff < diffLutLength)
+			{
+				pow = pow * diffLut[diff] % mod;
+			}
+			else
+			{
+				pow = pow * PowMod2((ulong)diff, mod) % mod;
+			}
 
-            sum += pow;
-            if (sum >= mod)
-            {
-                sum %= mod;
-            }
+			sum += pow;
+			if (sum >= mod)
+			{
+				sum %= mod;
+			}
 
-            prevOffset = offset;
-        }
+			prevOffset = offset;
+		}
 
-        return (int)(sum % mod);
-    }
+		return (int)(sum % mod);
+	}
 
-    private static int ModPow2Minus1(ulong p, int mod)
-    {
-        int pow = PowMod2(p, mod);
-        int result = pow - 1;
-        return result < 0 ? result + mod : result;
-    }
 
-    private static int PowMod2(ulong exp, int mod)
-    {
-        long result = 1 % mod;
-        long baseVal = 2 % mod;
-        ulong value = exp;
-        while (value > 0)
-        {
-            if ((value & 1) != 0)
-            {
-                result = (result * baseVal) % mod;
-            }
 
-            baseVal = (baseVal * baseVal) % mod;
-            value >>= 1;
-        }
+	private static bool ExistsCongruentInRange(BigInteger minA, BigInteger maxA, int residue, int mod)
+	{
+		if (minA > maxA)
+		{
+			return false;
+		}
 
-        return (int)result;
-    }
+		int minMod = (int)((minA % mod + mod) % mod);
+		int delta = residue - minMod;
+		if (delta < 0)
+		{
+			delta += mod;
+		}
 
-    private static int ModPow(int value, int exp, int mod)
-    {
-        long result = 1 % mod;
-        long baseVal = value % mod;
-        int e = exp;
-        while (e > 0)
-        {
-            if ((e & 1) != 0)
-            {
-                result = (result * baseVal) % mod;
-            }
+		BigInteger candidate = minA + delta;
+		return candidate <= maxA;
+	}
 
-            baseVal = (baseVal * baseVal) % mod;
-            e >>= 1;
-        }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static void GetQPrefixMask(int startColumn, int qBitLen, int qWordCount, out int words, out ulong lastMask)
+	{
+		// We want only offsets t <= startColumn.
+		if (startColumn >= qBitLen - 1)
+		{
+			words = qWordCount;
+			lastMask = ulong.MaxValue; // caller can still & lastWordMask separately
+			return;
+		}
 
-        return (int)result;
-    }
+		int maxT = startColumn; // inclusive
+		if (maxT < 0)
+		{
+			words = 0;
+			lastMask = 0;
+			return;
+		}
 
-    /// <summary>
-    /// Full column-wise propagation for a given set of q one-bit offsets (LSB=0) and exponent p.
-    /// Returns true if the solver could decide locally (divides or contradiction).
-    /// </summary>
-    internal static bool TryCheckDivisibilityFromOneOffsets(
-        ReadOnlySpan<int> qOneOffsets,
-        ulong p,
-        out bool divides,
-        out ContradictionReason reason)
-    {
-        divides = false;
-        _lastTopDownFailure = null;
+		int lastWord = maxT >> 6;
+		words = lastWord + 1;
+
+		int bit = maxT & 63;
+		lastMask = bit == 63 ? ulong.MaxValue : ((1UL << (bit + 1)) - 1UL);
+	}
+
+	private static void ComputeARangeFromTopConstraints(
+		long maxAllowedA,
+		bool top0KnownOne,
+		bool top0KnownZero,
+		bool top1KnownOne,
+		bool top1KnownZero,
+		long zeroTailStart,
+		out BigInteger minA,
+		out BigInteger maxA)
+	{
+		_dynamicModChecks++;
+		long effectiveTop = maxAllowedA;
+		if (zeroTailStart <= effectiveTop + 1)
+		{
+			effectiveTop = zeroTailStart - 1;
+		}
+
+		if (effectiveTop < 0)
+		{
+			minA = BigInteger.Zero;
+			maxA = BigInteger.Zero;
+			return;
+		}
+
+		int shift = effectiveTop + 1 > int.MaxValue ? int.MaxValue : (int)(effectiveTop + 1);
+		maxA = (BigInteger.One << shift) - BigInteger.One;
+		minA = BigInteger.Zero;
+
+		if (effectiveTop == maxAllowedA)
+		{
+			if (top0KnownOne)
+			{
+				int minShift = maxAllowedA > int.MaxValue ? int.MaxValue : (int)maxAllowedA;
+				minA = BigInteger.One << minShift;
+			}
+			else if (top0KnownZero && top1KnownOne && maxAllowedA - 1 >= 0)
+			{
+				long index = maxAllowedA - 1;
+				int minShift = index > int.MaxValue ? int.MaxValue : (int)index;
+				minA = BigInteger.One << minShift;
+			}
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool IsCleanInQ_Prefix(ulong[] qMask, ulong[] oneWin, ulong[] zeroWin, int words, ulong lastMask)
+	{
+		for (int i = 0; i < words; i++)
+		{
+			ulong q = qMask[i];
+			if (i == words - 1) q &= lastMask;
+			if ((q & (oneWin[i] | zeroWin[i])) != 0) return false;
+		}
+
+		return true;
+	}
+
+	private static bool TryDynamicModularRangePrune(
+		ReadOnlySpan<int> qOneOffsets,
+		long qHash,
+		ulong p,
+		long maxAllowedA,
+		bool top0KnownOne,
+		bool top0KnownZero,
+		bool top1KnownOne,
+		bool top1KnownZero,
+		long zeroTailStart)
+	{
+		_dynamicModChecks++;
+		long effectiveTop = maxAllowedA;
+		if (zeroTailStart <= effectiveTop + 1)
+		{
+			effectiveTop = zeroTailStart - 1;
+		}
+
+		if (effectiveTop > 4096)
+		{
+			return true;
+		}
+
+		ComputeARangeFromTopConstraints(
+			maxAllowedA,
+			top0KnownOne,
+			top0KnownZero,
+			top1KnownOne,
+			top1KnownZero,
+			zeroTailStart,
+			out BigInteger minA,
+			out BigInteger maxA);
+
+		int modLocalPrefilterModuliLength = ModLocalPrefilterModuli.Length;
+		for (int i = 0; i < modLocalPrefilterModuliLength; i++)
+		{
+			int mod = ModLocalPrefilterModuli[i];
+			int qMod = GetQModCached(qOneOffsets, qHash, mod);
+			int target = ModPow2Minus1(p, mod);
+			if (qMod == 0)
+			{
+				if (target != 0)
+				{
+					return false;
+				}
+				continue;
+			}
+
+			int inverse = ModPow(qMod, mod - 2, mod);
+			int aResidue = (int)((long)target * inverse % mod);
+			if (!ExistsCongruentInRange(minA, maxA, aResidue, mod))
+			{
+				_dynamicModFailures++;
+				return false;
+			}
+		}
+
+		return true;
+	}
+	private static int ModPow2Minus1(ulong p, int mod)
+	{
+		int pow = PowMod2(p, mod);
+		int result = pow - 1;
+		return result < 0 ? result + mod : result;
+	}
+
+	private static int PowMod2(ulong exp, int mod)
+	{
+		long result = 1 % mod;
+		long baseVal = 2 % mod;
+		ulong value = exp;
+		while (value > 0)
+		{
+			if ((value & 1) != 0)
+			{
+				result = (result * baseVal) % mod;
+			}
+
+			baseVal = (baseVal * baseVal) % mod;
+			value >>= 1;
+		}
+
+		return (int)result;
+	}
+
+	private static int ModPow(int value, int exp, int mod)
+	{
+		long result = 1 % mod;
+		long baseVal = value % mod;
+		int e = exp;
+		while (e > 0)
+		{
+			if ((e & 1) != 0)
+			{
+				result = (result * baseVal) % mod;
+			}
+
+			baseVal = (baseVal * baseVal) % mod;
+			e >>= 1;
+		}
+
+		return (int)result;
+	}
+
+	// internal static bool TryCheckDivisibilityFromDivisor(ulong q, ulong p, out bool divides, out ContradictionReason reason)
+	// {
+	// 	divides = false;
+	// 	if (q == 0UL)
+	// 	{
+	// 		reason = ContradictionReason.ParityUnreachable;
+	// 		return true;
+	// 	}
+
+	// 	Span<int> oneOffsets = stackalloc int[64];
+	// 	int count = 0;
+	// 	ulong remaining = q;
+	// 	int baseIndex = 0;
+	// 	while (remaining != 0UL)
+	// 	{
+	// 		int tz = BitOperations.TrailingZeroCount(remaining);
+	// 		baseIndex += tz;
+	// 		oneOffsets[count++] = baseIndex;
+	// 		remaining >>= tz + 1;
+	// 		baseIndex++;
+	// 	}
+
+	// 	return TryCheckDivisibilityFromOneOffsets(oneOffsets.Slice(0, count), p, out divides, out reason);
+	// }
+
+	[ThreadStatic]
+	private static bool _initialized;
+
+	// [ThreadStatic]
+	// private static PrivateWorkSet _privateWorkSet;
+
+	public static void Initialize()
+	{
+		if (_initialized)
+		{
+			return;
+		}
+
+		// _privateWorkSet = new();
+		// _stableUnknownDelta8 = new();
+		_initialized = true;
+	}
+
+	// #if DETAILED_LOG
+	[ThreadStatic] private static long _statStableAdvanceCalls;
+	[ThreadStatic] private static long _statStableAdvanceCols;
+	[ThreadStatic] private static long _statStableAdvanceColsBatched;
+	[ThreadStatic] private static long _statScalarCols;
+
+	[ThreadStatic] private static long _statDeltaRequests;
+	[ThreadStatic] private static long _statDeltaHits;
+	[ThreadStatic] private static long _statDeltaBuilds;
+
+	[ThreadStatic] private static long _statStableAdvanceBigShift; // ile razy columnCount>=64 w TryAdvanceStableUnknown
+	[ThreadStatic] private static long _statBatchEntry;
+	[ThreadStatic] private static long _statBatchCols;
+	[ThreadStatic] private static long _statCleanChecks;
+	[ThreadStatic] private static long _statCleanFalse;
+	[ThreadStatic] private static int _statFirstDirtyColumn;
+	[ThreadStatic] private static int _statFirstDirtyWord;
+	[ThreadStatic] private static ulong _statFirstDirtyQ;
+	[ThreadStatic] private static ulong _statFirstDirtyKnown;
+	// #endif
+
+	/// <summary>
+	/// Full column-wise propagation for a given set of q one-bit offsets (LSB=0) and exponent p.
+	/// Returns true if the solver could decide locally (divides or contradiction).
+	/// </summary>
+	internal static bool TryCheckDivisibilityFromOneOffsets(
+		ReadOnlySpan<int> qOneOffsets,
+		ulong p,
+		out bool divides,
+		out ContradictionReason reason)
+	{
+		// PrivateWorkSet workSet = _privateWorkSet;
+
+		divides = false;
+
+#if DETAILED_LOG
+		_lastTopDownFailure = null;
+#endif
+		// #if DETAILED_LOG
+		_statStableAdvanceCalls = 0;
+		_statStableAdvanceCols = 0;
+		_statStableAdvanceColsBatched = 0;
+		_statScalarCols = 0;
+		_statDeltaRequests = 0;
+		_statDeltaHits = 0;
+		_statDeltaBuilds = 0;
+		_statStableAdvanceBigShift = 0;
+		_statCleanChecks = 0;
+		_statCleanFalse = 0;
+		_statFirstDirtyColumn = -1;
+		// #endif
+		_dynamicModChecks = 0;
+		_dynamicModFailures = 0;
 
 		// These conditions will never be true on EvenPerfectBitScanner execution path.
-        // if (p == 0 || qOneOffsets.Length == 0)
-        // {
-        //     reason = ContradictionReason.ParityUnreachable;
-        //     return true;
-        // }
+		// if (p == 0 || qOneOffsets.Length == 0)
+		// {
+		//     reason = ContradictionReason.ParityUnreachable;
+		//     return true;
+		// }
 
 		// While the scanner supports p >= 31, it's a tiny subset of all checked exponents. No need to support it.
-        // Exact small-case evaluation to short-circuit both success and failure deterministically.
-        // int highestBit = qOneOffsets[^1];
-        // if (p <= 64 && highestBit < 63)
-        // {
-        //     ulong q = 0;
-        //     foreach (int bit in qOneOffsets)
-        //     {
-        //         q |= 1UL << bit;
-        //     }
+		// Exact small-case evaluation to short-circuit both success and failure deterministically.
+		// int highestBit = qOneOffsets[^1];
+		// if (p <= 64 && highestBit < 63)
+		// {
+		//     ulong q = 0;
+		//     foreach (int bit in qOneOffsets)
+		//     {
+		//         q |= 1UL << bit;
+		//     }
 
-        //     ulong mersenne = (1UL << (int)p) - 1UL;
-        //     divides = q != 0 && (mersenne % q == 0);
-        //     reason = divides ? ContradictionReason.None : ContradictionReason.ParityUnreachable;
-        //     return true;
-        // }
+		//     ulong mersenne = (1UL << (int)p) - 1UL;
+		//     divides = q != 0 && (mersenne % q == 0);
+		//     reason = divides ? ContradictionReason.None : ContradictionReason.ParityUnreachable;
+		//     return true;
+		// }
 
 		int qOneOffsetsLength = qOneOffsets.Length;
-        int maxOffset = qOneOffsets[qOneOffsetsLength - 1];
-        if ((ulong)(maxOffset + 1) >= p)
-        {
-            reason = ContradictionReason.TruncatedLength;
-            return true;
-        }
+		int maxOffset = qOneOffsets[qOneOffsetsLength - 1];
+		if ((ulong)(maxOffset + 1) >= p)
+		{
+			reason = ContradictionReason.TruncatedLength;
+			return true;
+		}
 
 		// q from EvenPerfectBitScanner will always have the correct 2kp+1 form.
-        // if (qOneOffsets[0] != 0)
-        // {
-        //     reason = ContradictionReason.ParityUnreachable;
-        //     return true;
-        // }
+		// if (qOneOffsets[0] != 0)
+		// {
+		//     reason = ContradictionReason.ParityUnreachable;
+		//     return true;
+		// }
 
-        int windowSize = maxOffset + 1;
-        int wordCount = (windowSize + 63) >> 6;
-        var knownOne0 = new ulong[wordCount];
-        var knownOne1 = new ulong[wordCount];
-        var knownZero0 = new ulong[wordCount];
-        var knownZero1 = new ulong[wordCount];
-        long segmentBase = 0;
-        long maxKnownA = -1L;
-		long pLong = (long)p;
-		long maxAllowedA = pLong - (maxOffset + 1L);
-        if (maxAllowedA < 0)
-        {
-            reason = ContradictionReason.TruncatedLength;
-            return true;
-        }
+		const int ForcedALowBits = 1024;
+		int windowSize = maxOffset + 1;
+		if (windowSize < ForcedALowBits) windowSize = ForcedALowBits;
+		windowSize = (windowSize + 63) & ~63;
+		int wordCount = (windowSize + 63) >> 6;
+		// var knownOne0 = workSet.KnownOne0[..wordCount];
+		// var knownOne1 = workSet.KnownOne1[..wordCount];
+		// var knownZero0 = workSet.KnownZero0[..wordCount];
+		// var knownZero1 = workSet.KnownZero1[..wordCount];
+		ulong[] knownOne0 = new ulong[wordCount];
+		ulong[] knownOne1 = new ulong[wordCount];
+		ulong[] knownZero0 = new ulong[wordCount];
+		ulong[] knownZero1 = new ulong[wordCount];
+		int segmentBase = 0;
+		int maxKnownA = -1;
+		int pLong = (int)p;
+		int maxAllowedA = pLong - (maxOffset + 1);
+		if (maxAllowedA < 0)
+		{
+			reason = ContradictionReason.TruncatedLength;
+			return true;
+		}
 
-        long topIndex0 = maxAllowedA;
-        long topIndex1 = maxAllowedA - 1L;
-        bool top0KnownOne = topIndex0 == 0L;
-        bool top1KnownOne = topIndex1 == 0L;
-        bool top0KnownZero = false;
-        bool top1KnownZero = false;
-        long zeroTailStart = maxAllowedA + 1L;
+		// Force low bits of 'a' from a ≡ -q^{-1} (mod 2^512).
+		// This is a necessary condition for q | (2^p - 1) when p >= 512 (true here).
+		const int ForcedBits = ForcedALowBits; // 512
 
-        if (!TryModularPrefilter(qOneOffsets, p, maxAllowedA))
-        {
-            reason = ContradictionReason.ParityUnreachable;
-            return true;
-        }
+		BigInteger mask = (BigInteger.One << ForcedBits) - BigInteger.One;
 
-        long qHash = ComputeQOffsetsHash(qOneOffsets);
-        Span<int> runStarts = qOneOffsetsLength <= 256 ? stackalloc int[qOneOffsetsLength] : new int[qOneOffsetsLength];
-        Span<int> runLengths = qOneOffsetsLength <= 256 ? stackalloc int[qOneOffsetsLength] : new int[qOneOffsetsLength];
-        int runCount = 0;
-        {
-            int prev = qOneOffsets[0];
-            int currentStart = prev;
-            int currentLength = 1;
-            for (int i = 1; i < qOneOffsetsLength; i++)
-            {
-                int offset = qOneOffsets[i];
-                if (offset == prev + 1)
-                {
-                    currentLength++;
-                }
-                else
-                {
-                    runStarts[runCount] = currentStart;
-                    runLengths[runCount] = currentLength;
-                    runCount++;
-                    currentStart = offset;
-                    currentLength = 1;
-                }
+		// Build q (low 512 bits) from qOneOffsets. q is small anyway, but do it generically.
+		BigInteger qMod2k = BigInteger.Zero;
+		for (int i = 0; i < qOneOffsetsLength; i++)
+		{
+			int bit = qOneOffsets[i];
+			if (bit >= ForcedBits) break;
+			qMod2k |= (BigInteger.One << bit);
+		}
 
-                prev = offset;
-            }
+		// q must be odd for any Mersenne divisor candidate.
+		if (qMod2k.IsEven)
+		{
+			Console.WriteLine("Pruned by qMod2k.IsEven");
+			reason = ContradictionReason.ParityUnreachable;
+			return true;
+		}
 
-            runStarts[runCount] = currentStart;
-            runLengths[runCount] = currentLength;
-            runCount++;
-        }
-        var cacheKey = new TopDownCacheKey(qHash, qOneOffsetsLength, maxAllowedA, pLong);
-        if (TryGetTopDownCache(in cacheKey, out var cached))
-        {
-            _lastTopDownFailure = cached.Failure;
-            if (!cached.Success)
-            {
-                reason = ContradictionReason.ParityUnreachable;
-                return true;
-            }
-        }
-        else
-        {
-            if (!TryTopDownCarryPrune(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA, out _lastTopDownFailure))
-            {
-                StoreTopDownCache(in cacheKey, new TopDownCacheValue(false, _lastTopDownFailure));
-                reason = ContradictionReason.ParityUnreachable;
-                return true;
-            }
+		// Compute inv = q^{-1} mod 2^512 using Hensel/Newton iteration in Z/2^kZ.
+		BigInteger inv = qMod2k; // OK seed for odd q.
+		int iters = 0;
+		for (int bits = 1; bits < ForcedBits; bits <<= 1) iters++;
 
-            StoreTopDownCache(in cacheKey, new TopDownCacheValue(true, null));
-        }
+		for (int it = 0; it < iters; it++)
+		{
+			inv = (inv * (2 - qMod2k * inv)) & mask;
+		}
 
-        long lowColumn = 0;
-        long highColumn = pLong - 1;
-        CarryRange carryLow = CarryRange.Zero;
-        CarryRange carryHigh = CarryRange.Zero;
-        int bottomRunStart = 0;
-        int bottomRunEnd = 0;
-        int topWindowStart = qOneOffsetsLength;
-        int topWindowEnd = qOneOffsetsLength;
+		// a ≡ -inv (mod 2^512)
+		BigInteger aLow = (-inv) & mask;
 
-        bool processTop = true;
+		// Apply constraints for bits i in [0..min(511, maxAllowedA)] into knownOne0/knownZero0.
+		// NOTE: now windowSize >= 512, so wordCount is enough to store these bits.
+		int maxFixed = maxAllowedA < (ForcedBits - 1) ? maxAllowedA : (ForcedBits - 1);
+		for (int i = 0; i <= maxFixed; i++)
+		{
+			bool bitIsOne = !aLow.IsZero && ((aLow >> i) & BigInteger.One) != 0;
 
-        while (lowColumn <= highColumn)
-        {
-            int remaining = (int)(highColumn - lowColumn + 1);
-            int blockSize = remaining < PingPongBlockColumns ? remaining : PingPongBlockColumns;
+			int word = i >> 6;
+			ulong mask64 = 1UL << (i & 63);
 
-            if (processTop)
-            {
-                if (!TryProcessTopDownBlock(qOneOffsets, qOneOffsetsLength, maxAllowedA, highColumn, blockSize, carryHigh, ref topWindowStart, ref topWindowEnd, out carryHigh, out _lastTopDownFailure))
-                {
-                    reason = ContradictionReason.ParityUnreachable;
-                    return true;
-                }
+			if (bitIsOne)
+			{
+				if ((knownZero0[word] & mask64) != 0)
+				{
+					Console.WriteLine("Pruned by knownZero1[word] & mask64");
+					reason = ContradictionReason.ParityUnreachable;
+					return true;
+				}
 
-                highColumn -= blockSize;
-            }
-            else
-            {
-                if (!TryProcessBottomUpBlock(qOneOffsets, runStarts, runLengths, runCount, maxAllowedA, lowColumn, blockSize, ref carryLow, ref maxKnownA, ref segmentBase, ref bottomRunStart, ref bottomRunEnd, knownOne0, knownOne1, knownZero0, knownZero1, windowSize, topIndex0, topIndex1, ref top0KnownOne, ref top1KnownOne, ref top0KnownZero, ref top1KnownZero, ref zeroTailStart, out reason))
-                {
-                    return true;
-                }
+				knownOne0[word] |= mask64;
+			}
+			else
+			{
+				if ((knownOne0[word] & mask64) != 0)
+				{
+					Console.WriteLine("Pruned by knownOne1[word] & mask64");
+					reason = ContradictionReason.ParityUnreachable;
+					return true;
+				}
 
-                lowColumn += blockSize;
-            }
+				knownZero0[word] |= mask64;
+			}
+		}
 
-            processTop = !processTop;
-        }
+		// We have learned bits up to maxFixed in the current segment.
+		if (maxFixed > maxKnownA) maxKnownA = maxFixed;
 
-        long carryMin = carryLow.Min > carryHigh.Min ? carryLow.Min : carryHigh.Min;
-        long carryMax = carryLow.Max < carryHigh.Max ? carryLow.Max : carryHigh.Max;
-        if (carryMin > carryMax)
-        {
-            divides = false;
-            reason = ContradictionReason.ParityUnreachable;
-            return true;
-        }
+		int topIndex0 = maxAllowedA;
+		int topIndex1 = maxAllowedA - 1;
+		bool top0KnownOne = topIndex0 == 0;
+		bool top1KnownOne = topIndex1 == 0;
+		// bool top0KnownZero = false;
+		// bool top1KnownZero = false;
+		int zeroTailStart = maxAllowedA + 1;
 
-        divides = true;
-        reason = ContradictionReason.None;
-        return true;
-    }
+		// long qHash = ComputeQOffsetsHash(qOneOffsets);
+
+
+		// if (!TryModularPrefilter(qOneOffsets, qHash, p, maxAllowedA))
+		// {
+		// 	reason = ContradictionReason.ParityUnreachable;
+		// 	return true;
+		// }
+
+		int[] runStarts = new int[qOneOffsetsLength];
+		int[] runLengths = new int[qOneOffsetsLength];
+		// Span<int> runStarts = qOneOffsetsLength <= 256 ? stackalloc int[qOneOffsetsLength] : new int[qOneOffsetsLength];
+		// Span<int> runLengths = qOneOffsetsLength <= 256 ? stackalloc int[qOneOffsetsLength] : new int[qOneOffsetsLength];
+		// Span<int> runStarts = workSet.RunStarts;
+		// Span<int> runLengths = workSet.RunLengths;
+		int prev = qOneOffsets[0];
+		int currentStart = prev;
+		int currentLength = 1;
+		int runCount = 1;
+		runStarts[0] = currentStart;
+		runLengths[0] = currentLength;
+		// int prefixCount = qOneOffsetsLength;
+		// bool usedPrefixCache = false;
+		// long prefixHash = 0;
+
+		// if (PrefixRunCacheOffsets > 1 && qOneOffsetsLength > 1)
+		// {
+		// 	prefixCount = qOneOffsetsLength < PrefixRunCacheOffsets ? qOneOffsetsLength : PrefixRunCacheOffsets;
+		// 	prefixHash = ComputeQOffsetsPrefixHash(qOneOffsets, prefixCount);
+		// 	if (TryGetPrefixRunCache(prefixHash, out PrefixRunCacheEntry cachedPrefix) && cachedPrefix.PrefixCount == prefixCount)
+		// 	{
+		// 		cachedPrefix.RunStarts.CopyTo(runStarts);
+		// 		cachedPrefix.RunLengths.CopyTo(runLengths);
+		// 		runCount = cachedPrefix.RunCount;
+		// 		prev = cachedPrefix.LastOffset;
+		// 		currentStart = cachedPrefix.LastRunStart;
+		// 		currentLength = cachedPrefix.LastRunLength;
+		// 		usedPrefixCache = true;
+		// 	}
+		// 	else
+		// 	{
+		// 		usedPrefixCache = false;
+		// 	}
+		// }
+
+		// int startIndex = usedPrefixCache ? prefixCount : 1;
+		int startIndex = 1;
+		for (int i = startIndex; i < qOneOffsetsLength; i++)
+		{
+			int offset = qOneOffsets[i];
+			if (offset == prev + 1)
+			{
+				currentLength++;
+				runLengths[runCount - 1] = currentLength;
+			}
+			else
+			{
+				runStarts[runCount] = offset;
+				runLengths[runCount] = 1;
+				runCount++;
+				currentStart = offset;
+				currentLength = 1;
+			}
+
+			prev = offset;
+		}
+
+		// if (!usedPrefixCache && prefixCount > 1)
+		// {
+		// 	PrefixRunCacheEntry prefixEntry = BuildPrefixRunCache(qOneOffsets, prefixCount);
+		// 	long key = prefixHash != 0 ? prefixHash : ComputeQOffsetsPrefixHash(qOneOffsets, prefixCount);
+		// 	StorePrefixRunCache(key, prefixEntry);
+		// }
+
+		// Ultra-cheap high-bit feasibility check based on the forced top carry-out (no bit beyond p-1).
+		// This is a tiny reverse-carry DP over the last few columns (p-1, p-2, ...), using only the
+		// geometric availability of contributions implied by qOneOffsets and maxAllowedA.
+		// It can reject entire classes of q with sparse/awkward high-bit structure before the full DP runs.
+		if (!TryHighBitTopCarryPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
+		{
+			Console.WriteLine("Pruned with TryHighBitTopCarryPrefilter");
+			reason = ContradictionReason.ParityUnreachable;
+			return true;
+		}
+
+		// 		var cacheKey = new TopDownCacheKey(qHash, qOneOffsetsLength, maxAllowedA, pLong);
+		// 		if (TryGetTopDownCache(in cacheKey, out var cached))
+		// 		{
+		// #if DETAILED_LOG
+		// 			_lastTopDownFailure = cached.Failure;
+		// 			if (!cached.Success)
+		// #else
+		// 			if (!cached)
+		// #endif
+		// 			{
+		// 				reason = ContradictionReason.ParityUnreachable;
+		// 				return true;
+		// 			}
+		// 		}
+		// 		else
+		// 		{
+		// #if DETAILED_LOG
+		// 			if (!TryTopDownCarryPrune(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA, out _lastTopDownFailure))
+		// #else
+		// 			if (!TryTopDownCarryPrune(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
+		// #endif
+		// 			{
+		// #if DETAILED_LOG
+		// 				// StoreTopDownCache(in cacheKey, new TopDownCacheValue(false, _lastTopDownFailure));
+		// #else
+		// 				// StoreTopDownCache(in cacheKey, false);
+		// #endif
+		// 				reason = ContradictionReason.ParityUnreachable;
+		// 				return true;
+		// 			}
+
+#if DETAILED_LOG
+			// StoreTopDownCache(in cacheKey, new TopDownCacheValue(true, null));
+#else
+		// StoreTopDownCache(in cacheKey, true);
+#endif
+		// }
+
+		// 		if (ShouldRunTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
+		// 		{
+		// #if DETAILED_LOG
+		// 			if (!TryTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA, out _lastTopDownFailure))
+		// #else
+		// 			if (!TryTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
+		// #endif
+		// 			{
+		// 				reason = ContradictionReason.ParityUnreachable;
+		// 				return true;
+		// 			}
+		// 		}
+
+		// Row-aware masks for q and a-window (supports q > 64 bits)
+		int qBitLen = maxOffset + 1;
+		int qWordCount = (qBitLen + 63) >> 6;
+		ulong[] qMaskWords = new ulong[qWordCount];
+		for (int i = 0; i < qOneOffsetsLength; i++)
+		{
+			int t = qOneOffsets[i];
+			qMaskWords[t >> 6] |= 1UL << (t & 63);
+		}
+		ulong lastWordMask = (qBitLen & 63) == 0 ? ulong.MaxValue : ((1UL << (qBitLen & 63)) - 1UL);
+		// Sliding window over a: bit t corresponds to a_{column - t}.
+		ulong[] aOneWin = new ulong[qWordCount];
+		ulong[] aZeroWin = new ulong[qWordCount];
+		int windowColumn = 0;
+		// Initialize window for column 0: mark negative a indices as zero (t>0). Clearing is only needed when the
+		// arrays ever come from a pool, instead of creation.
+		// Array.Clear(aOneWin);
+		// Array.Clear(aZeroWin);
+
+		// Insert a_0 status into bit0
+		int st = GetAKnownStateRowAware(0, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
+		if (st == 1) aOneWin[0] |= 1UL;
+		else if (st == 2) aZeroWin[0] |= 1UL;
+
+		int lowColumn = 0;
+		int highColumn = pLong - 1;
+		CarryRange carryLow = CarryRange.Zero;
+		// int bottomRunStart = 0;
+		// int bottomRunEnd = 0;
+
+		// -----------------------------
+		// Option B mini ping-pong prefilter (chunk + reseed)
+		// -----------------------------
+		// int chunk = MiniPingPongPrefilterColumns; // u Ciebie 60
+		// int maxDepth = 60;                       // ustaw tyle, ile chcesz testować (np. 960)
+		// if (maxDepth > highColumn) maxDepth = highColumn;
+
+		// long seedMin = 0;
+		// long seedMax = 0;
+		// int currentStartColumn = pLong - 1; // zaczynamy od samej góry (kolumna p-1)
+
+		// for (int depth = chunk; depth <= maxDepth; depth += chunk)
+		// {
+		// 	int targetJ = pLong - depth;
+		// 	if (targetJ <= 0 || targetJ > highColumn) break;
+
+		// 	// 1) Bottom-up DP only up to column J (process columns lowColumn..J-1).
+		// 	while (lowColumn < targetJ)
+		// 	{
+		// 		int remaining = targetJ - lowColumn;
+		// 		int blockSize = remaining < PingPongBlockColumns ? remaining : PingPongBlockColumns;
+		// 		if (!TryProcessBottomUpBlockRowAware(
+		// 			qOneOffsets, qMaskWords, qWordCount, lastWordMask, maxAllowedA,
+		// 			lowColumn, blockSize,
+		// 			ref carryLow, ref maxKnownA, ref segmentBase,
+		// 			ref knownOne0, ref knownOne1, ref knownZero0, ref knownZero1,
+		// 			windowSize,
+		// 			aOneWin, aZeroWin, ref windowColumn,
+		// 			out reason))
+		// 		{
+		// 			return true;
+		// 		}
+
+		// 		lowColumn += blockSize;
+		// 	}
+
+		// 	// 2) Top-down for exactly 'chunk' columns, seeded from previous intersection.
+		// 	if (!TryHighBitCarryRangeToColumnJ(
+		// 			qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA,
+		// 			startColumn: currentStartColumn,
+		// 			steps: chunk,
+		// 			startCarryOutMin: seedMin,
+		// 			startCarryOutMax: seedMax,
+		// 			out long topMin, out long topMax))
+		// 	{
+		// 		Console.WriteLine("Pruned with TryHighBitCarryRangeToColumnJ");
+		// 		reason = ContradictionReason.ParityUnreachable;
+		// 		return true;
+		// 	}
+
+		// 	// 3) Intersect with bottom-up carry at the SAME targetJ.
+		// 	long interMin = carryLow.Min > topMin ? carryLow.Min : topMin;
+		// 	long interMax = carryLow.Max < topMax ? carryLow.Max : topMax;
+		// 	if (interMin > interMax)
+		// 	{
+		// 		Console.WriteLine("Pruned with interMin > interMax");
+		// 		reason = ContradictionReason.ParityUnreachable;
+		// 		return true;
+		// 	}
+
+		// 	// 4) Reseed for the next chunk: carryOut above next block is our intersection.
+		// 	seedMin = interMin;
+		// 	seedMax = interMax;
+
+		// 	// Next chunk starts right above the current targetJ.
+		// 	currentStartColumn = targetJ - 1;
+
+		// 	// Also tighten carryLow (optional but consistent).
+		// 	carryLow = new CarryRange(interMin, interMax);
+
+		// 	// Safety: if we fell off the bottom, stop.
+		// 	if (currentStartColumn < 0) break;
+		// }
+
+		// -----------------------------
+		// Continue full bottom-up DP for remaining columns
+		// -----------------------------
+		while (lowColumn <= highColumn)
+		{
+			int remaining = highColumn - lowColumn + 1;
+			int blockSize = remaining < PingPongBlockColumns ? remaining : PingPongBlockColumns;
+			if (!TryProcessBottomUpBlockRowAware(
+				qOneOffsets, qMaskWords, qWordCount, lastWordMask, maxAllowedA,
+				lowColumn, blockSize,
+				ref carryLow, ref maxKnownA, ref segmentBase,
+				ref knownOne0, ref knownOne1, ref knownZero0, ref knownZero1,
+				windowSize,
+				aOneWin, aZeroWin, ref windowColumn,
+				out reason))
+			{
+				Console.WriteLine(
+					$"[STATS] stableCalls={_statStableAdvanceCalls} stableCols={_statStableAdvanceColsBatched} " +
+					$"scalarCols={_statScalarCols} bigShift={_statStableAdvanceBigShift} " +
+					$"deltaReq={_statDeltaRequests} deltaHits={_statDeltaHits} deltaBuilds={_statDeltaBuilds}");
+				Console.WriteLine(
+					$"[CLEAN] checks={_statCleanChecks} false={_statCleanFalse} " +
+					$"firstDirtyCol={_statFirstDirtyColumn} word={_statFirstDirtyWord} " +
+					$"qWord=0x{_statFirstDirtyQ:X16} knownWord=0x{_statFirstDirtyKnown:X16}");
+				return true;
+			}
+
+			lowColumn += blockSize;
+		}
+
+		// long carryMin = carryLow.Min > carryHigh.Min ? carryLow.Min : carryHigh.Min;
+		// long carryMax = carryLow.Max < carryHigh.Max ? carryLow.Max : carryHigh.Max;
+		// if (carryMin > carryMax)
+		// {
+		// 	divides = false;
+		// 	reason = ContradictionReason.ParityUnreachable;
+		// 	return true;
+		// }
+
+		// if (_debugEnabled)
+		// {
+		// 	Console.WriteLine($"[bit-contradiction] AMultiplier dynamic-mod checks={_dynamicModChecks} failures={_dynamicModFailures}");
+		// }
+
+		divides = true;
+		reason = ContradictionReason.None;
+		// #if DETAILED_LOG
+		Console.WriteLine(
+			$"[STATS] stableCalls={_statStableAdvanceCalls} stableCols={_statStableAdvanceColsBatched} " +
+			$"scalarCols={_statScalarCols} bigShift={_statStableAdvanceBigShift} " +
+			$"deltaReq={_statDeltaRequests} deltaHits={_statDeltaHits} deltaBuilds={_statDeltaBuilds}");
+		Console.WriteLine(
+			$"[CLEAN] checks={_statCleanChecks} false={_statCleanFalse} " +
+			$"firstDirtyCol={_statFirstDirtyColumn} word={_statFirstDirtyWord} " +
+			$"qWord=0x{_statFirstDirtyQ:X16} knownWord=0x{_statFirstDirtyKnown:X16}");
+		// #endif
+		return true;
+	}
 
 	internal static bool TryCheckDivisibilityFromOneOffsets(
 		ReadOnlySpan<int> qOneOffsets,
 		ulong p,
 		out bool divides) => TryCheckDivisibilityFromOneOffsets(qOneOffsets, p, out divides, out _);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    private static bool TryAdvanceZeroColumns(ref CarryRange carry, int columnCount)
-    {
-        long carryMin = carry.Min;
-        long carryMax = carry.Max;
-        while (columnCount > 0)
-        {
-            int step = columnCount > 62 ? 62 : columnCount;
-            long add = (1L << step) - 1L;
-            long nextMin = (carryMin + add) >> step;
-            long nextMax = carryMax >> step;
-            if (nextMin > nextMax)
-            {
-                return false;
-            }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static ulong BuildQLow64(ReadOnlySpan<int> qOneOffsets)
+	{
+		ulong q = 0;
+		for (int i = 0; i < qOneOffsets.Length; i++)
+		{
+			int bit = qOneOffsets[i];
+			if ((uint)bit >= 64u) break;
+			q |= 1UL << bit;
+		}
+		return q;
+	}
 
-            carryMin = nextMin;
-            carryMax = nextMax;
-            columnCount -= step;
-        }
+	/// <summary>
+	/// Modular inverse of odd q modulo 2^64.
+	/// Uses Newton/Hensel lifting: x_{k+1} = x_k * (2 - q*x_k) mod 2^64.
+	/// </summary>
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static ulong ModInversePow2_64(ulong qOdd)
+	{
+		// qOdd must be odd.
+		// Start with x ≡ 1 (mod 2). A common fast seed is x = qOdd.
+		ulong x = qOdd;
 
-        carry = new CarryRange(carryMin, carryMax);
-        return true;
-    }
+		// Each iteration doubles correct bits. 6 iterations are enough for 64 bits: 1->2->4->8->16->32->64.
+		unchecked
+		{
+			x *= 2UL - qOdd * x;
+			x *= 2UL - qOdd * x;
+			x *= 2UL - qOdd * x;
+			x *= 2UL - qOdd * x;
+			x *= 2UL - qOdd * x;
+			x *= 2UL - qOdd * x;
+		}
 
-    [ThreadStatic]
-    private static Dictionary<int, int[]>? _stableUnknownDelta8;
+		return x;
+	}
 
-    private static int[] GetStableUnknownDelta8(int unknown)
-    {
-        _stableUnknownDelta8 ??= new Dictionary<int, int[]>();
-        if (_stableUnknownDelta8.TryGetValue(unknown, out int[]? cached))
-        {
-            return cached;
-        }
+	[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+	private static bool TryAdvanceZeroColumns(ref CarryRange carry, int columnCount)
+	{
+		long carryMin = carry.Min;
+		long carryMax = carry.Max;
+		while (columnCount > 0)
+		{
+			int step = columnCount > 30 ? 30 : columnCount;
+			int add = (1 << step) - 1;
+			long nextMin = (carryMin + add) >> step;
+			long nextMax = carryMax >> step;
+			if (nextMin > nextMax)
+			{
+				return false;
+			}
 
-        int[] delta = new int[256];
-        for (int low = 0; low < 256; low++)
-        {
-            long value = low;
-            for (int i = 0; i < 8; i++)
-            {
-                int sMax = (((unknown ^ (int)value) & 1) != 0) ? unknown : unknown - 1;
-                value = (value + sMax - 1) >> 1;
-            }
+			carryMin = nextMin;
+			carryMax = nextMax;
+			columnCount -= step;
+		}
 
-            delta[low] = (int)((value << 8) - low);
-        }
+		carry = new CarryRange(carryMin, carryMax);
+		return true;
+	}
 
-        _stableUnknownDelta8[unknown] = delta;
-        return delta;
-    }
+	// [ThreadStatic]
+	// private static Dictionary<int, int[]> _stableUnknownDelta8;
 
-    private static bool TryAdvanceStableUnknown(ref CarryRange carry, int unknown, int columnCount, out ContradictionReason reason)
-    {
-        if (columnCount <= 0)
-        {
-            reason = ContradictionReason.None;
-            return true;
-        }
+	// Indeksowane przez "unknown" (zwykle qOneOffsetsLength). Elementy inicjalizowane leniwie.
 
-        if (unknown <= 0)
-        {
-            if (!TryAdvanceZeroColumns(ref carry, columnCount))
-            {
-                reason = ContradictionReason.ParityUnreachable;
-                return false;
-            }
+	private static volatile int[][]? _stableUnknownDelta8ByUnknown;
 
-            reason = ContradictionReason.None;
-            return true;
-        }
+	private static int[] GetStableUnknownDelta8(int unknown)
+	{
+		// #if DETAILED_LOG
+		_statDeltaRequests++;
+		// #endif
 
-        long carryMin = carry.Min >> columnCount;
-        long carryMax = carry.Max;
-        int remaining = columnCount;
-        int[] delta = GetStableUnknownDelta8(unknown);
+		// Lazily allocate the outer array. Keep it volatile to publish safely.
+		var cache = _stableUnknownDelta8ByUnknown;
+		if (cache == null)
+		{
+			// Start with a small size and grow on demand.
+			cache = new int[64][];
+			_stableUnknownDelta8ByUnknown = cache;
+		}
 
-        while (remaining >= 8)
-        {
-            int low = (int)(carryMax & 255);
-            carryMax = (carryMax + delta[low]) >> 8;
-            remaining -= 8;
-        }
+		// Ensure capacity for this "unknown".
+		if ((uint)unknown >= (uint)cache.Length)
+		{
+			// Grow to at least unknown+1, doubling for amortized O(1).
+			int newLen = cache.Length;
+			while (newLen <= unknown) newLen <<= 1;
 
-        while (remaining > 0)
-        {
-            int sMax = (((unknown ^ (int)carryMax) & 1) != 0) ? unknown : unknown - 1;
-            carryMax = (carryMax + sMax - 1) >> 1;
-            remaining--;
-        }
+			var newCache = new int[newLen][];
+			Array.Copy(cache, newCache, cache.Length);
 
-        if (carryMax < carryMin)
-        {
-            reason = ContradictionReason.ParityUnreachable;
-            return false;
-        }
+			// Publish the grown cache (racy publish is OK; contents are immutable after creation).
+			_stableUnknownDelta8ByUnknown = newCache;
+			cache = newCache;
+		}
 
-        carry = new CarryRange(carryMin, carryMax);
-        reason = ContradictionReason.None;
-        return true;
-    }
+		// Fast path: already computed.
+		var cached = cache[unknown];
+		if (cached != null)
+		{
+			// #if DETAILED_LOG
+			_statDeltaHits++;
+			// #endif
+			return cached;
+		}
 
-    private static bool TryProcessBottomUpBlock(
-        ReadOnlySpan<int> qOneOffsets,
-        ReadOnlySpan<int> runStarts,
-        ReadOnlySpan<int> runLengths,
-        int runCount,
-        long maxAllowedA,
-        long startColumn,
-        int columnCount,
-        ref CarryRange carry,
-        ref long maxKnownA,
-        ref long segmentBase,
-        ref int runStartIdx,
-        ref int runEndIdx,
-        ulong[] knownOne0,
-        ulong[] knownOne1,
-        ulong[] knownZero0,
-        ulong[] knownZero1,
-        int windowSize,
-        long topIndex0,
-        long topIndex1,
-        ref bool top0KnownOne,
-        ref bool top1KnownOne,
-        ref bool top0KnownZero,
-        ref bool top1KnownZero,
-        ref long zeroTailStart,
-        out ContradictionReason reason)
-    {
-        long endColumn = startColumn + columnCount;
+		// Compute.
+		const int PrefixLength = 256;
+		int[] delta = new int[PrefixLength];
+
+		for (int low = 0; low < PrefixLength; low++)
+		{
+			long value = low;
+
+			// 8 iterations correspond to processing 8 columns at once.
+			for (int i = 0; i < 8; i++)
+			{
+				// Only the LSB of 'value' matters; avoid long->int truncation except for bit0.
+				int parity = (int)(value & 1L);
+				int sMax = (((unknown ^ parity) & 1) != 0) ? unknown : (unknown - 1);
+
+				value = (value + sMax - 1) >> 1;
+			}
+
+			delta[low] = (int)((value << 8) - low);
+		}
+
+		// Publish into cache. If a race computes it twice, that's acceptable (same deterministic result).
+		// #if DETAILED_LOG
+		_statDeltaBuilds++;
+		// #endif
+		cache[unknown] = delta;
+		return delta;
+	}
+
+	// private static int[] GetStableUnknownDelta8(int unknown)
+	// {
+	// 	var stableUnknownDelta8Cache = _stableUnknownDelta8;
+	// 	if (stableUnknownDelta8Cache.TryGetValue(unknown, out int[]? cached))
+	// 	{
+	// 		return cached!;
+	// 	}
+
+	// 	const int PrefixLength = 131072;
+	// 	int[] delta = new int[PrefixLength];
+	// 	for (int low = 0; low < PrefixLength; low++)
+	// 	{
+	// 		long value = low;
+	// 		for (int i = 0; i < 8; i++)
+	// 		{
+	// 			int sMax = (((unknown ^ (int)value) & 1) != 0) ? unknown : unknown - 1;
+	// 			value = (value + sMax - 1) >> 1;
+	// 		}
+
+	// 		delta[low] = (int)((value << 8) - low);
+	// 	}
+
+	// 	stableUnknownDelta8Cache[unknown] = delta;
+	// 	return delta;
+	// }
+
+	private static bool TryAdvanceStableUnknown(ref CarryRange carry, int unknown, int columnCount, out ContradictionReason reason)
+	{
+		// #if DETAILED_LOG
+		_statStableAdvanceCalls++;
+		_statStableAdvanceCols += columnCount;
+		if (columnCount >= 64) _statStableAdvanceBigShift++;
+		// #endif
+
+		if (columnCount <= 0)
+		{
+			reason = ContradictionReason.None;
+			// #if DETAILED_LOG
+			_statStableAdvanceColsBatched += columnCount;
+			// #endif
+			return true;
+		}
+
+		if (unknown <= 0)
+		{
+			if (!TryAdvanceZeroColumns(ref carry, columnCount))
+			{
+				reason = ContradictionReason.ParityUnreachable;
+				return false;
+			}
+
+			// #if DETAILED_LOG
+			_statStableAdvanceColsBatched += columnCount;
+			// #endif
+			reason = ContradictionReason.None;
+			return true;
+		}
+
+		long carryMin = columnCount >= 63 ? 0 : (carry.Min >> columnCount);
+		long carryMax = carry.Max;
+		int remaining = columnCount;
+		int[] delta = GetStableUnknownDelta8(unknown);
+
+		while (remaining >= 8)
+		{
+			int low = (int)(carryMax & 255);
+			carryMax = (carryMax + delta[low]) >> 8;
+			remaining -= 8;
+		}
+
+		while (remaining > 0)
+		{
+			int sMax = (((unknown ^ (int)carryMax) & 1) != 0) ? unknown : unknown - 1;
+			carryMax = (carryMax + sMax - 1) >> 1;
+			remaining--;
+		}
+
+		if (carryMax < carryMin)
+		{
+			reason = ContradictionReason.ParityUnreachable;
+			return false;
+		}
+
+		// #if DETAILED_LOG
+		_statStableAdvanceColsBatched += columnCount;
+		// #endif
+		carry = new CarryRange(carryMin, carryMax);
+		reason = ContradictionReason.None;
+		return true;
+	}
+
+
+	// -----------------------------
+	// Row-aware bottom-up block processing
+	// -----------------------------
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static void ShiftLeft1InPlace(ulong[] words, int wordCount, ulong lastWordMask)
+	{
+		ulong carry = 0;
+		for (int i = 0; i < wordCount; i++)
+		{
+			ulong w = words[i];
+			ulong newCarry = w >> 63;
+			words[i] = (w << 1) | carry;
+			carry = newCarry;
+		}
+		if (wordCount > 0)
+		{
+			words[wordCount - 1] &= lastWordMask;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool AnyAndNonZero(ulong[] a, ulong[] b, int wordCount)
+	{
+		for (int i = 0; i < wordCount; i++)
+		{
+			if ((a[i] & b[i]) != 0) return true;
+		}
+		return false;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static int PopCountAnd(ulong[] a, ulong[] b, int wordCount)
+	{
+		int c = 0;
+		for (int i = 0; i < wordCount; i++)
+		{
+			c += BitOperations.PopCount(a[i] & b[i]);
+		}
+		return c;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static int PopCountUnknownInQ(ulong[] qMask, ulong[] oneWin, ulong[] zeroWin, int wordCount)
+	{
+		int c = 0;
+		for (int i = 0; i < wordCount; i++)
+		{
+			ulong known = oneWin[i] | zeroWin[i];
+			ulong unkQ = qMask[i] & ~known;
+			c += BitOperations.PopCount(unkQ);
+		}
+		return c;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool TryFindSingleUnknownInQ(ulong[] qMask, ulong[] oneWin, ulong[] zeroWin, int wordCount, out int offset)
+	{
+		// Returns true if exactly one unknown bit among positions where q has 1.
+		offset = -1;
+		int found = 0;
+		for (int w = 0; w < wordCount; w++)
+		{
+			ulong known = oneWin[w] | zeroWin[w];
+			ulong unk = qMask[w] & ~known;
+			if (unk == 0) continue;
+			int pc = BitOperations.PopCount(unk);
+			found += pc;
+			if (found > 1) return false;
+			int bit = BitOperations.TrailingZeroCount(unk);
+			offset = (w << 6) + bit;
+		}
+		return found == 1;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static int GetAKnownStateRowAware(
+		int aIndex,
+		int segmentBase,
+		int windowSize,
+		ulong[] knownOne0,
+		ulong[] knownZero0,
+		ulong[] knownOne1,
+		ulong[] knownZero1)
+	{
+		// 0 unknown, 1 one, 2 zero
+		if (aIndex < 0) return 2;
+		if (aIndex >= segmentBase && aIndex < segmentBase + windowSize)
+		{
+			int rel = aIndex - segmentBase;
+			int w = rel >> 6;
+			ulong m = 1UL << (rel & 63);
+			if ((knownOne0[w] & m) != 0) return 1;
+			if ((knownZero0[w] & m) != 0) return 2;
+			return 0;
+		}
+		int seg1Start = segmentBase - windowSize;
+		if (aIndex >= seg1Start && aIndex < segmentBase)
+		{
+			int rel = aIndex - seg1Start;
+			int w = rel >> 6;
+			ulong m = 1UL << (rel & 63);
+			if ((knownOne1[w] & m) != 0) return 1;
+			if ((knownZero1[w] & m) != 0) return 2;
+			return 0;
+		}
+		return 0;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static void SetAKnownRowAware(
+		int aIndex,
+		bool valueOne,
+		int segmentBase,
+		int windowSize,
+		ulong[] knownOne0,
+		ulong[] knownZero0,
+		ulong[] knownOne1,
+		ulong[] knownZero1)
+	{
+		if (aIndex < 0) return;
+		if (aIndex >= segmentBase && aIndex < segmentBase + windowSize)
+		{
+			int rel = aIndex - segmentBase;
+			int w = rel >> 6;
+			ulong m = 1UL << (rel & 63);
+			if (valueOne)
+				knownOne0[w] |= m;
+			else
+				knownZero0[w] |= m;
+			return;
+		}
+		int seg1Start = segmentBase - windowSize;
+		if (aIndex >= seg1Start && aIndex < segmentBase)
+		{
+			int rel = aIndex - seg1Start;
+			int w = rel >> 6;
+			ulong m = 1UL << (rel & 63);
+			if (valueOne)
+				knownOne1[w] |= m;
+			else
+				knownZero1[w] |= m;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool TryFindSingleUnknownInQ_Prefix(
+		ulong[] qMask, ulong[] oneWin, ulong[] zeroWin,
+		int words, ulong lastMask,
+		out int offset)
+	{
+		offset = -1;
+		int found = 0;
+
+		for (int w = 0; w < words; w++)
+		{
+			ulong q = qMask[w];
+			if (w == words - 1) q &= lastMask;
+
+			ulong known = oneWin[w] | zeroWin[w];
+			ulong unk = q & ~known;
+			if (unk == 0) continue;
+
+			int pc = BitOperations.PopCount(unk);
+			found += pc;
+			if (found > 1) return false;
+
+			int bit = BitOperations.TrailingZeroCount(unk);
+			offset = (w << 6) + bit;
+		}
+
+		return found == 1;
+	}
+
+	private static bool TryProcessBottomUpBlockRowAware(
+		ReadOnlySpan<int> qOneOffsets,
+		ulong[] qMaskWords,
+		int qWordCount,
+		ulong lastWordMask,
+		int maxAllowedA,
+		int startColumn,
+		int columnCount,
+		ref CarryRange carry,
+		ref int maxKnownA,
+		ref int segmentBase,
+		ref ulong[] knownOne0,
+		ref ulong[] knownOne1,
+		ref ulong[] knownZero0,
+		ref ulong[] knownZero1,
+		int windowSize,
+		ulong[] aOneWin,
+		ulong[] aZeroWin,
+		ref int windowColumn,
+		out ContradictionReason reason)
+	{
+		bool needRebuildWindow = false;
+		int endColumn = startColumn + columnCount;
 		int qOneOffsetsLength = qOneOffsets.Length;
-        int maxOffset = qOneOffsets[qOneOffsetsLength - 1];
-        long stableUnknown = qOneOffsetsLength;
-        long column = startColumn;
-        while (column < endColumn)
-        {
-            if (column >= maxOffset && column <= maxAllowedA && maxKnownA < column - maxOffset)
-            {
-                long batchEnd = endColumn - 1;
-                if (batchEnd > maxAllowedA)
-                {
-                    batchEnd = maxAllowedA;
-                }
+		int maxOffset = qOneOffsets[qOneOffsetsLength - 1];
+		int stableUnknown = qOneOffsetsLength;
+		ulong[] temp;
 
-                long remaining = batchEnd - column + 1;
-                if (remaining > 0)
-                {
-                    runStartIdx = 0;
-                    runEndIdx = runCount;
-                    while (remaining > 0)
-                    {
-                        int step = remaining > TailCarryBatchColumns ? TailCarryBatchColumns : (int)remaining;
-                        if (!TryAdvanceStableUnknown(ref carry, (int)stableUnknown, step, out var propagateReason))
-                        {
-                            reason = propagateReason;
-                            return false;
-                        }
+		// Ensure window is aligned.
+		ArgumentOutOfRangeException.ThrowIfNotEqual(windowColumn, startColumn);
 
-                        column += step;
-                        remaining -= step;
-                    }
+		while (startColumn < endColumn)
+		{
+			// Segment rollover based on current column (because we may set aIndex within [startColumn-maxOffset..startColumn]).
+			int bound = (startColumn / windowSize) * windowSize;
+			if (startColumn == 0 && segmentBase != 0) throw new Exception("segmentBase must start at 0 for row-aware");
 
-                    long batchBase = (column / windowSize) * windowSize;
-                    if (batchBase != segmentBase)
-                    {
-                        Array.Clear(knownOne0);
-                        Array.Clear(knownOne1);
-                        Array.Clear(knownZero0);
-                        Array.Clear(knownZero1);
-                        segmentBase = batchBase;
-                    }
+			if (bound != segmentBase)
+			{
+				if (bound == segmentBase + windowSize)
+				{
+					temp = knownOne0; knownOne0 = knownOne1; knownOne1 = temp;
+					temp = knownZero0; knownZero0 = knownZero1; knownZero1 = temp;
+					Array.Clear(knownOne0);
+					Array.Clear(knownZero0);
+				}
+				else
+				{
+					Array.Clear(knownOne0);
+					Array.Clear(knownOne1);
+					Array.Clear(knownZero0);
+					Array.Clear(knownZero1);
+					// Also clear window because it may reference bits outside cache.
+					needRebuildWindow = true;
+				}
 
-                    continue;
-                }
-            }
-            long forced = 0L;
-            long unknown = 0L;
-            long chosenIndex = -1L;
-            long newBase = (column / windowSize) * windowSize;
-            if (newBase != segmentBase)
-            {
-                if (newBase == segmentBase + windowSize)
-                {
-                    (knownOne0, knownOne1) = (knownOne1, knownOne0);
-                    (knownZero0, knownZero1) = (knownZero1, knownZero0);
-                    Array.Clear(knownOne0);
-                    Array.Clear(knownZero0);
-                }
-                else
-                {
-                    Array.Clear(knownOne0);
-                    Array.Clear(knownOne1);
-                    Array.Clear(knownZero0);
-                    Array.Clear(knownZero1);
-                }
+				segmentBase = bound;
+				if (needRebuildWindow)
+				{
+					Array.Clear(aOneWin);
+					Array.Clear(aZeroWin);
 
-                segmentBase = newBase;
-            }
+					// Build window for current startColumn: bit t corresponds to a_{startColumn - t}
+					for (int t = 0; t <= maxOffset; t++)
+					{
+						int aIndex = startColumn - t;
+						int st = aIndex < 0 ? 2 :
+								 (aIndex > maxAllowedA ? 2 :
+								  GetAKnownStateRowAware(aIndex, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1));
 
-            long lowerBound = column - maxAllowedA;
-            while (runEndIdx < runCount && runStarts[runEndIdx] <= column)
-            {
-                runEndIdx++;
-            }
+						if (st == 1) aOneWin[t >> 6] |= 1UL << (t & 63);
+						else if (st == 2) aZeroWin[t >> 6] |= 1UL << (t & 63);
+					}
 
-            while (runStartIdx < runEndIdx)
-            {
-                int runStart = runStarts[runStartIdx];
-                int runEnd = runStart + runLengths[runStartIdx] - 1;
-                if (runEnd < lowerBound)
-                {
-                    runStartIdx++;
-                    continue;
-                }
+					if (qWordCount > 0) aOneWin[qWordCount - 1] &= lastWordMask;
+					if (qWordCount > 0) aZeroWin[qWordCount - 1] &= lastWordMask;
 
-                break;
-            }
+					needRebuildWindow = false;
+				}
+			}
 
-            for (int runIndex = runStartIdx; runIndex < runEndIdx; runIndex++)
-            {
-                int runStart = runStarts[runIndex];
-                int runEnd = runStart + runLengths[runIndex] - 1;
-                if (runStart > column)
-                {
-                    break;
-                }
+			int qWordsEff = qWordCount;
+			ulong qLastEff = lastWordMask;
+			if (startColumn < maxOffset)
+			{
+				GetQPrefixMask(startColumn, maxOffset + 1, qWordCount, out qWordsEff, out ulong prefixLast);
+				qLastEff = prefixLast;
+			}
 
-                if (runEnd > column)
-                {
-                    runEnd = (int)column;
-                }
+			// StableUnknown batching is valid only if the window contains no known bits in the q-active positions.
+			if (startColumn >= maxOffset && startColumn <= maxAllowedA)
+			{
+				int remainingCols = endColumn - 1;
+				if (remainingCols > maxAllowedA) remainingCols = maxAllowedA;
+				remainingCols = remainingCols - startColumn + 1;
+				if (remainingCols > 0)
+				{
+					// Additionally, ensure current window has no known bits (should be true if maxKnownA condition holds).
+					// Conservative batching: ignore row-aware window state and assume all q positions are unknown.
+					// This cannot create false negatives; it may only reduce pruning power.
+					_statBatchEntry++;
+					_statBatchCols += remainingCols;
 
-                if (runStart < lowerBound)
-                {
-                    runStart = (int)lowerBound;
-                }
+					int rem = remainingCols;
+					while (rem > 0)
+					{
+						int step = rem > TailCarryBatchColumns ? TailCarryBatchColumns : rem;
+						if (!TryAdvanceStableUnknown(ref carry, stableUnknown, step, out var propagateReason))
+						{
+							reason = propagateReason;
+							return false;
+						}
 
-                if (runStart > runEnd)
-                {
-                    continue;
-                }
+						startColumn += step;
+						windowColumn = startColumn;
+						rem -= step;
+					}
 
-                long aStart = column - runEnd;
-                long aEnd = column - runStart;
-                if (aStart > maxAllowedA)
-                {
-                    continue;
-                }
+					// Reset window to unknown (no known bits) because we skipped updating it across columns.
+					Array.Clear(aOneWin);
+					Array.Clear(aZeroWin);
 
-                if (aEnd > maxAllowedA)
-                {
-                    aEnd = maxAllowedA;
-                }
+					continue;
+				}
+			}
 
-                long rangeLength = aEnd - aStart + 1;
-                if (rangeLength <= 0)
-                {
-                    continue;
-                }
+			// Mark out-of-range (negative) a indices as zero in this column.
+			// if (startColumn < maxOffset)
+			// {
+			// 	int firstOut = startColumn + 1;
+			// 	for (int t = firstOut; t <= maxOffset; t++)
+			// 	{
+			// 		int w = t >> 6;
+			// 		int b = t & 63;
+			// 		aZeroWin[w] |= 1UL << b;
+			// 	}
+			// 	if (qWordCount > 0) aZeroWin[qWordCount - 1] &= lastWordMask;
+			// }
 
-                long seg0Start = segmentBase;
-                long seg0End = segmentBase + windowSize - 1;
-                long seg1Start = segmentBase - windowSize;
-                long seg1End = segmentBase - 1;
+			ComputeForcedRemainingAndClean_Prefix(qMaskWords, aOneWin, aZeroWin, qWordsEff, qLastEff, out int forced, out int remaining, out _);
 
-                long overlap0Start = aStart > seg0Start ? aStart : seg0Start;
-                long overlap0End = aEnd < seg0End ? aEnd : seg0End;
-                long overlap1Start = aStart > seg1Start ? aStart : seg1Start;
-                long overlap1End = aEnd < seg1End ? aEnd : seg1End;
+			// If exactly one unknown contribution among q=1 positions AND carry parity is fixed,
+			// we can force the corresponding a bit to satisfy the required result bit parity.
+			if (remaining == 1 && ((carry.Min ^ carry.Max) & 1L) == 0)
+			{
+				if (TryFindSingleUnknownInQ_Prefix(qMaskWords, aOneWin, aZeroWin, qWordsEff, qLastEff, out int t))
+				{
+					int aIndex = startColumn - t;
 
-                long known0Len = 0;
-                if (overlap0Start <= overlap0End)
-                {
-                    int relStart = (int)(overlap0Start - seg0Start);
-                    int len = (int)(overlap0End - overlap0Start + 1);
-                    long ones = CountBitsInRange(knownOne0, relStart, len);
-                    long zeros = CountBitsInRange(knownZero0, relStart, len);
-                    forced += ones;
-                    unknown += len - ones - zeros;
-                    known0Len = len;
+					// Required result bit for M_p in columns [0..p-1] is 1.
+					const int requiredBit = 1;
 
-                    if (chosenIndex == -1L && len > ones + zeros && TryFindFirstUnknown(knownOne0, knownZero0, relStart, len, out int idx))
-                    {
-                        chosenIndex = seg0Start + idx;
-                    }
-                }
+					// We need (carryIn + forced + x) % 2 == requiredBit, where x ∈ {0,1}.
+					int carryParity = (int)(carry.Min & 1L);   // fixed parity because Min/Max same parity
+					int x = (requiredBit ^ carryParity ^ (forced & 1)) & 1;
+					bool needOne = x != 0;
 
-                long known1Len = 0;
-                if (overlap1Start <= overlap1End)
-                {
-                    int relStart = (int)(overlap1Start - seg1Start);
-                    int len = (int)(overlap1End - overlap1Start + 1);
-                    long ones = CountBitsInRange(knownOne1, relStart, len);
-                    long zeros = CountBitsInRange(knownZero1, relStart, len);
-                    forced += ones;
-                    unknown += len - ones - zeros;
-                    known1Len = len;
+					// Check contradiction with already-known value.
+					int state = GetAKnownStateRowAware(aIndex, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
+					if (needOne)
+					{
+						if (state == 2)
+						{
+							reason = ContradictionReason.ParityUnreachable;
+							return false;
+						}
 
-                    if (chosenIndex == -1L && len > ones + zeros && TryFindFirstUnknown(knownOne1, knownZero1, relStart, len, out int idx))
-                    {
-                        chosenIndex = seg1Start + idx;
-                    }
-                }
+						SetAKnownRowAware(aIndex, true, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
 
-                long knownTotal = known0Len + known1Len;
-                if (knownTotal < rangeLength)
-                {
-                    unknown += rangeLength - knownTotal;
-                }
+						// Reflect in window at offset t
+						int w = t >> 6; int b = t & 63;
+						aOneWin[w] |= 1UL << b;
 
-                if (zeroTailStart <= aEnd)
-                {
-                    long tailStart = aStart > zeroTailStart ? aStart : zeroTailStart;
-                    if (tailStart <= aEnd)
-                    {
-                        long tailZeros = aEnd - tailStart + 1;
-                        if (tailZeros > 0)
-                        {
-                            unknown -= tailZeros;
-                            if (unknown < 0)
-                            {
-                                unknown = 0;
-                            }
-                        }
-                    }
-                }
-            }
+						forced += 1;
+					}
+					else
+					{
+						if (state == 1)
+						{
+							reason = ContradictionReason.ParityUnreachable;
+							return false;
+						}
+
+						SetAKnownRowAware(aIndex, false, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
+
+						int w = t >> 6; int b = t & 63;
+						aZeroWin[w] |= 1UL << b;
+					}
+
+					remaining = 0;
+					if (aIndex > maxKnownA) maxKnownA = aIndex;
+				}
+			}
+
+			// Now propagate carry using forced and possible (=forced+remaining).
+			int possible = forced + remaining;
+			if (!TryPropagateCarry(ref carry, forced, possible, 1))
+			{
+				reason = ContradictionReason.ParityUnreachable;
+				return false;
+			}
+
+			// Advance to next column: shift window, then insert status of a_{startColumn+1} into bit0.
+			int nextA = startColumn + 1;
+			ShiftLeft1InPlace(aOneWin, qWordCount, lastWordMask);
+			ShiftLeft1InPlace(aZeroWin, qWordCount, lastWordMask);
+
+			// Insert bit0 for nextA
+			int nextState;
+			if (nextA > maxAllowedA)
+				nextState = 2;
+			else
+				nextState = GetAKnownStateRowAware(nextA, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
+
+			if (nextState == 1)
+				aOneWin[0] |= 1UL;
+			else if (nextState == 2)
+				aZeroWin[0] |= 1UL;
+
+			startColumn++;
+			windowColumn = startColumn;
+			// #if DETAILED_LOG
+			_statScalarCols++;
+			// #endif
+		}
+
+		reason = ContradictionReason.None;
+		return true;
+	}
+
+	private static bool TryProcessBottomUpBlock(
+		ReadOnlySpan<int> qOneOffsets,
+		in int[] runStarts,
+		in int[] runLengths,
+		int runCount,
+		int maxAllowedA,
+		int startColumn,
+		int columnCount,
+		ref CarryRange carry,
+		ref int maxKnownA,
+		ref int segmentBase,
+		ref int runStartIdx,
+		ref int runEndIdx,
+		ulong[] knownOne0,
+		ulong[] knownOne1,
+		ulong[] knownZero0,
+		ulong[] knownZero1,
+		int windowSize,
+		int topIndex0,
+		int topIndex1,
+		ref bool top0KnownOne,
+		ref bool top1KnownOne,
+		ref bool top0KnownZero,
+		ref bool top1KnownZero,
+		ref int zeroTailStart,
+		out ContradictionReason reason)
+	{
+		int endColumn = startColumn + columnCount;
+		int qOneOffsetsLength = qOneOffsets.Length;
+		int maxOffset = qOneOffsets[qOneOffsetsLength - 1];
+		int stableUnknown = qOneOffsetsLength;
+		int bound, runStart, runEnd;
+		ulong[] temp;
+		// Span<ulong> temp;
+		while (startColumn < endColumn)
+		{
+			int remaining;
+			if (startColumn >= maxOffset && startColumn <= maxAllowedA && maxKnownA < startColumn - maxOffset)
+			{
+				remaining = endColumn - 1;
+				if (remaining > maxAllowedA)
+				{
+					remaining = maxAllowedA;
+				}
+
+				remaining = remaining - startColumn + 1;
+				if (remaining >= 16)
+				{
+					runStartIdx = 0;
+					runEndIdx = runCount;
+					while (remaining > 0)
+					{
+						int step = remaining > TailCarryBatchColumns ? TailCarryBatchColumns : remaining;
+						if (!TryAdvanceStableUnknown(ref carry, stableUnknown, step, out var propagateReason))
+						{
+							reason = propagateReason;
+							return false;
+						}
+
+						startColumn += step;
+						remaining -= step;
+					}
+
+					bound = (startColumn / windowSize) * windowSize;
+					if (bound != segmentBase)
+					{
+						if (bound == segmentBase + windowSize)
+						{
+							// rollover forward by one segment: swap and clear only the new "current" segment
+							temp = knownOne0; knownOne0 = knownOne1; knownOne1 = temp;
+							temp = knownZero0; knownZero0 = knownZero1; knownZero1 = temp;
+
+							Array.Clear(knownOne0);
+							Array.Clear(knownZero0);
+						}
+						else
+						{
+							// jumped more than one segment: we genuinely lost locality; clear both
+							Array.Clear(knownOne0);
+							Array.Clear(knownOne1);
+							Array.Clear(knownZero0);
+							Array.Clear(knownZero1);
+						}
+
+						segmentBase = bound;
+					}
+
+					continue;
+				}
+			}
+
+			int forced = 0;
+			remaining = 0;
+			int chosenIndex = -1;
+			// bool topChanged = false;
+			bound = (startColumn / windowSize) * windowSize;
+			if (bound != segmentBase)
+			{
+				if (bound == segmentBase + windowSize)
+				{
+					temp = knownOne0;
+					knownOne0 = knownOne1;
+					knownOne1 = temp;
+
+					temp = knownZero0;
+					knownZero0 = knownZero1;
+					knownZero1 = temp;
+
+					// knownOne0.Clear();
+					// knownZero0.Clear();
+					Array.Clear(knownOne0);
+					Array.Clear(knownZero0);
+				}
+				else
+				{
+					// knownOne0.Clear();
+					// knownOne1.Clear();
+					// knownZero0.Clear();
+					// knownZero1.Clear();
+					Array.Clear(knownOne0);
+					Array.Clear(knownOne1);
+					Array.Clear(knownZero0);
+					Array.Clear(knownZero1);
+				}
+
+				segmentBase = bound;
+			}
+
+			bound = startColumn - maxAllowedA;
+			while (runEndIdx < runCount && runStarts[runEndIdx] <= startColumn)
+			{
+				runEndIdx++;
+			}
+
+			while (runStartIdx < runEndIdx)
+			{
+				runStart = runStarts[runStartIdx];
+				runEnd = runStart + runLengths[runStartIdx] - 1;
+				if (runEnd < bound)
+				{
+					runStartIdx++;
+					continue;
+				}
+
+				break;
+			}
+
+			int known0Len, runIndex;
+			int seg0Start = segmentBase;
+			for (runIndex = runStartIdx; runIndex < runEndIdx; runIndex++)
+			{
+				runStart = runStarts[runIndex];
+				if (runStart > startColumn)
+				{
+					break;
+				}
+
+				runEnd = runStart + runLengths[runIndex] - 1;
+				if (runEnd > startColumn)
+				{
+					runEnd = startColumn;
+				}
+
+				if (runStart < bound)
+				{
+					runStart = bound;
+				}
+
+				if (runStart > runEnd)
+				{
+					continue;
+				}
+
+				int aStart = startColumn - runEnd;
+				runEnd = startColumn - runStart;
+				if (aStart > maxAllowedA)
+				{
+					continue;
+				}
+
+				if (runEnd > maxAllowedA)
+				{
+					runEnd = maxAllowedA;
+				}
+
+				int rangeLength = runEnd - aStart + 1;
+				if (rangeLength <= 0)
+				{
+					continue;
+				}
+
+				int seg0End = seg0Start + windowSize - 1;
+				int seg1Start = seg0Start - windowSize;
+				int seg1End = seg0Start - 1;
+
+				int overlapStart = aStart > seg0Start ? aStart : seg0Start;
+				int overlap0End = runEnd < seg0End ? runEnd : seg0End;
+				// seg1End is now overlap1End to limit registry pressure
+				seg1End = runEnd < seg1End ? runEnd : seg1End;
+
+				known0Len = 0;
+				int ones;
+				if (overlapStart <= overlap0End)
+				{
+					runStart = overlapStart - seg0Start;
+					// overlap0Start is now len to limit registry pressure
+					overlapStart = overlap0End - overlapStart + 1;
+					ones = CountBitsInRange(knownOne0, runStart, overlapStart);
+					// overlap0End is now zeros to limit registry pressure
+					overlap0End = CountBitsInRange(knownZero0, runStart, overlapStart);
+					forced += ones;
+					remaining += overlapStart - ones - overlap0End;
+					known0Len = overlapStart;
+
+					if (chosenIndex == -1 && overlapStart > ones + overlap0End && TryFindFirstUnknown(knownOne0, knownZero0, runStart, overlapStart, out int idx))
+					{
+						chosenIndex = seg0Start + idx;
+					}
+				}
+
+				// overlap0End is now knownTotal to limit registry pressure
+				overlap0End = 0;
+				overlapStart = aStart > seg1Start ? aStart : seg1Start;
+				if (overlapStart <= seg1End)
+				{
+					runStart = overlapStart - seg1Start;
+					// overlap1Start is now len to limit registry pressure
+					overlapStart = seg1End - overlapStart + 1;
+					ones = CountBitsInRange(knownOne1, runStart, overlapStart);
+					// seg1End is now zeros to limit registry pressure
+					seg1End = CountBitsInRange(knownZero1, runStart, overlapStart);
+					forced += ones;
+					remaining += overlapStart - ones - seg1End;
+					overlap0End = overlapStart;
+
+					if (chosenIndex == -1 && overlapStart > ones + seg1End && TryFindFirstUnknown(knownOne1, knownZero1, runStart, overlapStart, out int idx))
+					{
+						chosenIndex = seg1Start + idx;
+					}
+				}
+
+				overlap0End = known0Len + overlap0End;
+				if (overlap0End < rangeLength)
+				{
+					remaining += rangeLength - overlap0End;
+				}
+
+				if (zeroTailStart <= runEnd)
+				{
+					// overlap0End is now tailStart to limit registry pressure
+					overlap0End = aStart > zeroTailStart ? aStart : zeroTailStart;
+					if (overlap0End <= runEnd)
+					{
+						rangeLength = runEnd - overlap0End + 1;
+						if (rangeLength > 0)
+						{
+							remaining -= rangeLength;
+							if (remaining < 0)
+							{
+								remaining = 0;
+							}
+						}
+					}
+				}
+			}
 
 			long minSum = carry.Min;
 			long maxSum = carry.Max;
-			if (unknown == 1 && ((minSum ^ maxSum) & 1) == 0)
-            {
-                int requiredUnknownParity = 1 ^ ((int)minSum & 1) ^ ((int)forced & 1);
-                if (requiredUnknownParity != 0)
-                {
-                    if (chosenIndex >= 0)
-                    {
-                        if (chosenIndex >= segmentBase)
-                        {
-                            int slot = (int)(chosenIndex - segmentBase);
-                            int word = slot >> 6;
-                            ulong mask = 1UL << (slot & 63);
-                            knownOne0[word] |= mask;
-                            knownZero0[word] &= ~mask;
-                        }
-                        else
-                        {
-                            int slot = (int)(chosenIndex - (segmentBase - windowSize));
-                            int word = slot >> 6;
-                            ulong mask = 1UL << (slot & 63);
-                            knownOne1[word] |= mask;
-                            knownZero1[word] &= ~mask;
-                        }
-                        forced++;
-                        unknown = 0;
-                        if (chosenIndex > maxKnownA)
-                        {
-                            maxKnownA = chosenIndex;
-                        }
-                        if (chosenIndex == topIndex0)
-                        {
-                            if (top0KnownZero)
-                            {
-                                reason = ContradictionReason.ParityUnreachable;
-                                return false;
-                            }
-
-                            top0KnownOne = true;
-                        }
-                        else if (chosenIndex == topIndex1)
-                        {
-                            if (top1KnownZero)
-                            {
-                                reason = ContradictionReason.ParityUnreachable;
-                                return false;
-                            }
-
-                            top1KnownOne = true;
-                        }
-                    }
-                }
-                else
-                {
-                    // if (_debugEnabled && _parityZeroLogCount < 8)
-                    // {
-                    //     _parityZeroLogCount++;
-                    //     Console.WriteLine($"[bit-contradiction] unknown==1 parity forces zero at column={column} carry=[{minSum},{maxSum}] forced={forced} chosenIndex={chosenIndex}");
-                    // }
-
-                    // Treat the single unknown as 0 for parity.
-                    unknown = 0;
-
-                    if (chosenIndex == topIndex0)
-                    {
-                        if (top0KnownOne)
-                        {
-                            reason = ContradictionReason.ParityUnreachable;
-                            return false;
-                        }
-
-                        top0KnownZero = true;
-                        UpdateZeroTailFromTop(ref zeroTailStart, topIndex0, topIndex1, top0KnownZero, top1KnownZero);
-                    }
-                    else if (chosenIndex == topIndex1)
-                    {
-                        if (top1KnownOne)
-                        {
-                            reason = ContradictionReason.ParityUnreachable;
-                            return false;
-                        }
-
-                        top1KnownZero = true;
-                        UpdateZeroTailFromTop(ref zeroTailStart, topIndex0, topIndex1, top0KnownZero, top1KnownZero);
-                    }
-                }
-            }
-
-            if ((top0KnownZero && top0KnownOne) || (top1KnownZero && top1KnownOne))
-            {
-                reason = ContradictionReason.ParityUnreachable;
-                return false;
-            }
-
-            if (topIndex1 < 0)
-            {
-                if (top0KnownZero)
-                {
-                    reason = ContradictionReason.ParityUnreachable;
-                    return false;
-                }
-            }
-            else if (top0KnownZero && top1KnownZero)
-            {
-                reason = ContradictionReason.ParityUnreachable;
-                return false;
-            }
-
-			if (unknown == 0)
+			ulong mask;
+			if (remaining == 1 && ((minSum ^ maxSum) & 1) == 0)
 			{
-				int requiredCarryParity = 1 ^ ((int)forced & 1);
-				long carryMin = AlignUpToParity(carry.Min, requiredCarryParity);
-				long carryMax = AlignDownToParity(carry.Max, requiredCarryParity);
+				// known0Len is now requiredUnknownParity to limit registry pressure
+				known0Len = 1 ^ ((int)minSum & 1) ^ (forced & 1);
+				if (known0Len != 0)
+				{
+					if (chosenIndex >= 0)
+					{
+						if (chosenIndex >= seg0Start)
+						{
+							bound = chosenIndex - seg0Start;
+							// runIndex is now word to limit registry pressure
+							runIndex = bound >> 6;
+							mask = 1UL << (bound & 63);
+							knownOne0[runIndex] |= mask;
+							knownZero0[runIndex] &= ~mask;
+						}
+						else
+						{
+							bound = chosenIndex - (seg0Start - windowSize);
+							// runIndex is now word to limit registry pressure
+							runIndex = bound >> 6;
+							mask = 1UL << (bound & 63);
+							knownOne1[runIndex] |= mask;
+							knownZero1[runIndex] &= ~mask;
+						}
+
+						forced++;
+						remaining = 0;
+						if (chosenIndex > maxKnownA)
+						{
+							maxKnownA = chosenIndex;
+						}
+						if (chosenIndex == topIndex0)
+						{
+							if (top0KnownZero)
+							{
+								reason = ContradictionReason.ParityUnreachable;
+								return false;
+							}
+
+							top0KnownOne = true;
+							// topChanged = true;
+						}
+						else if (chosenIndex == topIndex1)
+						{
+							if (top1KnownZero)
+							{
+								reason = ContradictionReason.ParityUnreachable;
+								return false;
+							}
+
+							top1KnownOne = true;
+							// topChanged = true;
+						}
+					}
+				}
+				else
+				{
+					// if (_debugEnabled && _parityZeroLogCount < 8)
+					// {
+					//     _parityZeroLogCount++;
+					//     Console.WriteLine($"[bit-contradiction] unknown==1 parity forces zero at column={column} carry=[{minSum},{maxSum}] forced={forced} chosenIndex={chosenIndex}");
+					// }
+
+					// Treat the single unknown as 0 for parity.
+					remaining = 0;
+
+					if (chosenIndex == topIndex0)
+					{
+						if (top0KnownOne)
+						{
+							reason = ContradictionReason.ParityUnreachable;
+							return false;
+						}
+
+						top0KnownZero = true;
+						UpdateZeroTailFromTop(ref zeroTailStart, topIndex0, topIndex1, top0KnownZero, top1KnownZero);
+					}
+					else if (chosenIndex == topIndex1)
+					{
+						if (top1KnownOne)
+						{
+							reason = ContradictionReason.ParityUnreachable;
+							return false;
+						}
+
+						top1KnownZero = true;
+						UpdateZeroTailFromTop(ref zeroTailStart, topIndex0, topIndex1, top0KnownZero, top1KnownZero);
+					}
+				}
+			}
+
+			// if (topChanged)
+			// {
+			// 	if (!TryDynamicModularRangePrune(qOneOffsets, qHash, p, maxAllowedA, top0KnownOne, top0KnownZero, top1KnownOne, top1KnownZero, zeroTailStart))
+			// 	{
+			// 		reason = ContradictionReason.ParityUnreachable;
+			// 		return false;
+			// 	}
+			// }
+
+			if ((top0KnownZero && top0KnownOne) || (top1KnownZero && top1KnownOne))
+			{
+				reason = ContradictionReason.ParityUnreachable;
+				return false;
+			}
+
+			if (topIndex1 < 0)
+			{
+				if (top0KnownZero)
+				{
+					reason = ContradictionReason.ParityUnreachable;
+					return false;
+				}
+			}
+			else if (top0KnownZero && top1KnownZero)
+			{
+				reason = ContradictionReason.ParityUnreachable;
+				return false;
+			}
+
+			if (remaining == 0)
+			{
+				// known0Len is now requiredCarryParity to limit registry pressure
+				known0Len = 1 ^ (forced & 1);
+				long carryMin = AlignUpToParity(carry.Min, known0Len);
+				long carryMax = AlignDownToParity(carry.Max, known0Len);
 				if (carryMin > carryMax)
 				{
 					reason = ContradictionReason.ParityUnreachable;
@@ -958,438 +2779,567 @@ internal static class BitContradictionSolverWithAMultiplier
 				}
 
 				carry = new CarryRange(carryMin, carryMax);
-				minSum = carry.Min;
-				maxSum = carry.Max;
+				minSum = carryMin;
+				maxSum = carryMax;
 			}
 
-            minSum += forced;
-            maxSum += forced + unknown;
-            const int requiredParity = 1;
+			minSum += forced;
+			maxSum += forced + remaining;
+			const int requiredParity = 1;
 
-            if (minSum == maxSum)
-            {
-                if ((minSum & 1) != requiredParity)
-                {
-                    reason = ContradictionReason.ParityUnreachable;
-                    return false;
-                }
+			if (minSum == maxSum)
+			{
+				if ((minSum & 1) != requiredParity)
+				{
+					reason = ContradictionReason.ParityUnreachable;
+					return false;
+				}
 
-                long nextCarry = (minSum - requiredParity) >> 1;
-                carry = CarryRange.Single(nextCarry);
-            }
-            else
-            {
-                if ((minSum & 1) != requiredParity && unknown == 0)
-                {
-                    reason = ContradictionReason.ParityUnreachable;
-                    return false;
-                }
+				minSum = (minSum - requiredParity) >> 1;
+				carry = CarryRange.Single(minSum);
+			}
+			else
+			{
+				if ((minSum & 1) != requiredParity && remaining == 0)
+				{
+					reason = ContradictionReason.ParityUnreachable;
+					return false;
+				}
 
-                if (!TryPropagateCarry(
-                        carry,
-                        forced,
-                        forced + unknown,
-                        requiredParity,
-                        out var next,
-                        out var propagateReason))
-                {
-                    reason = propagateReason;
-                    return false;
-                }
+				if (!TryPropagateCarry(
+						ref carry,
+						forced,
+						forced + remaining,
+						requiredParity))
+				{
+					reason = ContradictionReason.ParityUnreachable;
+					return false;
+				}
+			}
 
-                carry = next;
-            }
+			startColumn++;
+			// #if DETAILED_LOG
+			_statScalarCols++;
+			// #endif
+		}
 
-            column++;
-        }
+		reason = ContradictionReason.None;
+		return true;
+	}
 
-        reason = ContradictionReason.None;
-        return true;
-    }
+#if DETAILED_LOG
+	private static bool TryProcessTopDownBlock(
+		ReadOnlySpan<int> qOneOffsets,
+		int qOneOffsetsLength,
+		long maxAllowedA,
+		long startHighColumn,
+		int columnCount,
+		CarryRange carryOut,
+		ref int windowStart,
+		ref int windowEnd,
+		out CarryRange nextCarryOut,
+		out TopDownPruneFailure? failure)
+#else
+	private static bool TryProcessTopDownBlock(
+		ReadOnlySpan<int> qOneOffsets,
+		int qOneOffsetsLength,
+		int maxAllowedA,
+		int startHighColumn,
+		int columnCount,
+		CarryRange carryOut,
+		ref int windowStart,
+		ref int windowEnd,
+		out CarryRange nextCarryOut)
+#endif
+	{
+#if DETAILED_LOG
+		failure = null;
+#endif
+		long carryOutMin = carryOut.Min,
+			 carryOutMax = carryOut.Max;
+		int value;
+		int endColumn = startHighColumn - columnCount + 1;
 
-    private static bool TryProcessTopDownBlock(
-        ReadOnlySpan<int> qOneOffsets,
-        int qOneOffsetsLength,
-        long maxAllowedA,
-        long startHighColumn,
-        int columnCount,
-        CarryRange carryOut,
-        ref int windowStart,
-        ref int windowEnd,
-        out CarryRange nextCarryOut,
-        out TopDownPruneFailure? failure)
-    {
-        failure = null;
-        long carryOutMin = carryOut.Min,
-			 carryOutMax = carryOut.Max,
-			 value;
-        long endColumn = startHighColumn - columnCount + 1;
-
-        long column = startHighColumn;
-        while (column >= endColumn)
-        {
+		int column = startHighColumn;
+		while (column >= endColumn)
+		{
 			// value is used as high column index
-            value = column;
-            while (windowEnd > 0 && qOneOffsets[windowEnd - 1] > value)
-            {
-                windowEnd--;
-            }
+			value = column;
+			while (windowEnd > 0 && qOneOffsets[windowEnd - 1] > value)
+			{
+				windowEnd--;
+			}
 
 			// value is used as low column index
-            value = column - maxAllowedA;
-            if (value < 0)
-            {
-                value = 0;
-            }
+			value = column - maxAllowedA;
+			if (value < 0)
+			{
+				value = 0;
+			}
 
-            while (windowStart > 0 && qOneOffsets[windowStart - 1] >= value)
-            {
-                windowStart--;
-            }
+			while (windowStart > 0 && qOneOffsets[windowStart - 1] >= value)
+			{
+				windowStart--;
+			}
 
-            if (windowStart > windowEnd)
-            {
-                windowStart = windowEnd;
-            }
+			if (windowStart > windowEnd)
+			{
+				windowStart = windowEnd;
+			}
 
 			// value is unknown bits count here
-            value = windowEnd - windowStart;
-            if (value == 0)
-            {
-                long lastEnd = windowEnd > 0 ? qOneOffsets[windowEnd - 1] : long.MinValue;
-                long lastStart = windowStart > 0 ? qOneOffsets[windowStart - 1] + maxAllowedA : long.MinValue;
-                long chunkEnd = lastEnd > lastStart ? lastEnd : lastStart;
-                if (chunkEnd < endColumn)
-                {
-                    chunkEnd = endColumn;
-                }
+			value = windowEnd - windowStart;
+			if (value == 0)
+			{
+				int lastEnd = windowEnd > 0 ? qOneOffsets[windowEnd - 1] : int.MinValue;
+				int lastStart = windowStart > 0 ? qOneOffsets[windowStart - 1] + maxAllowedA : int.MinValue;
+				int chunkEnd = lastEnd > lastStart ? lastEnd : lastStart;
+				if (chunkEnd < endColumn)
+				{
+					chunkEnd = endColumn;
+				}
 
-                int steps = (int)(column - chunkEnd + 1);
-                if (steps > 1)
-                {
-                    if (!AdvanceTopDownUnknown0(ref carryOutMin, ref carryOutMax, steps))
-                    {
-                        failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
-                        nextCarryOut = default;
-                        return false;
-                    }
+				int steps = (int)(column - chunkEnd + 1);
+				if (steps > 1)
+				{
+					if (!AdvanceTopDownUnknown0(ref carryOutMin, ref carryOutMax, steps))
+					{
+#if DETAILED_LOG
+						failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+#endif
+						nextCarryOut = default;
+						return false;
+					}
 
-                    column = chunkEnd - 1;
-                    continue;
-                }
-            }
-            else if (value == 1)
-            {
-                long lastEnd = windowEnd > 0 ? qOneOffsets[windowEnd - 1] : long.MinValue;
-                long lastStart = windowStart > 0 ? qOneOffsets[windowStart - 1] + maxAllowedA : long.MinValue;
-                long chunkEnd = lastEnd > lastStart ? lastEnd : lastStart;
-                if (chunkEnd < endColumn)
-                {
-                    chunkEnd = endColumn;
-                }
+					column = chunkEnd - 1;
+					continue;
+				}
+			}
+			else if (value == 1)
+			{
+				int lastEnd = windowEnd > 0 ? qOneOffsets[windowEnd - 1] : int.MinValue;
+				int lastStart = windowStart > 0 ? qOneOffsets[windowStart - 1] + maxAllowedA : int.MinValue;
+				int chunkEnd = lastEnd > lastStart ? lastEnd : lastStart;
+				if (chunkEnd < endColumn)
+				{
+					chunkEnd = endColumn;
+				}
 
-                int steps = (int)(column - chunkEnd + 1);
-                if (steps > 1)
-                {
-                    if (!AdvanceTopDownUnknown1(ref carryOutMin, ref carryOutMax, steps))
-                    {
-                        failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
-                        nextCarryOut = default;
-                        return false;
-                    }
+				int steps = (int)(column - chunkEnd + 1);
+				if (steps > 1)
+				{
+					if (!AdvanceTopDownUnknown1(ref carryOutMin, ref carryOutMax, steps))
+					{
+#if DETAILED_LOG
+						failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+#endif
+						nextCarryOut = default;
+						return false;
+					}
 
-                    column = chunkEnd - 1;
-                    continue;
-                }
-            }
+					column = chunkEnd - 1;
+					continue;
+				}
+			}
 
 			// carryOutMin now becomes nextCarryMin to limit registry pressure
-            carryOutMin = (carryOutMin << 1) + 1 - value;
+			carryOutMin = (carryOutMin << 1) + 1 - value;
 			// carryOutMax now becomes nextCarryMax to limit registry pressure
-            carryOutMax = (carryOutMax << 1) + 1;
-            if (carryOutMin < 0)
-            {
-                carryOutMin = 0;
-            }
+			carryOutMax = (carryOutMax << 1) + 1;
+			if (carryOutMin < 0)
+			{
+				carryOutMin = 0;
+			}
 
-            if (carryOutMax < 0)
-            {
-                carryOutMax = 0;
-            }
+			if (carryOutMax < 0)
+			{
+				carryOutMax = 0;
+			}
 
-            if (carryOutMin > carryOutMax)
-            {
-                failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
-                nextCarryOut = default;
-                return false;
-            }
+			if (carryOutMin > carryOutMax)
+			{
+#if DETAILED_LOG
+				failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+#endif
+				nextCarryOut = default;
+				return false;
+			}
 
-            column--;
-        }
+			column--;
+		}
 
-        nextCarryOut = new CarryRange(carryOutMin, carryOutMax);
-        return true;
-    }
+		nextCarryOut = new CarryRange(carryOutMin, carryOutMax);
+		return true;
+	}
 
-    private static long AlignUpToParity(long value, int parity) => (value & 1) == parity ? value : value + 1;
+	private static long AlignUpToParity(long value, int parity) => (value & 1L) == parity ? value : value + 1L;
+	private static long AlignDownToParity(long value, int parity) => (value & 1L) == parity ? value : value - 1L;
 
-	private static long AlignDownToParity(long value, int parity) => (value & 1) == parity ? value : value - 1;
+#if DETAILED_LOG
+	private static bool TryTopDownCarryPrune(
+		ReadOnlySpan<int> qOneOffsets,
+		int qOneOffsetsLength,
+		int pLong,
+		int maxAllowedA,
+		out TopDownPruneFailure? failure)
+#else
+	private static bool TryTopDownCarryPrune(
+		ReadOnlySpan<int> qOneOffsets,
+		int qOneOffsetsLength,
+		int pLong,
+		int maxAllowedA)
+#endif
+	{
+#if DETAILED_LOG
+		failure = null;
+#endif
+		int windowStart = qOneOffsetsLength;
+		int windowEnd = qOneOffsetsLength;
+		long carryOutMin = 0,
+			 carryOutMax = 0;
+		int value;
 
-    private static bool TryTopDownCarryPrune(
-        ReadOnlySpan<int> qOneOffsets,
-        int qOneOffsetsLength,
-        long pLong,
-        long maxAllowedA,
-        out TopDownPruneFailure? failure)
-    {
-        failure = null;
-        int windowStart = qOneOffsetsLength;
-        int windowEnd = qOneOffsetsLength;
-        long carryOutMin = 0,
-			 carryOutMax = 0,
-			 value;
-
-        long column = pLong - 1;
-        while (column >= 0)
-        {
+		int column = pLong - 1;
+		while (column >= 0)
+		{
 			// value is used as high column index
-            value = column;
-            while (windowEnd > 0 && qOneOffsets[windowEnd - 1] > value)
-            {
-                windowEnd--;
-            }
+			value = column;
+			while (windowEnd > 0 && qOneOffsets[windowEnd - 1] > value)
+			{
+				windowEnd--;
+			}
 
 			// value is used as low column index
-            value = column - maxAllowedA;
-            if (value < 0)
-            {
-                value = 0;
-            }
+			value = column - maxAllowedA;
+			if (value < 0)
+			{
+				value = 0;
+			}
 
-            while (windowStart > 0 && qOneOffsets[windowStart - 1] >= value)
-            {
-                windowStart--;
-            }
+			while (windowStart > 0 && qOneOffsets[windowStart - 1] >= value)
+			{
+				windowStart--;
+			}
 
-            if (windowStart > windowEnd)
-            {
-                windowStart = windowEnd;
-            }
+			if (windowStart > windowEnd)
+			{
+				windowStart = windowEnd;
+			}
 
 			// value is used as unknown bits count here
-            value = windowEnd - windowStart;
-            if (value == 0)
-            {
-                long lastEnd = windowEnd > 0 ? qOneOffsets[windowEnd - 1] : long.MinValue;
-                long lastStart = windowStart > 0 ? qOneOffsets[windowStart - 1] + maxAllowedA : long.MinValue;
-                long chunkEnd = lastEnd > lastStart ? lastEnd : lastStart;
-                if (chunkEnd < 0)
-                {
-                    chunkEnd = 0;
-                }
+			value = windowEnd - windowStart;
+			if (value == 0)
+			{
+				int lastEnd = windowEnd > 0 ? qOneOffsets[windowEnd - 1] : int.MinValue;
+				int lastStart = windowStart > 0 ? qOneOffsets[windowStart - 1] + maxAllowedA : int.MinValue;
+				int chunkEnd = lastEnd > lastStart ? lastEnd : lastStart;
+				if (chunkEnd < 0)
+				{
+					chunkEnd = 0;
+				}
 
-                int steps = (int)(column - chunkEnd + 1);
-                if (steps > 1)
-                {
-                    if (!AdvanceTopDownUnknown0(ref carryOutMin, ref carryOutMax, steps))
-                    {
-                        failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
-                        return false;
-                    }
+				int steps = (int)(column - chunkEnd + 1);
+				if (steps > 1)
+				{
+					if (!AdvanceTopDownUnknown0(ref carryOutMin, ref carryOutMax, steps))
+					{
+#if DETAILED_LOG
+						failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+#endif
+						return false;
+					}
 
-                    column = chunkEnd - 1;
-                    continue;
-                }
-            }
-            else if (value == 1)
-            {
-                long lastEnd = windowEnd > 0 ? qOneOffsets[windowEnd - 1] : long.MinValue;
-                long lastStart = windowStart > 0 ? qOneOffsets[windowStart - 1] + maxAllowedA : long.MinValue;
-                long chunkEnd = lastEnd > lastStart ? lastEnd : lastStart;
-                if (chunkEnd < 0)
-                {
-                    chunkEnd = 0;
-                }
+					column = chunkEnd - 1;
+					continue;
+				}
+			}
+			else if (value == 1)
+			{
+				int lastEnd = windowEnd > 0 ? qOneOffsets[windowEnd - 1] : int.MinValue;
+				int lastStart = windowStart > 0 ? qOneOffsets[windowStart - 1] + maxAllowedA : int.MinValue;
+				int chunkEnd = lastEnd > lastStart ? lastEnd : lastStart;
+				if (chunkEnd < 0)
+				{
+					chunkEnd = 0;
+				}
 
-                int steps = (int)(column - chunkEnd + 1);
-                if (steps > 1)
-                {
-                    if (!AdvanceTopDownUnknown1(ref carryOutMin, ref carryOutMax, steps))
-                    {
-                        failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
-                        return false;
-                    }
+				int steps = (int)(column - chunkEnd + 1);
+				if (steps > 1)
+				{
+					if (!AdvanceTopDownUnknown1(ref carryOutMin, ref carryOutMax, steps))
+					{
+#if DETAILED_LOG
+						failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+#endif
+						return false;
+					}
 
-                    column = chunkEnd - 1;
-                    continue;
-                }
-            }
+					column = chunkEnd - 1;
+					continue;
+				}
+			}
 
 			// carryOutMin now becomes nextCarryMin to limit registry pressure
-            carryOutMin = (carryOutMin << 1) + 1 - value;
+			carryOutMin = (carryOutMin << 1) + 1 - value;
 			// carryOutMax now becomes nextCarryMax to limit registry pressure
-            carryOutMax = (carryOutMax << 1) + 1;
-            if (carryOutMin < 0)
-            {
-                carryOutMin = 0;
-            }
+			carryOutMax = (carryOutMax << 1) + 1;
+			if (carryOutMin < 0)
+			{
+				carryOutMin = 0;
+			}
 
-            if (carryOutMax < 0)
-            {
-                carryOutMax = 0;
-            }
+			if (carryOutMax < 0)
+			{
+				carryOutMax = 0;
+			}
 
-            if (carryOutMin > carryOutMax)
-            {
-                failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
-                return false;
-            }
+			if (carryOutMin > carryOutMax)
+			{
+#if DETAILED_LOG
+				failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+#endif
+				return false;
+			}
 
-            column--;
-        }
+			column--;
+		}
 
-        if (carryOutMin > 0)
-        {
-            failure = new TopDownPruneFailure(0, carryOutMin, carryOutMax, 0);
-            return false;
-        }
+		if (carryOutMin > 0)
+		{
+#if DETAILED_LOG
+			failure = new TopDownPruneFailure(0, carryOutMin, carryOutMax, 0);
+#endif
+			return false;
+		}
 
-        return true;
-    }
+		return true;
+	}
 
-    private static bool AdvanceTopDownUnknown1(ref long carryOutMin, ref long carryOutMax, int steps)
-    {
-        while (steps > 0)
-        {
-            int step = steps > 62 ? 62 : steps;
-            long pow = 1L << step;
+#if DETAILED_LOG
+	private static bool TryTopDownBorrowPrefilter(
+		ReadOnlySpan<int> qOneOffsets,
+		int qOneOffsetsLength,
+		long pLong,
+		long maxAllowedA,
+		out TopDownPruneFailure? failure)
+#else
+	private static bool TryTopDownBorrowPrefilter(
+		ReadOnlySpan<int> qOneOffsets,
+		int qOneOffsetsLength,
+		int pLong,
+		int maxAllowedA)
+#endif
+	{
+#if DETAILED_LOG
+		failure = null;
+#endif
+		CarryRange borrow = CarryRange.Zero;
+		int windowStart = qOneOffsetsLength;
+		int windowEnd = qOneOffsetsLength;
 
-            if (carryOutMin > (long.MaxValue >> step) || carryOutMax > ((long.MaxValue - (pow - 1)) >> step))
-            {
-                carryOutMin = 0;
-                carryOutMax = long.MaxValue;
-                return true;
-            }
+		int column = pLong - 1;
+		int endColumn = column - (TopDownBorrowColumns - 1);
+		if (endColumn < 0)
+		{
+			endColumn = 0;
+		}
 
-            carryOutMin <<= step;
-            carryOutMax = (carryOutMax << step) + (pow - 1);
-            steps -= step;
-        }
+		while (column >= endColumn)
+		{
+			int value = column;
+			while (windowEnd > 0 && qOneOffsets[windowEnd - 1] > value)
+			{
+				windowEnd--;
+			}
 
-        return true;
-    }
+			value = column - maxAllowedA;
+			if (value < 0)
+			{
+				value = 0;
+			}
 
-    private static bool AdvanceTopDownUnknown0(ref long carryOutMin, ref long carryOutMax, int steps)
-    {
-        while (steps > 0)
-        {
-            int step = steps > 62 ? 62 : steps;
-            long add = (1L << step) - 1L;
-            if (carryOutMin > ((long.MaxValue - add) >> step) || carryOutMax > ((long.MaxValue - add) >> step))
-            {
-                carryOutMin = 0;
-                carryOutMax = long.MaxValue;
-                return true;
-            }
+			while (windowStart > 0 && qOneOffsets[windowStart - 1] >= value)
+			{
+				windowStart--;
+			}
 
-            carryOutMin = (carryOutMin << step) + add;
-            carryOutMax = (carryOutMax << step) + add;
-            steps -= step;
-        }
+			if (windowStart > windowEnd)
+			{
+				windowStart = windowEnd;
+			}
 
-        return true;
-    }
+			int unknown = windowEnd - windowStart;
+			if (!TryPropagateCarry(ref borrow, 0, unknown, 1))
+			{
+#if DETAILED_LOG
+				failure = new TopDownPruneFailure(column, borrow.Min, borrow.Max, unknown);
+#endif
+				return false;
+			}
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static long CountBitsInRange(ulong[] bits, int start, int length)
-    {
-        if (length <= 0)
-        {
-            return 0;
-        }
+			column--;
+		}
 
-        int end = start + length - 1;
-        int firstWord = start >> 6;
-        int lastWord = end >> 6;
-        int startBit = start & 63;
-        int endBit = end & 63;
+		return true;
+	}
 
-        if (firstWord == lastWord)
-        {
-            ulong mask = (endBit == 63 ? ulong.MaxValue : ((1UL << (endBit + 1)) - 1UL)) & (ulong.MaxValue << startBit);
-            return BitOperations.PopCount(bits[firstWord] & mask);
-        }
+	private static bool ShouldRunTopDownBorrowPrefilter(
+		ReadOnlySpan<int> qOneOffsets,
+		int qOneOffsetsLength,
+		long pLong,
+		long maxAllowedA)
+	{
+		if (qOneOffsetsLength < TopDownBorrowMinUnknown)
+		{
+			return false;
+		}
 
-        long count = 0;
-        ulong firstMask = ulong.MaxValue << startBit;
-        count += BitOperations.PopCount(bits[firstWord] & firstMask);
+		long column = pLong - 1;
+		long start = column - maxAllowedA;
+		if (start < 0)
+		{
+			start = 0;
+		}
 
-        for (int word = firstWord + 1; word < lastWord; word++)
-        {
-            count += BitOperations.PopCount(bits[word]);
-        }
+		int lower = LowerBound(qOneOffsets, (int)start);
+		int upper = UpperBound(qOneOffsets, (int)column);
+		int unknownTop = upper - lower;
+		return unknownTop >= TopDownBorrowMinUnknown;
+	}
 
-        ulong lastMask = endBit == 63 ? ulong.MaxValue : ((1UL << (endBit + 1)) - 1UL);
-        count += BitOperations.PopCount(bits[lastWord] & lastMask);
-        return count;
-    }
+	private static bool AdvanceTopDownUnknown1(ref long carryOutMin, ref long carryOutMax, int steps)
+	{
+		while (steps > 0)
+		{
+			int step = steps > 30 ? 30 : steps;
+			int pow = 1 << step;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryFindFirstUnknown(ulong[] knownOne, ulong[] knownZero, int start, int length, out int index)
-    {
-        if (length <= 0)
-        {
-            index = -1;
-            return false;
-        }
+			if (carryOutMin > (int.MaxValue >> step) || carryOutMax > ((int.MaxValue - (pow - 1)) >> step))
+			{
+				carryOutMin = 0;
+				carryOutMax = int.MaxValue;
+				return true;
+			}
 
-        int end = start + length - 1;
-        int firstWord = start >> 6;
-        int lastWord = end >> 6;
-        int startBit = start & 63;
-        int endBit = end & 63;
+			carryOutMin <<= step;
+			carryOutMax = (carryOutMax << step) + (pow - 1);
+			steps -= step;
+		}
 
-        ulong firstMask = ulong.MaxValue << startBit;
-        ulong lastMask = endBit == 63 ? ulong.MaxValue : ((1UL << (endBit + 1)) - 1UL);
+		return true;
+	}
 
-        for (int word = firstWord; word <= lastWord; word++)
-        {
-            ulong mask = word == firstWord ? firstMask : ulong.MaxValue;
-            if (word == lastWord)
-            {
-                mask &= lastMask;
-            }
+	private static bool AdvanceTopDownUnknown0(ref long carryOutMin, ref long carryOutMax, int steps)
+	{
+		while (steps > 0)
+		{
+			int step = steps > 30 ? 30 : steps;
+			int add = (1 << step) - 1;
+			if (carryOutMin > ((int.MaxValue - add) >> step) || carryOutMax > ((int.MaxValue - add) >> step))
+			{
+				carryOutMin = 0;
+				carryOutMax = int.MaxValue;
+				return true;
+			}
 
-            ulong known = (knownOne[word] | knownZero[word]) & mask;
-            ulong unknown = mask & ~known;
-            if (unknown != 0)
-            {
-                int bit = BitOperations.TrailingZeroCount(unknown);
-                index = (word << 6) + bit;
-                return true;
-            }
-        }
+			carryOutMin = (carryOutMin << step) + add;
+			carryOutMax = (carryOutMax << step) + add;
+			steps -= step;
+		}
 
-        index = -1;
-        return false;
-    }
+		return true;
+	}
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void UpdateZeroTailFromTop(ref long zeroTailStart, long topIndex0, long topIndex1, bool top0KnownZero, bool top1KnownZero)
-    {
-        if (!top0KnownZero)
-        {
-            return;
-        }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static int CountBitsInRange(ulong[] bits, int start, int length)
+	{
+		if (length <= 0)
+		{
+			return 0;
+		}
 
-        if (zeroTailStart > topIndex0)
-        {
-            zeroTailStart = topIndex0;
-        }
+		int end = start + length - 1;
+		int firstWord = start >> 6;
+		int lastWord = end >> 6;
+		int startBit = start & 63;
+		int endBit = end & 63;
 
-        if (top1KnownZero && topIndex1 == topIndex0 - 1 && zeroTailStart > topIndex1)
-        {
-            zeroTailStart = topIndex1;
-        }
-    }
+		if (firstWord == lastWord)
+		{
+			ulong mask = (endBit == 63 ? ulong.MaxValue : ((1UL << (endBit + 1)) - 1UL)) & (ulong.MaxValue << startBit);
+			return BitOperations.PopCount(bits[firstWord] & mask);
+		}
+
+		int count = 0;
+		ulong firstMask = ulong.MaxValue << startBit;
+		count += BitOperations.PopCount(bits[firstWord] & firstMask);
+
+		for (int word = firstWord + 1; word < lastWord; word++)
+		{
+			count += BitOperations.PopCount(bits[word]);
+		}
+
+		ulong lastMask = endBit == 63 ? ulong.MaxValue : ((1UL << (endBit + 1)) - 1UL);
+		count += BitOperations.PopCount(bits[lastWord] & lastMask);
+		return count;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool TryFindFirstUnknown(in ulong[] knownOne, in ulong[] knownZero, int start, int length, out int index)
+	{
+		if (length <= 0)
+		{
+			index = -1;
+			return false;
+		}
+
+		int end = start + length - 1;
+		int firstWord = start >> 6;
+		int lastWord = end >> 6;
+		int startBit = start & 63;
+		int endBit = end & 63;
+
+		ulong firstMask = ulong.MaxValue << startBit;
+		ulong lastMask = endBit == 63 ? ulong.MaxValue : ((1UL << (endBit + 1)) - 1UL);
+
+		for (int word = firstWord; word <= lastWord; word++)
+		{
+			ulong mask = word == firstWord ? firstMask : ulong.MaxValue;
+			if (word == lastWord)
+			{
+				mask &= lastMask;
+			}
+
+			ulong known = (knownOne[word] | knownZero[word]) & mask;
+			ulong unknown = mask & ~known;
+			if (unknown != 0)
+			{
+				int bit = BitOperations.TrailingZeroCount(unknown);
+				index = (word << 6) + bit;
+				return true;
+			}
+		}
+
+		index = -1;
+		return false;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static void UpdateZeroTailFromTop(ref int zeroTailStart, int topIndex0, int topIndex1, bool top0KnownZero, bool top1KnownZero)
+	{
+		if (!top0KnownZero)
+		{
+			return;
+		}
+
+		if (zeroTailStart > topIndex0)
+		{
+			zeroTailStart = topIndex0;
+		}
+
+		if (top1KnownZero && topIndex1 == topIndex0 - 1 && zeroTailStart > topIndex1)
+		{
+			zeroTailStart = topIndex1;
+		}
+	}
 }

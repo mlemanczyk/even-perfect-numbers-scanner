@@ -22,34 +22,30 @@ public class BitContradictionSolverTests
     [Fact]
     public void TryPropagateCarry_FailsWhenParityUnreachable()
     {
+		CarryRange carry = CarryRange.Single(0);
         bool success = TryPropagateCarry(
-            currentCarry: CarryRange.Single(0),
+            currentCarry: ref carry,
             forcedOnes: 0,
             possibleOnes: 0,
-            requiredResultBit: 1,
-            out var nextCarry,
-            out ContradictionReason reason);
+            requiredResultBit: 1);
 
         success.Should().BeFalse();
-        reason.Should().Be(ContradictionReason.ParityUnreachable);
-        nextCarry.Min.Should().Be(0);
-        nextCarry.Max.Should().Be(0);
+        carry.Min.Should().Be(0);
+        carry.Max.Should().Be(0);
     }
 
     [Fact]
     public void TryPropagateCarry_ComputesNextCarryRange()
     {
+		CarryRange carry = new(0, 1);
         bool success = TryPropagateCarry(
-            currentCarry: new CarryRange(0, 1),
+            currentCarry: ref carry,
             forcedOnes: 1,
             possibleOnes: 3,
-            requiredResultBit: 1,
-            out var nextCarry,
-            out ContradictionReason reason);
+            requiredResultBit: 1);
 
         success.Should().BeTrue();
-        reason.Should().Be(ContradictionReason.None);
-        nextCarry.Min.Should().Be(0);
-        nextCarry.Max.Should().Be(1);
+        carry.Min.Should().Be(0);
+        carry.Max.Should().Be(1);
     }
 }
