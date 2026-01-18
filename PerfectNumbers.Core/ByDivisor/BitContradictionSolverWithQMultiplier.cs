@@ -39,11 +39,11 @@ internal static class BitContradictionSolverWithQMultiplier
 	private const int TopDownCacheCapacity = 16;
 
 #if DETAILED_LOG
-    public readonly struct TopDownPruneFailure(int column, int carryMin, int carryMax, int unknown)
+    public readonly struct TopDownPruneFailure(int column, long carryMin, long carryMax, int unknown)
     {
         public readonly int Column = column;
-        public readonly int CarryMin = carryMin;
-        public readonly int CarryMax = carryMax;
+        public readonly long CarryMin = carryMin;
+        public readonly long CarryMax = carryMax;
         public readonly int Unknown = unknown;
     }
 
@@ -53,11 +53,11 @@ internal static class BitContradictionSolverWithQMultiplier
         public readonly TopDownPruneFailure? Failure = failure;
     }
 
-    internal readonly struct BottomUpFailure(int column, int carryMin, int carryMax, int forced, int unknown)
+    internal readonly struct BottomUpFailure(int column, long carryMin, long carryMax, int forced, int unknown)
     {
         public readonly int Column = column;
-        public readonly int CarryMin = carryMin;
-        public readonly int CarryMax = carryMax;
+        public readonly long CarryMin = carryMin;
+        public readonly long CarryMax = carryMax;
         public readonly int Forced = forced;
         public readonly int Unknown = unknown;
     }
@@ -647,8 +647,8 @@ internal static class BitContradictionSolverWithQMultiplier
 	private static bool TryProcessTopDownBlock(
 		ReadOnlySpan<int> qOneOffsets,
 		int qOneOffsetsLength,
-		long maxAllowedA,
-		long startHighColumn,
+		int maxAllowedA,
+		int startHighColumn,
 		int columnCount,
 		CarryRange carryOut,
 		ref int windowStart,
@@ -795,8 +795,8 @@ internal static class BitContradictionSolverWithQMultiplier
 	private static bool TryTopDownCarryPrune(
 		ReadOnlySpan<int> qOneOffsets,
 		int qOneOffsetsLength,
-		long pLong,
-		long maxAllowedA,
+		int pLong,
+		int maxAllowedA,
 		out TopDownPruneFailure? failure)
 #else
 	private static bool TryTopDownCarryPrune(

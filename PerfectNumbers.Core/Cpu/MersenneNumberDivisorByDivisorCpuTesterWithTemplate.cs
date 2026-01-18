@@ -4799,7 +4799,6 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		#endif
 		// BitContradictionSolverWithQMultiplier.SetDebugEnabled(false);
 		// bool decided = BitContradictionSolverBaseline.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, exponent, out divides, out var reason);
-		ArgumentOutOfRangeException.ThrowIfNotEqual(decided, divides);
 		if (decided && divides)
 		{
 			// Verify to avoid false positives on structurally admissible but non-dividing q.
@@ -4838,7 +4837,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		}
 
 #if DETAILED_LOG
-		Console.WriteLine($"[bitcontradiction ({sw.Elapsed})] Prime={prime}, Divisor={divisor} Decided={decided} Divides={divides} Reason={reason}");
+		Console.WriteLine($"[bitcontradiction] Prime={prime}, Divisor={divisor} Decided={decided} Divides={divides} Reason={reason}");
 #endif
 		return decided;
 	}

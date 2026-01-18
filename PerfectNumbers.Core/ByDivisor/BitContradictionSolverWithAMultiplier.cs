@@ -76,13 +76,13 @@ internal static class BitContradictionSolverWithAMultiplier
 	[ThreadStatic] private static ulong _statFirstDirtyQ;
 	[ThreadStatic] private static ulong _statFirstDirtyKnown;
 
-    public readonly struct TopDownPruneFailure(long column, long carryMin, long carryMax, long unknown)
-    {
-        public readonly long Column = column;
-        public readonly long CarryMin = carryMin;
-        public readonly long CarryMax = carryMax;
-        public readonly long Unknown = unknown;
-    }
+	public readonly struct TopDownPruneFailure(long column, long carryMin, long carryMax, long unknown)
+	{
+		public readonly long Column = column;
+		public readonly long CarryMin = carryMin;
+		public readonly long CarryMax = carryMax;
+		public readonly long Unknown = unknown;
+	}
 
 	private readonly struct TopDownCacheValue(bool success, TopDownPruneFailure? failure)
 	{
@@ -96,6 +96,19 @@ internal static class BitContradictionSolverWithAMultiplier
 	[ThreadStatic]
 	private static TopDownPruneFailure? _lastTopDownFailure;
 	internal static TopDownPruneFailure? LastTopDownFailure => _lastTopDownFailure;
+
+
+	private static void PrintStats()
+	{
+		Console.WriteLine(
+			$"[STATS] stableCalls={_statStableAdvanceCalls} stableCols={_statStableAdvanceColsBatched} " +
+			$"scalarCols={_statScalarCols} bigShift={_statStableAdvanceBigShift} " +
+			$"deltaReq={_statDeltaRequests} deltaHits={_statDeltaHits} deltaBuilds={_statDeltaBuilds}");
+		Console.WriteLine(
+			$"[CLEAN] checks={_statCleanChecks} false={_statCleanFalse} " +
+			$"firstDirtyCol={_statFirstDirtyColumn} word={_statFirstDirtyWord} " +
+			$"qWord=0x{_statFirstDirtyQ:X16} knownWord=0x{_statFirstDirtyKnown:X16}");
+	}
 #else
 	[ThreadStatic]
 	private static Dictionary<TopDownCacheKey, bool>? _topDownCache;
@@ -1327,9 +1340,9 @@ internal static class BitContradictionSolverWithAMultiplier
 		int maxOffset = qOneOffsets[qOneOffsetsLength - 1];
 		if ((ulong)(maxOffset + 1) >= p)
 		{
-			#if DETAILED_LOG
-				reason = ContradictionReason.TruncatedLength;
-			#endif
+#if DETAILED_LOG
+			reason = ContradictionReason.TruncatedLength;
+#endif
 			return false;
 			// return true;
 		}
@@ -1360,9 +1373,9 @@ internal static class BitContradictionSolverWithAMultiplier
 		int maxAllowedA = pLong - (maxOffset + 1);
 		if (maxAllowedA < 0)
 		{
-			#if DETAILED_LOG
-				reason = ContradictionReason.TruncatedLength;
-			#endif
+#if DETAILED_LOG
+			reason = ContradictionReason.TruncatedLength;
+#endif
 			return false;
 		}
 
@@ -1385,10 +1398,10 @@ internal static class BitContradictionSolverWithAMultiplier
 		if (qMod2k.IsEven)
 		{
 			Console.WriteLine("Pruned by qMod2k.IsEven");
-			#if DETAILED_LOG
-				reason = ContradictionReason.ParityUnreachable;
-			#endif
-			return false;
+#if DETAILED_LOG
+			reason = ContradictionReason.ParityUnreachable;
+#endif
+			return true;
 		}
 
 		// Compute inv = q^{-1} mod 2^1024 using Hensel/Newton iteration in Z/2^kZ.
@@ -1418,12 +1431,12 @@ internal static class BitContradictionSolverWithAMultiplier
 			{
 				if ((knownZero0[word] & mask64) != 0)
 				{
-					#if DETAILED_LOG
-						// TODO: This doesn't kickoff. Is it necessary?
-						Console.WriteLine("Pruned by knownZero1[word] & mask64");
-						reason = ContradictionReason.ParityUnreachable;
-					#endif
-					return false;
+#if DETAILED_LOG
+					// TODO: This doesn't kickoff. Is it necessary?
+					Console.WriteLine("Pruned by knownZero1[word] & mask64");
+					reason = ContradictionReason.ParityUnreachable;
+#endif
+					return true;
 				}
 
 				knownOne0[word] |= mask64;
@@ -1432,12 +1445,12 @@ internal static class BitContradictionSolverWithAMultiplier
 			{
 				if ((knownOne0[word] & mask64) != 0)
 				{
-					#if DETAILED_LOG
-						// TODO: This doesn't kickoff. Is it necessary?
-						Console.WriteLine("Pruned by knownOne1[word] & mask64");
-						reason = ContradictionReason.ParityUnreachable;
-					#endif
-					return false;
+#if DETAILED_LOG
+					// TODO: This doesn't kickoff. Is it necessary?
+					Console.WriteLine("Pruned by knownOne1[word] & mask64");
+					reason = ContradictionReason.ParityUnreachable;
+#endif
+					return true;
 				}
 
 				knownZero0[word] |= mask64;
@@ -1535,11 +1548,11 @@ internal static class BitContradictionSolverWithAMultiplier
 		// It can reject entire classes of q with sparse/awkward high-bit structure before the full DP runs.
 		if (!TryHighBitTopCarryPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
 		{
-			#if DETAILED_LOG
-				Console.WriteLine("Pruned with TryHighBitTopCarryPrefilter");
-				reason = ContradictionReason.ParityUnreachable;
-			#endif
-			return false;
+#if DETAILED_LOG
+			Console.WriteLine("Pruned with TryHighBitTopCarryPrefilter");
+			reason = ContradictionReason.ParityUnreachable;
+#endif
+			return true;
 		}
 
 		// 		var cacheKey = new TopDownCacheKey(qHash, qOneOffsetsLength, maxAllowedA, pLong);
@@ -1574,26 +1587,26 @@ internal static class BitContradictionSolverWithAMultiplier
 		// 			}
 
 #if DETAILED_LOG
-			// StoreTopDownCache(in cacheKey, new TopDownCacheValue(true, null));
+		// StoreTopDownCache(in cacheKey, new TopDownCacheValue(true, null));
 #else
 		// StoreTopDownCache(in cacheKey, true);
 #endif
 		// }
 
-				if (ShouldRunTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
-				{
-					#if DETAILED_LOG
-						if (!TryTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA, out _lastTopDownFailure))
-					#else
+		if (ShouldRunTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
+		{
+#if DETAILED_LOG
+			if (!TryTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA, out _lastTopDownFailure))
+#else
 						if (!TryTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
-					#endif
-					{
-						#if DETAILED_LOG
-							reason = ContradictionReason.ParityUnreachable;
-						#endif
-						return false;
-					}
-				}
+#endif
+			{
+#if DETAILED_LOG
+				reason = ContradictionReason.ParityUnreachable;
+#endif
+				return true;
+			}
+		}
 
 		// Row-aware masks for q and a-window (supports q > 64 bits)
 		int qBitLen = maxOffset + 1;
@@ -1707,28 +1720,28 @@ internal static class BitContradictionSolverWithAMultiplier
 		{
 			int remaining = highColumn - lowColumn + 1;
 			int blockSize = remaining < PingPongBlockColumns ? remaining : PingPongBlockColumns;
-			#if DETAILED_LOG
-				if (!TryProcessBottomUpBlockRowAware(
-					qOneOffsets, qMaskWords, qWordCount, lastWordMask, maxAllowedA,
-					lowColumn, blockSize,
-					ref carryLow, ref maxKnownA, ref segmentBase,
-					ref knownOne0, ref knownOne1, ref knownZero0, ref knownZero1,
-					windowSize, aOneWin, aZeroWin, ref windowColumn,
-					out reason))
-			#else
+#if DETAILED_LOG
+			if (!TryProcessBottomUpBlockRowAware(
+				qOneOffsets, qMaskWords, qWordCount, lastWordMask, maxAllowedA,
+				lowColumn, blockSize,
+				ref carryLow, ref maxKnownA, ref segmentBase,
+				ref knownOne0, ref knownOne1, ref knownZero0, ref knownZero1,
+				windowSize, aOneWin, aZeroWin, ref windowColumn,
+				out reason))
+#else
 				if (!TryProcessBottomUpBlockRowAware(
 					qOneOffsets, qMaskWords, qWordCount, lastWordMask, maxAllowedA,
 					lowColumn, blockSize,
 					ref carryLow, ref maxKnownA, ref segmentBase,
 					ref knownOne0, ref knownOne1, ref knownZero0, ref knownZero1,
 					windowSize, aOneWin, aZeroWin, ref windowColumn))
-			#endif
+#endif
 			{
 				#if DETAILED_LOG
 					PrintStats();
 				#endif
 
-				return false;
+				return true;
 			}
 
 			lowColumn += blockSize;
@@ -1749,10 +1762,10 @@ internal static class BitContradictionSolverWithAMultiplier
 		// }
 
 		divides = true;
-		#if DETAILED_LOG
-			reason = ContradictionReason.None;
-			PrintStats();
-		#endif
+#if DETAILED_LOG
+		reason = ContradictionReason.None;
+		PrintStats();
+#endif
 		return true;
 	}
 
@@ -1842,9 +1855,9 @@ internal static class BitContradictionSolverWithAMultiplier
 
 	private static int[] GetStableUnknownDelta(int unknown)
 	{
-		#if DETAILED_LOG
-			_statDeltaRequests++;
-		#endif
+#if DETAILED_LOG
+		_statDeltaRequests++;
+#endif
 
 		// Lazily allocate the outer array. Keep it volatile to publish safely.
 		int[][] cache = _stableUnknownDelta8ByUnknown!;
@@ -1869,9 +1882,9 @@ internal static class BitContradictionSolverWithAMultiplier
 		var cached = cache[unknown];
 		if (cached != null)
 		{
-			#if DETAILED_LOG
-				_statDeltaHits++;
-			#endif
+#if DETAILED_LOG
+			_statDeltaHits++;
+#endif
 			return cached;
 		}
 
@@ -1906,9 +1919,9 @@ internal static class BitContradictionSolverWithAMultiplier
 			delta[low] = (int)((value << ColumnsAtOnce) - low);
 		}
 
-		#if DETAILED_LOG
-			_statDeltaBuilds++;
-		#endif
+#if DETAILED_LOG
+		_statDeltaBuilds++;
+#endif
 		// Publish into cache. If a race computes it twice, that's acceptable (same deterministic result).
 		cache[unknown] = delta;
 		return delta;
@@ -1948,18 +1961,18 @@ internal static class BitContradictionSolverWithAMultiplier
 	private static bool TryAdvanceStableUnknown(ref CarryRange carry, int unknown, int columnCount)
 #endif
 	{
-		#if DETAILED_LOG
-			_statStableAdvanceCalls++;
-			_statStableAdvanceCols += columnCount;
-			if (columnCount >= 64) _statStableAdvanceBigShift++;
-		#endif
+#if DETAILED_LOG
+		_statStableAdvanceCalls++;
+		_statStableAdvanceCols += columnCount;
+		if (columnCount >= 64) _statStableAdvanceBigShift++;
+#endif
 
 		if (columnCount <= 0)
 		{
-			#if DETAILED_LOG
-				reason = ContradictionReason.None;
-				_statStableAdvanceColsBatched += columnCount;
-			#endif
+#if DETAILED_LOG
+			reason = ContradictionReason.None;
+			_statStableAdvanceColsBatched += columnCount;
+#endif
 			return true;
 		}
 
@@ -1967,16 +1980,16 @@ internal static class BitContradictionSolverWithAMultiplier
 		{
 			if (!TryAdvanceZeroColumns(ref carry, columnCount))
 			{
-				#if DETAILED_LOG
-					reason = ContradictionReason.ParityUnreachable;
-				#endif
+#if DETAILED_LOG
+				reason = ContradictionReason.ParityUnreachable;
+#endif
 				return false;
 			}
 
-			#if DETAILED_LOG
-				_statStableAdvanceColsBatched += columnCount;
-				reason = ContradictionReason.None;
-			#endif
+#if DETAILED_LOG
+			_statStableAdvanceColsBatched += columnCount;
+			reason = ContradictionReason.None;
+#endif
 			return true;
 		}
 
@@ -1985,7 +1998,7 @@ internal static class BitContradictionSolverWithAMultiplier
 		int remaining = columnCount;
 		int[] delta = GetStableUnknownDelta(unknown);
 
-		const int CarryDecimalMask = (1 << ColumnsAtOnce) - 1;
+		const long CarryDecimalMask = (1L << ColumnsAtOnce) - 1L;
 		while (remaining >= ColumnsAtOnce)
 		{
 			int low = (int)(carryMax & CarryDecimalMask);
@@ -2002,16 +2015,16 @@ internal static class BitContradictionSolverWithAMultiplier
 
 		if (carryMax < carryMin)
 		{
-			#if DETAILED_LOG
-				reason = ContradictionReason.ParityUnreachable;
-			#endif
+#if DETAILED_LOG
+			reason = ContradictionReason.ParityUnreachable;
+#endif
 			return false;
 		}
 
-		#if DETAILED_LOG
-			_statStableAdvanceColsBatched += columnCount;
-			reason = ContradictionReason.None;
-		#endif	
+#if DETAILED_LOG
+		_statStableAdvanceColsBatched += columnCount;
+		reason = ContradictionReason.None;
+#endif
 		carry = new CarryRange(carryMin, carryMax);
 		return true;
 	}
@@ -2313,24 +2326,24 @@ internal static class BitContradictionSolverWithAMultiplier
 					// Additionally, ensure current window has no known bits (should be true if maxKnownA condition holds).
 					// Conservative batching: ignore row-aware window state and assume all q positions are unknown.
 					// This cannot create false negatives; it may only reduce pruning power.
-					#if DETAILED_LOG
-						_statBatchEntry++;
-						_statBatchCols += remainingCols;
-					#endif
+#if DETAILED_LOG
+					_statBatchEntry++;
+					_statBatchCols += remainingCols;
+#endif
 
 					int rem = remainingCols;
 					while (rem > 0)
 					{
 						int step = rem > TailCarryBatchColumns ? TailCarryBatchColumns : rem;
-						#if DETAILED_LOG
-							if (!TryAdvanceStableUnknown(ref carry, stableUnknown, step, out var propagateReason))
-						#else
+#if DETAILED_LOG
+						if (!TryAdvanceStableUnknown(ref carry, stableUnknown, step, out var propagateReason))
+#else
 							if (!TryAdvanceStableUnknown(ref carry, stableUnknown, step))
-						#endif
+#endif
 						{
-							#if DETAILED_LOG
-								reason = propagateReason;
-							#endif
+#if DETAILED_LOG
+							reason = propagateReason;
+#endif
 							return false;
 						}
 
@@ -2384,9 +2397,9 @@ internal static class BitContradictionSolverWithAMultiplier
 					{
 						if (state == 2)
 						{
-							#if DETAILED_LOG
-								reason = ContradictionReason.ParityUnreachable;
-							#endif
+#if DETAILED_LOG
+							reason = ContradictionReason.ParityUnreachable;
+#endif
 							return false;
 						}
 
@@ -2402,9 +2415,9 @@ internal static class BitContradictionSolverWithAMultiplier
 					{
 						if (state == 1)
 						{
-							#if DETAILED_LOG
-								reason = ContradictionReason.ParityUnreachable;
-							#endif
+#if DETAILED_LOG
+							reason = ContradictionReason.ParityUnreachable;
+#endif
 							return false;
 						}
 
@@ -2423,9 +2436,9 @@ internal static class BitContradictionSolverWithAMultiplier
 			int possible = forced + remaining;
 			if (!TryPropagateCarry(ref carry, forced, possible, 1))
 			{
-				#if DETAILED_LOG
-					reason = ContradictionReason.ParityUnreachable;
-				#endif
+#if DETAILED_LOG
+				reason = ContradictionReason.ParityUnreachable;
+#endif
 				return false;
 			}
 
@@ -2448,14 +2461,14 @@ internal static class BitContradictionSolverWithAMultiplier
 
 			startColumn++;
 			windowColumn = startColumn;
-			#if DETAILED_LOG
-				_statScalarCols++;
-			#endif
+#if DETAILED_LOG
+			_statScalarCols++;
+#endif
 		}
 
-		#if DETAILED_LOG
-			reason = ContradictionReason.None;
-		#endif
+#if DETAILED_LOG
+		reason = ContradictionReason.None;
+#endif
 		return true;
 	}
 
@@ -2515,15 +2528,15 @@ internal static class BitContradictionSolverWithAMultiplier
 					runEndIdx = runCount;
 					while (remaining >= TailCarryBatchColumns)
 					{
-						#if DETAILED_LOG
-							if (!TryAdvanceStableUnknown(ref carry, stableUnknown, TailCarryBatchColumns, out var propagateReason))
-						#else
+#if DETAILED_LOG
+						if (!TryAdvanceStableUnknown(ref carry, stableUnknown, TailCarryBatchColumns, out var propagateReason))
+#else
 							if (!TryAdvanceStableUnknown(ref carry, stableUnknown, TailCarryBatchColumns))
-						#endif
+#endif
 						{
-							#if DETAILED_LOG
-								reason = propagateReason;
-							#endif
+#if DETAILED_LOG
+							reason = propagateReason;
+#endif
 							return false;
 						}
 
@@ -2533,15 +2546,15 @@ internal static class BitContradictionSolverWithAMultiplier
 
 					if (remaining > 0)
 					{
-						#if DETAILED_LOG
-							if (!TryAdvanceStableUnknown(ref carry, stableUnknown, remaining, out var propagateReason))
-						#else
+#if DETAILED_LOG
+						if (!TryAdvanceStableUnknown(ref carry, stableUnknown, remaining, out var propagateReason))
+#else
 							if (!TryAdvanceStableUnknown(ref carry, stableUnknown, remaining))
-						#endif
+#endif
 						{
-							#if DETAILED_LOG
-								reason = propagateReason;
-							#endif
+#if DETAILED_LOG
+							reason = propagateReason;
+#endif
 							return false;
 						}
 
@@ -2791,9 +2804,9 @@ internal static class BitContradictionSolverWithAMultiplier
 						{
 							if (top0KnownZero)
 							{
-								#if DETAILED_LOG
-									reason = ContradictionReason.ParityUnreachable;
-								#endif
+#if DETAILED_LOG
+								reason = ContradictionReason.ParityUnreachable;
+#endif
 								return false;
 							}
 
@@ -2804,9 +2817,9 @@ internal static class BitContradictionSolverWithAMultiplier
 						{
 							if (top1KnownZero)
 							{
-								#if DETAILED_LOG
-									reason = ContradictionReason.ParityUnreachable;
-								#endif
+#if DETAILED_LOG
+								reason = ContradictionReason.ParityUnreachable;
+#endif
 								return false;
 							}
 
@@ -2830,9 +2843,9 @@ internal static class BitContradictionSolverWithAMultiplier
 					{
 						if (top0KnownOne)
 						{
-							#if DETAILED_LOG
-								reason = ContradictionReason.ParityUnreachable;
-							#endif
+#if DETAILED_LOG
+							reason = ContradictionReason.ParityUnreachable;
+#endif
 							return false;
 						}
 
@@ -2843,9 +2856,9 @@ internal static class BitContradictionSolverWithAMultiplier
 					{
 						if (top1KnownOne)
 						{
-							#if DETAILED_LOG
-								reason = ContradictionReason.ParityUnreachable;
-							#endif
+#if DETAILED_LOG
+							reason = ContradictionReason.ParityUnreachable;
+#endif
 							return false;
 						}
 
@@ -2860,18 +2873,18 @@ internal static class BitContradictionSolverWithAMultiplier
 				var qHash = ComputeQOffsetsHash(qOneOffsets);
 				if (!TryDynamicModularRangePrune(qOneOffsets, qHash, prime, maxAllowedA, top0KnownOne, top0KnownZero, top1KnownOne, top1KnownZero, zeroTailStart))
 				{
-					#if DETAILED_LOG
-						reason = ContradictionReason.ParityUnreachable;
-					#endif
+#if DETAILED_LOG
+					reason = ContradictionReason.ParityUnreachable;
+#endif
 					return false;
 				}
 			}
 
 			if ((top0KnownZero && top0KnownOne) || (top1KnownZero && top1KnownOne))
 			{
-				#if DETAILED_LOG
-					reason = ContradictionReason.ParityUnreachable;
-				#endif
+#if DETAILED_LOG
+				reason = ContradictionReason.ParityUnreachable;
+#endif
 				return false;
 			}
 
@@ -2879,17 +2892,17 @@ internal static class BitContradictionSolverWithAMultiplier
 			{
 				if (top0KnownZero)
 				{
-					#if DETAILED_LOG
-						reason = ContradictionReason.ParityUnreachable;
-					#endif
+#if DETAILED_LOG
+					reason = ContradictionReason.ParityUnreachable;
+#endif
 					return false;
 				}
 			}
 			else if (top0KnownZero && top1KnownZero)
 			{
-				#if DETAILED_LOG
-					reason = ContradictionReason.ParityUnreachable;
-				#endif
+#if DETAILED_LOG
+				reason = ContradictionReason.ParityUnreachable;
+#endif
 				return false;
 			}
 
@@ -2901,9 +2914,9 @@ internal static class BitContradictionSolverWithAMultiplier
 				long carryMax = AlignDownToParity(carry.Max, known0Len);
 				if (carryMin > carryMax)
 				{
-					#if DETAILED_LOG
-						reason = ContradictionReason.ParityUnreachable;
-					#endif
+#if DETAILED_LOG
+					reason = ContradictionReason.ParityUnreachable;
+#endif
 					return false;
 				}
 
@@ -2920,9 +2933,9 @@ internal static class BitContradictionSolverWithAMultiplier
 			{
 				if ((minSum & 1) != requiredParity)
 				{
-					#if DETAILED_LOG
-						reason = ContradictionReason.ParityUnreachable;
-					#endif
+#if DETAILED_LOG
+					reason = ContradictionReason.ParityUnreachable;
+#endif
 					return false;
 				}
 
@@ -2933,9 +2946,9 @@ internal static class BitContradictionSolverWithAMultiplier
 			{
 				if ((minSum & 1) != requiredParity && remaining == 0)
 				{
-					#if DETAILED_LOG
-						reason = ContradictionReason.ParityUnreachable;
-					#endif
+#if DETAILED_LOG
+					reason = ContradictionReason.ParityUnreachable;
+#endif
 					return false;
 				}
 
@@ -2945,22 +2958,22 @@ internal static class BitContradictionSolverWithAMultiplier
 						forced + remaining,
 						requiredParity))
 				{
-					#if DETAILED_LOG
-						reason = ContradictionReason.ParityUnreachable;
-					#endif
+#if DETAILED_LOG
+					reason = ContradictionReason.ParityUnreachable;
+#endif
 					return false;
 				}
 			}
 
 			startColumn++;
-			#if DETAILED_LOG
-				_statScalarCols++;
-			#endif
+#if DETAILED_LOG
+			_statScalarCols++;
+#endif
 		}
 
-		#if DETAILED_LOG
-			reason = ContradictionReason.None;
-		#endif
+#if DETAILED_LOG
+		reason = ContradictionReason.None;
+#endif
 		return true;
 	}
 
@@ -2968,8 +2981,8 @@ internal static class BitContradictionSolverWithAMultiplier
 	private static bool TryProcessTopDownBlock(
 		ReadOnlySpan<int> qOneOffsets,
 		int qOneOffsetsLength,
-		long maxAllowedA,
-		long startHighColumn,
+		int maxAllowedA,
+		int startHighColumn,
 		int columnCount,
 		CarryRange carryOut,
 		ref int windowStart,
@@ -2989,9 +3002,9 @@ internal static class BitContradictionSolverWithAMultiplier
 		out CarryRange nextCarryOut)
 #endif
 	{
-		#if DETAILED_LOG
-			failure = null;
-		#endif
+#if DETAILED_LOG
+		failure = null;
+#endif
 		long carryOutMin = carryOut.Min,
 			 carryOutMax = carryOut.Max;
 		int value;
@@ -3041,9 +3054,9 @@ internal static class BitContradictionSolverWithAMultiplier
 				{
 					if (!AdvanceTopDownUnknown0(ref carryOutMin, ref carryOutMax, steps))
 					{
-						#if DETAILED_LOG
-							failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
-						#endif
+#if DETAILED_LOG
+						failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+#endif
 						nextCarryOut = default;
 						return false;
 					}
@@ -3067,9 +3080,9 @@ internal static class BitContradictionSolverWithAMultiplier
 				{
 					if (!AdvanceTopDownUnknown1(ref carryOutMin, ref carryOutMax, steps))
 					{
-						#if DETAILED_LOG
-							failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
-						#endif
+#if DETAILED_LOG
+						failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+#endif
 						nextCarryOut = default;
 						return false;
 					}
@@ -3095,9 +3108,9 @@ internal static class BitContradictionSolverWithAMultiplier
 
 			if (carryOutMin > carryOutMax)
 			{
-				#if DETAILED_LOG
-					failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
-				#endif
+#if DETAILED_LOG
+				failure = new TopDownPruneFailure(column, carryOutMin, carryOutMax, value);
+#endif
 				nextCarryOut = default;
 				return false;
 			}
@@ -3256,8 +3269,8 @@ internal static class BitContradictionSolverWithAMultiplier
 	private static bool TryTopDownBorrowPrefilter(
 		ReadOnlySpan<int> qOneOffsets,
 		int qOneOffsetsLength,
-		long pLong,
-		long maxAllowedA,
+		int pLong,
+		int maxAllowedA,
 		out TopDownPruneFailure? failure)
 #else
 	private static bool TryTopDownBorrowPrefilter(
