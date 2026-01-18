@@ -1,4 +1,4 @@
-// #define DivisorSet_BitContradiction
+#define DivisorSet_BitContradiction
 // #define DivisorSet_BitTree
 
 using System;
@@ -4773,7 +4773,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 
 		// Console.WriteLine($"Switching to bit-contradiction mode for {prime}");
 		// Iterative column-wise propagation without storing all columns; we only keep assigned bits of 'a'.
-		int[] oneOffsets = _qBits;
+		int[] oneOffsets = _qBits!;
 		// Span<int> oneOffsets = stackalloc int[qBitLength];
 		int oneCount = 0;
 		for (int i = 0; i < qBitLength; i++)
@@ -4792,9 +4792,14 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 
 		ReadOnlySpan<int> oneOffsetsSlice = oneOffsets[..oneCount];
 		// BitContradictionSolverWithQMultiplier.SetDebugEnabled(true);
-		bool decided = BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, prime, out divides, out var reason);
+		#if DETAILED_LOG
+			bool decided = BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, prime, out divides, out var reason);
+		#else
+			bool decided = BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, prime, out divides);
+		#endif
 		// BitContradictionSolverWithQMultiplier.SetDebugEnabled(false);
 		// bool decided = BitContradictionSolverBaseline.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, exponent, out divides, out var reason);
+		ArgumentOutOfRangeException.ThrowIfNotEqual(decided, divides);
 		if (decided && divides)
 		{
 			// Verify to avoid false positives on structurally admissible but non-dividing q.
@@ -4803,7 +4808,9 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			if (!dividesExact)
 			{
 				divides = false;
-				reason = ContradictionReason.ParityUnreachable;
+				#if DETAILED_LOG
+					reason = ContradictionReason.ParityUnreachable;
+				#endif
 			}
 		}
 		if (decided && !divides)
