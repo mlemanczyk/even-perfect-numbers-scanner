@@ -1343,8 +1343,7 @@ internal static class BitContradictionSolverWithAMultiplier
 #if DETAILED_LOG
 			reason = ContradictionReason.TruncatedLength;
 #endif
-			return false;
-			// return true;
+			return true;
 		}
 
 		// q from EvenPerfectBitScanner will always have the correct 2kp+1 form.
@@ -1376,7 +1375,7 @@ internal static class BitContradictionSolverWithAMultiplier
 #if DETAILED_LOG
 			reason = ContradictionReason.TruncatedLength;
 #endif
-			return false;
+			return true;
 		}
 
 		// Force low bits of 'a' from a ≡ -q^{-1} (mod 2^1024).

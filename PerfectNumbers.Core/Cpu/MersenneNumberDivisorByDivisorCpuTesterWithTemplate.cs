@@ -1,4 +1,4 @@
-#define DivisorSet_BitContradiction
+// #define DivisorSet_BitContradiction
 // #define DivisorSet_BitTree
 
 using System;
@@ -4608,14 +4608,12 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 
 			// if (
 			// 		divisor <= ulong.MaxValue &&
-			// 		!PrimeTesterByLastDigit.IsPrimeCpu((ulong)divisor)
 			// 	)
 			// {
 			// 	goto MOVE_NEXT;
 			// }
 
 			bool divides;
-			// divides = BigInteger.ModPow(BigIntegerNumbers.Two, prime, divisor) == 1;
 
 			sw.Reset();
 			sw.Start();
@@ -4633,25 +4631,25 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			}
 			else
 			{
-				// var printToConsole = (_consolePrintOut++) == 1;
-				// if (printToConsole)
-				// {
+				var printToConsole = (_consolePrintOut++) == 10_000;
+				if (printToConsole)
+				{
 					// sw.Stop();
 					Console.WriteLine($"Prime {prime} ({sw.Elapsed}: {divisor})");
 					_consolePrintOut = 0;
 					// sw.Reset();
 					// sw.Start();
-				// }
+				}
 			}
 
-			// RecordState(currentK);
 		MOVE_NEXT:
-			// if (hasLimit && currentK >= maxK)
-			// {
-			// 	break;
-			// }
+			RecordState(currentK);
+			if (hasLimit && currentK >= maxK)
+			{
+				break;
+			}
 
-			// currentK += BigInteger.One;
+			currentK += BigInteger.One;
 			divisor += step;
 			kRem8 = (kRem8 + 1) & 7;
 		}
@@ -4798,7 +4796,6 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			bool decided = BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, prime, out divides);
 		#endif
 		// BitContradictionSolverWithQMultiplier.SetDebugEnabled(false);
-		// bool decided = BitContradictionSolverBaseline.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, exponent, out divides, out var reason);
 		if (decided && divides)
 		{
 			// Verify to avoid false positives on structurally admissible but non-dividing q.
@@ -4817,19 +4814,19 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 #if DETAILED_LOG
 			if (reason == ContradictionReason.ParityUnreachable)
 			{
-				// var failure = BitContradictionSolverWithQMultiplier.LastTopDownFailure;
-				// if (failure.HasValue)
-				// {
-				// 	var info = failure.Value;
-				// 	Console.WriteLine($"[bit-contradiction] top-down prune failed at column={info.Column} carry=[{info.CarryMin},{info.CarryMax}] unknown={info.Unknown}");
-				// }
+				var failure = BitContradictionSolverWithQMultiplier.LastTopDownFailure;
+				if (failure.HasValue)
+				{
+					var info = failure.Value;
+					Console.WriteLine($"[bit-contradiction] top-down prune failed at column={info.Column} carry=[{info.CarryMin},{info.CarryMax}] unknown={info.Unknown}");
+				}
 
-				// var bottomUp = BitContradictionSolverWithQMultiplier.LastBottomUpFailure;
-				// if (bottomUp.HasValue)
-				// {
-				// 	var info = bottomUp.Value;
-				// 	Console.WriteLine($"[bit-contradiction] bottom-up failed at column={info.Column} carry=[{info.CarryMin},{info.CarryMax}] forced={info.Forced} unknown={info.Unknown}");
-				// }
+				var bottomUp = BitContradictionSolverWithQMultiplier.LastBottomUpFailure;
+				if (bottomUp.HasValue)
+				{
+					var info = bottomUp.Value;
+					Console.WriteLine($"[bit-contradiction] bottom-up failed at column={info.Column} carry=[{info.CarryMin},{info.CarryMax}] forced={info.Forced} unknown={info.Unknown}");
+				}
 			}
 #endif
 
