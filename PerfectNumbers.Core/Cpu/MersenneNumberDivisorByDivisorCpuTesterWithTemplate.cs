@@ -4631,7 +4631,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			}
 			else
 			{
-				var printToConsole = (_consolePrintOut++) == 10_000;
+				var printToConsole = (_consolePrintOut++) == 1;
 				if (printToConsole)
 				{
 					// sw.Stop();
