@@ -65,6 +65,7 @@ public sealed class KStateRepository : IDisposable
         string valueString = k.ToString(CultureInfo.InvariantCulture);
         session.Upsert(keyString, valueString);
         session.CompletePending(true);
+		_store.Log.FlushAndEvict(wait: true);
     }
 
     public bool TryGet(ulong prime, out BigInteger value)
