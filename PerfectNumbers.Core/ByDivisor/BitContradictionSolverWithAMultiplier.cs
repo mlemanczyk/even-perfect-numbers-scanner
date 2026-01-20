@@ -1067,6 +1067,7 @@ internal static class BitContradictionSolverWithAMultiplier
 	private static void GetQPrefixMask(int startColumn, int qBitLen, int qWordCount, out int words, out ulong lastMask)
 	{
 		// We want only offsets t <= startColumn.
+		// start column is inclusive for maxT
 		if (startColumn >= qBitLen - 1)
 		{
 			words = qWordCount;
@@ -1074,19 +1075,18 @@ internal static class BitContradictionSolverWithAMultiplier
 			return;
 		}
 
-		int maxT = startColumn; // inclusive
-		if (maxT < 0)
+		if (startColumn < 0)
 		{
 			words = 0;
 			lastMask = 0;
 			return;
 		}
 
-		int lastWord = maxT >> 6;
-		words = lastWord + 1;
+		qBitLen = startColumn >> 6;
+		words = qBitLen + 1;
 
-		int bit = maxT & 63;
-		lastMask = bit == 63 ? ulong.MaxValue : ((1UL << (bit + 1)) - 1UL);
+		qWordCount = startColumn & 63;
+		lastMask = qWordCount == 63 ? ulong.MaxValue : ((1UL << (qWordCount + 1)) - 1UL);
 	}
 
 	private static void ComputeARangeFromTopConstraints(
@@ -1214,8 +1214,8 @@ internal static class BitContradictionSolverWithAMultiplier
 
 	private static int PowMod2(ulong exp, int mod)
 	{
-		long result = 1 % mod;
-		long baseVal = 2 % mod;
+		long result = 1;
+		long baseVal = 2;
 		ulong value = exp;
 		while (value > 0)
 		{
@@ -1935,14 +1935,16 @@ internal static class BitContradictionSolverWithAMultiplier
 		int[][] cache = _stableUnknownDelta8ByUnknown!;
 
 		// Ensure capacity for this "unknown".
-		int cacheLength = cache.Length;
+		int cacheLength = cache.Length,
+			parity;
+
 		if ((uint)unknown >= (uint)cacheLength)
 		{
-			// Grow to at least unknown+1, doubling for amortized O(1).
-			int newLen = cacheLength;
-			while (newLen <= unknown) newLen <<= 1;
+			// Grow to at least unknown+1, doubling for amortized O(1). parity means newLength here - we're reusing variable to limit registry pressure.
+			parity = cacheLength;
+			while (parity <= unknown) parity <<= 1;
 
-			var newCache = new int[newLen][];
+			var newCache = new int[parity][];
 			Array.Copy(cache, newCache, cacheLength);
 
 			// Publish the grown cache (racy publish is OK; contents are immutable after creation).
@@ -1971,7 +1973,7 @@ internal static class BitContradictionSolverWithAMultiplier
 			// 16 iterations correspond to processing 16 columns at once. It was slower with: 32, 128, 1024 and rolled.
 			for (int i = 0; i < ColumnsAtOnce; i += 4)
 			{
-				int parity = (int)(value & 1L);
+				parity = (int)(value & 1L);
 				int sMax = (((unknown ^ parity) & 1) != 0) ? unknown : (unknown - 1);
 				value = (value + sMax - 1) >> 1;
 
@@ -2182,32 +2184,36 @@ internal static class BitContradictionSolverWithAMultiplier
 		int aIndex,
 		int segmentBase,
 		int windowSize,
-		ulong[] knownOne0,
-		ulong[] knownZero0,
-		ulong[] knownOne1,
-		ulong[] knownZero1)
+		in ulong[] knownOne0,
+		in ulong[] knownZero0,
+		in ulong[] knownOne1,
+		in ulong[] knownZero1)
 	{
 		// 0 unknown, 1 one, 2 zero
 		if (aIndex < 0) return 2;
+		int rel, w;
+		ulong m;
 		if (aIndex >= segmentBase && aIndex < segmentBase + windowSize)
 		{
-			int rel = aIndex - segmentBase;
-			int w = rel >> 6;
-			ulong m = 1UL << (rel & 63);
+			rel = aIndex - segmentBase;
+			w = rel >> 6;
+			m = 1UL << (rel & 63);
 			if ((knownOne0[w] & m) != 0) return 1;
 			if ((knownZero0[w] & m) != 0) return 2;
 			return 0;
 		}
-		int seg1Start = segmentBase - windowSize;
-		if (aIndex >= seg1Start && aIndex < segmentBase)
+		
+		w = segmentBase - windowSize;
+		if (aIndex >= w && aIndex < segmentBase)
 		{
-			int rel = aIndex - seg1Start;
-			int w = rel >> 6;
-			ulong m = 1UL << (rel & 63);
+			rel = aIndex - w;
+			w = rel >> 6;
+			m = 1UL << (rel & 63);
 			if ((knownOne1[w] & m) != 0) return 1;
 			if ((knownZero1[w] & m) != 0) return 2;
 			return 0;
 		}
+
 		return 0;
 	}
 
@@ -2664,7 +2670,7 @@ internal static class BitContradictionSolverWithAMultiplier
 			int forced = 0;
 			remaining = 0;
 			int chosenIndex = -1;
-			bool topChanged = false;
+			// bool topChanged = false;
 			bound = (startColumn / windowSize) * windowSize;
 			if (bound != segmentBase)
 			{
@@ -2883,7 +2889,7 @@ internal static class BitContradictionSolverWithAMultiplier
 							}
 
 							top0KnownOne = true;
-							topChanged = true;
+							// topChanged = true;
 						}
 						else if (chosenIndex == topIndex1)
 						{
@@ -2896,7 +2902,7 @@ internal static class BitContradictionSolverWithAMultiplier
 							}
 
 							top1KnownOne = true;
-							topChanged = true;
+							// topChanged = true;
 						}
 					}
 				}
@@ -2940,17 +2946,17 @@ internal static class BitContradictionSolverWithAMultiplier
 				}
 			}
 
-			if (topChanged)
-			{
-				var qHash = ComputeQOffsetsHash(qOneOffsets);
-				if (!TryDynamicModularRangePrune(qOneOffsets, qHash, prime, maxAllowedA, top0KnownOne, top0KnownZero, top1KnownOne, top1KnownZero, zeroTailStart))
-				{
-#if DETAILED_LOG
-					reason = ContradictionReason.ParityUnreachable;
-#endif
-					return false;
-				}
-			}
+// 			if (topChanged)
+// 			{
+// 				var qHash = ComputeQOffsetsHash(qOneOffsets);
+// 				if (!TryDynamicModularRangePrune(qOneOffsets, qHash, prime, maxAllowedA, top0KnownOne, top0KnownZero, top1KnownOne, top1KnownZero, zeroTailStart))
+// 				{
+// #if DETAILED_LOG
+// 					reason = ContradictionReason.ParityUnreachable;
+// #endif
+// 					return false;
+// 				}
+// 			}
 
 			if ((top0KnownZero && top0KnownOne) || (top1KnownZero && top1KnownOne))
 			{
