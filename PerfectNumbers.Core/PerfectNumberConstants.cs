@@ -20,8 +20,8 @@ public static class PerfectNumberConstants
 	public const int PooledArrayThreshold = 64;
 	public const int Pow2WindowSize = 8;
 	public const int RollingAccelerators = 298;
-	public const int ThreadsByAccelerator = 4;
-	public const int ByDivisorStateSaveInterval = 200_000;
+	public const int ThreadsByAccelerator = 1;
+	public const int ByDivisorStateSaveInterval = 100_000;
 	public const string ByDivisorStateDirectory = "Checks";
 	public const int PollardRhoMilliseconds = 100;
 	public const int ByDivisorMersenneTailCount = 8;
