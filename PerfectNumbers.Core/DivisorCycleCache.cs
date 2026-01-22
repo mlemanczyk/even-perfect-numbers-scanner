@@ -33,12 +33,20 @@ public sealed class DivisorCycleCache
 
 	private DivisorCycleCache(int divisorCyclesBatchSize)
 	{
+		bool useGpu = EnvironmentConfiguration.MersenneDevice == ComputationDevice.Hybrid ||
+					  EnvironmentConfiguration.MersenneDevice == ComputationDevice.Gpu ||
+					  !EnvironmentConfiguration.UseCpuOrder;
+
 		_divisorCyclesBatchSize = Math.Max(1, divisorCyclesBatchSize);
-		var acceleratorIndex = AcceleratorPool.Shared.Rent();
-		_acceleratorIndex = acceleratorIndex;
-		Accelerator accelerator = AcceleratorPool.Shared.Accelerators[acceleratorIndex];
-		_accelerator = accelerator;
-		_gpuKernel = LoadKernel(accelerator);
+		if (useGpu)
+		{
+			var acceleratorIndex = AcceleratorPool.Shared.Rent();
+			_acceleratorIndex = acceleratorIndex;
+			Accelerator accelerator = AcceleratorPool.Shared.Accelerators[acceleratorIndex];
+			_accelerator = accelerator;
+			_gpuKernel = LoadKernel(accelerator);			
+		}
+
 		_snapshot = MersenneDivisorCyclesCpu.Shared.ExportSmallCyclesSnapshot();
 	}
 

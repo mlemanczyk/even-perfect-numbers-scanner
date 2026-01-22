@@ -118,10 +118,18 @@ private static ThreadLocal<object>? MersenneTesters;
 		EnvironmentConfiguration.MinK = _cliArguments.MinK;
 		EnvironmentConfiguration.GpuBatchSize = Math.Max(1, _cliArguments.ScanBatchSize);
 		EnvironmentConfiguration.GpuRatio = _cliArguments.GpuRatio;
+		EnvironmentConfiguration.MersenneDevice = _cliArguments.MersenneDevice;
 		EnvironmentConfiguration.OrderDevice = _cliArguments.OrderDevice;
 		EnvironmentConfiguration.UsePow2GroupDivisors = _cliArguments.ByDivisorKIncrementMode == ByDivisorKIncrementMode.Pow2Groups;
 		EnvironmentConfiguration.ByDivisorSpecialRange = _cliArguments.ByDivisorSpecialRange;
-		EnvironmentConfiguration.RollingAccelerators = Math.Min(Math.Min(PerfectNumberConstants.RollingAccelerators, gpuPrimeThreads), threadCount);
+
+		bool useGpu = _cliArguments.OrderDevice == ComputationDevice.Hybrid || _cliArguments.OrderDevice == ComputationDevice.Gpu ||
+				_cliArguments.MersenneDevice == ComputationDevice.Hybrid || _cliArguments.MersenneDevice == ComputationDevice.Gpu;
+
+		EnvironmentConfiguration.RollingAccelerators = useGpu 
+			? Math.Min(Math.Min(PerfectNumberConstants.RollingAccelerators, gpuPrimeThreads), threadCount)
+			: 0;
+
 		EnvironmentConfiguration.Initialize();
 
 			// NttGpuMath.GpuTransformBackend = _cliArguments.NttBackend;
@@ -137,8 +145,12 @@ private static ThreadLocal<object>? MersenneTesters;
 			UnboundedTaskScheduler.ConfigureThreadCount(threadCount);
 			PrimeTester.GpuBatchSize = gpuPrimeBatch;
 			GpuPrimeWorkLimiter.SetLimit(gpuPrimeThreads);
-			Console.WriteLine("Warming up GPU kernels");
-			PrimeTester.WarmUpGpuKernels(EnvironmentConfiguration.RollingAccelerators);
+			if (useGpu)
+			{
+				Console.WriteLine("Warming up GPU kernels");
+				PrimeTester.WarmUpGpuKernels(EnvironmentConfiguration.RollingAccelerators);
+			}
+
 			// PrimeTester.WarmUpGpuKernels(gpuPrimeThreads >> 4);
 			Console.WriteLine("Starting up threads...");
 			_ = UnboundedTaskScheduler.Instance;

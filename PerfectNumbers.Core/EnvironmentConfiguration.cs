@@ -11,6 +11,7 @@ public static class EnvironmentConfiguration
 	public static ulong DivisorLimit = ulong.MaxValue;
 	public static int GpuBatchSize = GpuConstants.ScanBatchSize;
 	public static int GpuRatio = PerfectNumberConstants.GpuRatio;
+	public static ComputationDevice MersenneDevice = ComputationDevice.Cpu;
 	public static BigInteger MinK = BigInteger.One;
 	public static ComputationDevice OrderDevice = ComputationDevice.Cpu;
 	public static int RollingAccelerators = PerfectNumberConstants.RollingAccelerators;
