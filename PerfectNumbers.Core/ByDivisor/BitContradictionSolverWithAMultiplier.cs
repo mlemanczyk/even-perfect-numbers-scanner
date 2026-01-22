@@ -1113,8 +1113,8 @@ internal static class BitContradictionSolverWithAMultiplier
 			return;
 		}
 
-		int shift = zeroTailStart + 1 > int.MaxValue ? int.MaxValue : (int)(zeroTailStart + 1);
-		maxA = (BigInteger.One << shift) - BigInteger.One;
+		int shift = zeroTailStart + 1L > int.MaxValue ? int.MaxValue : (int)(zeroTailStart + 1L);
+		maxA = Pow2Provider.BigIntegerMinusOne(shift);
 		minA = BigInteger.Zero;
 
 		if (zeroTailStart == maxAllowedA)
@@ -1122,15 +1122,15 @@ internal static class BitContradictionSolverWithAMultiplier
 			if (top0KnownOne)
 			{
 				shift = maxAllowedA > int.MaxValue ? int.MaxValue : (int)maxAllowedA;
-				minA = BigInteger.One << shift;
 			}
-			else if (top0KnownZero && top1KnownOne && maxAllowedA - 1 >= 0)
+			else if (top0KnownZero && top1KnownOne && maxAllowedA - 1L >= 0)
 			{
 				// zeroTailStart is index from here. We're reusing the variable to limit registry pressure.
-				zeroTailStart = maxAllowedA - 1;
+				zeroTailStart = maxAllowedA - 1L;
 				shift = zeroTailStart > int.MaxValue ? int.MaxValue : (int)zeroTailStart;
-				minA = BigInteger.One << shift;
 			}
+			
+			minA = Pow2Provider.BigInteger(shift);
 		}
 	}
 
@@ -1400,7 +1400,7 @@ internal static class BitContradictionSolverWithAMultiplier
 		// This is a necessary condition for q | (2^p - 1) when p >= 1024 (true here).
 		const int ForcedBits = ForcedALowBits;
 
-		BigInteger mask = (BigInteger.One << ForcedBits) - BigInteger.One;
+		BigInteger mask = Pow2Provider.BigIntegerMinusOne(ForcedBits);
 
 		// Build q (low 1024 bits) from qOneOffsets. q is small anyway, but do it generically.
 		BigInteger qMod2k = BigInteger.Zero;
@@ -1408,7 +1408,7 @@ internal static class BitContradictionSolverWithAMultiplier
 		{
 			int bit = qOneOffsets[i];
 			if (bit >= ForcedBits) break;
-			qMod2k |= (BigInteger.One << bit);
+			qMod2k |= Pow2Provider.BigInteger(bit);
 		}
 
 		// q must be odd for any Mersenne divisor candidate.
