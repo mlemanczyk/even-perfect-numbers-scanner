@@ -2639,36 +2639,66 @@ public static class MersenneNumberDivisorByDivisorTester
 			partitionSize = totalCount;
 		}
 
-		if (workerCount <= 1 || totalCount <= partitionSize)
+		if (workerCount == 1)
 		{
+			DeterministicRandomCpu.Initialize();
 			var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitContradictionDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
-			for (int i = 0; i < totalCount; i++)
+			foreach (ulong prime in filteredPrimes)
 			{
-				session.ProcessPrime(filteredPrimes[i]);
+				session.ProcessPrime(prime);
 			}
 
+			session.Dispose();
 			return;
 		}
 
-		var options = new ParallelOptions
-		{
-			MaxDegreeOfParallelism = workerCount,
-		};
+		TaskScheduler scheduler = UnboundedTaskScheduler.Instance;
+		int nextIndex = 0;
+		Task[] tasks = new Task[workerCount];
+		var startGate = new ManualResetEventSlim(initialState: false);
 
-		Parallel.For(
-			0,
-			(int)Math.Ceiling((double)totalCount / partitionSize),
-			options,
-			new Action<int>(partitionIndex =>
-			{
-				int startIndex = partitionIndex * partitionSize;
-				int count = Math.Min(partitionSize, totalCount - startIndex);
-				var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitContradictionDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
-				for (int i = 0; i < count; i++)
+		for (int taskIndex = 0; taskIndex < workerCount; taskIndex++)
+		{
+			int workerIndex = taskIndex;
+			tasks[taskIndex] = Task.Factory.StartNew(
+				() =>
 				{
-					session.ProcessPrime(filteredPrimes[startIndex + i]);
-				}
-			}));
+					DeterministicRandomCpu.Initialize();
+					var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitContradictionDivisorSetForGpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+					startGate.Wait();
+					Console.WriteLine($"Task started for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+
+					while (true)
+					{
+						int start = Interlocked.Add(ref nextIndex, partitionSize) - partitionSize;
+						if (start >= totalCount)
+						{
+							break;
+						}
+
+						int end = start + partitionSize;
+						if (end > totalCount)
+						{
+							end = totalCount;
+						}
+
+						for (int index = start; index < end; index++)
+						{
+							session.ProcessPrime(filteredPrimes[index]);
+						}
+					}
+
+					session.Dispose();
+					Console.WriteLine($"Task finished for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+				},
+				CancellationToken.None,
+				TaskCreationOptions.DenyChildAttach,
+				scheduler);
+		}
+
+		startGate.Set();
+		Task.WaitAll(tasks);
+		startGate.Dispose();
 	}
 
 	private static void RunBitTreeCpuOrderFiltered(
@@ -2831,36 +2861,66 @@ public static class MersenneNumberDivisorByDivisorTester
 			partitionSize = totalCount;
 		}
 
-		if (workerCount <= 1 || totalCount <= partitionSize)
+		if (workerCount == 1)
 		{
+			DeterministicRandomCpu.Initialize();
 			var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitContradictionDivisorSetForHybridOrder(prototypeCopy, markComposite, clearComposite, printResult);
-			for (int i = 0; i < totalCount; i++)
+			foreach (ulong prime in filteredPrimes)
 			{
-				session.ProcessPrime(filteredPrimes[i]);
+				session.ProcessPrime(prime);
 			}
 
+			session.Dispose();
 			return;
 		}
 
-		var options = new ParallelOptions
-		{
-			MaxDegreeOfParallelism = workerCount,
-		};
+		TaskScheduler scheduler = UnboundedTaskScheduler.Instance;
+		int nextIndex = 0;
+		Task[] tasks = new Task[workerCount];
+		var startGate = new ManualResetEventSlim(initialState: false);
 
-		Parallel.For(
-			0,
-			(int)Math.Ceiling((double)totalCount / partitionSize),
-			options,
-			new Action<int>(partitionIndex =>
-			{
-				int startIndex = partitionIndex * partitionSize;
-				int count = Math.Min(partitionSize, totalCount - startIndex);
-				var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitContradictionDivisorSetForHybridOrder(prototypeCopy, markComposite, clearComposite, printResult);
-				for (int i = 0; i < count; i++)
+		for (int taskIndex = 0; taskIndex < workerCount; taskIndex++)
+		{
+			int workerIndex = taskIndex;
+			tasks[taskIndex] = Task.Factory.StartNew(
+				() =>
 				{
-					session.ProcessPrime(filteredPrimes[startIndex + i]);
-				}
-			}));
+					DeterministicRandomCpu.Initialize();
+					var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitContradictionDivisorSetForHybridOrder(prototypeCopy, markComposite, clearComposite, printResult);
+					startGate.Wait();
+					Console.WriteLine($"Task started for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+
+					while (true)
+					{
+						int start = Interlocked.Add(ref nextIndex, partitionSize) - partitionSize;
+						if (start >= totalCount)
+						{
+							break;
+						}
+
+						int end = start + partitionSize;
+						if (end > totalCount)
+						{
+							end = totalCount;
+						}
+
+						for (int index = start; index < end; index++)
+						{
+							session.ProcessPrime(filteredPrimes[index]);
+						}
+					}
+
+					session.Dispose();
+					Console.WriteLine($"Task finished for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+				},
+				CancellationToken.None,
+				TaskCreationOptions.DenyChildAttach,
+				scheduler);
+		}
+
+		startGate.Set();
+		Task.WaitAll(tasks);
+		startGate.Dispose();
 	}
 
 	private static void RunBitContradictionCpuOrderFiltered(
@@ -2879,36 +2939,66 @@ public static class MersenneNumberDivisorByDivisorTester
 			partitionSize = totalCount;
 		}
 
-		if (workerCount <= 1 || totalCount <= partitionSize)
+		if (workerCount == 1)
 		{
+			DeterministicRandomCpu.Initialize();
 			var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitContradictionDivisorSetForCpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
-			for (int i = 0; i < totalCount; i++)
+			foreach (ulong prime in filteredPrimes)
 			{
-				session.ProcessPrime(filteredPrimes[i]);
+				session.ProcessPrime(prime);
 			}
 
+			session.Dispose();
 			return;
 		}
 
-		var options = new ParallelOptions
-		{
-			MaxDegreeOfParallelism = workerCount,
-		};
+		TaskScheduler scheduler = UnboundedTaskScheduler.Instance;
+		int nextIndex = 0;
+		Task[] tasks = new Task[workerCount];
+		var startGate = new ManualResetEventSlim(initialState: false);
 
-		Parallel.For(
-			0,
-			(int)Math.Ceiling((double)totalCount / partitionSize),
-			options,
-			new Action<int>(partitionIndex =>
-			{
-				int startIndex = partitionIndex * partitionSize;
-				int count = Math.Min(partitionSize, totalCount - startIndex);
-				var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitContradictionDivisorSetForCpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
-				for (int i = 0; i < count; i++)
+		for (int taskIndex = 0; taskIndex < workerCount; taskIndex++)
+		{
+			int workerIndex = taskIndex;
+			tasks[taskIndex] = Task.Factory.StartNew(
+				() =>
 				{
-					session.ProcessPrime(filteredPrimes[startIndex + i]);
-				}
-			}));
+					DeterministicRandomCpu.Initialize();
+					var session = new Cpu.MersenneNumberDivisorByDivisorPrimeScanSessionWithForBitContradictionDivisorSetForCpuOrder(prototypeCopy, markComposite, clearComposite, printResult);
+					startGate.Wait();
+					Console.WriteLine($"Task started for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+
+					while (true)
+					{
+						int start = Interlocked.Add(ref nextIndex, partitionSize) - partitionSize;
+						if (start >= totalCount)
+						{
+							break;
+						}
+
+						int end = start + partitionSize;
+						if (end > totalCount)
+						{
+							end = totalCount;
+						}
+
+						for (int index = start; index < end; index++)
+						{
+							session.ProcessPrime(filteredPrimes[index]);
+						}
+					}
+
+					session.Dispose();
+					Console.WriteLine($"Task finished for worker {workerIndex.ToString(CultureInfo.InvariantCulture)}");
+				},
+				CancellationToken.None,
+				TaskCreationOptions.DenyChildAttach,
+				scheduler);
+		}
+
+		startGate.Set();
+		Task.WaitAll(tasks);
+		startGate.Dispose();
 	}
 
 	private static void RunHybridOrderFilteredPow2(
