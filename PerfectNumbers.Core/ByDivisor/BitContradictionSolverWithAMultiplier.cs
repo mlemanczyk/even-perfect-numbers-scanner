@@ -208,7 +208,7 @@ internal static class BitContradictionSolverWithAMultiplier
 			ulong q = qMask[i];
 			ulong one = oneWin[i];
 			ulong known = one | zeroWin[i];
-	
+
 			one &= q;
 			ulong unknownBits = q & ~known;
 
@@ -581,8 +581,7 @@ internal static class BitContradictionSolverWithAMultiplier
 
 			int upperT = column <= 0 ? 0 : column;
 
-			int left = LowerBound(qOneOffsets, lowerT);
-			int right = UpperBound(qOneOffsets, upperT);
+			FindBounds(qOneOffsets, lowerT, upperT, out int left, out int right);
 			int n = right - left;
 			if (n < 0) return false;
 
@@ -705,14 +704,17 @@ internal static class BitContradictionSolverWithAMultiplier
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static int LowerBound(ReadOnlySpan<int> values, int target)
+	private static void FindBounds(ReadOnlySpan<int> values, int lowerTarget, int upperTarget, out int lower, out int upper)
 	{
+		// Find lower bound for lowerTarget
 		int lo = 0;
-		int hi = values.Length;
+		int valuesLength = values.Length;
+		int hi = valuesLength;
+		int mid;
 		while (lo < hi)
 		{
-			int mid = lo + ((hi - lo) >> 1);
-			if (values[mid] < target)
+			mid = lo + ((hi - lo) >> 1);
+			if (values[mid] < lowerTarget)
 			{
 				lo = mid + 1;
 			}
@@ -721,18 +723,17 @@ internal static class BitContradictionSolverWithAMultiplier
 				hi = mid;
 			}
 		}
-		return lo;
-	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static int UpperBound(ReadOnlySpan<int> values, int target)
-	{
-		int lo = 0;
-		int hi = values.Length;
+		lower = lo;
+
+		// Find upper bound for upperTarget, starting from the lower bound's result.
+		// Since upperTarget >= lowerTarget is assumed, we can start the search for the upper bound
+		// from the position of the lower bound, effectively reducing the search space.
+		hi = valuesLength;
 		while (lo < hi)
 		{
-			int mid = lo + ((hi - lo) >> 1);
-			if (values[mid] <= target)
+			mid = lo + ((hi - lo) >> 1);
+			if (values[mid] <= upperTarget)
 			{
 				lo = mid + 1;
 			}
@@ -741,7 +742,8 @@ internal static class BitContradictionSolverWithAMultiplier
 				hi = mid;
 			}
 		}
-		return lo;
+
+		upper = lo;
 	}
 
 	/// <summary>
@@ -842,8 +844,7 @@ internal static class BitContradictionSolverWithAMultiplier
 				column <= 0 ? 0 :
 				(column >= int.MaxValue ? int.MaxValue : (int)column);
 
-			int left = LowerBound(qOneOffsets, lowerT);
-			int right = UpperBound(qOneOffsets, upperT);
+			FindBounds(qOneOffsets, lowerT, upperT, out int left, out int right);
 			int n = right - left;
 
 			if (n < 0)
@@ -972,31 +973,31 @@ internal static class BitContradictionSolverWithAMultiplier
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void ComputeForcedRemainingAndClean_Prefix(
-		ulong[] qMask, ulong[] oneWin, ulong[] zeroWin,
+		in ulong[] qMask, in ulong[] oneWin, in ulong[] zeroWin,
 		int words, ulong lastMask,
-		out int forced, out int remaining, out bool clean)
+		out int forced, out int remaining)
 	{
 		forced = 0;
 		remaining = 0;
-		clean = true;
 
+		int wordsMinusOne = words - 1;
 		for (int i = 0; i < words; i++)
 		{
-			ulong q = qMask[i];
-			if (i == words - 1) q &= lastMask;
+			ulong unknownBits = qMask[i];
+			if (i == wordsMinusOne) unknownBits &= lastMask;
 
 			ulong one = oneWin[i];
 			ulong known = one | zeroWin[i];
 
-			ulong forcedBits = q & one;
-			ulong unknownBits = q & ~known;
+			// one is forcedBits here. We're reusing variable to limit registry pressure.
+			one &= unknownBits;
+			unknownBits &= ~known;
 
-			forced += BitOperations.PopCount(forcedBits);
+			forced += BitOperations.PopCount(one);
 			remaining += BitOperations.PopCount(unknownBits);
-
-			if ((q & known) != 0) clean = false;
 		}
 	}
+
 	private static int ComputeQMod(ReadOnlySpan<int> qOneOffsets, int mod)
 	{
 		int count = qOneOffsets.Length;
@@ -1094,41 +1095,41 @@ internal static class BitContradictionSolverWithAMultiplier
 		bool top0KnownOne,
 		bool top0KnownZero,
 		bool top1KnownOne,
-		bool top1KnownZero,
 		long zeroTailStart,
 		out BigInteger minA,
 		out BigInteger maxA)
 	{
 		_dynamicModChecks++;
-		long effectiveTop = maxAllowedA;
-		if (zeroTailStart <= effectiveTop + 1)
+		if (zeroTailStart <= maxAllowedA + 1)
 		{
-			effectiveTop = zeroTailStart - 1;
+			zeroTailStart--;
 		}
 
-		if (effectiveTop < 0)
+		// zeroTailStart is effectiveTop from here. We're reusing variable to limit registry pressure.
+		if (zeroTailStart < 0)
 		{
 			minA = BigInteger.Zero;
 			maxA = BigInteger.Zero;
 			return;
 		}
 
-		int shift = effectiveTop + 1 > int.MaxValue ? int.MaxValue : (int)(effectiveTop + 1);
+		int shift = zeroTailStart + 1 > int.MaxValue ? int.MaxValue : (int)(zeroTailStart + 1);
 		maxA = (BigInteger.One << shift) - BigInteger.One;
 		minA = BigInteger.Zero;
 
-		if (effectiveTop == maxAllowedA)
+		if (zeroTailStart == maxAllowedA)
 		{
 			if (top0KnownOne)
 			{
-				int minShift = maxAllowedA > int.MaxValue ? int.MaxValue : (int)maxAllowedA;
-				minA = BigInteger.One << minShift;
+				shift = maxAllowedA > int.MaxValue ? int.MaxValue : (int)maxAllowedA;
+				minA = BigInteger.One << shift;
 			}
 			else if (top0KnownZero && top1KnownOne && maxAllowedA - 1 >= 0)
 			{
-				long index = maxAllowedA - 1;
-				int minShift = index > int.MaxValue ? int.MaxValue : (int)index;
-				minA = BigInteger.One << minShift;
+				// zeroTailStart is index from here. We're reusing the variable to limit registry pressure.
+				zeroTailStart = maxAllowedA - 1;
+				shift = zeroTailStart > int.MaxValue ? int.MaxValue : (int)zeroTailStart;
+				minA = BigInteger.One << shift;
 			}
 		}
 	}
@@ -1154,7 +1155,6 @@ internal static class BitContradictionSolverWithAMultiplier
 		bool top0KnownOne,
 		bool top0KnownZero,
 		bool top1KnownOne,
-		bool top1KnownZero,
 		long zeroTailStart)
 	{
 		_dynamicModChecks++;
@@ -1174,7 +1174,6 @@ internal static class BitContradictionSolverWithAMultiplier
 			top0KnownOne,
 			top0KnownZero,
 			top1KnownOne,
-			top1KnownZero,
 			zeroTailStart,
 			out BigInteger minA,
 			out BigInteger maxA);
@@ -1666,7 +1665,7 @@ internal static class BitContradictionSolverWithAMultiplier
 #if DETAILED_LOG
 			if (!TryTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA, out _lastTopDownFailure))
 #else
-						if (!TryTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
+			if (!TryTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
 #endif
 			{
 #if DETAILED_LOG
@@ -1798,20 +1797,20 @@ internal static class BitContradictionSolverWithAMultiplier
 				lowColumn, blockSize,
 				ref carryLow, ref maxKnownA, ref segmentBase,
 				ref knownOne0, ref knownOne1, ref knownZero0, ref knownZero1,
-				windowSize, aOneWin, aZeroWin, ref windowColumn,
+				windowSize, wordCount, aOneWin, aZeroWin, ref windowColumn,
 				out reason))
 #else
-				if (!TryProcessBottomUpBlockRowAware(
-					qOneOffsets, qMaskWords, qWordCount, lastWordMask, maxAllowedA,
-					lowColumn, blockSize,
-					ref carryLow, ref maxKnownA, ref segmentBase,
-					ref knownOne0, ref knownOne1, ref knownZero0, ref knownZero1,
-					windowSize, aOneWin, aZeroWin, ref windowColumn))
+			if (!TryProcessBottomUpBlockRowAware(
+				qOneOffsets, qMaskWords, qWordCount, lastWordMask, maxAllowedA,
+				lowColumn, blockSize,
+				ref carryLow, ref maxKnownA, ref segmentBase,
+				ref knownOne0, ref knownOne1, ref knownZero0, ref knownZero1,
+				windowSize, wordCount, aOneWin, aZeroWin, ref windowColumn))
 #endif
 			{
-				#if DETAILED_LOG
+#if DETAILED_LOG
 					PrintStats();
-				#endif
+#endif
 
 				return true;
 			}
@@ -2073,17 +2072,19 @@ internal static class BitContradictionSolverWithAMultiplier
 		int[] delta = GetStableUnknownDelta(unknown);
 
 		const long CarryDecimalMask = (1L << ColumnsAtOnce) - 1L;
+		int carryMask;
 		while (remaining >= ColumnsAtOnce)
 		{
-			int low = (int)(carryMax & CarryDecimalMask);
-			carryMax = (carryMax + delta[low]) >> ColumnsAtOnce;
+			carryMask = (int)(carryMax & CarryDecimalMask);
+			carryMax = (carryMax + delta[carryMask]) >> ColumnsAtOnce;
 			remaining -= ColumnsAtOnce;
 		}
 
 		while (remaining > 0)
 		{
-			int sMax = (((unknown ^ (int)carryMax) & 1) != 0) ? unknown : unknown - 1;
-			carryMax = (carryMax + sMax - 1) >> 1;
+			// carryMask is sMax here. We're reusing variable to limit registry pressure.
+			carryMask = (((unknown ^ (int)carryMax) & 1) != 0) ? unknown : unknown - 1;
+			carryMax = (carryMax + carryMask - 1) >> 1;
 			remaining--;
 		}
 
@@ -2108,21 +2109,28 @@ internal static class BitContradictionSolverWithAMultiplier
 	// Row-aware bottom-up block processing
 	// -----------------------------
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static void ShiftLeft1InPlace(ulong[] words, int wordCount, ulong lastWordMask)
+	private static void ShiftLeft1InPlace(ulong[] wordsOne, ulong[] wordsZero, int wordCount, ulong lastWordMask)
 	{
-		ulong carry = 0;
-		for (int i = 0; i < wordCount; i++)
-		{
-			ulong w = words[i];
-			ulong newCarry = w >> 63;
-			words[i] = (w << 1) | carry;
-			carry = newCarry;
-		}
-
 		if (wordCount > 0)
 		{
-			words[wordCount - 1] &= lastWordMask;
-		}
+			ulong carryOne = 0,
+				  carryZero = 0;
+
+			for (int i = 0; i < wordCount; i++)
+			{
+				ulong w = wordsOne[i];
+				wordsOne[i] = (w << 1) | carryOne;
+				carryOne = w >> 63;
+
+				w = wordsZero[i];
+				wordsZero[i] = (w << 1) | carryZero;
+				carryZero = w >> 63;
+			}
+			
+			wordCount--;
+			wordsOne[wordCount] &= lastWordMask;
+			wordsZero[wordCount] &= lastWordMask;
+		}		
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -2202,7 +2210,7 @@ internal static class BitContradictionSolverWithAMultiplier
 			if ((knownZero0[w] & m) != 0) return 2;
 			return 0;
 		}
-		
+
 		w = segmentBase - windowSize;
 		if (aIndex >= w && aIndex < segmentBase)
 		{
@@ -2229,23 +2237,28 @@ internal static class BitContradictionSolverWithAMultiplier
 		ulong[] knownZero1)
 	{
 		if (aIndex < 0) return;
+
+		int rel, w;
+		ulong m;
 		if (aIndex >= segmentBase && aIndex < segmentBase + windowSize)
 		{
-			int rel = aIndex - segmentBase;
-			int w = rel >> 6;
-			ulong m = 1UL << (rel & 63);
+			rel = aIndex - segmentBase;
+			w = rel >> 6;
+			m = 1UL << (rel & 63);
 			if (valueOne)
 				knownOne0[w] |= m;
 			else
 				knownZero0[w] |= m;
 			return;
 		}
-		int seg1Start = segmentBase - windowSize;
-		if (aIndex >= seg1Start && aIndex < segmentBase)
+
+		// windowSize is seg1Start here. We're reusing the variable to limit registry pressure.
+		windowSize = segmentBase - windowSize;
+		if (aIndex >= windowSize && aIndex < segmentBase)
 		{
-			int rel = aIndex - seg1Start;
-			int w = rel >> 6;
-			ulong m = 1UL << (rel & 63);
+			rel = aIndex - windowSize;
+			w = rel >> 6;
+			m = 1UL << (rel & 63);
 			if (valueOne)
 				knownOne1[w] |= m;
 			else
@@ -2255,7 +2268,7 @@ internal static class BitContradictionSolverWithAMultiplier
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static bool TryFindSingleUnknownInQ_Prefix(
-		ulong[] qMask, ulong[] oneWin, ulong[] zeroWin,
+		in ulong[] qMask, in ulong[] oneWin, in ulong[] zeroWin,
 		int words, ulong lastMask,
 		out int offset)
 	{
@@ -2267,15 +2280,14 @@ internal static class BitContradictionSolverWithAMultiplier
 			ulong q = qMask[w];
 			if (w == words - 1) q &= lastMask;
 
-			ulong known = oneWin[w] | zeroWin[w];
-			ulong unk = q & ~known;
-			if (unk == 0) continue;
+			ulong unknown = oneWin[w] | zeroWin[w];
+			unknown = q & ~unknown;
+			if (unknown == 0) continue;
 
-			int pc = BitOperations.PopCount(unk);
-			found += pc;
+			found += BitOperations.PopCount(unknown);
 			if (found > 1) return false;
 
-			int bit = BitOperations.TrailingZeroCount(unk);
+			int bit = BitOperations.TrailingZeroCount(unknown);
 			offset = (w << 6) + bit;
 		}
 
@@ -2285,7 +2297,7 @@ internal static class BitContradictionSolverWithAMultiplier
 #if DETAILED_LOG
 	private static bool TryProcessBottomUpBlockRowAware(
 		ReadOnlySpan<int> qOneOffsets,
-		ulong[] qMaskWords,
+		in ulong[] qMaskWords,
 		int qWordCount,
 		ulong lastWordMask,
 		int maxAllowedA,
@@ -2299,6 +2311,7 @@ internal static class BitContradictionSolverWithAMultiplier
 		ref ulong[] knownZero0,
 		ref ulong[] knownZero1,
 		int windowSize,
+		int wordCount,
 		ulong[] aOneWin,
 		ulong[] aZeroWin,
 		ref int windowColumn,
@@ -2306,7 +2319,7 @@ internal static class BitContradictionSolverWithAMultiplier
 #else
 	private static bool TryProcessBottomUpBlockRowAware(
 		ReadOnlySpan<int> qOneOffsets,
-		ulong[] qMaskWords,
+		in ulong[] qMaskWords,
 		int qWordCount,
 		ulong lastWordMask,
 		int maxAllowedA,
@@ -2320,6 +2333,7 @@ internal static class BitContradictionSolverWithAMultiplier
 		ref ulong[] knownZero0,
 		ref ulong[] knownZero1,
 		int windowSize,
+		int wordCount,
 		ulong[] aOneWin,
 		ulong[] aZeroWin,
 		ref int windowColumn)
@@ -2328,18 +2342,19 @@ internal static class BitContradictionSolverWithAMultiplier
 		bool needRebuildWindow = false;
 		int endColumn = startColumn + columnCount;
 		int qOneOffsetsLength = qOneOffsets.Length;
-		int maxOffset = qOneOffsets[qOneOffsetsLength - 1];
+		int maxOffset = qOneOffsets[qOneOffsetsLength - 1];		
 		int stableUnknown = qOneOffsetsLength;
 		ulong[] temp;
 
 		// Ensure window is aligned.
 		ArgumentOutOfRangeException.ThrowIfNotEqual(windowColumn, startColumn);
 
+		int maxOffsetPlusOne = maxOffset + 1;
+		int qWordCountMinusOne = qWordCount - 1;
 		while (startColumn < endColumn)
 		{
 			// Segment rollover based on current column (because we may set aIndex within [startColumn-maxOffset..startColumn]).
 			int bound = (startColumn / windowSize) * windowSize;
-			if (startColumn == 0 && segmentBase != 0) throw new Exception("segmentBase must start at 0 for row-aware");
 
 			if (bound != segmentBase)
 			{
@@ -2347,15 +2362,15 @@ internal static class BitContradictionSolverWithAMultiplier
 				{
 					temp = knownOne0; knownOne0 = knownOne1; knownOne1 = temp;
 					temp = knownZero0; knownZero0 = knownZero1; knownZero1 = temp;
-					Array.Clear(knownOne0);
-					Array.Clear(knownZero0);
+					Array.Clear(knownOne0, 0, wordCount);
+					Array.Clear(knownZero0, 0, wordCount);
 				}
 				else
 				{
-					Array.Clear(knownOne0);
-					Array.Clear(knownOne1);
-					Array.Clear(knownZero0);
-					Array.Clear(knownZero1);
+					Array.Clear(knownOne0, 0, wordCount);
+					Array.Clear(knownOne1, 0, wordCount);
+					Array.Clear(knownZero0, 0, wordCount);
+					Array.Clear(knownZero1, 0, wordCount);
 					// Also clear window because it may reference bits outside cache.
 					needRebuildWindow = true;
 				}
@@ -2363,23 +2378,36 @@ internal static class BitContradictionSolverWithAMultiplier
 				segmentBase = bound;
 				if (needRebuildWindow)
 				{
-					Array.Clear(aOneWin);
-					Array.Clear(aZeroWin);
+					Array.Clear(aOneWin, 0, qWordCount);
+					Array.Clear(aZeroWin, 0, qWordCount);
 
 					// Build window for current startColumn: bit t corresponds to a_{startColumn - t}
 					for (int t = 0; t <= maxOffset; t++)
 					{
 						int aIndex = startColumn - t;
-						int st = aIndex < 0 ? 2 :
-								 (aIndex > maxAllowedA ? 2 :
-								  GetAKnownStateRowAware(aIndex, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1));
+						int st = aIndex < 0 || aIndex > maxAllowedA
+							? 2
+							: GetAKnownStateRowAware(aIndex, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
 
-						if (st == 1) aOneWin[t >> 6] |= 1UL << (t & 63);
-						else if (st == 2) aZeroWin[t >> 6] |= 1UL << (t & 63);
+						if (st == 1)
+						{
+							aOneWin[t >> 6] |= 1UL << (t & 63);
+						}
+						else if (st == 2)
+						{
+							aZeroWin[t >> 6] |= 1UL << (t & 63);
+						}
 					}
 
-					if (qWordCount > 0) aOneWin[qWordCount - 1] &= lastWordMask;
-					if (qWordCount > 0) aZeroWin[qWordCount - 1] &= lastWordMask;
+					if (qWordCount > 0)
+					{
+						aOneWin[qWordCountMinusOne] &= lastWordMask;
+					}
+
+					if (qWordCount > 0)
+					{
+						aZeroWin[qWordCountMinusOne] &= lastWordMask;
+					}
 
 					needRebuildWindow = false;
 				}
@@ -2389,15 +2417,18 @@ internal static class BitContradictionSolverWithAMultiplier
 			ulong qLastEff = lastWordMask;
 			if (startColumn < maxOffset)
 			{
-				GetQPrefixMask(startColumn, maxOffset + 1, qWordCount, out qWordsEff, out ulong prefixLast);
-				qLastEff = prefixLast;
+				GetQPrefixMask(startColumn, maxOffsetPlusOne, qWordCount, out qWordsEff, out qLastEff);
 			}
 
 			// StableUnknown batching is valid only if the window contains no known bits in the q-active positions.
 			if (startColumn >= maxOffset && startColumn <= maxAllowedA)
 			{
 				int remainingCols = endColumn - 1;
-				if (remainingCols > maxAllowedA) remainingCols = maxAllowedA;
+				if (remainingCols > maxAllowedA)
+				{
+					remainingCols = maxAllowedA;
+				}
+
 				remainingCols = remainingCols - startColumn + 1;
 				if (remainingCols > 0)
 				{
@@ -2409,14 +2440,13 @@ internal static class BitContradictionSolverWithAMultiplier
 					_statBatchCols += remainingCols;
 #endif
 
-					int rem = remainingCols;
-					while (rem > 0)
+					while (remainingCols > 0)
 					{
-						int step = rem > TailCarryBatchColumns ? TailCarryBatchColumns : rem;
+						int step = remainingCols > TailCarryBatchColumns ? TailCarryBatchColumns : remainingCols;
 #if DETAILED_LOG
 						if (!TryAdvanceStableUnknown(ref carry, stableUnknown, step, out var propagateReason))
 #else
-							if (!TryAdvanceStableUnknown(ref carry, stableUnknown, step))
+						if (!TryAdvanceStableUnknown(ref carry, stableUnknown, step))
 #endif
 						{
 #if DETAILED_LOG
@@ -2427,12 +2457,12 @@ internal static class BitContradictionSolverWithAMultiplier
 
 						startColumn += step;
 						windowColumn = startColumn;
-						rem -= step;
+						remainingCols -= step;
 					}
 
 					// Reset window to unknown (no known bits) because we skipped updating it across columns.
-					Array.Clear(aOneWin);
-					Array.Clear(aZeroWin);
+					Array.Clear(aOneWin, 0, qWordCount);
+					Array.Clear(aZeroWin, 0, qWordCount);
 
 					continue;
 				}
@@ -2451,7 +2481,7 @@ internal static class BitContradictionSolverWithAMultiplier
 			// 	if (qWordCount > 0) aZeroWin[qWordCount - 1] &= lastWordMask;
 			// }
 
-			ComputeForcedRemainingAndClean_Prefix(qMaskWords, aOneWin, aZeroWin, qWordsEff, qLastEff, out int forced, out int remaining, out _);
+			ComputeForcedRemainingAndClean_Prefix(qMaskWords, aOneWin, aZeroWin, qWordsEff, qLastEff, out int forced, out int remaining);
 
 			// If exactly one unknown contribution among q=1 positions AND carry parity is fixed,
 			// we can force the corresponding a bit to satisfy the required result bit parity.
@@ -2469,6 +2499,7 @@ internal static class BitContradictionSolverWithAMultiplier
 					int x = (requiredBit ^ carryParity ^ (forced & 1)) & 1;
 					bool needOne = x != 0;
 
+					int w, b;
 					// Check contradiction with already-known value.
 					int state = GetAKnownStateRowAware(aIndex, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
 					if (needOne)
@@ -2484,9 +2515,9 @@ internal static class BitContradictionSolverWithAMultiplier
 						SetAKnownRowAware(aIndex, true, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
 
 						// Reflect in window at offset t
-						int w = t >> 6; int b = t & 63;
+						w = t >> 6;
+						b = t & 63;
 						aOneWin[w] |= 1UL << b;
-
 						forced += 1;
 					}
 					else
@@ -2501,12 +2532,16 @@ internal static class BitContradictionSolverWithAMultiplier
 
 						SetAKnownRowAware(aIndex, false, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
 
-						int w = t >> 6; int b = t & 63;
+						w = t >> 6;
+						b = t & 63;
 						aZeroWin[w] |= 1UL << b;
 					}
 
 					remaining = 0;
-					if (aIndex > maxKnownA) maxKnownA = aIndex;
+					if (aIndex > maxKnownA)
+					{
+						maxKnownA = aIndex;
+					}
 				}
 			}
 
@@ -2522,20 +2557,27 @@ internal static class BitContradictionSolverWithAMultiplier
 
 			// Advance to next column: shift window, then insert status of a_{startColumn+1} into bit0.
 			int nextA = startColumn + 1;
-			ShiftLeft1InPlace(aOneWin, qWordCount, lastWordMask);
-			ShiftLeft1InPlace(aZeroWin, qWordCount, lastWordMask);
+			ShiftLeft1InPlace(aOneWin, aZeroWin, qWordCount, lastWordMask);
 
 			// Insert bit0 for nextA
 			int nextState;
 			if (nextA > maxAllowedA)
+			{
 				nextState = 2;
+			}
 			else
+			{
 				nextState = GetAKnownStateRowAware(nextA, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
+			}
 
 			if (nextState == 1)
+			{
 				aOneWin[0] |= 1UL;
+			}
 			else if (nextState == 2)
+			{
 				aZeroWin[0] |= 1UL;
+			}
 
 			startColumn++;
 			windowColumn = startColumn;
@@ -2609,7 +2651,7 @@ internal static class BitContradictionSolverWithAMultiplier
 #if DETAILED_LOG
 						if (!TryAdvanceStableUnknown(ref carry, stableUnknown, TailCarryBatchColumns, out var propagateReason))
 #else
-							if (!TryAdvanceStableUnknown(ref carry, stableUnknown, TailCarryBatchColumns))
+						if (!TryAdvanceStableUnknown(ref carry, stableUnknown, TailCarryBatchColumns))
 #endif
 						{
 #if DETAILED_LOG
@@ -2627,7 +2669,7 @@ internal static class BitContradictionSolverWithAMultiplier
 #if DETAILED_LOG
 						if (!TryAdvanceStableUnknown(ref carry, stableUnknown, remaining, out var propagateReason))
 #else
-							if (!TryAdvanceStableUnknown(ref carry, stableUnknown, remaining))
+						if (!TryAdvanceStableUnknown(ref carry, stableUnknown, remaining))
 #endif
 						{
 #if DETAILED_LOG
@@ -2928,7 +2970,6 @@ internal static class BitContradictionSolverWithAMultiplier
 						}
 
 						top0KnownZero = true;
-						UpdateZeroTailFromTop(ref zeroTailStart, topIndex0, topIndex1, top0KnownZero, top1KnownZero);
 					}
 					else if (chosenIndex == topIndex1)
 					{
@@ -2941,18 +2982,19 @@ internal static class BitContradictionSolverWithAMultiplier
 						}
 
 						top1KnownZero = true;
-						UpdateZeroTailFromTop(ref zeroTailStart, topIndex0, topIndex1, top0KnownZero, top1KnownZero);
 					}
+
+					UpdateZeroTailFromTop(ref zeroTailStart, topIndex0, topIndex1, top0KnownZero, top1KnownZero);
 				}
 			}
 
 // 			if (topChanged)
 // 			{
 // 				var qHash = ComputeQOffsetsHash(qOneOffsets);
-// 				if (!TryDynamicModularRangePrune(qOneOffsets, qHash, prime, maxAllowedA, top0KnownOne, top0KnownZero, top1KnownOne, top1KnownZero, zeroTailStart))
+// 				if (!TryDynamicModularRangePrune(qOneOffsets, qHash, prime, maxAllowedA, top0KnownOne, top0KnownZero, top1KnownOne, zeroTailStart))
 // 				{
 // #if DETAILED_LOG
-// 					reason = ContradictionReason.ParityUnreachable;
+// 								reason = ContradictionReason.ParityUnreachable;
 // #endif
 // 					return false;
 // 				}
@@ -3429,10 +3471,8 @@ internal static class BitContradictionSolverWithAMultiplier
 			start = 0;
 		}
 
-		int lower = LowerBound(qOneOffsets, (int)start);
-		int upper = UpperBound(qOneOffsets, (int)column);
-		int unknownTop = upper - lower;
-		return unknownTop >= TopDownBorrowMinUnknown;
+		FindBounds(qOneOffsets, (int)start, (int)column, out int lower, out int upper);
+		return upper - lower >= TopDownBorrowMinUnknown;
 	}
 
 	private static bool AdvanceTopDownUnknown1(ref long carryOutMin, ref long carryOutMax, int steps)
@@ -3486,30 +3526,32 @@ internal static class BitContradictionSolverWithAMultiplier
 			return 0;
 		}
 
-		int end = start + length - 1;
+		length += start - 1;
 		int firstWord = start >> 6;
-		int lastWord = end >> 6;
-		int startBit = start & 63;
-		int endBit = end & 63;
+		int lastWord = length >> 6;
+		start &= 63;
+		length &= 63;
+		ulong mask;
 
 		if (firstWord == lastWord)
 		{
-			ulong mask = (endBit == 63 ? ulong.MaxValue : ((1UL << (endBit + 1)) - 1UL)) & (ulong.MaxValue << startBit);
+			mask = (length == 63 ? ulong.MaxValue : ((1UL << (length + 1)) - 1UL)) & (ulong.MaxValue << start);
 			return BitOperations.PopCount(bits[firstWord] & mask);
 		}
 
-		int count = 0;
-		ulong firstMask = ulong.MaxValue << startBit;
-		count += BitOperations.PopCount(bits[firstWord] & firstMask);
+		mask = ulong.MaxValue << start;
+		// start is count from here. We're reusing the variable to limit registry pressure.
+		start = BitOperations.PopCount(bits[firstWord] & mask);
 
-		for (int word = firstWord + 1; word < lastWord; word++)
+		firstWord++;
+		for (; firstWord < lastWord; firstWord++)
 		{
-			count += BitOperations.PopCount(bits[word]);
+			start += BitOperations.PopCount(bits[firstWord]);
 		}
 
-		ulong lastMask = endBit == 63 ? ulong.MaxValue : ((1UL << (endBit + 1)) - 1UL);
-		count += BitOperations.PopCount(bits[lastWord] & lastMask);
-		return count;
+		mask = length == 63 ? ulong.MaxValue : ((1UL << (length + 1)) - 1UL);
+		start += BitOperations.PopCount(bits[lastWord] & mask);
+		return start;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
