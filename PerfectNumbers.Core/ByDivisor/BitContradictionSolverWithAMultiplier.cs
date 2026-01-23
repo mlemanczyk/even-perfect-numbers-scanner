@@ -14,11 +14,9 @@ internal sealed class PrivateWorkSet
 	public ulong[] QMaskWords = [];
 	public ulong[] AOneWin = [];
 	public ulong[] AZeroWin = [];
-	public int[] RunStarts = [];
-	public int[] RunLengths = [];
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public void EnsureCapacity(int wordCount, int qWordCount, int runCapacity)
+	public void EnsureCapacity(int wordCount, int qWordCount)
 	{
 		if (KnownOne0.Length < wordCount)
 		{
@@ -33,12 +31,6 @@ internal sealed class PrivateWorkSet
 			EnsureUlong(ref QMaskWords, qWordCount);
 			EnsureUlong(ref AOneWin, qWordCount);
 			EnsureUlong(ref AZeroWin, qWordCount);
-		}
-
-		if (RunStarts.Length < runCapacity)
-		{
-			EnsureInt(ref RunStarts, runCapacity);
-			EnsureInt(ref RunLengths, runCapacity);
 		}
 	}
 
@@ -1373,7 +1365,7 @@ internal static class BitContradictionSolverWithAMultiplier
 		windowSize = (windowSize + 63) & ~63;
 		int aWordCount = (windowSize + 63) >> 6;
 		int qWordCount = (qBitLen + 63) >> 6;
-		workSet.EnsureCapacity(aWordCount, qWordCount, runCapacity: qOneOffsetsLength);
+		workSet.EnsureCapacity(aWordCount, qWordCount);
 		ulong[] knownOne0 = workSet.KnownOne0;
 		ulong[] knownOne1 = workSet.KnownOne1;
 		ulong[] knownZero0 = workSet.KnownZero0;
@@ -1562,134 +1554,20 @@ internal static class BitContradictionSolverWithAMultiplier
 		// 	return true;
 		// }
 
-		int[] runStarts = workSet.RunStarts;
-		int[] runLengths = workSet.RunLengths;
-		// Span<int> runStarts = qOneOffsetsLength <= 256 ? stackalloc int[qOneOffsetsLength] : new int[qOneOffsetsLength];
-		// Span<int> runLengths = qOneOffsetsLength <= 256 ? stackalloc int[qOneOffsetsLength] : new int[qOneOffsetsLength];
-		// Span<int> runStarts = workSet.RunStarts;
-		// Span<int> runLengths = workSet.RunLengths;
-		int prev = qOneOffsets[0];
-		int currentStart = prev;
-		int currentLength = 1;
-		int runCount = 1;
-		runStarts[0] = currentStart;
-		runLengths[0] = currentLength;
-		// int prefixCount = qOneOffsetsLength;
-		// bool usedPrefixCache = false;
-		// long prefixHash = 0;
-
-		// if (PrefixRunCacheOffsets > 1 && qOneOffsetsLength > 1)
-		// {
-		// 	prefixCount = qOneOffsetsLength < PrefixRunCacheOffsets ? qOneOffsetsLength : PrefixRunCacheOffsets;
-		// 	prefixHash = ComputeQOffsetsPrefixHash(qOneOffsets, prefixCount);
-		// 	if (TryGetPrefixRunCache(prefixHash, out PrefixRunCacheEntry cachedPrefix) && cachedPrefix.PrefixCount == prefixCount)
-		// 	{
-		// 		cachedPrefix.RunStarts.CopyTo(runStarts);
-		// 		cachedPrefix.RunLengths.CopyTo(runLengths);
-		// 		runCount = cachedPrefix.RunCount;
-		// 		prev = cachedPrefix.LastOffset;
-		// 		currentStart = cachedPrefix.LastRunStart;
-		// 		currentLength = cachedPrefix.LastRunLength;
-		// 		usedPrefixCache = true;
-		// 	}
-		// 	else
-		// 	{
-		// 		usedPrefixCache = false;
-		// 	}
-		// }
-
-		// int startIndex = usedPrefixCache ? prefixCount : 1;
-		for (i = 1; i < qOneOffsetsLength; i++)
-		{
-			col = qOneOffsets[i];
-			if (col == prev + 1)
-			{
-				currentLength++;
-				runLengths[runCount - 1] = currentLength;
-			}
-			else
-			{
-				runStarts[runCount] = col;
-				runLengths[runCount] = 1;
-				runCount++;
-				currentStart = col;
-				currentLength = 1;
-			}
-
-			prev = col;
-		}
-
-		// if (!usedPrefixCache && prefixCount > 1)
-		// {
-		// 	PrefixRunCacheEntry prefixEntry = BuildPrefixRunCache(qOneOffsets, prefixCount);
-		// 	long key = prefixHash != 0 ? prefixHash : ComputeQOffsetsPrefixHash(qOneOffsets, prefixCount);
-		// 	StorePrefixRunCache(key, prefixEntry);
-		// }
-
 		// Ultra-cheap high-bit feasibility check based on the forced top carry-out (no bit beyond p-1).
 		// This is a tiny reverse-carry DP over the last few columns (p-1, p-2, ...), using only the
 		// geometric availability of contributions implied by qOneOffsets and maxAllowedA.
 		// It can reject entire classes of q with sparse/awkward high-bit structure before the full DP runs.
-		if (!TryHighBitTopCarryPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
+#if DETAILED_LOG
+		if (!TryRunHighBitAndBorrowPrefiltersCombined(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA, out _lastTopDownFailure))
+#else
+		if (!TryRunHighBitAndBorrowPrefiltersCombined(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
+#endif
 		{
 #if DETAILED_LOG
-			Console.WriteLine("Pruned with TryHighBitTopCarryPrefilter");
 			reason = ContradictionReason.ParityUnreachable;
 #endif
 			return true;
-		}
-
-		// 		var cacheKey = new TopDownCacheKey(qHash, qOneOffsetsLength, maxAllowedA, pLong);
-		// 		if (TryGetTopDownCache(in cacheKey, out var cached))
-		// 		{
-		// #if DETAILED_LOG
-		// 			_lastTopDownFailure = cached.Failure;
-		// 			if (!cached.Success)
-		// #else
-		// 			if (!cached)
-		// #endif
-		// 			{
-		// 				reason = ContradictionReason.ParityUnreachable;
-		// 				return true;
-		// 			}
-		// 		}
-		// 		else
-		// 		{
-		// #if DETAILED_LOG
-		// 			if (!TryTopDownCarryPrune(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA, out _lastTopDownFailure))
-		// #else
-		// 			if (!TryTopDownCarryPrune(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
-		// #endif
-		// 			{
-		// #if DETAILED_LOG
-		// 				// StoreTopDownCache(in cacheKey, new TopDownCacheValue(false, _lastTopDownFailure));
-		// #else
-		// 				// StoreTopDownCache(in cacheKey, false);
-		// #endif
-		// 				reason = ContradictionReason.ParityUnreachable;
-		// 				return true;
-		// 			}
-
-#if DETAILED_LOG
-		// StoreTopDownCache(in cacheKey, new TopDownCacheValue(true, null));
-#else
-		// StoreTopDownCache(in cacheKey, true);
-#endif
-		// }
-
-		if (ShouldRunTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
-		{
-#if DETAILED_LOG
-			if (!TryTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA, out _lastTopDownFailure))
-#else
-			if (!TryTopDownBorrowPrefilter(qOneOffsets, qOneOffsetsLength, pLong, maxAllowedA))
-#endif
-			{
-#if DETAILED_LOG
-				reason = ContradictionReason.ParityUnreachable;
-#endif
-				return true;
-			}
 		}
 
 		// Row-aware masks for q and a-window (supports q > 64 bits)
@@ -3665,5 +3543,236 @@ internal static class BitContradictionSolverWithAMultiplier
 		{
 			zeroTailStart = topIndex1;
 		}
+	}
+
+#if DETAILED_LOG
+	private static bool TryRunHighBitAndBorrowPrefiltersCombined(
+		ReadOnlySpan<int> qOneOffsets,
+		int qOneOffsetsLength,
+		int pLong,
+		int maxAllowedA,
+		out TopDownPruneFailure? failure)
+#else
+	private static bool TryRunHighBitAndBorrowPrefiltersCombined(
+		ReadOnlySpan<int> qOneOffsets,
+		int qOneOffsetsLength,
+		int pLong,
+		int maxAllowedA)
+#endif
+	{
+#if DETAILED_LOG
+		failure = null;
+#endif
+		int column = pLong - 1,
+			columnPlusOne = column + 1;
+
+		int highBitColumns = HighBitCarryPrefilterColumns;
+		if (highBitColumns > columnPlusOne)
+		{
+			highBitColumns = columnPlusOne;
+		}
+
+		int borrowColumns = 0;
+		bool runBorrowPrefilter = qOneOffsetsLength >= TopDownBorrowMinUnknown;
+		if (runBorrowPrefilter)
+		{
+			borrowColumns = TopDownBorrowColumns;
+			if (borrowColumns > columnPlusOne)
+			{
+				borrowColumns = columnPlusOne;
+			}
+		}
+
+		int sequentialColumns = highBitColumns > borrowColumns ? highBitColumns : borrowColumns;
+		// Given the above, sequentialColumns will never <= 0, because highBitColumns is always > 0.
+		// if (sequentialColumns <= 0)
+		// {
+		// 	return true;
+		// }
+
+		Span<long> lo0 = stackalloc long[64];
+		Span<long> hi0 = stackalloc long[64];
+		Span<long> lo1 = stackalloc long[64];
+		Span<long> hi1 = stackalloc long[64];
+
+		Span<long> outLo = lo0, outHi = hi0;
+		Span<long> inLo = lo1, inHi = hi1;
+
+		int outCount = 1;
+		outLo[0] = 0;
+		outHi[0] = 0;
+
+		int inCount = 0;
+		bool flip = false;
+		CarryRange borrow = CarryRange.Zero;
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		static void AddInterval(ref int count, Span<long> loArr, Span<long> hiArr, long lo, long hi)
+		{
+			if (hi < lo) return;
+
+			if (lo < 0) lo = 0;
+			if (hi < 0) return;
+
+			if (count == 0)
+			{
+				loArr[0] = lo;
+				hiArr[0] = hi;
+				count = 1;
+				return;
+			}
+
+			long lastHi = hiArr[count - 1];
+			if (lo <= lastHi + 1)
+			{
+				if (hi > lastHi)
+					hiArr[count - 1] = hi;
+				return;
+			}
+
+			if ((uint)count >= (uint)loArr.Length)
+			{
+				count = 0;
+				return;
+			}
+
+			loArr[count] = lo;
+			hiArr[count] = hi;
+			count++;
+		}
+
+		int step = 0;
+		int upperT;
+		int lowerT = column - maxAllowedA;
+		if (lowerT < 0)
+		{
+			lowerT = 0;
+		}
+
+		FindBounds(qOneOffsets, lowerT, column, out lowerT, out upperT);
+		int n = upperT - lowerT;
+		if (n < 0)
+		{
+			return false;
+		}
+
+		if (runBorrowPrefilter && n < TopDownBorrowMinUnknown)
+		{
+			runBorrowPrefilter = false;
+			if (highBitColumns < sequentialColumns)
+			{
+				sequentialColumns = highBitColumns;
+			}
+		}
+
+		while (true)
+		{
+			if (step < highBitColumns)
+			{
+				// Build carryIn set into inLo/inHi
+				inCount = 0;
+
+				for (int i = 0; i < outCount; i++)
+				{
+					long rMin = outLo[i];
+					long rMax = outHi[i];
+
+					if (rMax < 0) continue;
+					if (rMin < 0) rMin = 0;
+					if (rMax < rMin) continue;
+
+					const long TwicePlusOneOverflowLimit = (long.MaxValue - 1) >> 1;
+					if (rMin > TwicePlusOneOverflowLimit || rMax > TwicePlusOneOverflowLimit)
+					{
+						return true;
+					}
+
+					rMin = (rMin << 1) + 1;
+					rMax = (rMax << 1) + 1;
+
+					if (n <= 0)
+					{
+						AddInterval(ref inCount, inLo, inHi, rMin, rMax);
+						if (inCount == 0) return true;
+						continue;
+					}
+
+					if (n == 1)
+					{
+						AddInterval(ref inCount, inLo, inHi, rMin - 1, rMax);
+						if (inCount == 0) return true;
+						continue;
+					}
+
+					if (rMax <= n)
+					{
+						AddInterval(ref inCount, inLo, inHi, 0, rMax);
+						if (inCount == 0) return true;
+					}
+					else if (rMin > n)
+					{
+						AddInterval(ref inCount, inLo, inHi, rMin - n, rMax);
+						if (inCount == 0) return true;
+					}
+					else
+					{
+						AddInterval(ref inCount, inLo, inHi, 0, rMax);
+						if (inCount == 0) return true;
+					}
+				}
+
+				if (inCount <= 0)
+				{
+					return false;
+				}
+
+				// Swap buffers for next step.
+				outCount = inCount;
+				flip = !flip;
+				if (!flip)
+				{
+					outLo = lo0; outHi = hi0;
+					inLo = lo1; inHi = hi1;
+				}
+				else
+				{
+					outLo = lo1; outHi = hi1;
+					inLo = lo0; inHi = hi0;
+				}
+			}
+
+			if (runBorrowPrefilter && step < borrowColumns)
+			{
+				if (!TryPropagateCarry(ref borrow, 0, n, 1))
+				{
+#if DETAILED_LOG
+					failure = new TopDownPruneFailure(column, borrow.Min, borrow.Max, n);
+#endif
+					return false;
+				}
+			}
+
+			step++;
+			column--;
+			if (step >= sequentialColumns || column < 0)
+			{
+				break;
+			}
+
+			lowerT = column - maxAllowedA;
+			if (lowerT < 0)
+			{
+				lowerT = 0;
+			}
+
+			FindBounds(qOneOffsets, lowerT, column, out lowerT, out upperT);
+			n = upperT - lowerT;
+			if (n < 0)
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 }
