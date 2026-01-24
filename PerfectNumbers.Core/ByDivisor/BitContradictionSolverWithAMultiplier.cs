@@ -14,6 +14,14 @@ internal sealed class PrivateWorkSet
 	public ulong[] QMaskWords = [];
 	public ulong[] AOneWin = [];
 	public ulong[] AZeroWin = [];
+	public int[] PrevOffsets = [];
+	public int PrevOffsetsLength;
+	public bool HasPrevOffsets;
+	public BigInteger LastInvMod2k = BigInteger.Zero;
+	public bool HasLastInvMod2k;
+	public BigInteger LastPow2QMod2k = BigInteger.Zero;
+	public BigInteger LastPow2K = BigInteger.Zero;
+	public bool HasLastPow2QMod2k;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public void EnsureCapacity(int wordCount, int qWordCount)
@@ -1288,12 +1296,16 @@ internal static class BitContradictionSolverWithAMultiplier
 	internal static bool TryCheckDivisibilityFromOneOffsets(
 		ReadOnlySpan<int> qOneOffsets,
 		ulong p,
+		BigInteger k,
+		bool isPowerOfTwo,
 		out bool divides,
 		out ContradictionReason reason)
 #else
 	internal static bool TryCheckDivisibilityFromOneOffsets(
 		ReadOnlySpan<int> qOneOffsets,
 		ulong p,
+		BigInteger k,
+		bool isPowerOfTwo,
 		out bool divides)
 #endif
 	{
@@ -1397,37 +1409,84 @@ internal static class BitContradictionSolverWithAMultiplier
 		BigInteger mask = Pow2Provider.BigIntegerMinusOne(ForcedBits);
 
 		// Build q (low 1024 bits) from qOneOffsets. q is small anyway, but do it generically.
-		BigInteger qMod2k = BigInteger.Zero;
+		BigInteger qMod2k;
+		bool usedPow2Transform = false;
+		if (isPowerOfTwo && workSet.HasLastPow2QMod2k && workSet.LastPow2K != BigInteger.Zero && k == (workSet.LastPow2K << 1))
+		{
+			qMod2k = ((workSet.LastPow2QMod2k << 1) - BigInteger.One) & mask;
+			usedPow2Transform = true;
+		}
+		else
+		{
+			qMod2k = BigInteger.Zero;
+		}
+
 		int i, t;
 		for (i = 0; i < qOneOffsetsLength; i++)
 		{
 			t = qOneOffsets[i];
-			qMod2k |= Pow2Provider.BigInteger(t);
+			if (!usedPow2Transform)
+			{
+				qMod2k |= Pow2Provider.BigInteger(t);
+			}
 			qMaskWords[t >> 6] |= 1UL << (t & 63);
 		}
 
-		// q must be odd for any Mersenne divisor candidate, and we always generate odd q candidates. No need to check it.
-		// if (qMod2k.IsEven)
-		// {
-		// 	Console.WriteLine("Pruned by qMod2k.IsEven");
-		// #if DETAILED_LOG
-		//		reason = ContradictionReason.ParityUnreachable;
-		// #endif
-		// 	return true;
-		// }
-
-		// Compute inv = q^{-1} mod 2^1024 using Hensel/Newton iteration in Z/2^kZ.
-		BigInteger aLow = qMod2k; // OK seed for odd q.
-		
-		// maxKnownA stands for bits here. We're reusing the variable to limit registry pressure.
-		int maxKnownA;
-		for (maxKnownA = 1; maxKnownA < ForcedBits; maxKnownA <<= 1)
+		if (!usedPow2Transform)
 		{
-			aLow = (aLow * (BigIntegerNumbers.Two - qMod2k * aLow)) & mask;
+			qMod2k &= mask;
 		}
 
+		// Compute inv = q^{-1} mod 2^1024 using Hensel/Newton iteration in Z/2^kZ.
+		BigInteger invSeed;
+		int maxKnownA;
+		if (workSet.HasLastInvMod2k)
+		{
+			invSeed = workSet.LastInvMod2k;
+			for (int iter = 0; iter < 2; iter++)
+			{
+				invSeed = (invSeed * (BigIntegerNumbers.Two - qMod2k * invSeed)) & mask;
+			}
+
+			if (((qMod2k * invSeed) & mask) != BigInteger.One)
+			{
+				invSeed = qMod2k;
+				for (maxKnownA = 1; maxKnownA < ForcedBits; maxKnownA <<= 1)
+				{
+					invSeed = (invSeed * (BigIntegerNumbers.Two - qMod2k * invSeed)) & mask;
+				}
+			}
+		}
+		else
+		{
+			invSeed = qMod2k;
+			for (maxKnownA = 1; maxKnownA < ForcedBits; maxKnownA <<= 1)
+			{
+				invSeed = (invSeed * (BigIntegerNumbers.Two - qMod2k * invSeed)) & mask;
+			}
+		}
+
+		BigInteger aLow = (-invSeed) & mask;
+
+		if (isPowerOfTwo)
+		{
+			workSet.LastPow2QMod2k = qMod2k;
+			workSet.LastPow2K = k;
+			workSet.HasLastPow2QMod2k = true;
+		}
+
+		workSet.LastInvMod2k = invSeed;
+		workSet.HasLastInvMod2k = true;
+		if (workSet.PrevOffsets.Length < qOneOffsetsLength)
+		{
+			Array.Resize(ref workSet.PrevOffsets, qOneOffsetsLength);
+		}
+		qOneOffsets.CopyTo(workSet.PrevOffsets);
+		workSet.PrevOffsetsLength = qOneOffsetsLength;
+		workSet.HasPrevOffsets = true;
+
 		// a ≡ -aLow (mod 2^512)
-		aLow = (-aLow) & mask;
+
 
 		// Apply constraints for bits i in [0..min(511, maxAllowedA)] into knownOne0/knownZero0.
 		// NOTE: now windowSize >= 512, so wordCount is enough to store these bits.
@@ -1731,7 +1790,13 @@ internal static class BitContradictionSolverWithAMultiplier
 	internal static bool TryCheckDivisibilityFromOneOffsets(
 		ReadOnlySpan<int> qOneOffsets,
 		ulong p,
-		out bool divides) => TryCheckDivisibilityFromOneOffsets(qOneOffsets, p, out divides, out _);
+		out bool divides) => TryCheckDivisibilityFromOneOffsets(qOneOffsets, p, BigInteger.Zero, false, out divides, out _);
+#endif
+#if !DETAILED_LOG
+	internal static bool TryCheckDivisibilityFromOneOffsets(
+		ReadOnlySpan<int> qOneOffsets,
+		ulong p,
+		out bool divides) => TryCheckDivisibilityFromOneOffsets(qOneOffsets, p, BigInteger.Zero, false, out divides);
 #endif
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -1409,7 +1409,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				computedCycle = prime;
 			// }
 
-			decided = TryExactBitTreeCheck(computedCycle, divisor, out divides);
+			decided = TryExactBitTreeCheck(computedCycle, divisor, currentK, out divides);
 			if (!decided)
 			{
 				throw new InvalidOperationException($"BitTree check did not decide for p={prime}, divisor={divisor} (k={currentK}).");
@@ -1437,7 +1437,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private bool TryExactBitTreeCheck(ulong exponent, BigInteger divisor, out bool divides)
+	private bool TryExactBitTreeCheck(ulong exponent, BigInteger divisor, BigInteger currentK, out bool divides)
 	{
 #if DETAILED_LOG
 		Stopwatch sw = Stopwatch.StartNew();
@@ -4617,7 +4617,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 
 			sw.Reset();
 			sw.Start();
-			bool decided = TryExactBitContradictionCheck(prime, divisor, out divides);
+			bool decided = TryExactBitContradictionCheck(prime, divisor, currentK, out divides);
 			sw.Stop();
 			if (!decided)
 			{
@@ -4711,9 +4711,17 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 
 	[ThreadStatic]
 	private static int[]? _qBits;
+	[ThreadStatic]
+	private static int[]? _pow2Offsets;
+	[ThreadStatic]
+	private static int _pow2OffsetCount;
+	[ThreadStatic]
+	private static BigInteger _pow2K;
+	[ThreadStatic]
+	private static bool _hasPow2K;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static bool TryExactBitContradictionCheck(ulong prime, BigInteger divisor, out bool divides)
+	private static bool TryExactBitContradictionCheck(ulong prime, BigInteger divisor, BigInteger currentK, out bool divides)
 	{
 		divides = false;
 		// const ulong DebugTopDownDivisor = 1209708008767UL;
@@ -4774,12 +4782,50 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		int[] oneOffsets = _qBits!;
 		// Span<int> oneOffsets = stackalloc int[qBitLength];
 		int oneCount = 0;
-		for (int i = 0; i < qBitLength; i++)
+		bool isPowerOfTwo = currentK.IsPowerOfTwo;
+		bool usedPow2Offsets = false;
+		int[]? pow2Offsets = _pow2Offsets;
+		int pow2OffsetCount = _pow2OffsetCount;
+		BigInteger pow2K = _pow2K;
+		bool hasPow2K = _hasPow2K;
+		if (isPowerOfTwo && hasPow2K && pow2Offsets != null && pow2OffsetCount > 0 && currentK == (pow2K << 1))
 		{
-			if (((divisor >> i) & BigInteger.One) == BigInteger.One)
+			int needed = pow2OffsetCount + 1;
+			if (needed <= oneOffsets.Length)
 			{
-				oneOffsets[oneCount++] = i;
+				oneOffsets[0] = 0;
+				for (int i = 0; i < pow2OffsetCount; i++)
+				{
+					oneOffsets[i + 1] = pow2Offsets[i] + 1;
+				}
+				oneCount = needed;
+				usedPow2Offsets = true;
 			}
+		}
+
+		if (!usedPow2Offsets)
+		{
+			for (int i = 0; i < qBitLength; i++)
+			{
+				if (((divisor >> i) & BigInteger.One) == BigInteger.One)
+				{
+					oneOffsets[oneCount++] = i;
+				}
+			}
+		}
+
+		if (isPowerOfTwo)
+		{
+			int[]? pow2OffsetsTarget = _pow2Offsets;
+			if (pow2OffsetsTarget == null || pow2OffsetsTarget.Length < oneCount)
+			{
+				pow2OffsetsTarget = new int[oneCount];
+				_pow2Offsets = pow2OffsetsTarget;
+			}
+			Array.Copy(oneOffsets, pow2OffsetsTarget, oneCount);
+			_pow2OffsetCount = oneCount;
+			_pow2K = currentK;
+			_hasPow2K = true;
 		}
 
 		if (oneCount == 0)
@@ -4791,9 +4837,9 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		ReadOnlySpan<int> oneOffsetsSlice = oneOffsets[..oneCount];
 		// BitContradictionSolverWithQMultiplier.SetDebugEnabled(true);
 		#if DETAILED_LOG
-			bool decided = BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, prime, out divides, out var reason);
+			bool decided = BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, prime, currentK, isPowerOfTwo, out divides, out var reason);
 		#else
-			bool decided = BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, prime, out divides);
+			bool decided = BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, prime, currentK, isPowerOfTwo, out divides);
 		#endif
 		// BitContradictionSolverWithQMultiplier.SetDebugEnabled(false);
 		if (decided && divides)
