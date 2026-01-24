@@ -17,13 +17,14 @@ internal sealed class PrivateWorkSet
 	public int[] PrevOffsets = [];
 	public int PrevOffsetsLength;
 	public bool HasPrevOffsets;
-	public BigInteger LastInvMod2k = BigInteger.Zero;
-	public bool HasLastInvMod2k;
 	public BigInteger[] InvByKMod = [];
 	public bool[] HasInvByKMod = [];
-	public BigInteger LastPow2QMod2k = BigInteger.Zero;
+	public bool HasLastInvMod2k;
+	public BigInteger LastInvMod2k = BigInteger.Zero;
 	public BigInteger LastPow2K = BigInteger.Zero;
+	public BigInteger LastPow2QMod2k = BigInteger.Zero;
 	public bool HasLastPow2QMod2k;
+	public byte[] QMod2kBytes = [];
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public void EnsureCapacity(int wordCount, int qWordCount)
@@ -47,6 +48,10 @@ internal sealed class PrivateWorkSet
 		{
 			InvByKMod = new BigInteger[1024];
 			HasInvByKMod = new bool[1024];
+		}
+		if (QMod2kBytes.Length != 128)
+		{
+			QMod2kBytes = new byte[128];
 		}
 	}
 
@@ -78,6 +83,21 @@ internal static class BitContradictionSolverWithAMultiplier
 	private const int MiniPingPongPrefilterColumns = 60;
 
 	private static readonly int[] ModLocalPrefilterModuli = { 65537, 65521 };
+	private static readonly ulong[] BitMask64 = CreateBitMask64();
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static ulong[] CreateBitMask64()
+	{
+		ulong[] masks = new ulong[64];
+		ulong value = 1UL;
+		for (int i = 0; i < 64; i++)
+		{
+			masks[i] = value;
+			value <<= 1;
+		}
+		return masks;
+	}
+
 
 #if DETAILED_LOG
 	[ThreadStatic] private static long _statStableAdvanceCalls;
@@ -1413,10 +1433,7 @@ internal static class BitContradictionSolverWithAMultiplier
 		// This is a necessary condition for q | (2^p - 1) when p >= 1024 (true here).
 		const int ForcedBits = ForcedALowBits;
 		const int ForcedBitsMinusOne = ForcedALowBits - 1;
-
 		BigInteger mask = Pow2Provider.BigIntegerMinusOne(ForcedBits);
-
-		// Build q (low 1024 bits) from qOneOffsets. q is small anyway, but do it generically.
 		BigInteger qMod2k;
 		bool usedPow2Transform = false;
 		if (isPowerOfTwo && workSet.HasLastPow2QMod2k && workSet.LastPow2K != BigInteger.Zero && k == (workSet.LastPow2K << 1))
@@ -1429,56 +1446,83 @@ internal static class BitContradictionSolverWithAMultiplier
 			qMod2k = BigInteger.Zero;
 		}
 
+		byte[] qMod2kBytes = workSet.QMod2kBytes;
 		int i, t;
-		for (i = 0; i < qOneOffsetsLength; i++)
+		ulong[] bitMask64 = BitMask64;
+		if (usedPow2Transform)
 		{
-			t = qOneOffsets[i];
-			if (!usedPow2Transform)
+			for (i = 0; i < qOneOffsetsLength; i++)
 			{
-				qMod2k |= Pow2Provider.BigInteger(t);
+				t = qOneOffsets[i];
+				qMaskWords[t >> 6] |= bitMask64[t & 63];
 			}
-			qMaskWords[t >> 6] |= 1UL << (t & 63);
-		}
-
-		if (!usedPow2Transform)
-		{
-			qMod2k &= mask;
-		}
-
-		// Compute inv = q^{-1} mod 2^1024 using Hensel/Newton iteration in Z/2^kZ.
-		BigInteger invSeed;
-		int maxKnownA;
-		BigInteger[] invByKMod = workSet.InvByKMod;
-		bool[] hasInvByKMod = workSet.HasInvByKMod;
-		int kMod = (int)(k & 1023);
-		if (hasInvByKMod[kMod])
-		{
-			invSeed = invByKMod[kMod];
-		}
-		else if (workSet.HasLastInvMod2k)
-		{
-			invSeed = workSet.LastInvMod2k;
 		}
 		else
 		{
-			invSeed = qMod2k;
+			Array.Clear(qMod2kBytes, 0, qMod2kBytes.Length);
+			int currentByte = -1;
+			byte currentValue = 0;
+			for (i = 0; i < qOneOffsetsLength; i++)
+			{
+				t = qOneOffsets[i];
+				if (t < ForcedBits)
+				{
+					int byteIndex = t >> 3;
+					if (byteIndex != currentByte)
+					{
+						if (currentByte >= 0)
+						{
+							qMod2kBytes[currentByte] = currentValue;
+						}
+						currentByte = byteIndex;
+						currentValue = 0;
+					}
+					currentValue |= (byte)(1 << (t & 7));
+				}
+
+				qMaskWords[t >> 6] |= bitMask64[t & 63];
+			}
+			if (currentByte >= 0)
+			{
+				qMod2kBytes[currentByte] = currentValue;
+			}
+
+			qMod2k = new BigInteger(qMod2kBytes, isUnsigned: true, isBigEndian: false);
+		}
+
+		// Compute inv = q^{-1} mod 2^1024 using Hensel/Newton iteration in Z/2^kZ.
+		BigInteger[] invByKMod = workSet.InvByKMod;
+		bool[] hasInvByKMod = workSet.HasInvByKMod;
+		int kMod = (int)(k & 1023);
+		BigInteger inv;
+		if (hasInvByKMod[kMod])
+		{
+			inv = invByKMod[kMod];
+		}
+		else if (workSet.HasLastInvMod2k)
+		{
+			inv = workSet.LastInvMod2k;
+		}
+		else
+		{
+			inv = qMod2k;
 		}
 
 		for (int iter = 0; iter < 2; iter++)
 		{
-			invSeed = (invSeed * (BigIntegerNumbers.Two - qMod2k * invSeed)) & mask;
+			inv = (inv * (BigIntegerNumbers.Two - (qMod2k * inv))) & mask;
 		}
 
-		if (((qMod2k * invSeed) & mask) != BigInteger.One)
+		if (((qMod2k * inv) & mask) != BigInteger.One)
 		{
-			invSeed = qMod2k;
-			for (maxKnownA = 1; maxKnownA < ForcedBits; maxKnownA <<= 1)
+			inv = qMod2k;
+			for (int iter = 0; iter < 10; iter++)
 			{
-				invSeed = (invSeed * (BigIntegerNumbers.Two - qMod2k * invSeed)) & mask;
+				inv = (inv * (BigIntegerNumbers.Two - (qMod2k * inv))) & mask;
 			}
 		}
 
-		BigInteger aLow = (-invSeed) & mask;
+		BigInteger aLow = (-inv) & mask;
 
 		if (isPowerOfTwo)
 		{
@@ -1487,59 +1531,65 @@ internal static class BitContradictionSolverWithAMultiplier
 			workSet.HasLastPow2QMod2k = true;
 		}
 
-		workSet.LastInvMod2k = invSeed;
+		workSet.LastInvMod2k = inv;
 		workSet.HasLastInvMod2k = true;
-		invByKMod[kMod] = invSeed;
+		invByKMod[kMod] = inv;
 		hasInvByKMod[kMod] = true;
-		if (workSet.PrevOffsets.Length < qOneOffsetsLength)
-		{
-			Array.Resize(ref workSet.PrevOffsets, qOneOffsetsLength);
-		}
-		qOneOffsets.CopyTo(workSet.PrevOffsets);
-		workSet.PrevOffsetsLength = qOneOffsetsLength;
-		workSet.HasPrevOffsets = true;
-
 		// a ≡ -aLow (mod 2^512)
-
-
 		// Apply constraints for bits i in [0..min(511, maxAllowedA)] into knownOne0/knownZero0.
 		// NOTE: now windowSize >= 512, so wordCount is enough to store these bits.
+		Span<byte> aLowBytes = stackalloc byte[128];
+		if (!aLow.TryWriteBytes(aLowBytes, out int aLowBytesWritten, isUnsigned: true, isBigEndian: false))
+		{
+			aLowBytesWritten = 0;
+		}
+		int maxKnownA;
 		int maxFixed = maxAllowedA < ForcedBitsMinusOne ? maxAllowedA : ForcedBitsMinusOne;
 		int word;
-		for (i = 0; i <= maxFixed; i++)
+		if (maxFixed >= 0)
 		{
-			bool bitIsOne = !aLow.IsZero && ((aLow >> i) & BigInteger.One) != 0;
-
-			word = i >> 6;
-			ulong mask64 = 1UL << (i & 63);
-
-			if (bitIsOne)
+			int lastWord = maxFixed >> 6;
+			int lastBit = maxFixed & 63;
+			int fullWords = lastBit == 63 ? lastWord + 1 : lastWord;
+			for (int w = 0; w < fullWords; w++)
 			{
-				if ((knownZero0[word] & mask64) != 0)
+				int byteIndex = w << 3;
+				ulong wordValue = 0;
+				int limit = aLowBytesWritten - byteIndex;
+				if (limit > 0)
 				{
-#if DETAILED_LOG
-					// TODO: This doesn't kickoff. Is it necessary?
-					Console.WriteLine("Pruned by knownZero1[word] & mask64");
-					reason = ContradictionReason.ParityUnreachable;
-#endif
-					return true;
+					if (limit > 8)
+					{
+						limit = 8;
+					}
+					for (int b = 0; b < limit; b++)
+					{
+						wordValue |= (ulong)aLowBytes[byteIndex + b] << (b << 3);
+					}
 				}
-
-				knownOne0[word] |= mask64;
+				knownOne0[w] = wordValue;
+				knownZero0[w] = ~wordValue;
 			}
-			else
-			{
-				if ((knownOne0[word] & mask64) != 0)
-				{
-#if DETAILED_LOG
-					// TODO: This doesn't kickoff. Is it necessary?
-					Console.WriteLine("Pruned by knownOne1[word] & mask64");
-					reason = ContradictionReason.ParityUnreachable;
-#endif
-					return true;
-				}
 
-				knownZero0[word] |= mask64;
+			if (fullWords <= lastWord)
+			{
+				int byteIndex = lastWord << 3;
+				ulong wordValue = 0;
+				int limit = aLowBytesWritten - byteIndex;
+				if (limit > 0)
+				{
+					if (limit > 8)
+					{
+						limit = 8;
+					}
+					for (int b = 0; b < limit; b++)
+					{
+						wordValue |= (ulong)aLowBytes[byteIndex + b] << (b << 3);
+					}
+				}
+				ulong mask64 = (bitMask64[lastBit + 1]) - 1UL;
+				knownOne0[lastWord] = wordValue & mask64;
+				knownZero0[lastWord] = (~wordValue) & mask64;
 			}
 		}
 
@@ -1594,7 +1644,7 @@ internal static class BitContradictionSolverWithAMultiplier
 					int aIndex = col - t;
 					// For this prefilter we only run where aIndex is guaranteed within [0..maxFixed].
 					word = aIndex >> 6;
-					ulong m64 = 1UL << (aIndex & 63);
+					ulong m64 = bitMask64[aIndex & 63];
 					if ((knownOne0[word] & m64) != 0) forced++;
 				}
 
@@ -1644,7 +1694,7 @@ internal static class BitContradictionSolverWithAMultiplier
 		}
 
 		// Row-aware masks for q and a-window (supports q > 64 bits)
-		ulong lastWordMask = (qBitLen & 63) == 0 ? ulong.MaxValue : ((1UL << (qBitLen & 63)) - 1UL);
+		ulong lastWordMask = (qBitLen & 63) == 0 ? ulong.MaxValue : ((bitMask64[qBitLen & 63]) - 1UL);
 		// Initialize window for column 0: mark negative a indices as zero (t>0).
 		// Sliding window over a: bit t corresponds to a_{column - t}.
 		ulong[] aOneWin = workSet.AOneWin;
@@ -1673,13 +1723,13 @@ internal static class BitContradictionSolverWithAMultiplier
 		// -----------------------------
 		// Option B mini ping-pong prefilter (chunk + reseed)
 		// -----------------------------
-		// int chunk = MiniPingPongPrefilterColumns; // u Ciebie 60
-		// int maxDepth = 60;                       // ustaw tyle, ile chcesz testować (np. 960)
+		// int chunk = MiniPingPongPrefilterColumns; // Currently 60
+		// int maxDepth = 60;                       // Set it to how many you want to test (e.g. 960)
 		// if (maxDepth > highColumn) maxDepth = highColumn;
 
 		// long seedMin = 0;
 		// long seedMax = 0;
-		// int currentStartColumn = pLong - 1; // zaczynamy od samej góry (kolumna p-1)
+		// int currentStartColumn = pLong - 1; // We start from the very top (column p-1)
 
 		// for (int depth = chunk; depth <= maxDepth; depth += chunk)
 		// {
@@ -3530,7 +3580,7 @@ internal static class BitContradictionSolverWithAMultiplier
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static int CountBitsInRange(ulong[] bits, int start, int length)
+	private static int CountBitsInRange(in ulong[] bits, int start, int length)
 	{
 		if (length <= 0)
 		{
