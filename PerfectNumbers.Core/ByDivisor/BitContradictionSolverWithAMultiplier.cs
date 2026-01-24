@@ -19,6 +19,8 @@ internal sealed class PrivateWorkSet
 	public bool HasPrevOffsets;
 	public BigInteger LastInvMod2k = BigInteger.Zero;
 	public bool HasLastInvMod2k;
+	public BigInteger[] InvByKMod = [];
+	public bool[] HasInvByKMod = [];
 	public BigInteger LastPow2QMod2k = BigInteger.Zero;
 	public BigInteger LastPow2K = BigInteger.Zero;
 	public bool HasLastPow2QMod2k;
@@ -39,6 +41,12 @@ internal sealed class PrivateWorkSet
 			EnsureUlong(ref QMaskWords, qWordCount);
 			EnsureUlong(ref AOneWin, qWordCount);
 			EnsureUlong(ref AZeroWin, qWordCount);
+		}
+
+		if (InvByKMod.Length != 1024)
+		{
+			InvByKMod = new BigInteger[1024];
+			HasInvByKMod = new bool[1024];
 		}
 	}
 
@@ -1440,24 +1448,28 @@ internal static class BitContradictionSolverWithAMultiplier
 		// Compute inv = q^{-1} mod 2^1024 using Hensel/Newton iteration in Z/2^kZ.
 		BigInteger invSeed;
 		int maxKnownA;
-		if (workSet.HasLastInvMod2k)
+		BigInteger[] invByKMod = workSet.InvByKMod;
+		bool[] hasInvByKMod = workSet.HasInvByKMod;
+		int kMod = (int)(k & 1023);
+		if (hasInvByKMod[kMod])
+		{
+			invSeed = invByKMod[kMod];
+		}
+		else if (workSet.HasLastInvMod2k)
 		{
 			invSeed = workSet.LastInvMod2k;
-			for (int iter = 0; iter < 2; iter++)
-			{
-				invSeed = (invSeed * (BigIntegerNumbers.Two - qMod2k * invSeed)) & mask;
-			}
-
-			if (((qMod2k * invSeed) & mask) != BigInteger.One)
-			{
-				invSeed = qMod2k;
-				for (maxKnownA = 1; maxKnownA < ForcedBits; maxKnownA <<= 1)
-				{
-					invSeed = (invSeed * (BigIntegerNumbers.Two - qMod2k * invSeed)) & mask;
-				}
-			}
 		}
 		else
+		{
+			invSeed = qMod2k;
+		}
+
+		for (int iter = 0; iter < 2; iter++)
+		{
+			invSeed = (invSeed * (BigIntegerNumbers.Two - qMod2k * invSeed)) & mask;
+		}
+
+		if (((qMod2k * invSeed) & mask) != BigInteger.One)
 		{
 			invSeed = qMod2k;
 			for (maxKnownA = 1; maxKnownA < ForcedBits; maxKnownA <<= 1)
@@ -1477,6 +1489,8 @@ internal static class BitContradictionSolverWithAMultiplier
 
 		workSet.LastInvMod2k = invSeed;
 		workSet.HasLastInvMod2k = true;
+		invByKMod[kMod] = invSeed;
+		hasInvByKMod[kMod] = true;
 		if (workSet.PrevOffsets.Length < qOneOffsetsLength)
 		{
 			Array.Resize(ref workSet.PrevOffsets, qOneOffsetsLength);
