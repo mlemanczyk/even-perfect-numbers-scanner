@@ -1556,8 +1556,7 @@ internal static class BitContradictionSolverWithAMultiplier
 		// }
 
 		int qOneOffsetsLength = qOneOffsets.Length;
-		int maxOffset = qOneOffsets[qOneOffsetsLength - 1];
-		int qBitLen = maxOffset + 1;
+		int qBitLen = qOneOffsets[qOneOffsetsLength - 1] + 1;
 		if ((ulong)qBitLen >= p)
 		{
 #if DETAILED_LOG
@@ -1621,7 +1620,8 @@ internal static class BitContradictionSolverWithAMultiplier
 
 		byte[] qMod2kBytes = workSet.QMod2kBytes;
 		Span<ulong> qPrefix = stackalloc ulong[16];
-		int i, lastBit, t;
+		int i, lastBit, t, index, forced, word;
+		ulong wordValue;
 		ulong[] bitMask64 = BitMask64;
 		if (usedPow2Transform)
 		{
@@ -1744,16 +1744,15 @@ internal static class BitContradictionSolverWithAMultiplier
 
 		int maxKnownA;
 		int maxFixed = maxAllowedA < ForcedBitsMinusOne ? maxAllowedA : ForcedBitsMinusOne;
-		int index, forced, lastWord, word;
-		ulong wordValue;
+		// wordValue is aLow word here.
 		if (maxFixed >= 0)
 		{
-			lastWord = maxFixed >> 6;
 			lastBit = maxFixed & 63;
 			// forced is full words here. We're reusing the variable to limit registry pressure.
-			forced = lastBit == 63 ? lastWord + 1 : lastWord;
+			forced = lastBit == 63 ? (maxFixed >> 6) + 1 : (maxFixed >> 6);
 			for (word = 0; word < forced; word++)
 			{
+				// index is byteIndex here. We're reusing the variable to limit registry pressure.
 				index = word << 3;
 				wordValue = 0;
 				// t is limit here. We're reusing the variable to limit registry pressure.
@@ -1776,9 +1775,11 @@ internal static class BitContradictionSolverWithAMultiplier
 				knownZero0[word] = ~wordValue;
 			}
 
-			if (forced <= lastWord)
+			if (forced <= (maxFixed >> 6))
 			{
-				index = lastWord << 3;
+				// word is lastWord here. We're reusing the variable to limit registry pressure.
+				word = maxFixed >> 6;
+				index = word << 3;
 				wordValue = 0;
 				// t is limit here. We're reusing the variable to limit registry pressure.
 				t = aLowBytesWritten - index;
@@ -1797,8 +1798,8 @@ internal static class BitContradictionSolverWithAMultiplier
 				}
 
 				ulong mask64 = bitMask64[lastBit + 1] - 1UL;
-				knownOne0[lastWord] = wordValue & mask64;
-				knownZero0[lastWord] = (~wordValue) & mask64;
+				knownOne0[word] = wordValue & mask64;
+				knownZero0[word] = (~wordValue) & mask64;
 			}
 		}
 
@@ -1809,6 +1810,8 @@ internal static class BitContradictionSolverWithAMultiplier
 			maxKnownA = maxFixed;
 		}
 
+		CarryRange carryLow;
+
 		// ------------------------------------------------------------
 		// Cheap low-column prefilter (prefix-style):
 		// For the first N columns, all a-indices that contribute to the column are within
@@ -1817,27 +1820,27 @@ internal static class BitContradictionSolverWithAMultiplier
 		// This is significantly cheaper than entering the full row-aware window DP.
 		// ------------------------------------------------------------
 		const int PrefilterColumns = 512; // 256..512 is a good trade-off; keep <= 1024 forced bits
-		int preMax = PrefilterColumns - 1;
-		if (preMax > maxFixed)
+		// maxFixed now serves as preMax.
+		maxFixed = PrefilterColumns - 1;
+		if (maxFixed > maxKnownA)
 		{
-			preMax = maxFixed;
+			maxFixed = maxKnownA;
 		}
 
-		if (preMax > maxAllowedA)
+		if (maxFixed > maxAllowedA)
 		{
-			preMax = maxAllowedA;
+			maxFixed = maxAllowedA;
 		}
 		// Do NOT clamp to maxOffset: for columns above maxOffset the full set of q=1 positions
 		// still contributes, and aLow still fixes the corresponding a-bits.
 
 		// Only run if we have at least a few columns to check.
-		if (preMax >= 8)
+		if (maxFixed >= 8)
 		{
 			CarryRange preCarry = CarryRange.Zero;
-			ulong[] knownOne0Local = knownOne0;
 			Span<ulong> prefixMask = stackalloc ulong[16];
 			// index is column here. We're reusing the variable to limit registry pressure.
-			for (index = 0; index <= preMax; index++)
+			for (index = 0; index <= maxFixed; index++)
 			{
 				// Required result bit for M_p in columns [0..p-1] is 1.
 				const int requiredBit = 1;
@@ -1849,9 +1852,9 @@ internal static class BitContradictionSolverWithAMultiplier
 					int shift = 1023 - index;
 					int wordShift = shift >> 6;
 					int bitShift = shift & 63;
-					for (int w = 0; w < 16; w++)
+					for (word = 0; word < 16; word++)
 					{
-						int src = w + wordShift;
+						int src = word + wordShift;
 						ulong value = 0;
 						if (src < 16)
 						{
@@ -1862,13 +1865,13 @@ internal static class BitContradictionSolverWithAMultiplier
 							}
 						}
 
-						prefixMask[w] = value;
+						prefixMask[word] = value;
 					}
 
 					forced = 0;
 					for (word = 0; word < 16; word++)
 					{
-						forced += BitOperations.PopCount(knownOne0Local[word] & prefixMask[word]);
+						forced += BitOperations.PopCount(knownOne0[word] & prefixMask[word]);
 					}
 				}
 				else
@@ -1898,6 +1901,8 @@ internal static class BitContradictionSolverWithAMultiplier
 				}
 			}
 		}
+
+		// carryLow now serves as main bottom-up carry.
 
 		int topIndex0 = maxAllowedA;
 		int topIndex1 = maxAllowedA - 1;
@@ -1943,19 +1948,20 @@ internal static class BitContradictionSolverWithAMultiplier
 		int windowColumn = 0;
 
 		// Insert a_0 status into bit0
-		int st = GetAKnownStateRowAware(0, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
-		if (st == 1)
+		t = GetAKnownStateRowAware(0, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
+		if (t == 1)
 		{
 			aOneWin[0] |= 1UL;
 		}
-		else if (st == 2)
+		else if (t == 2)
 		{
 			aZeroWin[0] |= 1UL;
 		}
 
 		int lowColumn = 0;
 		int highColumn = pLong - 1;
-		CarryRange carryLow = CarryRange.Zero;
+		// carryLow now serves as main bottom-up carry.
+		carryLow = CarryRange.Zero;
 		// int bottomRunStart = 0;
 		// int bottomRunEnd = 0;
 
