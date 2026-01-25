@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using ILGPU.Runtime;
+using PerfectNumbers.Core.Gpu;
 using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
@@ -157,6 +158,45 @@ public sealed class PrimeTester
 
     private static readonly object GpuWarmUpLock = new();
     private static int WarmedGpuLeaseCount;
+    private static int WarmedBitContradictionGpuLeaseCount;
+
+    public static void WarmUpGpuKernelsForBitContradiction(int threadCount)
+    {
+        int target = threadCount;
+        if (target == 0)
+        {
+            target = threadCount;
+        }
+
+        lock (GpuWarmUpLock)
+        {
+            PrimeOrderCalculatorAccelerator.SkipOrderTablesAndKernels = true;
+
+            if (target <= WarmedBitContradictionGpuLeaseCount)
+            {
+                return;
+            }
+
+            Accelerator[] accelerators = AcceleratorPool.Shared.Accelerators;
+            int acceleratorCount = EnvironmentConfiguration.RollingAccelerators;
+            if (acceleratorCount > accelerators.Length)
+            {
+                acceleratorCount = accelerators.Length;
+            }
+            for (var i = 0; i < acceleratorCount; i++)
+            {
+                Console.WriteLine($"Preparing accelerator {i}...");
+                AcceleratorStreamPool.WarmUp(i);
+                Accelerator accelerator = accelerators[i];
+                AcceleratorStream stream = accelerator.CreateStream();
+                _ = GpuKernelPool.GetOrAddKernels(i, stream, KernelType.BitContradictionScan);
+                stream.Synchronize();
+                stream.Dispose();
+            }
+
+            WarmedBitContradictionGpuLeaseCount = target;
+        }
+    }
 
     public static void WarmUpGpuKernels(int threadCount)
     {
@@ -173,6 +213,7 @@ public sealed class PrimeTester
                 return;
             }
 
+            PrimeOrderCalculatorAccelerator.SkipOrderTablesAndKernels = false;
             PrimeOrderCalculatorAccelerator.WarmUp();
             WarmedGpuLeaseCount = target;
         }

@@ -11,7 +11,9 @@ using System.Globalization;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Buffers;
+using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu;
+using PerfectNumbers.Core.Gpu.Kernels;
 using PerfectNumbers.Core.Gpu.Accelerators;
 using PerfectNumbers.Core.ByDivisor;
 using PerfectNumbers.Core.Persistence;
@@ -58,6 +60,226 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	private GpuUInt128WorkSet _divisorScanGpuWorkSet;
 	private static readonly ConcurrentDictionary<ulong, byte> _checkedPow2MinusOne = new();
 	private ulong _currentPrime;
+
+#if DEVICE_GPU
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	private bool CheckDivisorsBitContradictionGpu(
+		ulong prime,
+		ushort primeDecimalMask,
+		BigInteger allowedMax,
+		BigInteger minK,
+		BigInteger step,
+		out bool processedAll,
+		out BigInteger foundDivisor)
+	{
+		processedAll = false;
+		foundDivisor = BigInteger.Zero;
+
+		BigInteger currentK = minK;
+		bool hasLimit = !allowedMax.IsZero;
+		BigInteger maxK = hasLimit ? (allowedMax - BigInteger.One) / step : BigInteger.Zero;
+
+		BigInteger maxQ = (BigInteger.One << BitContradictionKernels.MaxQBitLength) - BigInteger.One;
+		BigInteger maxKByBits = (maxQ - BigInteger.One) / step;
+		if (!hasLimit || maxKByBits < maxK)
+		{
+			maxK = maxKByBits;
+		}
+
+		if (maxK < currentK)
+		{
+			processedAll = hasLimit;
+			return false;
+		}
+
+		PrimeOrderCalculatorAccelerator gpu = Accelerator;
+		int maxThreadCount = PerfectNumberConstants.BitContradictionGpuThreads;
+		int batchSize = PerfectNumberConstants.BitContradictionGpuBatchCount;
+		BigInteger batchSizeBig = batchSize;
+		int wordCount = BitContradictionKernels.MaxQWordCount;
+		int inputCapacity = maxThreadCount * wordCount;
+		gpu.EnsureCapacity(PerfectNumberConstants.DefaultFactorsBuffer, inputCapacity);
+		gpu.EnsurePartialFactorCapacity(inputCapacity);
+
+		var stream = AcceleratorStreamPool.Rent(gpu.AcceleratorIndex);
+		var kernels = GpuKernelPool.GetOrAddKernels(gpu.AcceleratorIndex, stream, KernelType.BitContradictionScan);
+		var kernel = kernels.BitContradiction!;
+
+		int[] found = new int[maxThreadCount];
+		ulong[] batchIndexWords = new ulong[inputCapacity];
+
+		BigInteger currentBatch = (currentK - BigInteger.One) / batchSizeBig;
+		currentK = (currentBatch * batchSizeBig) + BigInteger.One;
+		BigInteger maxBatch = (maxK - BigInteger.One) / batchSizeBig;
+
+		while (true)
+		{
+
+			if (hasLimit && currentBatch > maxBatch)
+			{
+				processedAll = true;
+				break;
+			}
+
+			BigInteger remainingBatches = maxBatch - currentBatch + BigInteger.One;
+			if (remainingBatches <= BigInteger.Zero)
+			{
+				processedAll = hasLimit;
+				break;
+			}
+
+			int threadCount = maxThreadCount;
+			if (remainingBatches < threadCount)
+			{
+				threadCount = (int)remainingBatches;
+			}
+
+			if (currentBatch > ulong.MaxValue)
+			{
+				throw new InvalidOperationException($"BitContradiction GPU batch index overflow for p={prime}, batch={currentBatch}");
+			}
+
+			BigInteger maxBatchIndex = currentBatch + (threadCount - 1);
+			if (maxBatchIndex > ulong.MaxValue)
+			{
+				throw new InvalidOperationException($"BitContradiction GPU batch index overflow for p={prime}, batch={currentBatch}, threads={threadCount}");
+			}
+
+			int countQ = batchSize;
+
+			for (int t = 0; t < threadCount; t++)
+			{
+				BigInteger batchIndex = currentBatch + t;
+				WriteBigIntegerToWords(batchIndex, batchIndexWords.AsSpan(t * wordCount, wordCount));
+			}
+
+			gpu.InputView.CopyFromCPU(stream, batchIndexWords.AsSpan(0, threadCount * wordCount));
+			kernel(stream, threadCount, prime, gpu.InputView, countQ, gpu.OutputIntView);
+			stream.Synchronize();
+			gpu.OutputIntView.CopyToCPU(stream, found.AsSpan(0, threadCount));
+
+			for (int i = 0; i < threadCount; i++)
+			{
+				int foundIndex = found[i];
+				if (foundIndex >= 0)
+				{
+					BigInteger batchIndex = currentBatch + i;
+					BigInteger candidateK = (batchIndex * batchSizeBig) + BigInteger.One + foundIndex;
+					if (hasLimit && candidateK > maxK)
+					{
+						processedAll = true;
+						AcceleratorStreamPool.Return(gpu.AcceleratorIndex, stream);
+						return false;
+					}
+
+					BigInteger candidateQ = (step * candidateK) + BigInteger.One;
+					Span<ulong> debugQWords = stackalloc ulong[BitContradictionKernels.MaxQWordCount];
+					if (!BitContradictionKernels.TryBuildQWordsFromBatchIndex(prime, batchIndexWords.AsSpan(i * wordCount, wordCount), wordCount, foundIndex, debugQWords, out int debugQBitLen))
+					{
+						throw new InvalidOperationException($"BitContradiction GPU qWords overflow for p={prime}, k={candidateK}, batch={batchIndex}, index={foundIndex}");
+					}
+					BigInteger debugQ = ReadBigIntegerFromWords(debugQWords);
+					if (debugQ != candidateQ)
+					{
+						throw new InvalidOperationException($"BitContradiction GPU qWords mismatch for p={prime}, k={candidateK}, batch={batchIndex}, index={foundIndex}, cpuQ={candidateQ}, gpuQ={debugQ}, gpuQBits={debugQBitLen}");
+					}
+					#if DivisorSet_BitContradiction
+					int[]? qBits = _qBits;
+					if (qBits == null || qBits.Length < (int)prime)
+					{
+						qBits = new int[(int)prime];
+						_qBits = qBits;
+					}
+					bool cpuDecided = TryExactBitContradictionCheck(prime, candidateQ, candidateK, out bool cpuDivides);
+					if (!cpuDecided)
+					{
+						throw new InvalidOperationException($"BitContradiction CPU undecided for p={prime}, q={candidateQ}, k={candidateK}, batch={batchIndex}");
+					}
+					if (!cpuDivides)
+					{
+						throw new InvalidOperationException($"BitContradiction CPU/GPU mismatch for p={prime}, q={candidateQ}, k={candidateK}, batch={batchIndex}");
+					}
+					#endif
+					bool dividesExact = BigInteger.ModPow(2, prime, candidateQ) == BigInteger.One;
+					if (!dividesExact)
+					{
+						throw new InvalidOperationException($"BitContradiction CPU/GPU false positive for p={prime}, q={candidateQ}, k={candidateK}, batch={batchIndex}");
+					}
+					foundDivisor = candidateQ;
+					AcceleratorStreamPool.Return(gpu.AcceleratorIndex, stream);
+					return true;
+				}
+			}
+
+		ContinueOuter:
+			RecordState(currentK);
+			if (hasLimit && currentK > maxK)
+			{
+				processedAll = true;
+				break;
+			}
+
+			currentBatch += threadCount;
+			currentK = (currentBatch * batchSizeBig) + BigInteger.One;
+		}
+
+		AcceleratorStreamPool.Return(gpu.AcceleratorIndex, stream);
+		return false;
+	}
+
+	private static void WriteBigIntegerToWords(BigInteger value, Span<ulong> words)
+	{
+		Span<byte> bytes = stackalloc byte[BitContradictionKernels.MaxQWordCount * 8];
+		if (!value.TryWriteBytes(bytes, out int written, isUnsigned: true, isBigEndian: false))
+		{
+			written = 0;
+		}
+
+		int wordCount = words.Length;
+		for (int w = 0; w < wordCount; w++)
+		{
+			ulong word = 0UL;
+			int byteIndex = w << 3;
+			int limit = written - byteIndex;
+			if (limit > 0)
+			{
+				if (limit > 8)
+				{
+					limit = 8;
+				}
+
+				for (int b = 0; b < limit; b++)
+				{
+					word |= (ulong)bytes[byteIndex + b] << (b << 3);
+				}
+			}
+
+			words[w] = word;
+		}
+	}
+
+	private static BigInteger ReadBigIntegerFromWords(ReadOnlySpan<ulong> words)
+	{
+		Span<byte> bytes = stackalloc byte[BitContradictionKernels.MaxQWordCount * 8];
+		int wordCount = words.Length;
+		for (int w = 0; w < wordCount; w++)
+		{
+			ulong word = words[w];
+			int byteIndex = w << 3;
+			bytes[byteIndex] = (byte)word;
+			bytes[byteIndex + 1] = (byte)(word >> 8);
+			bytes[byteIndex + 2] = (byte)(word >> 16);
+			bytes[byteIndex + 3] = (byte)(word >> 24);
+			bytes[byteIndex + 4] = (byte)(word >> 32);
+			bytes[byteIndex + 5] = (byte)(word >> 40);
+			bytes[byteIndex + 6] = (byte)(word >> 48);
+			bytes[byteIndex + 7] = (byte)(word >> 56);
+		}
+
+		return new BigInteger(bytes, isUnsigned: true, isBigEndian: false);
+	}
+#endif
+
 	[ThreadStatic]
 	private static Dictionary<ulong, ulong>? _pow2DivisorPowModCache;
 #if DETAILED_LOG
@@ -578,7 +800,6 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				out processedAll,
 				out foundDivisor);
 		}
-#endif
 
 		// return CheckDivisorsLarge(
 		// 	prime,
@@ -596,6 +817,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			step,
 			out processedAll,
 			out foundDivisor);
+#endif
 	}
 
 #if DivisorSet_Pow2Groups
@@ -1421,6 +1643,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				return true;
 			}
 
+		ContinueOuter:
 			RecordState(currentK);
 
 		MOVE_NEXT:
@@ -1732,6 +1955,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	{
 		processedAll = false;
 		foundDivisor = BigInteger.Zero;
+		bool coversRange = true;
 
 		if (minK > ulong.MaxValue)
 		{
@@ -2130,7 +2354,8 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 					{
 						if (((primeDecimalMask >> remainder10) & 1) != 0)
 						{
-							RecordState(currentK);
+						ContinueOuter:
+			RecordState(currentK);
 							BigInteger powResult = BigInteger.ModPow(BigIntegerNumbers.Two, primeBig, divisor);
 							// if (powResult.IsOne && !IsMersenneValue(prime, divisor))
 							if (powResult.IsOne)
@@ -2757,7 +2982,8 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 #endif
 				}
 
-				RecordState(currentK);
+			ContinueOuter:
+			RecordState(currentK);
 				// if (divisorCycle == prime && !IsMersenneValue(prime, candidate))
 				if (divisorCycle == prime)
 				{
@@ -2877,7 +3103,8 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			if (residueStepper.IsAdmissible())
 			{
 				// Stopwatch sw = Stopwatch.StartNew();
-				RecordState(currentK);
+			ContinueOuter:
+			RecordState(currentK);
 				ulong powMod;
 				bool isPow2 = IsPowerOfTwo(currentK);
 #if DETAILED_LOG
@@ -2978,7 +3205,8 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 					byte remainder8 = rem8.ComputeNext(divisor);
 					if (remainder8 == 1 || remainder8 == 7)
 					{
-						RecordState(currentK);
+					ContinueOuter:
+			RecordState(currentK);
 						BigInteger powResult = BigInteger.ModPow(BigIntegerNumbers.Two, primeBig, divisor);
 						if (powResult.IsOne)
 						{
@@ -3677,7 +3905,8 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 					byte remainder8 = rem8.ComputeNext(divisor);
 					if (remainder8 == 1 || remainder8 == 7)
 					{
-						RecordState(currentK);
+					ContinueOuter:
+			RecordState(currentK);
 						BigInteger powResult = BigInteger.ModPow(BigIntegerNumbers.Two, primeBig, divisor);
 						// if (powResult.IsOne && !IsMersenneValue(prime, divisor))
 						if (powResult.IsOne)
@@ -4031,7 +4260,8 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 					divisorCycle = computedCycle;
 				}
 
-				RecordState(currentK);
+			ContinueOuter:
+			RecordState(currentK);
 				if (divisorCycle == prime && !IsMersenneValue(prime, divisor))
 				{
 					foundDivisor = divisor;
@@ -4585,6 +4815,10 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		out bool processedAll,
 		out BigInteger foundDivisor)
 	{
+#if DEVICE_GPU
+		return CheckDivisorsBitContradictionGpu(prime, primeDecimalMask, allowedMax, minK, step, out processedAll, out foundDivisor);
+#else
+
 		processedAll = true;
 		foundDivisor = BigInteger.Zero;
 
@@ -4643,6 +4877,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			}
 
 		MOVE_NEXT:
+		ContinueOuter:
 			RecordState(currentK);
 			if (hasLimit && currentK >= maxK)
 			{
@@ -4707,6 +4942,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		// 	step,
 		// 	out processedAll,
 		// 	out foundDivisor);
+#endif
 	}
 
 	[ThreadStatic]

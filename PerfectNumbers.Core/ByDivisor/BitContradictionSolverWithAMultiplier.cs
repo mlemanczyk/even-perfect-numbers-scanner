@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Numerics;
+using PerfectNumbers.Core;
 
 namespace PerfectNumbers.Core.ByDivisor;
 
@@ -119,6 +120,7 @@ internal sealed class PrivateWorkSet
 /// interval-based carry propagation described in the BitContradictions plan document.
 /// The solver itself will build on top of these primitives.
 /// </summary>
+[DeviceDependentTemplate(typeof(ComputationDevice))]
 internal static class BitContradictionSolverWithAMultiplier
 {
 	private const int PingPongBlockColumns = 4096;
@@ -1510,6 +1512,11 @@ internal static class BitContradictionSolverWithAMultiplier
 		out bool divides)
 #endif
 	{
+		if (!_initialized)
+		{
+			Initialize();
+		}
+
 		PrivateWorkSet workSet = _privateWorkSet;
 
 		divides = false;
@@ -2070,6 +2077,22 @@ internal static class BitContradictionSolverWithAMultiplier
 		// }
 
 		divides = true;
+		if (p <= 63 && divides)
+		{
+			ulong qLow = BuildQLow64(qOneOffsets);
+			if ((qLow & 1UL) == 0UL)
+			{
+				divides = false;
+			}
+			else
+			{
+				BigInteger qExact = new BigInteger(qLow);
+				if (BigInteger.ModPow(2, (int)p, qExact) != BigInteger.One)
+				{
+					divides = false;
+				}
+			}
+		}
 #if DETAILED_LOG
 		reason = ContradictionReason.None;
 		PrintStats();

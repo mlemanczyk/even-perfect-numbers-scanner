@@ -5,6 +5,7 @@ using Xunit;
 
 namespace PerfectNumbers.Core.Tests;
 
+[Trait("Category", "Fast")]
 public class BitContradictionIntegrationTests
 {
     // 2^11 - 1 = 2047 = 23 * 89
@@ -40,10 +41,20 @@ public class BitContradictionIntegrationTests
     }
 
     [Fact]
+    public void BitContradictionAcceptsKnownLargeDivisor()
+    {
+        BigInteger divisor = BigInteger.Parse("1209708008767");
+        ulong p = 138000001;
+        bool decided = Invoke(divisor, p, out bool divides);
+        decided.Should().BeTrue();
+        divides.Should().BeTrue();
+    }
+
+    [Fact]
     public void BitContradictionRejectsNonDivisorWithDecision()
     {
-        // 2^11 - 1 is not divisible by 25
-        BigInteger divisor = 25;
+        // 2^11 - 1 is not divisible by 45 (k=2, q=22*2+1).
+        BigInteger divisor = 45;
         ulong p = 11;
         bool decided = Invoke(divisor, p, out bool divides);
         decided.Should().BeTrue("small p should be decided exactly");

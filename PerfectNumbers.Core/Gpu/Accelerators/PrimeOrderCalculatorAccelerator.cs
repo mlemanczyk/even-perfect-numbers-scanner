@@ -56,7 +56,11 @@ public sealed class PrimeOrderCalculatorAccelerator
 	internal static void WarmUp()
 	{
 		Accelerator[] accelerators = AcceleratorPool.Shared.Accelerators;
-		int acceleratorCount = accelerators.Length;
+		int acceleratorCount = EnvironmentConfiguration.RollingAccelerators;
+		if (acceleratorCount > accelerators.Length)
+		{
+			acceleratorCount = accelerators.Length;
+		}
 		for (var i = 0; i < acceleratorCount; i++)
 		{
 			Console.WriteLine($"Preparing accelerator {i}...");
@@ -64,6 +68,13 @@ public sealed class PrimeOrderCalculatorAccelerator
 			AcceleratorStreamPool.WarmUp(i);
 			// Don't take this from the pool as quick uploads of data to the accelerator consumes much of GPU's memory and throws.
 			AcceleratorStream stream = accelerator.CreateStream();
+			if (SkipOrderTablesAndKernels)
+			{
+				stream.Synchronize();
+				stream.Dispose();
+				continue;
+			}
+
 			// TODO: Review which tables are needed when final execution path is defined.
 			LastDigitGpuTables.WarmUp(i, stream);
 			_kernels[i] = new CalculatorKernels(accelerator);
@@ -98,6 +109,9 @@ public sealed class PrimeOrderCalculatorAccelerator
 	#endregion
 
 	private static readonly Accelerator[] _accelerators = AcceleratorPool.Shared.Accelerators;
+
+	public static bool SkipOrderTablesAndKernels;
+
 
 	public readonly Accelerator Accelerator;
 	public readonly int AcceleratorIndex;
@@ -410,6 +424,28 @@ public sealed class PrimeOrderCalculatorAccelerator
 		CalculateOrderWideRemainderBuffer = accelerator.Allocate1D<GpuUInt128>(PrimeOrderConstants.MaxGpuBatchSize);
 		CalculateOrderWideExponentBufferView = CalculateOrderWideExponentBuffer.View;
 		CalculateOrderWideRemainderBufferView = CalculateOrderWideRemainderBuffer.View;
+
+		if (SkipOrderTablesAndKernels)
+		{
+			DevicePrimesLastOne = default;
+			DevicePrimesLastSeven = default;
+			DevicePrimesLastThree = default;
+			DevicePrimesLastNine = default;
+			DevicePrimesPow2LastOne = default;
+			DevicePrimesPow2LastSeven = default;
+			DevicePrimesPow2LastThree = default;
+			DevicePrimesPow2LastNine = default;
+			SmallPrimeFactorPrimes = default;
+			SmallPrimeFactorSquares = default;
+			CheckFactorsKernel = default;
+			ConvertToStandardKernelLauncher = default;
+			HeuristicCombinedTrialDivisionKernelLauncher = default;
+			Pow2ModKernelLauncher = default;
+			Pow2ModWideKernelLauncher = default;
+			SmallPrimeFactorKernelLauncher = default;
+			SpecialMaxKernelLauncher = default;
+			return;
+		}
 
 		LastDigitGpuTables lastDigitSharedTables = LastDigitGpuTables.GetStaticTables(acceleratorIndex);
 		DevicePrimesLastOne = lastDigitSharedTables.DevicePrimesLastOne.View;

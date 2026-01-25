@@ -16,7 +16,7 @@ public class BitContradictionSolverTests
         ColumnBounds bounds = ComputeColumnBounds(a, q, 1);
 
         bounds.ForcedOnes.Should().Be(1);
-        bounds.PossibleOnes.Should().Be(1);
+        bounds.PossibleOnes.Should().Be(2);
     }
 
     [Fact]

@@ -112,18 +112,25 @@ private static ThreadLocal<object>? MersenneTesters;
 			}
 
 		Console.WriteLine("Initializing");
-		int gpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads);
+		int gpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads * PerfectNumberConstants.ThreadsByAccelerator);
 		int threadCount = Math.Max(1, _cliArguments.ThreadCount);
 
 		EnvironmentConfiguration.MinK = _cliArguments.MinK;
 		EnvironmentConfiguration.GpuBatchSize = Math.Max(1, _cliArguments.ScanBatchSize);
 		EnvironmentConfiguration.GpuRatio = _cliArguments.GpuRatio;
 		EnvironmentConfiguration.MersenneDevice = _cliArguments.MersenneDevice;
-		EnvironmentConfiguration.OrderDevice = _cliArguments.OrderDevice;
+		ComputationDevice orderDevice = _cliArguments.OrderDevice;
+		if (_cliArguments.MersenneDevice == ComputationDevice.Gpu &&
+			_cliArguments.ByDivisorKIncrementMode == ByDivisorKIncrementMode.BitContradiction)
+		{
+			orderDevice = ComputationDevice.Gpu;
+		}
+
+		EnvironmentConfiguration.OrderDevice = orderDevice;
 		EnvironmentConfiguration.UsePow2GroupDivisors = _cliArguments.ByDivisorKIncrementMode == ByDivisorKIncrementMode.Pow2Groups;
 		EnvironmentConfiguration.ByDivisorSpecialRange = _cliArguments.ByDivisorSpecialRange;
 
-		bool useGpu = _cliArguments.OrderDevice == ComputationDevice.Hybrid || _cliArguments.OrderDevice == ComputationDevice.Gpu ||
+		bool useGpu = orderDevice == ComputationDevice.Hybrid || orderDevice == ComputationDevice.Gpu ||
 				_cliArguments.MersenneDevice == ComputationDevice.Hybrid || _cliArguments.MersenneDevice == ComputationDevice.Gpu;
 
 		EnvironmentConfiguration.RollingAccelerators = useGpu 
@@ -131,6 +138,10 @@ private static ThreadLocal<object>? MersenneTesters;
 			: 0;
 
 		EnvironmentConfiguration.Initialize();
+
+		PrimeOrderCalculatorAccelerator.SkipOrderTablesAndKernels = _cliArguments.MersenneDevice == ComputationDevice.Gpu &&
+			_cliArguments.UseByDivisor &&
+			_cliArguments.ByDivisorKIncrementMode == ByDivisorKIncrementMode.BitContradiction;
 
 			// NttGpuMath.GpuTransformBackend = _cliArguments.NttBackend;
 			// NttGpuMath.ReductionMode = _cliArguments.ModReductionMode;
@@ -148,7 +159,16 @@ private static ThreadLocal<object>? MersenneTesters;
 			if (useGpu)
 			{
 				Console.WriteLine("Warming up GPU kernels");
-				PrimeTester.WarmUpGpuKernels(EnvironmentConfiguration.RollingAccelerators);
+				if (_cliArguments.UseByDivisor &&
+					_cliArguments.ByDivisorKIncrementMode == ByDivisorKIncrementMode.BitContradiction &&
+					_cliArguments.MersenneDevice == ComputationDevice.Gpu)
+				{
+					PrimeTester.WarmUpGpuKernelsForBitContradiction(EnvironmentConfiguration.RollingAccelerators);
+				}
+				else
+				{
+					PrimeTester.WarmUpGpuKernels(EnvironmentConfiguration.RollingAccelerators);
+				}
 			}
 
 			// PrimeTester.WarmUpGpuKernels(gpuPrimeThreads >> 4);
@@ -328,11 +348,6 @@ private static ThreadLocal<object>? MersenneTesters;
 			}
 			else if (useByDivisor)
 			{
-				if (mersenneOnGpu)
-				{
-					throw new NotSupportedException("--mersenne-device=gpu is not supported for --mersenne=bydivisor on this execution path.");
-				}
-
 				ByDivisorKIncrementMode kIncrementMode = _cliArguments.ByDivisorKIncrementMode;
 				if (EnvironmentConfiguration.UseCpuOrder)
 				{

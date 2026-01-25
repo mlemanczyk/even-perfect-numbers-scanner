@@ -10,5 +10,6 @@ public enum KernelType
 	OrderKernelScan,
 	IncrementalKernelScan,
 	IncrementalOrderKernelScan,
-	Pow2ModOrderKernelScan
+	Pow2ModOrderKernelScan,
+	BitContradictionScan
 }

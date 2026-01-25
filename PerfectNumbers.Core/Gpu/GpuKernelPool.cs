@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using ILGPU;
 using ILGPU.Runtime;
 using PerfectNumbers.Core.Gpu.Accelerators;
+using PerfectNumbers.Core.Gpu.Kernels;
 
 namespace PerfectNumbers.Core.Gpu;
 
@@ -26,7 +27,7 @@ public class GpuKernelPool
 
 	internal static KernelContainer GetOrAddKernels(int acceleratorIndex, AcceleratorStream stream, KernelType kernelType)
 	{
-		var pool = _pool ??= [];
+		var pool = _pool ??= new KernelContainer[_accelerators.Length];
 		if (pool[acceleratorIndex] is not { } kernels)
 		{
 			kernels = new();
@@ -56,6 +57,11 @@ public class GpuKernelPool
 		if (kernelType.HasFlag(KernelType.Pow2ModOrderKernelScan))
 		{
 			InitPow2ModOrderKernelScan(accelerator, kernels);
+		}
+
+		if (kernelType.HasFlag(KernelType.BitContradictionScan))
+		{
+			InitBitContradictionKernel(accelerator, kernels);
 		}
 
 		PreloadStaticTables(accelerator, kernels, stream, kernelType);
@@ -110,6 +116,18 @@ public class GpuKernelPool
 
 				return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, GpuUInt128, GpuUInt128, byte,
 				ulong, ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>>();
+			});
+		}
+
+		static void InitBitContradictionKernel(Accelerator accelerator, KernelContainer kernels)
+		{
+			InitOnce(ref kernels.BitContradiction, () =>
+			{
+				var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<int, Stride1D.Dense>>(BitContradictionKernels.BitContradictionKernelScan);
+
+				var kernel = KernelUtil.GetKernel(loaded);
+
+				return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<int, Stride1D.Dense>>>();
 			});
 		}
 

@@ -20,12 +20,14 @@ public static class PerfectNumberConstants
 	public const int PooledArrayThreshold = 64;
 	public const int Pow2WindowSize = 8;
 	public const int RollingAccelerators = 298;
-	public const int ThreadsByAccelerator = 1;
+	public const int ThreadsByAccelerator = 128;
 	public const int ByDivisorStateSaveInterval = 1_000;
 	public const string ByDivisorStateDirectory = "Checks";
 	public const int PollardRhoMilliseconds = 100;
 	public const int ByDivisorMersenneTailCount = 8;
 	public const int ByDivisorMersenneBitLimit = 4096;
+	public const int BitContradictionGpuBatchCount = 16_777_216;
+	public const int BitContradictionGpuThreads = 4096;
     // TODO: Load these limits from the benchmark-driven configuration so CPU and GPU scans stay aligned with the optimal
     // divisor-cycle datasets we generate offline.
     // TODO: Promote these magic numbers into a runtime profile derived from EvenPerfectBitScanner.Benchmarks so we can retune
