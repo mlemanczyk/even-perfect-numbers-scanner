@@ -1603,9 +1603,7 @@ internal static class BitContradictionSolverWithAMultiplier
 
 		// Force low bits of 'a' from a ≡ -q^{-1} (mod 2^1024).
 		// This is a necessary condition for q | (2^p - 1) when p >= 1024 (true here).
-		const int ForcedBits = ForcedALowBits;
-		const int ForcedBitsMinusOne = ForcedALowBits - 1;
-		BigInteger mask = Pow2Provider.BigIntegerMinusOne(ForcedBits);
+		BigInteger mask = Pow2Provider.BigIntegerMinusOne(ForcedALowBits);
 		BigInteger qMod2k;
 		bool usedPow2Transform = false;
 		if (isPowerOfTwo && workSet.HasLastPow2QMod2k && workSet.LastPow2K != BigInteger.Zero && k == (workSet.LastPow2K << 1))
@@ -1643,7 +1641,7 @@ internal static class BitContradictionSolverWithAMultiplier
 			for (i = 0; i < qOneOffsetsLength; i++)
 			{
 				t = qOneOffsets[i];
-				if (t < ForcedBits)
+				if (t < ForcedALowBits)
 				{
 					// lastBit stand for lastByte here. We're reusing variable to limit registry pressure.
 					lastBit = t >> 3;
@@ -1676,14 +1674,12 @@ internal static class BitContradictionSolverWithAMultiplier
 			qMod2k = new BigInteger(qMod2kBytes, isUnsigned: true, isBigEndian: false);
 		}
 
-		Span<ulong> reversePrefix = stackalloc ulong[16];
+		ulong[] reversePrefix = workSet.LastQReverse;
 		GetReversePrefix1024(workSet, qPrefix, reversePrefix);
 		ulong[] lastPrefix = workSet.LastQPrefix;
-		ulong[] lastReverse = workSet.LastQReverse;
 		for (i = 0; i < 16; i++)
 		{
 			lastPrefix[i] = qPrefix[i];
-			lastReverse[i] = reversePrefix[i];
 		}
 
 		workSet.HasLastQPrefix1024 = true;
@@ -1743,7 +1739,7 @@ internal static class BitContradictionSolverWithAMultiplier
 		}
 
 		int maxKnownA;
-		int maxFixed = maxAllowedA < ForcedBitsMinusOne ? maxAllowedA : ForcedBitsMinusOne;
+		int maxFixed = maxAllowedA < (ForcedALowBits - 1) ? maxAllowedA : (ForcedALowBits - 1);
 		// wordValue is aLow word here.
 		if (maxFixed >= 0)
 		{
@@ -1810,7 +1806,7 @@ internal static class BitContradictionSolverWithAMultiplier
 			maxKnownA = maxFixed;
 		}
 
-		CarryRange carryLow;
+		CarryRange carryLow = CarryRange.Zero;
 
 		// ------------------------------------------------------------
 		// Cheap low-column prefilter (prefix-style):
@@ -1819,9 +1815,8 @@ internal static class BitContradictionSolverWithAMultiplier
 		// we can propagate carry deterministically and reject immediately on contradiction.
 		// This is significantly cheaper than entering the full row-aware window DP.
 		// ------------------------------------------------------------
-		const int PrefilterColumns = 512; // 256..512 is a good trade-off; keep <= 1024 forced bits
 		// maxFixed now serves as preMax.
-		maxFixed = PrefilterColumns - 1;
+		maxFixed = 512 - 1; // 256..512 is a good trade-off; keep <= 1024 forced bits
 		if (maxFixed > maxKnownA)
 		{
 			maxFixed = maxKnownA;
@@ -1837,14 +1832,11 @@ internal static class BitContradictionSolverWithAMultiplier
 		// Only run if we have at least a few columns to check.
 		if (maxFixed >= 8)
 		{
-			CarryRange preCarry = CarryRange.Zero;
 			Span<ulong> prefixMask = stackalloc ulong[16];
 			// index is column here. We're reusing the variable to limit registry pressure.
 			for (index = 0; index <= maxFixed; index++)
 			{
 				// Required result bit for M_p in columns [0..p-1] is 1.
-				const int requiredBit = 1;
-
 				// Compute forced ones exactly: sum of a_{col - t} for all q_t=1 with t<=col.
 				forced = 0;
 				if (index <= 1023)
@@ -1893,7 +1885,7 @@ internal static class BitContradictionSolverWithAMultiplier
 				}
 
 				// remaining==0 here, so possible==forced. Propagate carry range deterministically.
-				if (!TryPropagateCarry(ref preCarry, forced, forced, requiredBit))
+				if (!TryPropagateCarry(ref carryLow, forced, forced, 1))
 				{
 					// reason = ContradictionReason.ParityUnreachable;
 					divides = false;
@@ -1903,17 +1895,7 @@ internal static class BitContradictionSolverWithAMultiplier
 		}
 
 		// carryLow now serves as main bottom-up carry.
-
-		int topIndex0 = maxAllowedA;
-		int topIndex1 = maxAllowedA - 1;
-		bool top0KnownOne = topIndex0 == 0;
-		bool top1KnownOne = topIndex1 == 0;
-		// bool top0KnownZero = false;
-		// bool top1KnownZero = false;
-		int zeroTailStart = maxAllowedA + 1;
-
-		// long qHash = ComputeQOffsetsHash(qOneOffsets);
-
+		carryLow = CarryRange.Zero;
 
 		// if (!TryModularPrefilter(qOneOffsets, qHash, p, maxAllowedA))
 		// {
@@ -1938,7 +1920,8 @@ internal static class BitContradictionSolverWithAMultiplier
 		}
 
 		// Row-aware masks for q and a-window (supports q > 64 bits)
-		ulong lastWordMask = (qBitLen & 63) == 0 ? ulong.MaxValue : ((bitMask64[qBitLen & 63]) - 1UL);
+		// wordValue now holds lastWordMask.
+		wordValue = (qBitLen & 63) == 0 ? ulong.MaxValue : (bitMask64[qBitLen & 63] - 1UL);
 		// Initialize window for column 0: mark negative a indices as zero (t>0).
 		// Sliding window over a: bit t corresponds to a_{column - t}.
 		ulong[] aOneWin = workSet.AOneWin;
@@ -1958,10 +1941,9 @@ internal static class BitContradictionSolverWithAMultiplier
 			aZeroWin[0] |= 1UL;
 		}
 
-		int lowColumn = 0;
+		// index now serves as lowColumn.
+		index = 0;
 		int highColumn = pLong - 1;
-		// carryLow now serves as main bottom-up carry.
-		carryLow = CarryRange.Zero;
 		// int bottomRunStart = 0;
 		// int bottomRunEnd = 0;
 
@@ -2042,22 +2024,22 @@ internal static class BitContradictionSolverWithAMultiplier
 		// -----------------------------
 		// Continue full bottom-up DP for remaining columns
 		// -----------------------------
-		while (lowColumn <= highColumn)
+		while (index <= highColumn)
 		{
-			int remaining = highColumn - lowColumn + 1;
+			int remaining = highColumn - index + 1;
 			int blockSize = remaining < PingPongBlockColumns ? remaining : PingPongBlockColumns;
 #if DETAILED_LOG
 			if (!TryProcessBottomUpBlockRowAware(
-				qOneOffsets, qMaskWords, qWordCount, lastWordMask, maxAllowedA,
-				lowColumn, blockSize,
+				qOneOffsets, qMaskWords, qWordCount, wordValue, maxAllowedA,
+				index, blockSize,
 				ref carryLow, ref maxKnownA, ref segmentBase,
 				ref knownOne0, ref knownOne1, ref knownZero0, ref knownZero1,
 				windowSize, wordCount, aOneWin, aZeroWin, ref windowColumn,
 				out reason))
 #else
 			if (!TryProcessBottomUpBlockRowAware(
-				qOneOffsets, qMaskWords, qWordCount, lastWordMask, maxAllowedA,
-				lowColumn, blockSize,
+				qOneOffsets, qMaskWords, qWordCount, wordValue, maxAllowedA,
+				index, blockSize,
 				ref carryLow, ref maxKnownA, ref segmentBase,
 				ref knownOne0, ref knownOne1, ref knownZero0, ref knownZero1,
 				windowSize, aWordCount, aOneWin, aZeroWin, ref windowColumn))
@@ -2070,7 +2052,7 @@ internal static class BitContradictionSolverWithAMultiplier
 				return true;
 			}
 
-			lowColumn += blockSize;
+			index += blockSize;
 		}
 
 		// long carryMin = carryLow.Min > carryHigh.Min ? carryLow.Min : carryHigh.Min;
