@@ -5,6 +5,8 @@ namespace PerfectNumbers.Core.ByDivisor;
 
 internal sealed class PrivateWorkSet
 {
+	private const int QPrefixReverseCacheSize = 1024;
+
 	// Per-thread scratch buffers to avoid per-run allocations in the hot path.
 	// Buffers grow on demand and are never shrunk.
 	public ulong[] KnownOne0 = [];
@@ -25,7 +27,29 @@ internal sealed class PrivateWorkSet
 	public BigInteger LastPow2QMod2k = BigInteger.Zero;
 	public bool HasLastPow2QMod2k;
 	public byte[] QMod2kBytes = [];
-
+	public ulong[] QPrefixReverseKeys0 = [];
+	public ulong[] QPrefixReverseKeys1 = [];
+	public ulong[] QPrefixReverseValues0 = [];
+	public ulong[] QPrefixReverseValues1 = [];
+	public ulong[] QPrefixReverseValues2 = [];
+	public ulong[] QPrefixReverseValues3 = [];
+	public ulong[] QPrefixReverseValues4 = [];
+	public ulong[] QPrefixReverseValues5 = [];
+	public ulong[] QPrefixReverseValues6 = [];
+	public ulong[] QPrefixReverseValues7 = [];
+	public ulong[] QPrefixReverseValues8 = [];
+	public ulong[] QPrefixReverseValues9 = [];
+	public ulong[] QPrefixReverseValues10 = [];
+	public ulong[] QPrefixReverseValues11 = [];
+	public ulong[] QPrefixReverseValues12 = [];
+	public ulong[] QPrefixReverseValues13 = [];
+	public ulong[] QPrefixReverseValues14 = [];
+	public ulong[] QPrefixReverseValues15 = [];
+	public bool[] QPrefixReverseValid = [];
+	public ulong[] LastQPrefix = [];
+	public ulong[] LastQReverse = [];
+	public bool HasLastQPrefix1024;
+	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public void EnsureCapacity(int wordCount, int qWordCount)
 	{
@@ -52,6 +76,33 @@ internal sealed class PrivateWorkSet
 		if (QMod2kBytes.Length != 128)
 		{
 			QMod2kBytes = new byte[128];
+		}
+		if (QPrefixReverseKeys0.Length != QPrefixReverseCacheSize)
+		{
+			QPrefixReverseKeys0 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseKeys1 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues0 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues1 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues2 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues3 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues4 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues5 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues6 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues7 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues8 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues9 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues10 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues11 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues12 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues13 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues14 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValues15 = new ulong[QPrefixReverseCacheSize];
+			QPrefixReverseValid = new bool[QPrefixReverseCacheSize];
+		}
+		if (LastQPrefix.Length != 16)
+		{
+			LastQPrefix = new ulong[16];
+			LastQReverse = new ulong[16];
 		}
 	}
 
@@ -81,9 +132,12 @@ internal static class BitContradictionSolverWithAMultiplier
 	private const int TopDownCacheCapacity = 16;
 	private const int HighBitCarryPrefilterColumns = 16;
 	private const int MiniPingPongPrefilterColumns = 60;
+	private const int QPrefixReverseCacheSize = 1024;
+	private const int QPrefixReverseCacheMask = QPrefixReverseCacheSize - 1;
 
 	private static readonly int[] ModLocalPrefilterModuli = { 65537, 65521 };
 	private static readonly ulong[] BitMask64 = CreateBitMask64();
+	private static readonly byte[] ReverseByteLut = CreateReverseByteLut();
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static ulong[] CreateBitMask64()
@@ -96,6 +150,125 @@ internal static class BitContradictionSolverWithAMultiplier
 			value <<= 1;
 		}
 		return masks;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static byte[] CreateReverseByteLut()
+	{
+		byte[] lut = new byte[256];
+		for (int i = 0; i < lut.Length; i++)
+		{
+			int v = i;
+			int r = 0;
+			for (int b = 0; b < 8; b++)
+			{
+				r = (r << 1) | (v & 1);
+				v >>= 1;
+			}
+			lut[i] = (byte)r;
+		}
+		return lut;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static ulong ReverseBits64(ulong value)
+	{
+		return ((ulong)ReverseByteLut[(byte)value] << 56) |
+			((ulong)ReverseByteLut[(byte)(value >> 8)] << 48) |
+			((ulong)ReverseByteLut[(byte)(value >> 16)] << 40) |
+			((ulong)ReverseByteLut[(byte)(value >> 24)] << 32) |
+			((ulong)ReverseByteLut[(byte)(value >> 32)] << 24) |
+			((ulong)ReverseByteLut[(byte)(value >> 40)] << 16) |
+			((ulong)ReverseByteLut[(byte)(value >> 48)] << 8) |
+			ReverseByteLut[(byte)(value >> 56)];
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static void ReverseBits1024(in ReadOnlySpan<ulong> prefix, Span<ulong> reversed)
+	{
+		reversed[0] = ReverseBits64(prefix[15]);
+		reversed[1] = ReverseBits64(prefix[14]);
+		reversed[2] = ReverseBits64(prefix[13]);
+		reversed[3] = ReverseBits64(prefix[12]);
+		reversed[4] = ReverseBits64(prefix[11]);
+		reversed[5] = ReverseBits64(prefix[10]);
+		reversed[6] = ReverseBits64(prefix[9]);
+		reversed[7] = ReverseBits64(prefix[8]);
+		reversed[8] = ReverseBits64(prefix[7]);
+		reversed[9] = ReverseBits64(prefix[6]);
+		reversed[10] = ReverseBits64(prefix[5]);
+		reversed[11] = ReverseBits64(prefix[4]);
+		reversed[12] = ReverseBits64(prefix[3]);
+		reversed[13] = ReverseBits64(prefix[2]);
+		reversed[14] = ReverseBits64(prefix[1]);
+		reversed[15] = ReverseBits64(prefix[0]);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static void GetReversePrefix1024(PrivateWorkSet workSet, in ReadOnlySpan<ulong> prefix, Span<ulong> reversed)
+	{
+		ulong p0 = prefix[0];
+		ulong p1 = prefix[1];
+		ulong[] keys0 = workSet.QPrefixReverseKeys0;
+		ulong[] keys1 = workSet.QPrefixReverseKeys1;
+		ulong[] values0 = workSet.QPrefixReverseValues0;
+		ulong[] values1 = workSet.QPrefixReverseValues1;
+		ulong[] values2 = workSet.QPrefixReverseValues2;
+		ulong[] values3 = workSet.QPrefixReverseValues3;
+		ulong[] values4 = workSet.QPrefixReverseValues4;
+		ulong[] values5 = workSet.QPrefixReverseValues5;
+		ulong[] values6 = workSet.QPrefixReverseValues6;
+		ulong[] values7 = workSet.QPrefixReverseValues7;
+		ulong[] values8 = workSet.QPrefixReverseValues8;
+		ulong[] values9 = workSet.QPrefixReverseValues9;
+		ulong[] values10 = workSet.QPrefixReverseValues10;
+		ulong[] values11 = workSet.QPrefixReverseValues11;
+		ulong[] values12 = workSet.QPrefixReverseValues12;
+		ulong[] values13 = workSet.QPrefixReverseValues13;
+		ulong[] values14 = workSet.QPrefixReverseValues14;
+		ulong[] values15 = workSet.QPrefixReverseValues15;
+		bool[] valid = workSet.QPrefixReverseValid;
+		int slot = (int)p0 & QPrefixReverseCacheMask;
+		if (valid[slot] && keys0[slot] == p0 && keys1[slot] == p1)
+		{
+			reversed[0] = values0[slot];
+			reversed[1] = values1[slot];
+			reversed[2] = values2[slot];
+			reversed[3] = values3[slot];
+			reversed[4] = values4[slot];
+			reversed[5] = values5[slot];
+			reversed[6] = values6[slot];
+			reversed[7] = values7[slot];
+			reversed[8] = values8[slot];
+			reversed[9] = values9[slot];
+			reversed[10] = values10[slot];
+			reversed[11] = values11[slot];
+			reversed[12] = values12[slot];
+			reversed[13] = values13[slot];
+			reversed[14] = values14[slot];
+			reversed[15] = values15[slot];
+			return;
+		}
+		ReverseBits1024(prefix, reversed);
+		keys0[slot] = p0;
+		keys1[slot] = p1;
+		values0[slot] = reversed[0];
+		values1[slot] = reversed[1];
+		values2[slot] = reversed[2];
+		values3[slot] = reversed[3];
+		values4[slot] = reversed[4];
+		values5[slot] = reversed[5];
+		values6[slot] = reversed[6];
+		values7[slot] = reversed[7];
+		values8[slot] = reversed[8];
+		values9[slot] = reversed[9];
+		values10[slot] = reversed[10];
+		values11[slot] = reversed[11];
+		values12[slot] = reversed[12];
+		values13[slot] = reversed[13];
+		values14[slot] = reversed[14];
+		values15[slot] = reversed[15];
+		valid[slot] = true;
 	}
 
 
@@ -1447,7 +1620,8 @@ internal static class BitContradictionSolverWithAMultiplier
 		}
 
 		byte[] qMod2kBytes = workSet.QMod2kBytes;
-		int i, t;
+		Span<ulong> qPrefix = stackalloc ulong[16];
+		int i, lastBit, t;
 		ulong[] bitMask64 = BitMask64;
 		if (usedPow2Transform)
 		{
@@ -1455,6 +1629,10 @@ internal static class BitContradictionSolverWithAMultiplier
 			{
 				t = qOneOffsets[i];
 				qMaskWords[t >> 6] |= bitMask64[t & 63];
+				if ((uint)t < 1024u)
+				{
+					qPrefix[t >> 6] |= bitMask64[t & 63];
+				}
 			}
 		}
 		else
@@ -1467,21 +1645,29 @@ internal static class BitContradictionSolverWithAMultiplier
 				t = qOneOffsets[i];
 				if (t < ForcedBits)
 				{
-					int byteIndex = t >> 3;
-					if (byteIndex != currentByte)
+					// lastBit stand for lastByte here. We're reusing variable to limit registry pressure.
+					lastBit = t >> 3;
+					if (lastBit != currentByte)
 					{
 						if (currentByte >= 0)
 						{
 							qMod2kBytes[currentByte] = currentValue;
 						}
-						currentByte = byteIndex;
+
+						currentByte = lastBit;
 						currentValue = 0;
 					}
+
 					currentValue |= (byte)(1 << (t & 7));
 				}
 
 				qMaskWords[t >> 6] |= bitMask64[t & 63];
+				if ((uint)t < 1024u)
+				{
+					qPrefix[t >> 6] |= bitMask64[t & 63];
+				}
 			}
+
 			if (currentByte >= 0)
 			{
 				qMod2kBytes[currentByte] = currentValue;
@@ -1489,6 +1675,18 @@ internal static class BitContradictionSolverWithAMultiplier
 
 			qMod2k = new BigInteger(qMod2kBytes, isUnsigned: true, isBigEndian: false);
 		}
+
+		Span<ulong> reversePrefix = stackalloc ulong[16];
+		GetReversePrefix1024(workSet, qPrefix, reversePrefix);
+		ulong[] lastPrefix = workSet.LastQPrefix;
+		ulong[] lastReverse = workSet.LastQReverse;
+		for (i = 0; i < 16; i++)
+		{
+			lastPrefix[i] = qPrefix[i];
+			lastReverse[i] = reversePrefix[i];
+		}
+
+		workSet.HasLastQPrefix1024 = true;
 
 		// Compute inv = q^{-1} mod 2^1024 using Hensel/Newton iteration in Z/2^kZ.
 		BigInteger[] invByKMod = workSet.InvByKMod;
@@ -1508,16 +1706,16 @@ internal static class BitContradictionSolverWithAMultiplier
 			inv = qMod2k;
 		}
 
-		for (int iter = 0; iter < 2; iter++)
-		{
-			inv = (inv * (BigIntegerNumbers.Two - (qMod2k * inv))) & mask;
-		}
+		inv = (inv * (BigIntegerNumbers.Two - (qMod2k * inv))) & mask;
+		inv = (inv * (BigIntegerNumbers.Two - (qMod2k * inv))) & mask;
+		inv = (inv * (BigIntegerNumbers.Two - (qMod2k * inv))) & mask;
 
 		if (((qMod2k * inv) & mask) != BigInteger.One)
 		{
 			inv = qMod2k;
-			for (int iter = 0; iter < 10; iter++)
+			for (i = 0; i < 5; i++)
 			{
+				inv = (inv * (BigIntegerNumbers.Two - (qMod2k * inv))) & mask;
 				inv = (inv * (BigIntegerNumbers.Two - (qMod2k * inv))) & mask;
 			}
 		}
@@ -1543,51 +1741,62 @@ internal static class BitContradictionSolverWithAMultiplier
 		{
 			aLowBytesWritten = 0;
 		}
+
 		int maxKnownA;
 		int maxFixed = maxAllowedA < ForcedBitsMinusOne ? maxAllowedA : ForcedBitsMinusOne;
-		int word;
+		int index, forced, lastWord, word;
+		ulong wordValue;
 		if (maxFixed >= 0)
 		{
-			int lastWord = maxFixed >> 6;
-			int lastBit = maxFixed & 63;
-			int fullWords = lastBit == 63 ? lastWord + 1 : lastWord;
-			for (int w = 0; w < fullWords; w++)
+			lastWord = maxFixed >> 6;
+			lastBit = maxFixed & 63;
+			// forced is full words here. We're reusing the variable to limit registry pressure.
+			forced = lastBit == 63 ? lastWord + 1 : lastWord;
+			for (word = 0; word < forced; word++)
 			{
-				int byteIndex = w << 3;
-				ulong wordValue = 0;
-				int limit = aLowBytesWritten - byteIndex;
-				if (limit > 0)
+				index = word << 3;
+				wordValue = 0;
+				// t is limit here. We're reusing the variable to limit registry pressure.
+				t = aLowBytesWritten - index;
+				if (t > 0)
 				{
-					if (limit > 8)
+					if (t > 8)
 					{
-						limit = 8;
+						t = 8;
 					}
-					for (int b = 0; b < limit; b++)
+
+					// maxKnownA is bit index here. We're reusing the variable to limit registry pressure.
+					for (maxKnownA = 0; maxKnownA < t; maxKnownA++)
 					{
-						wordValue |= (ulong)aLowBytes[byteIndex + b] << (b << 3);
+						wordValue |= (ulong)aLowBytes[index + maxKnownA] << (maxKnownA << 3);
 					}
 				}
-				knownOne0[w] = wordValue;
-				knownZero0[w] = ~wordValue;
+
+				knownOne0[word] = wordValue;
+				knownZero0[word] = ~wordValue;
 			}
 
-			if (fullWords <= lastWord)
+			if (forced <= lastWord)
 			{
-				int byteIndex = lastWord << 3;
-				ulong wordValue = 0;
-				int limit = aLowBytesWritten - byteIndex;
-				if (limit > 0)
+				index = lastWord << 3;
+				wordValue = 0;
+				// t is limit here. We're reusing the variable to limit registry pressure.
+				t = aLowBytesWritten - index;
+				if (t > 0)
 				{
-					if (limit > 8)
+					if (t > 8)
 					{
-						limit = 8;
+						t = 8;
 					}
-					for (int b = 0; b < limit; b++)
+
+					// maxKnownA is bit index here. We're reusing the variable to limit registry pressure.
+					for (maxKnownA = 0; maxKnownA < t; maxKnownA++)
 					{
-						wordValue |= (ulong)aLowBytes[byteIndex + b] << (b << 3);
+						wordValue |= (ulong)aLowBytes[index + maxKnownA] << (maxKnownA << 3);
 					}
 				}
-				ulong mask64 = (bitMask64[lastBit + 1]) - 1UL;
+
+				ulong mask64 = bitMask64[lastBit + 1] - 1UL;
 				knownOne0[lastWord] = wordValue & mask64;
 				knownZero0[lastWord] = (~wordValue) & mask64;
 			}
@@ -1622,38 +1831,68 @@ internal static class BitContradictionSolverWithAMultiplier
 		// still contributes, and aLow still fixes the corresponding a-bits.
 
 		// Only run if we have at least a few columns to check.
-		int col;
 		if (preMax >= 8)
 		{
 			CarryRange preCarry = CarryRange.Zero;
-			for (col = 0; col <= preMax; col++)
+			ulong[] knownOne0Local = knownOne0;
+			Span<ulong> prefixMask = stackalloc ulong[16];
+			// index is column here. We're reusing the variable to limit registry pressure.
+			for (index = 0; index <= preMax; index++)
 			{
 				// Required result bit for M_p in columns [0..p-1] is 1.
 				const int requiredBit = 1;
 
 				// Compute forced ones exactly: sum of a_{col - t} for all q_t=1 with t<=col.
-				int forced = 0;
-				for (i = 0; i < qOneOffsetsLength; i++)
+				forced = 0;
+				if (index <= 1023)
 				{
-					t = qOneOffsets[i];
-					if (t > col)
+					int shift = 1023 - index;
+					int wordShift = shift >> 6;
+					int bitShift = shift & 63;
+					for (int w = 0; w < 16; w++)
 					{
-						break;
+						int src = w + wordShift;
+						ulong value = 0;
+						if (src < 16)
+						{
+							value = reversePrefix[src] >> bitShift;
+							if (bitShift != 0 && src + 1 < 16)
+							{
+								value |= reversePrefix[src + 1] << (64 - bitShift);
+							}
+						}
+
+						prefixMask[w] = value;
 					}
 
-					int aIndex = col - t;
-					// For this prefilter we only run where aIndex is guaranteed within [0..maxFixed].
-					word = aIndex >> 6;
-					ulong m64 = bitMask64[aIndex & 63];
-					if ((knownOne0[word] & m64) != 0) forced++;
+					forced = 0;
+					for (word = 0; word < 16; word++)
+					{
+						forced += BitOperations.PopCount(knownOne0Local[word] & prefixMask[word]);
+					}
+				}
+				else
+				{
+					for (i = 0; i < qOneOffsetsLength; i++)
+					{
+						t = qOneOffsets[i];
+						if (t > index)
+						{
+							break;
+						}
+
+						int aIndex = index - t;
+						// For this prefilter we only run where aIndex is guaranteed within [0..maxFixed].
+						word = aIndex >> 6;
+						ulong m64 = bitMask64[aIndex & 63];
+						if ((knownOne0[word] & m64) != 0) forced++;
+					}
 				}
 
 				// remaining==0 here, so possible==forced. Propagate carry range deterministically.
 				if (!TryPropagateCarry(ref preCarry, forced, forced, requiredBit))
 				{
-#if DETAILED_LOG
-						reason = ContradictionReason.ParityUnreachable;
-#endif
+					// reason = ContradictionReason.ParityUnreachable;
 					divides = false;
 					return true;
 				}
@@ -2042,7 +2281,7 @@ internal static class BitContradictionSolverWithAMultiplier
 	// 	return delta;
 	// }
 
-	const int ColumnsAtOnce = 24;
+	const int ColumnsAtOnce = 20;
 
 #if DETAILED_LOG
 	private static bool TryAdvanceStableUnknown(ref CarryRange carry, int unknown, int columnCount, out ContradictionReason reason)
