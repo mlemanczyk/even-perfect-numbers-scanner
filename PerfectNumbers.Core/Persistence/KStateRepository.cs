@@ -58,6 +58,8 @@ public sealed class KStateRepository : IDisposable
             });
     }
 
+	private volatile int _flushCount;
+
     public void Upsert(ulong prime, BigInteger k)
     {
         using var session = _store.For(new SimpleFunctions<string, string>()).NewSession<SimpleFunctions<string, string>>();
@@ -65,7 +67,13 @@ public sealed class KStateRepository : IDisposable
         string valueString = k.ToString(CultureInfo.InvariantCulture);
         session.Upsert(keyString, valueString);
         session.CompletePending(true);
-		_store.Log.FlushAndEvict(wait: true);
+		var flushCount = ++_flushCount;
+		if (flushCount >= PerfectNumberConstants.ByDivisorStateSaveInterval)
+		{
+			_flushCount = 0;
+			_store.Log.FlushAndEvict(wait: true);
+		}
+		
     }
 
     public bool TryGet(ulong prime, out BigInteger value)
