@@ -198,6 +198,21 @@ namespace EvenPerfectBitScanner.Benchmarks
 			_ => throw new ArgumentOutOfRangeException(nameof(i)),
 		};
 
+		private static readonly ulong[] BitMask64 = CreateBitMask64();
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static ulong[] CreateBitMask64()
+		{
+			ulong[] masks = new ulong[64];
+			ulong value = 1UL;
+			for (int i = 0; i < 64; i++)
+			{
+				masks[i] = value;
+				value <<= 1;
+			}
+			return masks;
+		}
+
 		[Benchmark(Baseline = true)]
 		public ulong ByShifting()
 		{
@@ -217,6 +232,19 @@ namespace EvenPerfectBitScanner.Benchmarks
 			for (int i = 0; i <= 63; i++)
 			{
 				result = ULongMinusOne(i);
+			}
+
+			return result;
+		}
+
+		[Benchmark]
+		public ulong StaticArray()
+		{
+			ulong result = 0UL;
+			ulong[] bitMask64 = BitMask64;
+			for (int i = 0; i <= 63; i++)
+			{
+				result = bitMask64[i];
 			}
 
 			return result;
