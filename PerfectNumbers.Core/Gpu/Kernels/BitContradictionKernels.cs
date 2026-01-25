@@ -21,22 +21,17 @@ internal static class BitContradictionKernels
     private const int TopDownBorrowColumns = 4096;
     private const int TopDownBorrowMinUnknown = 12;
     private const int TailCarryBatchColumns = 16384;
-    private const int DeltaColumnsAtOnce = 8;
+    private const int DeltaColumnsAtOnce = 16;
     private const int DeltaLength = 1 << DeltaColumnsAtOnce;
+    public const int DebugWordCountPerSlot = 80;
     private const int IntervalBufferLength = 64;
 
-    private struct CarryRange
-    {
-        public long Min;
-        public long Max;
+    private struct CarryRange(long min, long max)
+	{
+        public long Min = min;
+        public long Max = max;
 
-        public CarryRange(long min, long max)
-        {
-            Min = min;
-            Max = max;
-        }
-
-        public static CarryRange Zero => new(0, 0);
+		public static CarryRange Zero => new(0, 0);
     }
 
     public static void BitContradictionKernelScan(
@@ -44,7 +39,8 @@ internal static class BitContradictionKernels
         ulong exponent,
         ArrayView1D<ulong, Stride1D.Dense> batchIndexWords,
         int countQ,
-        ArrayView1D<int, Stride1D.Dense> foundOut)
+        ArrayView1D<int, Stride1D.Dense> foundOut,
+        ArrayView1D<ulong, Stride1D.Dense> debugOut)
     {
         int slot = index;
         foundOut[slot] = -1;
@@ -142,6 +138,7 @@ internal static class BitContradictionKernels
 
             int qWordCount = (qBitLen + 63) >> 6;
             int offsetCount;
+            int maxOffsetValue = 0;
             if (!BuildQOneOffsetsWords(qWords, qWordCount, qOffsets, out offsetCount))
             {
                 continue;
@@ -149,6 +146,7 @@ internal static class BitContradictionKernels
 
             if (offsetCount <= 0)
             {
+				maxOffsetValue = qOffsets[offsetCount - 1];
                 continue;
             }
 
@@ -160,9 +158,9 @@ internal static class BitContradictionKernels
             ClearWords(knownOne1, aWordCount);
             ClearWords(knownZero0, aWordCount);
             ClearWords(knownZero1, aWordCount);
-            ClearWords(qMaskWords, qWordCount);
-            ClearWords(aOneWin, qWordCount);
-            ClearWords(aZeroWin, qWordCount);
+            ClearWords(qMaskWords, MaxQWordCount);
+            ClearWords(aOneWin, MaxQWordCount);
+            ClearWords(aZeroWin, MaxQWordCount);
 
             ClearWords(qPrefix, ForcedALowWords);
             CopyWords(qWords, qPrefix, ForcedALowWords);
@@ -203,6 +201,12 @@ internal static class BitContradictionKernels
             }
 
             int maxKnownA = maxFixed >= 0 ? maxFixed : -1;
+            int firstForced = -1;
+            int firstRemaining = -1;
+            int firstQWordsEff = 0;
+            ulong firstQLastEff = 0;
+            long firstCarryMin = 0;
+            long firstCarryMax = 0;
 
             int maxFixedPrefilter = 512 - 1;
             if (maxFixedPrefilter > maxKnownA)
@@ -304,6 +308,14 @@ internal static class BitContradictionKernels
             BuildStableUnknownDelta8(offsetCount, delta8);
 
             CarryRange carry = CarryRange.Zero;
+            ulong preKnownOne0 = knownOne0[0];
+            ulong preKnownZero0 = knownZero0[0];
+            ulong preAOneWin0 = aOneWin[0];
+            ulong preAZeroWin0 = aZeroWin[0];
+            long preCarryMin = 0L;
+            long preCarryMax = 0L;
+            int preSegmentBase = segmentBase;
+            int preWindowColumn = windowColumn;
             bool ok = TryProcessBottomUpBlockRowAwareGpu(
                 qOffsets,
                 offsetCount,
@@ -326,15 +338,71 @@ internal static class BitContradictionKernels
                 aZeroWin,
                 ref windowColumn,
                 delta8,
-                offsetCount);
+                offsetCount,
+                ref firstForced,
+                ref firstRemaining,
+                ref firstQWordsEff,
+                ref firstQLastEff,
+                ref firstCarryMin,
+                ref firstCarryMax);
 
             if (ok)
             {
+                int debugBase = slot * DebugWordCountPerSlot;
+                for (int w = 0; w < ForcedALowWords; w++)
+                {
+                    debugOut[debugBase + w] = qWords[w];
+                }
+                for (int w = 0; w < ForcedALowWords; w++)
+                {
+                    debugOut[debugBase + ForcedALowWords + w] = invWords[w];
+                }
+                for (int w = 0; w < ForcedALowWords; w++)
+                {
+                    debugOut[debugBase + (ForcedALowWords * 2) + w] = aLowWords[w];
+                }
+                debugOut[debugBase + (ForcedALowWords * 3)] = (ulong)qBitLen;
+                int extraBase = debugBase + (ForcedALowWords * 3) + 1;
+                debugOut[extraBase] = (ulong)qWordCount;
+                debugOut[extraBase + 1] = qMaskWords[0];
+                debugOut[extraBase + 2] = qMaskWords[1];
+                debugOut[extraBase + 3] = knownOne0[0];
+                debugOut[extraBase + 4] = knownZero0[0];
+                debugOut[extraBase + 5] = aOneWin[0];
+                debugOut[extraBase + 6] = aZeroWin[0];
+                debugOut[extraBase + 7] = (ulong)carry.Min;
+                debugOut[extraBase + 8] = (ulong)carry.Max;
+                debugOut[extraBase + 9] = (ulong)maxAllowedA;
+                debugOut[extraBase + 10] = (ulong)maxFixed;
+                debugOut[extraBase + 11] = (ulong)windowSize;
+                debugOut[extraBase + 12] = (ulong)aWordCount;
+                debugOut[extraBase + 13] = (ulong)maxKnownA;
+                debugOut[extraBase + 14] = (ulong)maxFixedPrefilter;
+                debugOut[extraBase + 15] = preKnownOne0;
+                debugOut[extraBase + 16] = preKnownZero0;
+                debugOut[extraBase + 17] = preAOneWin0;
+                debugOut[extraBase + 18] = preAZeroWin0;
+                debugOut[extraBase + 19] = (ulong)preCarryMin;
+                debugOut[extraBase + 20] = (ulong)preCarryMax;
+                debugOut[extraBase + 21] = (ulong)preSegmentBase;
+                debugOut[extraBase + 22] = (ulong)preWindowColumn;
+                debugOut[extraBase + 23] = (ulong)offsetCount;
+                debugOut[extraBase + 24] = (ulong)maxOffsetValue;
+                debugOut[extraBase + 25] = (ulong)firstForced;
+                debugOut[extraBase + 26] = (ulong)firstRemaining;
+                debugOut[extraBase + 27] = (ulong)firstQWordsEff;
+                debugOut[extraBase + 28] = firstQLastEff;
+                debugOut[extraBase + 29] = (ulong)firstCarryMin;
+                debugOut[extraBase + 30] = (ulong)firstCarryMax;
                 foundOut[slot] = batch;
                 return;
             }
         }
     }
+
+	/// <summary>
+	/// This method is used for testing purposes, only
+	/// </summary>
     internal static bool TryBuildQWordsFromBatchIndex(
         ulong exponent,
         ReadOnlySpan<ulong> batchIndexWords,
@@ -1010,6 +1078,14 @@ internal static class BitContradictionKernels
         long carryMax = carry.Max;
         int remaining = columnCount;
 
+        const long CarryDecimalMask = (1L << DeltaColumnsAtOnce) - 1L;
+        while (remaining >= DeltaColumnsAtOnce)
+        {
+            int carryMask = (int)(carryMax & CarryDecimalMask);
+            carryMax = (carryMax + delta[carryMask]) >> DeltaColumnsAtOnce;
+            remaining -= DeltaColumnsAtOnce;
+        }
+
         while (remaining > 0)
         {
             int sMax = (((unknown ^ (int)carryMax) & 1) != 0) ? unknown : unknown - 1;
@@ -1282,7 +1358,13 @@ internal static class BitContradictionKernels
         ArrayView<ulong> aZeroWin,
         ref int windowColumn,
         ArrayView<int> stableUnknownDelta,
-        int stableUnknown)
+        int stableUnknown,
+        ref int firstForced,
+        ref int firstRemaining,
+        ref int firstQWordsEff,
+        ref ulong firstQLastEff,
+        ref long firstCarryMin,
+        ref long firstCarryMax)
     {
         bool needRebuildWindow = false;
         int endColumn = startColumn + columnCount;
@@ -1451,6 +1533,15 @@ internal static class BitContradictionKernels
 
             int max = forced + remainingCols;
             if (!TryPropagateCarry(ref carry, forced, max, 1))
+            if (startColumn == 0 && firstForced < 0)
+            {
+                firstForced = forced;
+                firstRemaining = remainingCols;
+                firstQWordsEff = qWordsEff;
+                firstQLastEff = qLastEff;
+                firstCarryMin = carry.Min;
+                firstCarryMax = carry.Max;
+            }
             {
                 return false;
             }
@@ -1478,3 +1569,5 @@ internal static class BitContradictionKernels
         return true;
     }
 }
+
+
