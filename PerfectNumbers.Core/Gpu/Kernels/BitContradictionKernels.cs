@@ -57,17 +57,21 @@ internal static class BitContradictionKernels
         ArrayView1D<ulong, Stride1D.Dense> batchIndexWords,
         int countQ,
         ArrayView1D<int, Stride1D.Dense> foundOut,
+#if DETAILED_LOG
         ArrayView1D<ulong, Stride1D.Dense> debugOut,
+#endif
         ArrayView1D<int, Stride1D.Dense> deltaCacheKeys,
         ArrayView1D<int, Stride1D.Dense> deltaCache)
     {
-        int slot = index;
-        foundOut[slot] = -1;
+		// firstQWordsEff is reused as slot here to limit registry pressure
+        int firstQWordsEff = index;
+        foundOut[firstQWordsEff] = -1;
 
-        int keyBase = slot * DeltaCacheSlots;
-        long deltaBase = (long)slot * DeltaCacheSlots * DeltaLength;
+        int keyBase = firstQWordsEff * DeltaCacheSlots;
+        long deltaBase = (long)firstQWordsEff * DeltaCacheSlots * DeltaLength;
         // Initialize keys for this thread to avoid false hits across launches.
-        for (int i = 0; i < DeltaCacheSlots; i++)
+		int i;
+        for (i = 0; i < DeltaCacheSlots; i++)
         {
             deltaCacheKeys[keyBase + i] = int.MinValue;
         }
@@ -77,17 +81,17 @@ internal static class BitContradictionKernels
             return;
         }
 
-        int localCountQ = countQ;
         ulong twoP = exponent << 1;
-        int startOffset = slot * MaxQWordCount;
+		// firstQWordsEff is reused as startOffset here to limit registry pressure
+        firstQWordsEff *= MaxQWordCount;
+        int localCountQ = countQ;
 
         var baseKWords = LocalMemory.Allocate<ulong>(MaxQWordCount);
         var kWords = LocalMemory.Allocate<ulong>(MaxQWordCount);
         var qWords = LocalMemory.Allocate<ulong>(MaxQWordCount);
         var qOffsets = LocalMemory.Allocate<int>(MaxQOffsets);
         var qPrefix = LocalMemory.Allocate<ulong>(ForcedALowWords);
-        var reversePrefix = LocalMemory.Allocate<ulong>(ForcedALowWords);
-        var prefixMask = LocalMemory.Allocate<ulong>(ForcedALowWords);
+
         var invWords = LocalMemory.Allocate<ulong>(ForcedALowWords);
         var tmpWords = LocalMemory.Allocate<ulong>(ForcedALowWords);
         var tmpWords2 = LocalMemory.Allocate<ulong>(ForcedALowWords);
@@ -105,9 +109,9 @@ internal static class BitContradictionKernels
         var lo1 = LocalMemory.Allocate<long>(IntervalBufferLength);
         var hi1 = LocalMemory.Allocate<long>(IntervalBufferLength);
 
-        for (int i = 0; i < MaxQWordCount; i++)
+        for (i = 0; i < MaxQWordCount; i++)
         {
-            baseKWords[i] = batchIndexWords[startOffset + i];
+            baseKWords[i] = batchIndexWords[firstQWordsEff + i];
         }
 
         if (MultiplyWordsByUInt64(baseKWords, kWords, MaxQWordCount, (ulong)BatchCount) != 0UL)
@@ -163,7 +167,6 @@ internal static class BitContradictionKernels
 
             int qWordCount = (qBitLen + 63) >> 6;
             int offsetCount;
-            int maxOffsetValue = 0;
             if (!BuildQOneOffsetsWords(qWords, qWordCount, qOffsets, out offsetCount))
             {
                 continue;
@@ -171,10 +174,10 @@ internal static class BitContradictionKernels
 
             if (offsetCount <= 0)
             {
-				maxOffsetValue = qOffsets[offsetCount - 1];
                 continue;
             }
 
+			int maxOffsetValue = qOffsets[offsetCount - 1];
             int windowSize = qBitLen < ForcedALowBits ? ForcedALowBits : qBitLen;
             windowSize = (windowSize + 63) & ~63;
             int aWordCount = (windowSize + 63) >> 6;
@@ -193,106 +196,120 @@ internal static class BitContradictionKernels
             ComputeInverseMod2k(qPrefix, invWords, tmpWords, tmpWords2, ForcedALowWords);
             NegateMod2k(invWords, aLowWords, ForcedALowWords);
 
-            for (int i = 0; i < qWordCount; i++)
+            for (i = 0; i < qWordCount; i++)
             {
                 qMaskWords[i] = qWords[i];
             }
 
-            ulong lastWordMask = (qBitLen & 63) == 0 ? ulong.MaxValue : ((1UL << (qBitLen & 63)) - 1UL);
+			i = qBitLen & 63;
+            ulong lastWordMask = i == 0 ? ulong.MaxValue : ((1UL << i) - 1UL);
             if (qWordCount > 0)
             {
                 qMaskWords[qWordCount - 1] &= lastWordMask;
             }
 
+			int firstRemaining;
+			ulong firstQLastEff, wordValue;
             int maxFixed = maxAllowedA < (ForcedALowBits - 1) ? maxAllowedA : (ForcedALowBits - 1);
             if (maxFixed >= 0)
             {
-                int fullWords = maxFixed >> 6;
-                int lastBit = maxFixed & 63;
-                for (int w = 0; w < fullWords; w++)
+				// firstQWordsEff is reused as fullWords here to limit registry pressure
+                firstQWordsEff = maxFixed >> 6;
+				// firstRemaining is reused as lastBit here to limit registry pressure
+                firstRemaining = maxFixed & 63;
+				// i is reused as word to limit registry pressure
+                for (i = 0; i < firstQWordsEff; i++)
                 {
-                    ulong wordValue = aLowWords[w];
-                    knownOne0[w] = wordValue;
-                    knownZero0[w] = ~wordValue;
+                    wordValue = aLowWords[i];
+                    knownOne0[i] = wordValue;
+                    knownZero0[i] = ~wordValue;
                 }
 
-                if (fullWords < aWordCount)
+                if (firstQWordsEff < aWordCount)
                 {
-                    ulong wordValue = aLowWords[fullWords];
-                    ulong mask = lastBit == 63 ? ulong.MaxValue : ((1UL << (lastBit + 1)) - 1UL);
-                    knownOne0[fullWords] = wordValue & mask;
-                    knownZero0[fullWords] = (~wordValue) & mask;
+                    wordValue = aLowWords[firstQWordsEff];
+					// firstQLastEff is reused as mask here to limit registry pressure
+                    firstQLastEff = firstRemaining == 63 ? ulong.MaxValue : ((1UL << (firstRemaining + 1)) - 1UL);
+                    knownOne0[firstQWordsEff] = wordValue & firstQLastEff;
+                    knownZero0[firstQWordsEff] = (~wordValue) & firstQLastEff;
                 }
             }
 
             int maxKnownA = maxFixed >= 0 ? maxFixed : -1;
             int firstForced = -1;
-            int firstRemaining = -1;
-            int firstQWordsEff = 0;
-            ulong firstQLastEff = 0;
+            firstRemaining = -1;
+            firstQWordsEff = 0;
+            firstQLastEff = 0;
             long firstCarryMin = 0;
             long firstCarryMax = 0;
 
-            int maxFixedPrefilter = 512 - 1;
-            if (maxFixedPrefilter > maxKnownA)
-            {
-                maxFixedPrefilter = maxKnownA;
-            }
+            int maxFixedPreFilter = 512 - 1;
+            maxFixedPreFilter = maxFixedPreFilter > maxKnownA ? maxKnownA : maxFixedPreFilter;
+            maxFixedPreFilter = maxFixedPreFilter > maxAllowedA ? maxAllowedA : maxFixedPreFilter;
 
-            if (maxFixedPrefilter > maxAllowedA)
+			int column;
+			int word;
+			int aIndex;
+			int forced;
+			int bitShift;
+            if (maxFixedPreFilter >= 8)
             {
-                maxFixedPrefilter = maxAllowedA;
-            }
-
-            if (maxFixedPrefilter >= 8)
-            {
-                ReverseBits1024(qPrefix, reversePrefix);
+                // tmpWords is reused for reversePrefix
+                ReverseBits1024(qPrefix, tmpWords);
 
                 bool prefixOk = true;
                 CarryRange carryLow = CarryRange.Zero;
-                for (int column = 0; column <= maxFixedPrefilter; column++)
+				for (column = 0; column <= maxFixedPreFilter; column++)
                 {
-                    int forced = 0;
+                    forced = 0;
                     if (column <= 1023)
                     {
-                        int shift = 1023 - column;
-                        int wordShift = shift >> 6;
-                        int bitShift = shift & 63;
-                        for (int word = 0; word < ForcedALowWords; word++)
+						// i is reused as shift here to limit registry pressure
+                        i = 1023 - column;
+						// word is reused as wordShift here to limit registry pressure
+                        word = i >> 6;
+                        bitShift = i & 63;
+						// i is reused as word to limit registry pressure
+                        for (i = 0; i < ForcedALowWords; i++)
                         {
-                            int src = word + wordShift;
-                            ulong value = 0UL;
-                            if (src < ForcedALowWords)
+							// aIndex is reused as src here to limit registry pressure
+                            aIndex = i + word;
+                            wordValue = 0UL;
+                            if (aIndex < ForcedALowWords)
                             {
-                                value = reversePrefix[src] >> bitShift;
-                                if (bitShift != 0 && src + 1 < ForcedALowWords)
+                                wordValue = tmpWords[aIndex] >> bitShift;
+                                if (bitShift != 0 && aIndex + 1 < ForcedALowWords)
                                 {
-                                    value |= reversePrefix[src + 1] << (64 - bitShift);
+                                    wordValue |= tmpWords[aIndex + 1] << (64 - bitShift);
                                 }
                             }
 
-                            prefixMask[word] = value;
+                            // tmpWords2 is reused for prefixMask
+                            tmpWords2[i] = wordValue;
                         }
 
-                        for (int word = 0; word < ForcedALowWords; word++)
+						// i is reused as word to limit registry pressure
+                        for (i = 0; i < ForcedALowWords; i++)
                         {
-                            forced += XMath.PopCount(knownOne0[word] & prefixMask[word]);
+                            forced += XMath.PopCount(knownOne0[i] & tmpWords2[i]);
                         }
                     }
                     else
                     {
-                        for (int i = 0; i < offsetCount; i++)
+                        for (i = 0; i < offsetCount; i++)
                         {
-                            int t = qOffsets[i];
-                            if (t > column)
+							// bitShift is reused as t here to limit registry pressure
+                            bitShift = qOffsets[i];
+                            if (bitShift > column)
                             {
                                 break;
                             }
 
-                            int aIndex = column - t;
-                            int word = aIndex >> 6;
-                            ulong mask = 1UL << (aIndex & 63);
-                            if ((knownOne0[word] & mask) != 0UL)
+                            aIndex = column - bitShift;
+                            word = aIndex >> 6;
+							// wordValue is reused as mask here to limit registry pressure
+                            wordValue = 1UL << (aIndex & 63);
+                            if ((knownOne0[word] & wordValue) != 0UL)
                             {
                                 forced++;
                             }
@@ -312,45 +329,48 @@ internal static class BitContradictionKernels
                 }
             }
 
-            int segmentBase = 0;
-            int windowColumn = 0;
+			// word is reused as segmentBase from here to limit registry pressure
+            word = 0;
+			// column is reused as windowColumn from here to limit registry pressure
+            column = 0;
 
-            int initialState = GetAKnownStateRowAware(0, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
-            if (initialState == 1)
-            {
-                aOneWin[0] |= 1UL;
-            }
-            else if (initialState == 2)
-            {
-                aZeroWin[0] |= 1UL;
-            }
+			// aIndex is reused as initialState from here to limit registry pressure
+            aIndex = GetAKnownStateRowAware(0, word, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
+            aOneWin[0] |= aIndex == 1 ? 1UL : 0UL;
+            aZeroWin[0] |= aIndex == 2 ? 1UL : 0UL;
 
             if (!TryRunHighBitAndBorrowPrefiltersCombinedGpu(qOffsets, offsetCount, pLong, maxAllowedA, lo0, hi0, lo1, hi1))
             {
                 continue;
             }
 
-            int unknown = offsetCount;
-            int cacheSlot = unknown & (DeltaCacheSlots - 1);
-            int keyIndex = keyBase + cacheSlot;
-            int cachedKey = deltaCacheKeys[keyIndex];
-            int cacheSlotBase = (int)(deltaBase + (long)cacheSlot * DeltaLength);
-            var delta8 = deltaCache.SubView(cacheSlotBase, DeltaLength);
-            if (cachedKey != unknown)
+			// forced is reused as unknown from here to limit registry pressure
+            forced = offsetCount;
+			// i is reused as cacheSlot from here to limit registry pressure
+            i = forced & (DeltaCacheSlots - 1);
+			// bitShift is reused as keyIndex from here to limit registry pressure
+            bitShift = keyBase + i;
+			// i is reused as cacheSlotBase from here to limit registry pressure
+            i = (int)(deltaBase + (long)i * DeltaLength);
+            var delta8 = deltaCache.SubView(i, DeltaLength);
+            if (deltaCacheKeys[bitShift] != forced)
             {
-                BuildStableUnknownDelta8(unknown, delta8);
-                deltaCacheKeys[keyIndex] = unknown;
+                BuildStableUnknownDelta8(forced, delta8);
+                deltaCacheKeys[bitShift] = forced;
             }
 
             CarryRange carry = CarryRange.Zero;
-            ulong preKnownOne0 = knownOne0[0];
-            ulong preKnownZero0 = knownZero0[0];
-            ulong preAOneWin0 = aOneWin[0];
-            ulong preAZeroWin0 = aZeroWin[0];
-            long preCarryMin = 0L;
-            long preCarryMax = 0L;
-            int preSegmentBase = segmentBase;
-            int preWindowColumn = windowColumn;
+			#if DETAILED_LOG
+				int preWindowColumn = windowColumn;
+				int preSegmentBase = segmentBase;
+				ulong preKnownZero0 = knownZero0[0];
+				ulong preKnownOne0 = knownOne0[0];
+				ulong preAOneWin0 = aOneWin[0];
+				ulong preAZeroWin0 = aZeroWin[0];
+				long preCarryMin = 0L;
+				long preCarryMax = 0L;
+			#endif
+
             bool ok = TryProcessBottomUpBlockRowAwareGpu(
                 qOffsets,
                 offsetCount,
@@ -362,7 +382,7 @@ internal static class BitContradictionKernels
                 pLong,
                 ref carry,
                 ref maxKnownA,
-                ref segmentBase,
+                ref word,
                 knownOne0,
                 knownOne1,
                 knownZero0,
@@ -371,7 +391,7 @@ internal static class BitContradictionKernels
                 aWordCount,
                 aOneWin,
                 aZeroWin,
-                ref windowColumn,
+                ref column,
                 delta8,
                 offsetCount,
                 ref firstForced,
@@ -381,57 +401,59 @@ internal static class BitContradictionKernels
                 ref firstCarryMin,
                 ref firstCarryMax);
 
-            if (ok)
-            {
-                int debugBase = slot * DebugWordCountPerSlot;
-                for (int w = 0; w < ForcedALowWords; w++)
-                {
-                    debugOut[debugBase + w] = qWords[w];
-                }
-                for (int w = 0; w < ForcedALowWords; w++)
-                {
-                    debugOut[debugBase + ForcedALowWords + w] = invWords[w];
-                }
-                for (int w = 0; w < ForcedALowWords; w++)
-                {
-                    debugOut[debugBase + (ForcedALowWords * 2) + w] = aLowWords[w];
-                }
-                debugOut[debugBase + (ForcedALowWords * 3)] = (ulong)qBitLen;
-                int extraBase = debugBase + (ForcedALowWords * 3) + 1;
-                debugOut[extraBase] = (ulong)qWordCount;
-                debugOut[extraBase + 1] = qMaskWords[0];
-                debugOut[extraBase + 2] = qMaskWords[1];
-                debugOut[extraBase + 3] = knownOne0[0];
-                debugOut[extraBase + 4] = knownZero0[0];
-                debugOut[extraBase + 5] = aOneWin[0];
-                debugOut[extraBase + 6] = aZeroWin[0];
-                debugOut[extraBase + 7] = (ulong)carry.Min;
-                debugOut[extraBase + 8] = (ulong)carry.Max;
-                debugOut[extraBase + 9] = (ulong)maxAllowedA;
-                debugOut[extraBase + 10] = (ulong)maxFixed;
-                debugOut[extraBase + 11] = (ulong)windowSize;
-                debugOut[extraBase + 12] = (ulong)aWordCount;
-                debugOut[extraBase + 13] = (ulong)maxKnownA;
-                debugOut[extraBase + 14] = (ulong)maxFixedPrefilter;
-                debugOut[extraBase + 15] = preKnownOne0;
-                debugOut[extraBase + 16] = preKnownZero0;
-                debugOut[extraBase + 17] = preAOneWin0;
-                debugOut[extraBase + 18] = preAZeroWin0;
-                debugOut[extraBase + 19] = (ulong)preCarryMin;
-                debugOut[extraBase + 20] = (ulong)preCarryMax;
-                debugOut[extraBase + 21] = (ulong)preSegmentBase;
-                debugOut[extraBase + 22] = (ulong)preWindowColumn;
-                debugOut[extraBase + 23] = (ulong)offsetCount;
-                debugOut[extraBase + 24] = (ulong)maxOffsetValue;
-                debugOut[extraBase + 25] = (ulong)firstForced;
-                debugOut[extraBase + 26] = (ulong)firstRemaining;
-                debugOut[extraBase + 27] = (ulong)firstQWordsEff;
-                debugOut[extraBase + 28] = firstQLastEff;
-                debugOut[extraBase + 29] = (ulong)firstCarryMin;
-                debugOut[extraBase + 30] = (ulong)firstCarryMax;
-                foundOut[slot] = batch;
-                return;
-            }
+			#if DETAILED_LOG
+				if (ok)
+				{
+					int debugBase = slot * DebugWordCountPerSlot;
+					for (int w = 0; w < ForcedALowWords; w++)
+					{
+						debugOut[debugBase + w] = qWords[w];
+					}
+					for (int w = 0; w < ForcedALowWords; w++)
+					{
+						debugOut[debugBase + ForcedALowWords + w] = invWords[w];
+					}
+					for (int w = 0; w < ForcedALowWords; w++)
+					{
+						debugOut[debugBase + (ForcedALowWords * 2) + w] = aLowWords[w];
+					}
+					debugOut[debugBase + (ForcedALowWords * 3)] = (ulong)qBitLen;
+					int extraBase = debugBase + (ForcedALowWords * 3) + 1;
+					debugOut[extraBase] = (ulong)qWordCount;
+					debugOut[extraBase + 1] = qMaskWords[0];
+					debugOut[extraBase + 2] = qMaskWords[1];
+					debugOut[extraBase + 3] = knownOne0[0];
+					debugOut[extraBase + 4] = knownZero0[0];
+					debugOut[extraBase + 5] = aOneWin[0];
+					debugOut[extraBase + 6] = aZeroWin[0];
+					debugOut[extraBase + 7] = (ulong)carry.Min;
+					debugOut[extraBase + 8] = (ulong)carry.Max;
+					debugOut[extraBase + 9] = (ulong)maxAllowedA;
+					debugOut[extraBase + 10] = (ulong)maxFixed;
+					debugOut[extraBase + 11] = (ulong)windowSize;
+					debugOut[extraBase + 12] = (ulong)aWordCount;
+					debugOut[extraBase + 13] = (ulong)maxKnownA;
+					debugOut[extraBase + 14] = (ulong)maxFixedPrefilter;
+					debugOut[extraBase + 15] = preKnownOne0;
+					debugOut[extraBase + 16] = preKnownZero0;
+					debugOut[extraBase + 17] = preAOneWin0;
+					debugOut[extraBase + 18] = preAZeroWin0;
+					debugOut[extraBase + 19] = (ulong)preCarryMin;
+					debugOut[extraBase + 20] = (ulong)preCarryMax;
+					debugOut[extraBase + 21] = (ulong)preSegmentBase;
+					debugOut[extraBase + 22] = (ulong)preWindowColumn;
+					debugOut[extraBase + 23] = (ulong)offsetCount;
+					debugOut[extraBase + 24] = (ulong)maxOffsetValue;
+					debugOut[extraBase + 25] = (ulong)firstForced;
+					debugOut[extraBase + 26] = (ulong)firstRemaining;
+					debugOut[extraBase + 27] = (ulong)firstQWordsEff;
+					debugOut[extraBase + 28] = firstQLastEff;
+					debugOut[extraBase + 29] = (ulong)firstCarryMin;
+					debugOut[extraBase + 30] = (ulong)firstCarryMax;
+					foundOut[slot] = batch;
+					return;
+				}
+			#endif
         }
     }
 
@@ -460,8 +482,8 @@ internal static class BitContradictionKernels
         var qWords = LocalMemory.Allocate<ulong>(MaxQWordCount);
         var qOffsets = LocalMemory.Allocate<int>(MaxQOffsets);
         var qPrefix = LocalMemory.Allocate<ulong>(ForcedALowWords);
-        var reversePrefix = LocalMemory.Allocate<ulong>(ForcedALowWords);
-        var prefixMask = LocalMemory.Allocate<ulong>(ForcedALowWords);
+
+
         var invWords = LocalMemory.Allocate<ulong>(ForcedALowWords);
         var tmpWords = LocalMemory.Allocate<ulong>(ForcedALowWords);
         var tmpWords2 = LocalMemory.Allocate<ulong>(ForcedALowWords);
@@ -610,19 +632,13 @@ internal static class BitContradictionKernels
             long firstCarryMax = 0;
 
             int maxFixedPrefilter = 512 - 1;
-            if (maxFixedPrefilter > maxKnownA)
-            {
-                maxFixedPrefilter = maxKnownA;
-            }
-
-            if (maxFixedPrefilter > maxAllowedA)
-            {
-                maxFixedPrefilter = maxAllowedA;
-            }
+            maxFixedPrefilter = maxFixedPrefilter > maxKnownA ? maxKnownA : maxFixedPrefilter;
+            maxFixedPrefilter = maxFixedPrefilter > maxAllowedA ? maxAllowedA : maxFixedPrefilter;
 
             if (maxFixedPrefilter >= 8)
             {
-                ReverseBits1024(qPrefix, reversePrefix);
+                // tmpWords is reused for reversePrefix
+                ReverseBits1024(qPrefix, tmpWords);
 
                 bool prefixOk = true;
                 CarryRange carryLow = CarryRange.Zero;
@@ -640,19 +656,20 @@ internal static class BitContradictionKernels
                             ulong value = 0UL;
                             if (src < ForcedALowWords)
                             {
-                                value = reversePrefix[src] >> bitShift;
+                                value = tmpWords[src] >> bitShift;
                                 if (bitShift != 0 && src + 1 < ForcedALowWords)
                                 {
-                                    value |= reversePrefix[src + 1] << (64 - bitShift);
+                                    value |= tmpWords[src + 1] << (64 - bitShift);
                                 }
                             }
 
-                            prefixMask[word] = value;
+                            // tmpWords2 is reused for prefixMask
+                            tmpWords2[word] = value;
                         }
 
                         for (int word = 0; word < ForcedALowWords; word++)
                         {
-                            forced += XMath.PopCount(knownOne0[word] & prefixMask[word]);
+                            forced += XMath.PopCount(knownOne0[word] & tmpWords2[word]);
                         }
                     }
                     else
@@ -692,14 +709,8 @@ internal static class BitContradictionKernels
             int windowColumn = 0;
 
             int initialState = GetAKnownStateRowAware(0, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
-            if (initialState == 1)
-            {
-                aOneWin[0] |= 1UL;
-            }
-            else if (initialState == 2)
-            {
-                aZeroWin[0] |= 1UL;
-            }
+            aOneWin[0] |= initialState == 1 ? 1UL : 0UL;
+            aZeroWin[0] |= initialState == 2 ? 1UL : 0UL;
 
             if (!TryRunHighBitAndBorrowPrefiltersCombinedGpu(qOffsets, offsetCount, pLong, maxAllowedA, lo0, hi0, lo1, hi1))
             {
@@ -1106,20 +1117,14 @@ internal static class BitContradictionKernels
         int columnPlusOne = column + 1;
 
         int highBitColumns = HighBitCarryPrefilterColumns;
-        if (highBitColumns > columnPlusOne)
-        {
-            highBitColumns = columnPlusOne;
-        }
+        highBitColumns = highBitColumns > columnPlusOne ? columnPlusOne : highBitColumns;
 
         int borrowColumns = 0;
         bool runBorrowPrefilter = qOffsetCount >= TopDownBorrowMinUnknown;
         if (runBorrowPrefilter)
         {
             borrowColumns = TopDownBorrowColumns;
-            if (borrowColumns > columnPlusOne)
-            {
-                borrowColumns = columnPlusOne;
-            }
+            borrowColumns = borrowColumns > columnPlusOne ? columnPlusOne : borrowColumns;
         }
 
         int sequentialColumns = highBitColumns > borrowColumns ? highBitColumns : borrowColumns;
@@ -1140,10 +1145,7 @@ internal static class BitContradictionKernels
         int step = 0;
         int upperT;
         int lowerT = column - maxAllowedA;
-        if (lowerT < 0)
-        {
-            lowerT = 0;
-        }
+        lowerT = lowerT < 0 ? 0 : lowerT;
 
         FindBounds(qOffsets, qOffsetCount, lowerT, column, out lowerT, out upperT);
         int n = upperT - lowerT;
@@ -1172,7 +1174,7 @@ internal static class BitContradictionKernels
                     long rMax = outHi[i];
 
                     if (rMax < 0) continue;
-                    if (rMin < 0) rMin = 0;
+                    rMin = rMin < 0 ? 0 : rMin;
                     if (rMax < rMin) continue;
 
                     const long TwicePlusOneOverflowLimit = (long.MaxValue - 1) >> 1;
@@ -1250,10 +1252,7 @@ internal static class BitContradictionKernels
             }
 
             lowerT = column - maxAllowedA;
-            if (lowerT < 0)
-            {
-                lowerT = 0;
-            }
+            lowerT = lowerT < 0 ? 0 : lowerT;
 
             FindBounds(qOffsets, qOffsetCount, lowerT, column, out lowerT, out upperT);
             n = upperT - lowerT;
@@ -1273,7 +1272,7 @@ internal static class BitContradictionKernels
             return;
         }
 
-        if (lo < 0) lo = 0;
+        lo = lo < 0 ? 0 : lo;
         if (hi < 0) return;
 
         if (count == 0)
@@ -1287,11 +1286,7 @@ internal static class BitContradictionKernels
         long lastHi = hiArr[count - 1];
         if (lo <= lastHi + 1)
         {
-            if (hi > lastHi)
-            {
-                hiArr[count - 1] = hi;
-            }
-
+            hiArr[count - 1] = hi > lastHi ? hi : lastHi;
             return;
         }
 
@@ -1387,18 +1382,9 @@ internal static class BitContradictionKernels
         {
             ulong minuend = i == 0 ? 2UL : 0UL;
             ulong sub = value[i];
-            ulong res;
-            if (borrow == 0UL)
-            {
-                res = minuend - sub;
-                borrow = minuend < sub ? 1UL : 0UL;
-            }
-            else
-            {
-                res = minuend - sub - 1UL;
-                borrow = minuend <= sub ? 1UL : 0UL;
-            }
-
+            bool hasBorrow = borrow != 0UL;
+            ulong res = hasBorrow ? (minuend - sub - 1UL) : (minuend - sub);
+            borrow = hasBorrow ? (minuend <= sub ? 1UL : 0UL) : (minuend < sub ? 1UL : 0UL);
             result[i] = res;
         }
     }
@@ -1610,16 +1596,8 @@ internal static class BitContradictionKernels
             rel = aIndex - segmentBase;
             word = rel >> 6;
             mask = 1UL << (rel & 63);
-            if (isOne)
-            {
-                knownOne0[word] |= mask;
-                knownZero0[word] &= ~mask;
-            }
-            else
-            {
-                knownZero0[word] |= mask;
-                knownOne0[word] &= ~mask;
-            }
+            knownOne0[word] = isOne ? (knownOne0[word] | mask) : (knownOne0[word] & ~mask);
+            knownZero0[word] = isOne ? (knownZero0[word] & ~mask) : (knownZero0[word] | mask);
 
             return;
         }
@@ -1630,16 +1608,8 @@ internal static class BitContradictionKernels
             rel = aIndex - segment1Start;
             word = rel >> 6;
             mask = 1UL << (rel & 63);
-            if (isOne)
-            {
-                knownOne1[word] |= mask;
-                knownZero1[word] &= ~mask;
-            }
-            else
-            {
-                knownZero1[word] |= mask;
-                knownOne1[word] &= ~mask;
-            }
+            knownOne1[word] = isOne ? (knownOne1[word] | mask) : (knownOne1[word] & ~mask);
+            knownZero1[word] = isOne ? (knownZero1[word] & ~mask) : (knownZero1[word] | mask);
         }
     }
 
@@ -1818,14 +1788,9 @@ internal static class BitContradictionKernels
                             ? 2
                             : GetAKnownStateRowAware(aIndex, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
 
-                        if (state == 1)
-                        {
-                            aOneWin[step >> 6] |= 1UL << (step & 63);
-                        }
-                        else if (state == 2)
-                        {
-                            aZeroWin[step >> 6] |= 1UL << (step & 63);
-                        }
+                        ulong stepMask = 1UL << (step & 63);
+                        aOneWin[step >> 6] |= state == 1 ? stepMask : 0UL;
+                        aZeroWin[step >> 6] |= state == 2 ? stepMask : 0UL;
                     }
 
                     if (qWordCount > 0)
@@ -1954,14 +1919,8 @@ internal static class BitContradictionKernels
                 ? 2
                 : GetAKnownStateRowAware(nextA, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
 
-            if (nextState == 1)
-            {
-                aOneWin[0] |= 1UL;
-            }
-            else if (nextState == 2)
-            {
-                aZeroWin[0] |= 1UL;
-            }
+            aOneWin[0] |= nextState == 1 ? 1UL : 0UL;
+            aZeroWin[0] |= nextState == 2 ? 1UL : 0UL;
 
             startColumn++;
             windowColumn = startColumn;

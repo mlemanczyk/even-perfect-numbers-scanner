@@ -109,11 +109,13 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 
 		int[] found = new int[maxThreadCount];
 		ulong[] batchIndexWords = new ulong[inputCapacity];
-		int debugWordsPerSlot = BitContradictionKernels.DebugWordCountPerSlot;
-		using MemoryBuffer1D<ulong, Stride1D.Dense> debugBuffer = gpu.Accelerator.Allocate1D<ulong>(maxThreadCount * debugWordsPerSlot);
 		using MemoryBuffer1D<int, Stride1D.Dense> delta8Keys = gpu.Accelerator.Allocate1D<int>(maxThreadCount * BitContradictionKernels.DeltaCacheSlots);
 		using MemoryBuffer1D<int, Stride1D.Dense> delta8Cache = gpu.Accelerator.Allocate1D<int>(maxThreadCount * BitContradictionKernels.DeltaCacheSlots * 4194304);
-		ArrayView1D<ulong, Stride1D.Dense> debugView = debugBuffer.View;
+		#if DETAILED_LOG
+			int debugWordsPerSlot = BitContradictionKernels.DebugWordCountPerSlot;
+			using MemoryBuffer1D<ulong, Stride1D.Dense> debugBuffer = gpu.Accelerator.Allocate1D<ulong>(maxThreadCount * debugWordsPerSlot);
+			ArrayView1D<ulong, Stride1D.Dense> debugView = debugBuffer.View;
+		#endif
 
 		BigInteger currentBatch = (currentK - BigInteger.One) / batchSizeBig;
 		currentK = (currentBatch * batchSizeBig) + BigInteger.One;
@@ -161,7 +163,11 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			}
 
 			gpu.InputView.CopyFromCPU(stream, batchIndexWords.AsSpan(0, threadCount * wordCount));
-			kernel(stream, threadCount, prime, gpu.InputView, countQ, gpu.OutputIntView, debugView, delta8Keys.View, delta8Cache.View);
+			kernel(stream, threadCount, prime, gpu.InputView, countQ, gpu.OutputIntView,
+				   #if DETAILED_LOG
+					   debugView,
+				   #endif
+				   delta8Keys.View, delta8Cache.View);
 			stream.Synchronize();
 			gpu.OutputIntView.CopyToCPU(stream, found.AsSpan(0, threadCount));
 
@@ -211,47 +217,49 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 					// if (!dividesExact)
 					// {
 					// 	throw new InvalidOperationException($"BitContradiction CPU/GPU false positive for p={prime}, q={candidateQ}, k={candidateK}, batch={batchIndex}");
-                    if (prime == 138000001UL && candidateQ == new BigInteger(276000003))
-                    {
-                        ulong[] debugWords = new ulong[debugWordsPerSlot];
-                        debugView.SubView(i * debugWordsPerSlot, debugWordsPerSlot).CopyToCPU(stream, debugWords);
-                        BigInteger gpuQ = ReadBigIntegerFromWords(debugWords.AsSpan(0, 16));
-                        BigInteger gpuInv = ReadBigIntegerFromWords(debugWords.AsSpan(16, 16));
-                        BigInteger gpuALow = ReadBigIntegerFromWords(debugWords.AsSpan(32, 16));
-                        ulong gpuQBits = debugWords[48];
-                        ulong gpuQWordCount = debugWords[49];
-                        ulong gpuQMask0 = debugWords[50];
-                        ulong gpuQMask1 = debugWords[51];
-                        ulong gpuKnownOne0 = debugWords[52];
-                        ulong gpuKnownZero0 = debugWords[53];
-                        ulong gpuAOneWin0 = debugWords[54];
-                        ulong gpuAZeroWin0 = debugWords[55];
-                        long gpuCarryMin = unchecked((long)debugWords[56]);
-                        long gpuCarryMax = unchecked((long)debugWords[57]);
-                        long gpuMaxAllowedA = unchecked((long)debugWords[58]);
-                        long gpuMaxFixed = unchecked((long)debugWords[59]);
-                        long gpuWindowSize = unchecked((long)debugWords[60]);
-                        long gpuAWordCount = unchecked((long)debugWords[61]);
-                        long gpuMaxKnownA = unchecked((long)debugWords[62]);
-                        long gpuMaxFixedPrefilter = unchecked((long)debugWords[63]);
-                        ulong preKnownOne0 = debugWords[64];
-                        ulong preKnownZero0 = debugWords[65];
-                        ulong preAOneWin0 = debugWords[66];
-                        ulong preAZeroWin0 = debugWords[67];
-                        long preCarryMin = unchecked((long)debugWords[68]);
-                        long preCarryMax = unchecked((long)debugWords[69]);
-                        long preSegmentBase = unchecked((long)debugWords[70]);
-                        long preWindowColumn = unchecked((long)debugWords[71]);
-                        long gpuOffsetCount = unchecked((long)debugWords[72]);
-                        long gpuMaxOffset = unchecked((long)debugWords[73]);
-                        long gpuFirstForced = unchecked((long)debugWords[74]);
-                        long gpuFirstRemaining = unchecked((long)debugWords[75]);
-                        long gpuFirstQWordsEff = unchecked((long)debugWords[76]);
-                        ulong gpuFirstQLastEff = debugWords[77];
-                        long gpuFirstCarryMin = unchecked((long)debugWords[78]);
-                        long gpuFirstCarryMax = unchecked((long)debugWords[79]);
-                        throw new InvalidOperationException($"BitContradiction GPU debug for p={prime}, q={candidateQ}, k={candidateK}, qBits={gpuQBits}, qWordCount={gpuQWordCount}, qMask0=0x{gpuQMask0:X16}, qMask1=0x{gpuQMask1:X16}, knownOne0=0x{gpuKnownOne0:X16}, knownZero0=0x{gpuKnownZero0:X16}, aOneWin0=0x{gpuAOneWin0:X16}, aZeroWin0=0x{gpuAZeroWin0:X16}, carryMin={gpuCarryMin}, carryMax={gpuCarryMax}, maxAllowedA={gpuMaxAllowedA}, maxFixed={gpuMaxFixed}, windowSize={gpuWindowSize}, aWordCount={gpuAWordCount}, maxKnownA={gpuMaxKnownA}, maxFixedPrefilter={gpuMaxFixedPrefilter}, preKnownOne0=0x{preKnownOne0:X16}, preKnownZero0=0x{preKnownZero0:X16}, preAOneWin0=0x{preAOneWin0:X16}, preAZeroWin0=0x{preAZeroWin0:X16}, preCarryMin={preCarryMin}, preCarryMax={preCarryMax}, preSegmentBase={preSegmentBase}, preWindowColumn={preWindowColumn}, offsetCount={gpuOffsetCount}, maxOffset={gpuMaxOffset}, firstForced={gpuFirstForced}, firstRemaining={gpuFirstRemaining}, firstQWordsEff={gpuFirstQWordsEff}, firstQLastEff=0x{gpuFirstQLastEff:X16}, firstCarryMin={gpuFirstCarryMin}, firstCarryMax={gpuFirstCarryMax}, gpuQ={gpuQ}, gpuInv={gpuInv}, gpuALow={gpuALow}");
-                    }
+					#if DETAILED_LOG
+						if (prime == 138000001UL)
+						{
+							ulong[] debugWords = new ulong[debugWordsPerSlot];
+							debugView.SubView(i * debugWordsPerSlot, debugWordsPerSlot).CopyToCPU(stream, debugWords);
+							BigInteger gpuQ = ReadBigIntegerFromWords(debugWords.AsSpan(0, 16));
+							BigInteger gpuInv = ReadBigIntegerFromWords(debugWords.AsSpan(16, 16));
+							BigInteger gpuALow = ReadBigIntegerFromWords(debugWords.AsSpan(32, 16));
+							ulong gpuQBits = debugWords[48];
+							ulong gpuQWordCount = debugWords[49];
+							ulong gpuQMask0 = debugWords[50];
+							ulong gpuQMask1 = debugWords[51];
+							ulong gpuKnownOne0 = debugWords[52];
+							ulong gpuKnownZero0 = debugWords[53];
+							ulong gpuAOneWin0 = debugWords[54];
+							ulong gpuAZeroWin0 = debugWords[55];
+							long gpuCarryMin = unchecked((long)debugWords[56]);
+							long gpuCarryMax = unchecked((long)debugWords[57]);
+							long gpuMaxAllowedA = unchecked((long)debugWords[58]);
+							long gpuMaxFixed = unchecked((long)debugWords[59]);
+							long gpuWindowSize = unchecked((long)debugWords[60]);
+							long gpuAWordCount = unchecked((long)debugWords[61]);
+							long gpuMaxKnownA = unchecked((long)debugWords[62]);
+							long gpuMaxFixedPrefilter = unchecked((long)debugWords[63]);
+							ulong preKnownOne0 = debugWords[64];
+							ulong preKnownZero0 = debugWords[65];
+							ulong preAOneWin0 = debugWords[66];
+							ulong preAZeroWin0 = debugWords[67];
+							long preCarryMin = unchecked((long)debugWords[68]);
+							long preCarryMax = unchecked((long)debugWords[69]);
+							long preSegmentBase = unchecked((long)debugWords[70]);
+							long preWindowColumn = unchecked((long)debugWords[71]);
+							long gpuOffsetCount = unchecked((long)debugWords[72]);
+							long gpuMaxOffset = unchecked((long)debugWords[73]);
+							long gpuFirstForced = unchecked((long)debugWords[74]);
+							long gpuFirstRemaining = unchecked((long)debugWords[75]);
+							long gpuFirstQWordsEff = unchecked((long)debugWords[76]);
+							ulong gpuFirstQLastEff = debugWords[77];
+							long gpuFirstCarryMin = unchecked((long)debugWords[78]);
+							long gpuFirstCarryMax = unchecked((long)debugWords[79]);
+							throw new InvalidOperationException($"BitContradiction GPU debug for p={prime}, q={candidateQ}, k={candidateK}, qBits={gpuQBits}, qWordCount={gpuQWordCount}, qMask0=0x{gpuQMask0:X16}, qMask1=0x{gpuQMask1:X16}, knownOne0=0x{gpuKnownOne0:X16}, knownZero0=0x{gpuKnownZero0:X16}, aOneWin0=0x{gpuAOneWin0:X16}, aZeroWin0=0x{gpuAZeroWin0:X16}, carryMin={gpuCarryMin}, carryMax={gpuCarryMax}, maxAllowedA={gpuMaxAllowedA}, maxFixed={gpuMaxFixed}, windowSize={gpuWindowSize}, aWordCount={gpuAWordCount}, maxKnownA={gpuMaxKnownA}, maxFixedPrefilter={gpuMaxFixedPrefilter}, preKnownOne0=0x{preKnownOne0:X16}, preKnownZero0=0x{preKnownZero0:X16}, preAOneWin0=0x{preAOneWin0:X16}, preAZeroWin0=0x{preAZeroWin0:X16}, preCarryMin={preCarryMin}, preCarryMax={preCarryMax}, preSegmentBase={preSegmentBase}, preWindowColumn={preWindowColumn}, offsetCount={gpuOffsetCount}, maxOffset={gpuMaxOffset}, firstForced={gpuFirstForced}, firstRemaining={gpuFirstRemaining}, firstQWordsEff={gpuFirstQWordsEff}, firstQLastEff=0x{gpuFirstQLastEff:X16}, firstCarryMin={gpuFirstCarryMin}, firstCarryMax={gpuFirstCarryMax}, gpuQ={gpuQ}, gpuInv={gpuInv}, gpuALow={gpuALow}");
+						}
+					#endif
 
 					foundDivisor = candidateQ;
 					AcceleratorStreamPool.Return(gpu.AcceleratorIndex, stream);
