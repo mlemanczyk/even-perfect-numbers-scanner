@@ -123,11 +123,15 @@ public class GpuKernelPool
 		{
 			InitOnce(ref kernels.BitContradiction, () =>
 			{
-				var loaded = accelerator.LoadAutoGroupedStreamKernel<Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>(BitContradictionKernels.BitContradictionKernelScan);
+				var loaded = accelerator.LoadAutoGroupedStreamKernel<
+					Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<int, Stride1D.Dense>,
+        			ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>
+				>(BitContradictionKernels.BitContradictionKernelScanWithDeltaCache64);
 
 				var kernel = KernelUtil.GetKernel(loaded);
 
-				return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>>>();
+				return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<int, Stride1D.Dense>,
+        			ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>>>();
 			});
 		}
 

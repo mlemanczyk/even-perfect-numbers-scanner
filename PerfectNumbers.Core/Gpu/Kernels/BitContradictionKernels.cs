@@ -5,7 +5,7 @@ using ILGPU.Runtime;
 using PerfectNumbers.Core;
 
 namespace PerfectNumbers.Core.Gpu.Kernels;
-
+	
 internal static class BitContradictionKernels
 {
     public const int BatchCount = PerfectNumberConstants.BitContradictionGpuBatchCount;
@@ -23,8 +23,9 @@ internal static class BitContradictionKernels
     private const int TailCarryBatchColumns = 16384;
     private const int DeltaColumnsAtOnce = 16;
     private const int DeltaLength = 1 << DeltaColumnsAtOnce;
+    internal const int DeltaCacheSlots = 500;
     public const int DebugWordCountPerSlot = 80;
-    private const int IntervalBufferLength = 64;
+    private const int IntervalBufferLength = 500;
 
     private struct CarryRange(long min, long max)
 	{
@@ -32,6 +33,406 @@ internal static class BitContradictionKernels
         public long Max = max;
 
 		public static CarryRange Zero => new(0, 0);
+    }
+
+
+    /// <summary>
+    /// Required number of int entries for the per-thread delta cache buffer.
+    /// Layout: [thread][slot][DeltaLength]
+    /// </summary>
+    public static long GetDeltaCacheIntLength(int threadCount) =>
+        (long)threadCount * DeltaCacheSlots * DeltaLength;
+
+    /// <summary>
+    /// Required number of int entries for the per-thread delta cache key buffer.
+    /// Layout: [thread][slot] -> stored 'unknown' value for the slot.
+    /// </summary>
+    public static int GetDeltaCacheKeyLength(int threadCount) =>
+        checked(threadCount * DeltaCacheSlots);
+
+
+    public static void BitContradictionKernelScanWithDeltaCache64(
+        Index1D index,
+        ulong exponent,
+        ArrayView1D<ulong, Stride1D.Dense> batchIndexWords,
+        int countQ,
+        ArrayView1D<int, Stride1D.Dense> foundOut,
+        ArrayView1D<ulong, Stride1D.Dense> debugOut,
+        ArrayView1D<int, Stride1D.Dense> deltaCacheKeys,
+        ArrayView1D<int, Stride1D.Dense> deltaCache)
+    {
+        int slot = index;
+        foundOut[slot] = -1;
+
+        int keyBase = slot * DeltaCacheSlots;
+        long deltaBase = (long)slot * DeltaCacheSlots * DeltaLength;
+        // Initialize keys for this thread to avoid false hits across launches.
+        for (int i = 0; i < DeltaCacheSlots; i++)
+        {
+            deltaCacheKeys[keyBase + i] = int.MinValue;
+        }
+
+        if (countQ <= 0)
+        {
+            return;
+        }
+
+        int localCountQ = countQ;
+        ulong twoP = exponent << 1;
+        int startOffset = slot * MaxQWordCount;
+
+        var baseKWords = LocalMemory.Allocate<ulong>(MaxQWordCount);
+        var kWords = LocalMemory.Allocate<ulong>(MaxQWordCount);
+        var qWords = LocalMemory.Allocate<ulong>(MaxQWordCount);
+        var qOffsets = LocalMemory.Allocate<int>(MaxQOffsets);
+        var qPrefix = LocalMemory.Allocate<ulong>(ForcedALowWords);
+        var reversePrefix = LocalMemory.Allocate<ulong>(ForcedALowWords);
+        var prefixMask = LocalMemory.Allocate<ulong>(ForcedALowWords);
+        var invWords = LocalMemory.Allocate<ulong>(ForcedALowWords);
+        var tmpWords = LocalMemory.Allocate<ulong>(ForcedALowWords);
+        var tmpWords2 = LocalMemory.Allocate<ulong>(ForcedALowWords);
+        var aLowWords = LocalMemory.Allocate<ulong>(ForcedALowWords);
+        var knownOne0 = LocalMemory.Allocate<ulong>(MaxAWordCount);
+        var knownOne1 = LocalMemory.Allocate<ulong>(MaxAWordCount);
+        var knownZero0 = LocalMemory.Allocate<ulong>(MaxAWordCount);
+        var knownZero1 = LocalMemory.Allocate<ulong>(MaxAWordCount);
+        var qMaskWords = LocalMemory.Allocate<ulong>(MaxQWordCount);
+        var aOneWin = LocalMemory.Allocate<ulong>(MaxQWordCount);
+        var aZeroWin = LocalMemory.Allocate<ulong>(MaxQWordCount);
+
+        var lo0 = LocalMemory.Allocate<long>(IntervalBufferLength);
+        var hi0 = LocalMemory.Allocate<long>(IntervalBufferLength);
+        var lo1 = LocalMemory.Allocate<long>(IntervalBufferLength);
+        var hi1 = LocalMemory.Allocate<long>(IntervalBufferLength);
+
+        for (int i = 0; i < MaxQWordCount; i++)
+        {
+            baseKWords[i] = batchIndexWords[startOffset + i];
+        }
+
+        if (MultiplyWordsByUInt64(baseKWords, kWords, MaxQWordCount, (ulong)BatchCount) != 0UL)
+        {
+            return;
+        }
+
+        if (AddUInt64ToWords(kWords, MaxQWordCount, 1UL) != 0UL)
+        {
+            return;
+        }
+
+        CopyWords(kWords, baseKWords, MaxQWordCount);
+
+        for (int batch = 0; batch < localCountQ; batch++)
+        {
+            CopyWords(baseKWords, kWords, MaxQWordCount);
+            if (batch != 0)
+            {
+                if (AddUInt64ToWords(kWords, MaxQWordCount, (ulong)batch) != 0UL)
+                {
+                    break;
+                }
+            }
+
+            if (MultiplyWordsByUInt64(kWords, qWords, MaxQWordCount, twoP) != 0UL)
+            {
+                continue;
+            }
+
+            if (AddUInt64ToWords(qWords, MaxQWordCount, 1UL) != 0UL)
+            {
+                continue;
+            }
+
+            int qBitLen = GetBitLength(qWords, MaxQWordCount);
+            if (qBitLen <= 0 || qBitLen > MaxQBitLength)
+            {
+                continue;
+            }
+
+            if ((ulong)qBitLen >= exponent)
+            {
+                continue;
+            }
+
+            int pLong = (int)exponent;
+            int maxAllowedA = pLong - qBitLen;
+            if (maxAllowedA < 0)
+            {
+                continue;
+            }
+
+            int qWordCount = (qBitLen + 63) >> 6;
+            int offsetCount;
+            int maxOffsetValue = 0;
+            if (!BuildQOneOffsetsWords(qWords, qWordCount, qOffsets, out offsetCount))
+            {
+                continue;
+            }
+
+            if (offsetCount <= 0)
+            {
+				maxOffsetValue = qOffsets[offsetCount - 1];
+                continue;
+            }
+
+            int windowSize = qBitLen < ForcedALowBits ? ForcedALowBits : qBitLen;
+            windowSize = (windowSize + 63) & ~63;
+            int aWordCount = (windowSize + 63) >> 6;
+
+            ClearWords(knownOne0, aWordCount);
+            ClearWords(knownOne1, aWordCount);
+            ClearWords(knownZero0, aWordCount);
+            ClearWords(knownZero1, aWordCount);
+            ClearWords(qMaskWords, MaxQWordCount);
+            ClearWords(aOneWin, MaxQWordCount);
+            ClearWords(aZeroWin, MaxQWordCount);
+
+            ClearWords(qPrefix, ForcedALowWords);
+            CopyWords(qWords, qPrefix, ForcedALowWords);
+            CopyWords(qPrefix, invWords, ForcedALowWords);
+            ComputeInverseMod2k(qPrefix, invWords, tmpWords, tmpWords2, ForcedALowWords);
+            NegateMod2k(invWords, aLowWords, ForcedALowWords);
+
+            for (int i = 0; i < qWordCount; i++)
+            {
+                qMaskWords[i] = qWords[i];
+            }
+
+            ulong lastWordMask = (qBitLen & 63) == 0 ? ulong.MaxValue : ((1UL << (qBitLen & 63)) - 1UL);
+            if (qWordCount > 0)
+            {
+                qMaskWords[qWordCount - 1] &= lastWordMask;
+            }
+
+            int maxFixed = maxAllowedA < (ForcedALowBits - 1) ? maxAllowedA : (ForcedALowBits - 1);
+            if (maxFixed >= 0)
+            {
+                int fullWords = maxFixed >> 6;
+                int lastBit = maxFixed & 63;
+                for (int w = 0; w < fullWords; w++)
+                {
+                    ulong wordValue = aLowWords[w];
+                    knownOne0[w] = wordValue;
+                    knownZero0[w] = ~wordValue;
+                }
+
+                if (fullWords < aWordCount)
+                {
+                    ulong wordValue = aLowWords[fullWords];
+                    ulong mask = lastBit == 63 ? ulong.MaxValue : ((1UL << (lastBit + 1)) - 1UL);
+                    knownOne0[fullWords] = wordValue & mask;
+                    knownZero0[fullWords] = (~wordValue) & mask;
+                }
+            }
+
+            int maxKnownA = maxFixed >= 0 ? maxFixed : -1;
+            int firstForced = -1;
+            int firstRemaining = -1;
+            int firstQWordsEff = 0;
+            ulong firstQLastEff = 0;
+            long firstCarryMin = 0;
+            long firstCarryMax = 0;
+
+            int maxFixedPrefilter = 512 - 1;
+            if (maxFixedPrefilter > maxKnownA)
+            {
+                maxFixedPrefilter = maxKnownA;
+            }
+
+            if (maxFixedPrefilter > maxAllowedA)
+            {
+                maxFixedPrefilter = maxAllowedA;
+            }
+
+            if (maxFixedPrefilter >= 8)
+            {
+                ReverseBits1024(qPrefix, reversePrefix);
+
+                bool prefixOk = true;
+                CarryRange carryLow = CarryRange.Zero;
+                for (int column = 0; column <= maxFixedPrefilter; column++)
+                {
+                    int forced = 0;
+                    if (column <= 1023)
+                    {
+                        int shift = 1023 - column;
+                        int wordShift = shift >> 6;
+                        int bitShift = shift & 63;
+                        for (int word = 0; word < ForcedALowWords; word++)
+                        {
+                            int src = word + wordShift;
+                            ulong value = 0UL;
+                            if (src < ForcedALowWords)
+                            {
+                                value = reversePrefix[src] >> bitShift;
+                                if (bitShift != 0 && src + 1 < ForcedALowWords)
+                                {
+                                    value |= reversePrefix[src + 1] << (64 - bitShift);
+                                }
+                            }
+
+                            prefixMask[word] = value;
+                        }
+
+                        for (int word = 0; word < ForcedALowWords; word++)
+                        {
+                            forced += XMath.PopCount(knownOne0[word] & prefixMask[word]);
+                        }
+                    }
+                    else
+                    {
+                        for (int i = 0; i < offsetCount; i++)
+                        {
+                            int t = qOffsets[i];
+                            if (t > column)
+                            {
+                                break;
+                            }
+
+                            int aIndex = column - t;
+                            int word = aIndex >> 6;
+                            ulong mask = 1UL << (aIndex & 63);
+                            if ((knownOne0[word] & mask) != 0UL)
+                            {
+                                forced++;
+                            }
+                        }
+                    }
+
+                    if (!TryPropagateCarry(ref carryLow, forced, forced, 1))
+                    {
+                        prefixOk = false;
+                        break;
+                    }
+                }
+
+                if (!prefixOk)
+                {
+                    continue;
+                }
+            }
+
+            int segmentBase = 0;
+            int windowColumn = 0;
+
+            int initialState = GetAKnownStateRowAware(0, segmentBase, windowSize, knownOne0, knownZero0, knownOne1, knownZero1);
+            if (initialState == 1)
+            {
+                aOneWin[0] |= 1UL;
+            }
+            else if (initialState == 2)
+            {
+                aZeroWin[0] |= 1UL;
+            }
+
+            if (!TryRunHighBitAndBorrowPrefiltersCombinedGpu(qOffsets, offsetCount, pLong, maxAllowedA, lo0, hi0, lo1, hi1))
+            {
+                continue;
+            }
+
+            int unknown = offsetCount;
+            int cacheSlot = unknown & (DeltaCacheSlots - 1);
+            int keyIndex = keyBase + cacheSlot;
+            int cachedKey = deltaCacheKeys[keyIndex];
+            int cacheSlotBase = (int)(deltaBase + (long)cacheSlot * DeltaLength);
+            var delta8 = deltaCache.SubView(cacheSlotBase, DeltaLength);
+            if (cachedKey != unknown)
+            {
+                BuildStableUnknownDelta8(unknown, delta8);
+                deltaCacheKeys[keyIndex] = unknown;
+            }
+
+            CarryRange carry = CarryRange.Zero;
+            ulong preKnownOne0 = knownOne0[0];
+            ulong preKnownZero0 = knownZero0[0];
+            ulong preAOneWin0 = aOneWin[0];
+            ulong preAZeroWin0 = aZeroWin[0];
+            long preCarryMin = 0L;
+            long preCarryMax = 0L;
+            int preSegmentBase = segmentBase;
+            int preWindowColumn = windowColumn;
+            bool ok = TryProcessBottomUpBlockRowAwareGpu(
+                qOffsets,
+                offsetCount,
+                qMaskWords,
+                qWordCount,
+                lastWordMask,
+                maxAllowedA,
+                0,
+                pLong,
+                ref carry,
+                ref maxKnownA,
+                ref segmentBase,
+                knownOne0,
+                knownOne1,
+                knownZero0,
+                knownZero1,
+                windowSize,
+                aWordCount,
+                aOneWin,
+                aZeroWin,
+                ref windowColumn,
+                delta8,
+                offsetCount,
+                ref firstForced,
+                ref firstRemaining,
+                ref firstQWordsEff,
+                ref firstQLastEff,
+                ref firstCarryMin,
+                ref firstCarryMax);
+
+            if (ok)
+            {
+                int debugBase = slot * DebugWordCountPerSlot;
+                for (int w = 0; w < ForcedALowWords; w++)
+                {
+                    debugOut[debugBase + w] = qWords[w];
+                }
+                for (int w = 0; w < ForcedALowWords; w++)
+                {
+                    debugOut[debugBase + ForcedALowWords + w] = invWords[w];
+                }
+                for (int w = 0; w < ForcedALowWords; w++)
+                {
+                    debugOut[debugBase + (ForcedALowWords * 2) + w] = aLowWords[w];
+                }
+                debugOut[debugBase + (ForcedALowWords * 3)] = (ulong)qBitLen;
+                int extraBase = debugBase + (ForcedALowWords * 3) + 1;
+                debugOut[extraBase] = (ulong)qWordCount;
+                debugOut[extraBase + 1] = qMaskWords[0];
+                debugOut[extraBase + 2] = qMaskWords[1];
+                debugOut[extraBase + 3] = knownOne0[0];
+                debugOut[extraBase + 4] = knownZero0[0];
+                debugOut[extraBase + 5] = aOneWin[0];
+                debugOut[extraBase + 6] = aZeroWin[0];
+                debugOut[extraBase + 7] = (ulong)carry.Min;
+                debugOut[extraBase + 8] = (ulong)carry.Max;
+                debugOut[extraBase + 9] = (ulong)maxAllowedA;
+                debugOut[extraBase + 10] = (ulong)maxFixed;
+                debugOut[extraBase + 11] = (ulong)windowSize;
+                debugOut[extraBase + 12] = (ulong)aWordCount;
+                debugOut[extraBase + 13] = (ulong)maxKnownA;
+                debugOut[extraBase + 14] = (ulong)maxFixedPrefilter;
+                debugOut[extraBase + 15] = preKnownOne0;
+                debugOut[extraBase + 16] = preKnownZero0;
+                debugOut[extraBase + 17] = preAOneWin0;
+                debugOut[extraBase + 18] = preAZeroWin0;
+                debugOut[extraBase + 19] = (ulong)preCarryMin;
+                debugOut[extraBase + 20] = (ulong)preCarryMax;
+                debugOut[extraBase + 21] = (ulong)preSegmentBase;
+                debugOut[extraBase + 22] = (ulong)preWindowColumn;
+                debugOut[extraBase + 23] = (ulong)offsetCount;
+                debugOut[extraBase + 24] = (ulong)maxOffsetValue;
+                debugOut[extraBase + 25] = (ulong)firstForced;
+                debugOut[extraBase + 26] = (ulong)firstRemaining;
+                debugOut[extraBase + 27] = (ulong)firstQWordsEff;
+                debugOut[extraBase + 28] = firstQLastEff;
+                debugOut[extraBase + 29] = (ulong)firstCarryMin;
+                debugOut[extraBase + 30] = (ulong)firstCarryMax;
+                foundOut[slot] = batch;
+                return;
+            }
+        }
     }
 
     public static void BitContradictionKernelScan(

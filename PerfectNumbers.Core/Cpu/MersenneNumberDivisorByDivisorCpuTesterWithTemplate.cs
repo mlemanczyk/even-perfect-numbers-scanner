@@ -1,5 +1,6 @@
 // #define DivisorSet_BitContradiction
 // #define DivisorSet_BitTree
+// #define DEVICE_GPU
 
 using System;
 using System.Diagnostics;
@@ -110,6 +111,8 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		ulong[] batchIndexWords = new ulong[inputCapacity];
 		int debugWordsPerSlot = BitContradictionKernels.DebugWordCountPerSlot;
 		using MemoryBuffer1D<ulong, Stride1D.Dense> debugBuffer = gpu.Accelerator.Allocate1D<ulong>(maxThreadCount * debugWordsPerSlot);
+		using MemoryBuffer1D<int, Stride1D.Dense> delta8Keys = gpu.Accelerator.Allocate1D<int>(maxThreadCount * BitContradictionKernels.DeltaCacheSlots);
+		using MemoryBuffer1D<int, Stride1D.Dense> delta8Cache = gpu.Accelerator.Allocate1D<int>(maxThreadCount * BitContradictionKernels.DeltaCacheSlots * 4194304);
 		ArrayView1D<ulong, Stride1D.Dense> debugView = debugBuffer.View;
 
 		BigInteger currentBatch = (currentK - BigInteger.One) / batchSizeBig;
@@ -158,7 +161,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			}
 
 			gpu.InputView.CopyFromCPU(stream, batchIndexWords.AsSpan(0, threadCount * wordCount));
-			kernel(stream, threadCount, prime, gpu.InputView, countQ, gpu.OutputIntView, debugView);
+			kernel(stream, threadCount, prime, gpu.InputView, countQ, gpu.OutputIntView, debugView, delta8Keys.View, delta8Cache.View);
 			stream.Synchronize();
 			gpu.OutputIntView.CopyToCPU(stream, found.AsSpan(0, threadCount));
 
