@@ -1,0 +1,8 @@
+offset,total,dominant_digit,dominant_share,strong_dominance,allowed_digits_min15pct,allowed_mask,dominant_bit,allowed_mask_hex,dominant_bit_hex,allowed_digits_from_mask,min_total_required,usable
+1,9,7,1.0,True,7,4,4,0x4,0x4,7,10,False
+2,6,7,1.0,True,7,4,4,0x4,0x4,7,10,False
+3,18,1,1.0,True,1,1,1,0x1,0x1,1,10,True
+4,3,9,1.0,True,9,8,8,0x8,0x8,9,10,False
+5,12,9,1.0,True,9,8,8,0x8,0x8,9,10,True
+6,10,3,0.5,False,"3,7",6,2,0x6,0x2,"3,7",10,True
+10,22,7,0.7727272727272727,True,"1,7",5,4,0x5,0x4,"1,7",10,True
