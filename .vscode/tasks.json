@@ -11,7 +11,7 @@
                                 "--configuration",
                                 "Debug",
                                 "--framework",
-                                "net8.0",
+                                "net9.0",
                                 "/p:DeviceDependentGenerator_CopyGeneratedToProjectDir=true"
                         ],
                         "group": {
@@ -30,7 +30,7 @@
                                 "--configuration",
                                 "Release",
                                 "--framework",
-                                "net8.0",
+                                "net9.0",
                                 "/p:DeviceDependentGenerator_CopyGeneratedToProjectDir=true"
                         ],
                         "group": "build",
@@ -46,7 +46,7 @@
                                 "--configuration",
                                 "Debug",
                                 "--framework",
-                                "net8.0"
+                                "net9.0"
                         ],
                         "group": "build",
                         "problemMatcher": "$msCompile"
@@ -61,7 +61,7 @@
                                 "--configuration",
                                 "Release",
                                 "--framework",
-                                "net8.0"
+                                "net9.0"
                         ],
                         "group": "build",
                         "problemMatcher": "$msCompile"
@@ -76,7 +76,7 @@
                                 "--configuration",
                                 "Debug",
                                 "--framework",
-                                "net8.0"
+                                "net9.0"
                         ],
                         "group": "build",
                         "problemMatcher": "$msCompile"
@@ -91,7 +91,7 @@
                                 "--configuration",
                                 "Release",
                                 "--framework",
-                                "net8.0"
+                                "net9.0"
                         ],
                         "group": "build",
                         "problemMatcher": "$msCompile"
@@ -106,7 +106,7 @@
                                 "--configuration",
                                 "Debug",
                                 "--framework",
-                                "net8.0"
+                                "net9.0"
                         ],
                         "group": "build",
                         "problemMatcher": "$msCompile"
@@ -121,7 +121,7 @@
                                 "--configuration",
                                 "Release",
                                 "--framework",
-                                "net8.0"
+                                "net9.0"
                         ],
                         "group": "build",
                         "problemMatcher": "$msCompile"
@@ -137,7 +137,7 @@
                                 "--configuration",
                                 "Release",
                                 "--framework",
-                                "net8.0"
+                                "net9.0"
                         ],
                         "problemMatcher": []
                 },
@@ -152,7 +152,7 @@
                                 "--configuration",
                                 "Release",
                                 "--framework",
-                                "net8.0"
+                                "net9.0"
                         ],
                         "problemMatcher": []
                 },
@@ -167,7 +167,7 @@
                                 "--configuration",
                                 "Release",
                                 "--framework",
-                                "net8.0"
+                                "net9.0"
                         ],
                         "problemMatcher": []
                 },
@@ -180,7 +180,7 @@
                                 "--configuration",
                                 "Release",
                                 "--framework",
-                                "net8.0"
+                                "net9.0"
                         ],
                         "problemMatcher": []
                 },
@@ -194,7 +194,7 @@
                                 "--configuration",
                                 "Debug",
                                 "--framework",
-                                "net8.0"
+                                "net9.0"
                         ],
                         "group": "build",
                         "problemMatcher": "$msCompile"
@@ -209,7 +209,7 @@
                                 "--configuration",
                                 "Release",
                                 "--framework",
-                                "net8.0"
+                                "net9.0"
                         ],
                         "group": "build",
                         "problemMatcher": "$msCompile"
@@ -225,7 +225,7 @@
                                 "--configuration",
                                 "Release",
                                 "--framework",
-                                "net8.0"
+                                "net9.0"
                         ],
                         "problemMatcher": []
                 }
