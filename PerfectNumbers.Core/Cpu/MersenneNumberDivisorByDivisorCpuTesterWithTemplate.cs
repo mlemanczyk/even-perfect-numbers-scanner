@@ -63,7 +63,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 	private static readonly ConcurrentDictionary<ulong, byte> _checkedPow2MinusOne = new();
 	private ulong _currentPrime;
 
-#if DEVICE_GPU
+#if DEVICE_GPU && DivisorSet_BitContradiction
 	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private bool CheckDivisorsBitContradictionGpu(
 		ulong prime,
@@ -78,6 +78,17 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		foundDivisor = BigInteger.Zero;
 
 		BigInteger currentK = minK;
+
+#if OVERRIDE_MIN_K
+		// Regression test convenience: ensure we actually scan the range that contains the known divisor for p=138000001.
+		if (currentK > 1)
+		{
+			Console.WriteLine($"[GPU OVERRIDE] p={prime} forcing minK from {currentK} to 1 for known-divisor regression test.");
+			currentK = BigInteger.One;
+		}
+#endif
+		const int TargetBatchIndex = 273;
+
 		bool hasLimit = !allowedMax.IsZero;
 		BigInteger maxK = hasLimit ? (allowedMax - BigInteger.One) / step : BigInteger.Zero;
 
@@ -100,8 +111,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		BigInteger batchSizeBig = batchSize;
 		int wordCount = BitContradictionKernels.MaxQWordCount;
 		int inputCapacity = maxThreadCount * wordCount;
-		gpu.EnsureCapacity(PerfectNumberConstants.DefaultFactorsBuffer, inputCapacity);
-		gpu.EnsurePartialFactorCapacity(inputCapacity);
+		var buffers = gpu.EnsureBitContradictionCapacity(inputCapacity, inputCapacity, maxThreadCount);
 
 		var stream = AcceleratorStreamPool.Rent(gpu.AcceleratorIndex);
 		var kernels = GpuKernelPool.GetOrAddKernels(gpu.AcceleratorIndex, stream, KernelType.BitContradictionScan);
@@ -109,13 +119,158 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 
 		int[] found = new int[maxThreadCount];
 		ulong[] batchIndexWords = new ulong[inputCapacity];
-		using MemoryBuffer1D<int, Stride1D.Dense> delta8Keys = gpu.Accelerator.Allocate1D<int>(maxThreadCount * BitContradictionKernels.DeltaCacheSlots);
-		using MemoryBuffer1D<int, Stride1D.Dense> delta8Cache = gpu.Accelerator.Allocate1D<int>(maxThreadCount * BitContradictionKernels.DeltaCacheSlots * 4194304);
-		#if DETAILED_LOG
-			int debugWordsPerSlot = BitContradictionKernels.DebugWordCountPerSlot;
-			using MemoryBuffer1D<ulong, Stride1D.Dense> debugBuffer = gpu.Accelerator.Allocate1D<ulong>(maxThreadCount * debugWordsPerSlot);
-			ArrayView1D<ulong, Stride1D.Dense> debugView = debugBuffer.View;
-		#endif
+		ArrayView1D<int, Stride1D.Dense> delta8KeysView = buffers.Delta8CacheKeysView;
+		ArrayView1D<int, Stride1D.Dense> delta8CacheView = buffers.Delta8CacheValuesView;
+
+		Span<int> temp = stackalloc int[(int)delta8KeysView.Length];
+		temp.Fill(int.MinValue);
+		delta8KeysView.CopyFromCPU(stream, temp);
+
+
+#if INVERSION_VALIDATION
+			///
+			/// INVERSION VALIDATION
+			/// 
+			{
+				// --- Inputs (known test case)
+				ulong p = 138000001UL;
+				ulong k = 4383UL;
+
+				// --- ILGPU setup (minimal)
+				var accelerator = gpu.Accelerator;
+
+				// --- Compile kernel (Extent=1)
+				// Kernel signature must be: (Index1D, ulong p, ulong k, ArrayView1D<ulong, Stride1D.Dense> outBuf)
+				var kernel2 = accelerator.LoadAutoGroupedStreamKernel<
+					Index1D,
+					ulong,
+					ulong,
+					ArrayView1D<ulong, Stride1D.Dense>
+				>(BitContradictionKernels.BitContradictionKernelExportInverse1024);
+
+				// --- Output buffer (64 ulongs is enough: 16 qPrefix + 16 inv + 16 aLow + meta)
+				using var outBufGpu = accelerator.Allocate1D<ulong>(64);
+				var outCpu = new ulong[64];
+
+				// Optional: clear buffer
+				for (int i = 0; i < outCpu.Length; i++) outCpu[i] = 0;
+				outBufGpu.View.CopyFromCPU(stream, outCpu);
+
+				// --- Run kernel
+				kernel2(1, p, k, outBufGpu.View);
+				stream.Synchronize();
+
+				// --- Copy back
+				outBufGpu.View.CopyToCPU(stream, outCpu);
+				stream.Synchronize();
+
+				// --- Parse meta
+				ulong pOut = outCpu[48];
+				ulong kOut = outCpu[49];
+				ulong qOut = outCpu[50];
+				ulong marker = outCpu[51];
+
+				Console.WriteLine($"[GPU EXPORT] pOut={pOut} kOut={kOut} qOut={qOut} marker=0x{marker:X}");
+
+				// --- Helpers: build BigInteger from 16x ulong limbs (little-endian)
+				BigInteger FromU64Le(int startIndex)
+				{
+					// +1 byte to force positive sign for BigInteger ctor
+					byte[] bytes = new byte[16 * 8 + 1];
+					for (int i = 0; i < 16; i++)
+					{
+						ulong w = outCpu[startIndex + i];
+						int o = i * 8;
+						bytes[o + 0] = (byte)(w);
+						bytes[o + 1] = (byte)(w >> 8);
+						bytes[o + 2] = (byte)(w >> 16);
+						bytes[o + 3] = (byte)(w >> 24);
+						bytes[o + 4] = (byte)(w >> 32);
+						bytes[o + 5] = (byte)(w >> 40);
+						bytes[o + 6] = (byte)(w >> 48);
+						bytes[o + 7] = (byte)(w >> 56);
+					}
+
+					return new BigInteger(bytes);
+				}
+
+				var qPrefix = FromU64Le(0);
+				var inv = FromU64Le(16);
+				var aLow = FromU64Le(32);
+
+				var mask = (BigInteger.One << 1024) - 1;
+
+				// --- Validate inverse: (qPrefix * inv) mod 2^1024 == 1
+				var prod = (qPrefix * inv) & mask;
+				bool invOk = prod == BigInteger.One;
+
+				// --- Validate aLow: aLow == (-inv) mod 2^1024
+				var expectedALow = (mask + BigInteger.One - (inv & mask)) & mask;
+				bool aLowOk = ((aLow & mask) == expectedALow);
+
+				// --- Print concise diagnostics
+				Console.WriteLine($"[CPU VALIDATION] invOk={invOk} aLowOk={aLowOk}");
+
+				// Print low 64 bits (quick sanity)
+				ulong prodLow64 = (ulong)(prod & ((BigInteger.One << 64) - 1));
+				ulong invLow64 = (ulong)(inv & ((BigInteger.One << 64) - 1));
+				ulong aLowLow64 = (ulong)(aLow & ((BigInteger.One << 64) - 1));
+
+				Console.WriteLine($"[LOW64] qPrefix=0x{(ulong)(qPrefix & ((System.Numerics.BigInteger.One<<64)-1)):X}");
+				Console.WriteLine($"[LOW64] inv=0x{invLow64:X} aLow=0x{aLowLow64:X} prod=0x{prodLow64:X}");
+
+				// Optional: hard fail for CI/regression
+				if (!invOk || !aLowOk)
+					throw new System.InvalidOperationException($"Inverse export validation failed: invOk={invOk}, aLowOk={aLowOk}");
+			}
+#endif
+
+#if SELF_TEST
+			///
+			/// SELF-TEST
+			/// 
+			{
+				ulong p = 138000001UL;
+				ulong k = 4383UL;
+
+				var accelerator = gpu.Accelerator;
+
+				Console.WriteLine($"Compiling kernel for {prime}");
+				var kernel3 = accelerator.LoadAutoGroupedStreamKernel<
+					Index1D,
+					ulong,
+					ulong,
+					int,
+					ArrayView1D<ulong, Stride1D.Dense>
+				>(BitContradictionKernels.BitContradictionKernelDebugDpSingleQ);
+
+				var launcher3 = KernelUtil.GetKernel(kernel3).CreateLauncherDelegate<
+					Action<AcceleratorStream, Index1D, ulong, ulong, int, ArrayView1D<ulong, Stride1D.Dense>>>();
+
+				Console.WriteLine($"Preparing buffers for {prime}");
+				using var outGpu = accelerator.Allocate1D<ulong>(128);
+				var outCpu = new ulong[128];
+				Array.Clear(outCpu, 0, outCpu.Length);
+				outGpu.View.CopyFromCPU(stream, outCpu);
+
+				// First run: disable batching (scalar DP)
+				Console.WriteLine($"Launching GPU kernel for {prime}");
+				launcher3(stream, 1, p, k, 1, outGpu.View);
+				outGpu.View.CopyToCPU(stream, outCpu);
+				stream.Synchronize();
+
+				Console.WriteLine($"[DP DEBUG] marker=0x{outCpu[0]:X} p={outCpu[1]} k={outCpu[2]} q={outCpu[3]} qBitLen={outCpu[4]} offsetCount={outCpu[6]} ok={outCpu[9]} carryMin={outCpu[10]} carryMax={outCpu[11]}");
+
+				// Print first 10 step records
+				Console.WriteLine($"[DP DEBUG] marker=0x{outCpu[0]:X} p={outCpu[1]} k={outCpu[2]} q={outCpu[3]} qBitLen={outCpu[4]} offsetCount={outCpu[6]} ok={outCpu[9]} carryMin={outCpu[10]} carryMax={outCpu[11]} disableBatching={outCpu[12]}");
+				Console.WriteLine($"[DP EXTRA] maxAllowedA={outCpu[14]} maxFixed={outCpu[15]} windowSize={outCpu[16]} aWordCount={outCpu[17]}");
+				Console.WriteLine($"[DP FIRST] firstForced={unchecked((long)outCpu[18])} firstRemaining={unchecked((long)outCpu[19])} firstQWordsEff={outCpu[20]} firstQLastEff=0x{outCpu[21]:X} firstCarryMin={unchecked((long)outCpu[22])} firstCarryMax={unchecked((long)outCpu[23])}");
+				Console.WriteLine($"[DP SNAP] aLow0=0x{outCpu[24]:X} knownOne0=0x{outCpu[25]:X} knownZero0=0x{outCpu[26]:X} aOneWin0=0x{outCpu[27]:X} aZeroWin0=0x{outCpu[28]:X} qMask0=0x{outCpu[29]:X} lastMask=0x{outCpu[30]:X} off0={outCpu[31]} offLast={outCpu[32]}");
+
+				if (outCpu[0] != 0xD00DF00DUL)
+					throw new Exception("DP debug kernel did not run as expected.");
+			}
+#endif
 
 		BigInteger currentBatch = (currentK - BigInteger.One) / batchSizeBig;
 		currentK = (currentBatch * batchSizeBig) + BigInteger.One;
@@ -123,7 +278,6 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 
 		while (true)
 		{
-
 			if (hasLimit && currentBatch > maxBatch)
 			{
 				processedAll = true;
@@ -137,6 +291,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				break;
 			}
 
+			Console.WriteLine($"Preparing data for{prime}, batch {currentBatch}");
 			int threadCount = maxThreadCount;
 			if (remainingBatches < threadCount)
 			{
@@ -162,15 +317,28 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				WriteBigIntegerToWords(batchIndex, batchIndexWords.AsSpan(t * wordCount, wordCount));
 			}
 
-			gpu.InputView.CopyFromCPU(stream, batchIndexWords.AsSpan(0, threadCount * wordCount));
-			kernel(stream, threadCount, prime, gpu.InputView, countQ, gpu.OutputIntView,
-				   #if DETAILED_LOG
-					   debugView,
-				   #endif
-				   delta8Keys.View, delta8Cache.View);
+			Console.WriteLine($"Copying data to GPU for {prime}, batch {currentBatch}");
+			buffers.BatchIndexWordsView.CopyFromCPU(stream, batchIndexWords.AsSpan(0, threadCount * wordCount));
+// #if DETAILED_LOG
+				Console.WriteLine($"Launching GPU kernel for {prime}, batch {currentBatch}");
+// #endif
+			kernel(stream, 1, prime, buffers.BatchIndexWordsView, countQ, buffers.FoundQWordsView,
+			// kernel(stream, threadCount, prime, buffers.BatchIndexWords, countQ, buffers.FoundQWords,
+					delta8KeysView, delta8CacheView);
+			buffers.FoundQWordsView.CopyToCPU(stream, found.AsSpan(0, threadCount));
 			stream.Synchronize();
-			gpu.OutputIntView.CopyToCPU(stream, found.AsSpan(0, threadCount));
 
+			_consolePrintOut++;
+			if  (_consolePrintOut >= PerfectNumberConstants.ConsoleInterval)
+			{
+				Console.WriteLine($"GPU kernel for {prime} complete, batch {currentBatch}");
+				Console.WriteLine($"[GPU FOUND RAW] batch={currentBatch} found[0]={found[0]}");
+				_consolePrintOut = 0;
+			}
+#if DETAILED_LOG || SELF_TEST
+#endif
+
+			// TODO: This loop is incorrect. We have a loop over the threads outside from here
 			for (int i = 0; i < threadCount; i++)
 			{
 				int foundIndex = found[i];
@@ -217,54 +385,103 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 					// if (!dividesExact)
 					// {
 					// 	throw new InvalidOperationException($"BitContradiction CPU/GPU false positive for p={prime}, q={candidateQ}, k={candidateK}, batch={batchIndex}");
-					#if DETAILED_LOG
+#if DETAILED_LOG
 						if (prime == 138000001UL)
+						// --- Fast self-check for known divisor: run scan kernel with ONE thread and SMALL countQ.
+						// This avoids waiting for other threads that would scan huge ranges and never hit the target.
 						{
-							ulong[] debugWords = new ulong[debugWordsPerSlot];
-							debugView.SubView(i * debugWordsPerSlot, debugWordsPerSlot).CopyToCPU(stream, debugWords);
-							BigInteger gpuQ = ReadBigIntegerFromWords(debugWords.AsSpan(0, 16));
-							BigInteger gpuInv = ReadBigIntegerFromWords(debugWords.AsSpan(16, 16));
-							BigInteger gpuALow = ReadBigIntegerFromWords(debugWords.AsSpan(32, 16));
-							ulong gpuQBits = debugWords[48];
-							ulong gpuQWordCount = debugWords[49];
-							ulong gpuQMask0 = debugWords[50];
-							ulong gpuQMask1 = debugWords[51];
-							ulong gpuKnownOne0 = debugWords[52];
-							ulong gpuKnownZero0 = debugWords[53];
-							ulong gpuAOneWin0 = debugWords[54];
-							ulong gpuAZeroWin0 = debugWords[55];
-							long gpuCarryMin = unchecked((long)debugWords[56]);
-							long gpuCarryMax = unchecked((long)debugWords[57]);
-							long gpuMaxAllowedA = unchecked((long)debugWords[58]);
-							long gpuMaxFixed = unchecked((long)debugWords[59]);
-							long gpuWindowSize = unchecked((long)debugWords[60]);
-							long gpuAWordCount = unchecked((long)debugWords[61]);
-							long gpuMaxKnownA = unchecked((long)debugWords[62]);
-							long gpuMaxFixedPrefilter = unchecked((long)debugWords[63]);
-							ulong preKnownOne0 = debugWords[64];
-							ulong preKnownZero0 = debugWords[65];
-							ulong preAOneWin0 = debugWords[66];
-							ulong preAZeroWin0 = debugWords[67];
-							long preCarryMin = unchecked((long)debugWords[68]);
-							long preCarryMax = unchecked((long)debugWords[69]);
-							long preSegmentBase = unchecked((long)debugWords[70]);
-							long preWindowColumn = unchecked((long)debugWords[71]);
-							long gpuOffsetCount = unchecked((long)debugWords[72]);
-							long gpuMaxOffset = unchecked((long)debugWords[73]);
-							long gpuFirstForced = unchecked((long)debugWords[74]);
-							long gpuFirstRemaining = unchecked((long)debugWords[75]);
-							long gpuFirstQWordsEff = unchecked((long)debugWords[76]);
-							ulong gpuFirstQLastEff = debugWords[77];
-							long gpuFirstCarryMin = unchecked((long)debugWords[78]);
-							long gpuFirstCarryMax = unchecked((long)debugWords[79]);
-							throw new InvalidOperationException($"BitContradiction GPU debug for p={prime}, q={candidateQ}, k={candidateK}, qBits={gpuQBits}, qWordCount={gpuQWordCount}, qMask0=0x{gpuQMask0:X16}, qMask1=0x{gpuQMask1:X16}, knownOne0=0x{gpuKnownOne0:X16}, knownZero0=0x{gpuKnownZero0:X16}, aOneWin0=0x{gpuAOneWin0:X16}, aZeroWin0=0x{gpuAZeroWin0:X16}, carryMin={gpuCarryMin}, carryMax={gpuCarryMax}, maxAllowedA={gpuMaxAllowedA}, maxFixed={gpuMaxFixed}, windowSize={gpuWindowSize}, aWordCount={gpuAWordCount}, maxKnownA={gpuMaxKnownA}, maxFixedPrefilter={gpuMaxFixedPrefilter}, preKnownOne0=0x{preKnownOne0:X16}, preKnownZero0=0x{preKnownZero0:X16}, preAOneWin0=0x{preAOneWin0:X16}, preAZeroWin0=0x{preAZeroWin0:X16}, preCarryMin={preCarryMin}, preCarryMax={preCarryMax}, preSegmentBase={preSegmentBase}, preWindowColumn={preWindowColumn}, offsetCount={gpuOffsetCount}, maxOffset={gpuMaxOffset}, firstForced={gpuFirstForced}, firstRemaining={gpuFirstRemaining}, firstQWordsEff={gpuFirstQWordsEff}, firstQLastEff=0x{gpuFirstQLastEff:X16}, firstCarryMin={gpuFirstCarryMin}, firstCarryMax={gpuFirstCarryMax}, gpuQ={gpuQ}, gpuInv={gpuInv}, gpuALow={gpuALow}");
+							const int expectedFoundIndex = 4382; // k=4383 => index=k-1 in batch 0
+							countQ = 6000; // must be > 4382, keep small to finish quickly
+
+							Array.Clear(found, 0, found.Length);
+							Array.Clear(batchIndexWords, 0, batchIndexWords.Length);
+
+							// batchIndex = 0
+							WriteBigIntegerToWords(BigInteger.Zero, batchIndexWords.AsSpan(0, wordCount));
+							buffers.BatchIndexWords.CopyFromCPU(stream, batchIndexWords.AsSpan(0, threadCount * wordCount));
+
+							Console.WriteLine($"[GPU SELFTEST] launching scan kernel (threads={threadCount}, countQ={countQ})");
+							kernel(
+								stream,
+								threadCount,
+								prime,
+								buffers.BatchIndexWords,
+								countQ,
+								buffers.FoundQWords,
+						#if DETAILED_LOG
+								debugView,
+						#endif
+								delta8Keys.View,
+								delta8Cache.View);
+
+							stream.Synchronize();
+							buffers.FoundQWords.CopyToCPU(stream, found.AsSpan(0, threadCount));
+							stream.Synchronize();
+
+							Console.WriteLine($"[GPU SELFTEST] found[0]={found[0]} (expected {expectedFoundIndex})");
+							if (found[0] != expectedFoundIndex)
+							{
+								throw new InvalidOperationException($"[GPU SELFTEST FAILED] got={found[0]} expected={expectedFoundIndex}");
+							}
+
+							// Self-test succeeded => stop here (do not start full scan which may hit TDR during debugging).
+							processedAll = false;
+							foundDivisor = BigInteger.Zero;
+							AcceleratorStreamPool.Return(gpu.AcceleratorIndex, stream);
+							return false;
 						}
-					#endif
+						// {
+						// 	ulong[] debugWords = new ulong[debugWordsPerSlot];
+						// 	debugView.SubView(i * debugWordsPerSlot, debugWordsPerSlot).CopyToCPU(stream, debugWords);
+						// 	BigInteger gpuQ = ReadBigIntegerFromWords(debugWords.AsSpan(0, 16));
+						// 	BigInteger gpuInv = ReadBigIntegerFromWords(debugWords.AsSpan(16, 16));
+						// 	BigInteger gpuALow = ReadBigIntegerFromWords(debugWords.AsSpan(32, 16));
+						// 	ulong gpuQBits = debugWords[48];
+						// 	ulong gpuQWordCount = debugWords[49];
+						// 	ulong gpuQMask0 = debugWords[50];
+						// 	ulong gpuQMask1 = debugWords[51];
+						// 	ulong gpuKnownOne0 = debugWords[52];
+						// 	ulong gpuKnownZero0 = debugWords[53];
+						// 	ulong gpuAOneWin0 = debugWords[54];
+						// 	ulong gpuAZeroWin0 = debugWords[55];
+						// 	long gpuCarryMin = unchecked((long)debugWords[56]);
+						// 	long gpuCarryMax = unchecked((long)debugWords[57]);
+						// 	long gpuMaxAllowedA = unchecked((long)debugWords[58]);
+						// 	long gpuMaxFixed = unchecked((long)debugWords[59]);
+						// 	long gpuWindowSize = unchecked((long)debugWords[60]);
+						// 	long gpuAWordCount = unchecked((long)debugWords[61]);
+						// 	long gpuMaxKnownA = unchecked((long)debugWords[62]);
+						// 	long gpuMaxFixedPrefilter = unchecked((long)debugWords[63]);
+						// 	ulong preKnownOne0 = debugWords[64];
+						// 	ulong preKnownZero0 = debugWords[65];
+						// 	ulong preAOneWin0 = debugWords[66];
+						// 	ulong preAZeroWin0 = debugWords[67];
+						// 	long preCarryMin = unchecked((long)debugWords[68]);
+						// 	long preCarryMax = unchecked((long)debugWords[69]);
+						// 	long preSegmentBase = unchecked((long)debugWords[70]);
+						// 	long preWindowColumn = unchecked((long)debugWords[71]);
+						// 	long gpuOffsetCount = unchecked((long)debugWords[72]);
+						// 	long gpuMaxOffset = unchecked((long)debugWords[73]);
+						// 	long gpuFirstForced = unchecked((long)debugWords[74]);
+						// 	long gpuFirstRemaining = unchecked((long)debugWords[75]);
+						// 	long gpuFirstQWordsEff = unchecked((long)debugWords[76]);
+						// 	ulong gpuFirstQLastEff = debugWords[77];
+						// 	long gpuFirstCarryMin = unchecked((long)debugWords[78]);
+						// 	long gpuFirstCarryMax = unchecked((long)debugWords[79]);
+						// 	throw new InvalidOperationException($"BitContradiction GPU debug for p={prime}, q={candidateQ}, k={candidateK}, qBits={gpuQBits}, qWordCount={gpuQWordCount}, qMask0=0x{gpuQMask0:X16}, qMask1=0x{gpuQMask1:X16}, knownOne0=0x{gpuKnownOne0:X16}, knownZero0=0x{gpuKnownZero0:X16}, aOneWin0=0x{gpuAOneWin0:X16}, aZeroWin0=0x{gpuAZeroWin0:X16}, carryMin={gpuCarryMin}, carryMax={gpuCarryMax}, maxAllowedA={gpuMaxAllowedA}, maxFixed={gpuMaxFixed}, windowSize={gpuWindowSize}, aWordCount={gpuAWordCount}, maxKnownA={gpuMaxKnownA}, maxFixedPrefilter={gpuMaxFixedPrefilter}, preKnownOne0=0x{preKnownOne0:X16}, preKnownZero0=0x{preKnownZero0:X16}, preAOneWin0=0x{preAOneWin0:X16}, preAZeroWin0=0x{preAZeroWin0:X16}, preCarryMin={preCarryMin}, preCarryMax={preCarryMax}, preSegmentBase={preSegmentBase}, preWindowColumn={preWindowColumn}, offsetCount={gpuOffsetCount}, maxOffset={gpuMaxOffset}, firstForced={gpuFirstForced}, firstRemaining={gpuFirstRemaining}, firstQWordsEff={gpuFirstQWordsEff}, firstQLastEff=0x{gpuFirstQLastEff:X16}, firstCarryMin={gpuFirstCarryMin}, firstCarryMax={gpuFirstCarryMax}, gpuQ={gpuQ}, gpuInv={gpuInv}, gpuALow={gpuALow}");
+						// }
+#endif
 
 					foundDivisor = candidateQ;
 					AcceleratorStreamPool.Return(gpu.AcceleratorIndex, stream);
 					return true;
 				}
+			}
+
+			if (currentBatch == TargetBatchIndex)
+			{
+				Console.WriteLine($"No divisor found up to batch index = {currentBatch}, with the target batch index = {TargetBatchIndex}");
+				Environment.Exit(1);
 			}
 
 		ContinueOuter:
@@ -3039,7 +3256,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				}
 
 			ContinueOuter:
-			RecordState(currentK);
+				RecordState(currentK);
 				// if (divisorCycle == prime && !IsMersenneValue(prime, candidate))
 				if (divisorCycle == prime)
 				{
@@ -3160,7 +3377,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 			{
 				// Stopwatch sw = Stopwatch.StartNew();
 			ContinueOuter:
-			RecordState(currentK);
+				RecordState(currentK);
 				ulong powMod;
 				bool isPow2 = IsPowerOfTwo(currentK);
 #if DETAILED_LOG
@@ -3262,7 +3479,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 					if (remainder8 == 1 || remainder8 == 7)
 					{
 					ContinueOuter:
-			RecordState(currentK);
+						RecordState(currentK);
 						BigInteger powResult = BigInteger.ModPow(BigIntegerNumbers.Two, primeBig, divisor);
 						if (powResult.IsOne)
 						{
@@ -3962,7 +4179,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 					if (remainder8 == 1 || remainder8 == 7)
 					{
 					ContinueOuter:
-			RecordState(currentK);
+						RecordState(currentK);
 						BigInteger powResult = BigInteger.ModPow(BigIntegerNumbers.Two, primeBig, divisor);
 						// if (powResult.IsOne && !IsMersenneValue(prime, divisor))
 						if (powResult.IsOne)
@@ -4317,7 +4534,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				}
 
 			ContinueOuter:
-			RecordState(currentK);
+				RecordState(currentK);
 				if (divisorCycle == prime && !IsMersenneValue(prime, divisor))
 				{
 					foundDivisor = divisor;
@@ -4891,6 +5108,9 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 		while (true)
 		{
 			int remainder8 = (stepMod8 * kRem8 + 1) & 7;
+			if (prime == 138000001UL && divisor == 1209708008767)
+				Console.WriteLine("[HIT] enumerated target q before remainder8 check");
+
 			if (remainder8 != 1 && remainder8 != 7)
 			{
 				goto MOVE_NEXT;
@@ -4930,6 +5150,12 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 					// sw.Reset();
 					// sw.Start();
 				}
+			}
+
+			if (prime == 138000001UL && divisor == 1209708008767)
+			{
+				Console.WriteLine("[HIT] processed target q. Stopping.");
+				Environment.Exit(1);
 			}
 
 		MOVE_NEXT:
@@ -5090,6 +5316,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				{
 					oneOffsets[i + 1] = pow2Offsets[i] + 1;
 				}
+
 				oneCount = needed;
 				usedPow2Offsets = true;
 			}
@@ -5114,6 +5341,7 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 				pow2OffsetsTarget = new int[oneCount];
 				_pow2Offsets = pow2OffsetsTarget;
 			}
+
 			Array.Copy(oneOffsets, pow2OffsetsTarget, oneCount);
 			_pow2OffsetCount = oneCount;
 			_pow2K = currentK;
@@ -5128,23 +5356,25 @@ public struct MersenneNumberDivisorByDivisorCpuTesterWithTemplate() : IMersenneN
 
 		ReadOnlySpan<int> oneOffsetsSlice = oneOffsets[..oneCount];
 		// BitContradictionSolverWithQMultiplier.SetDebugEnabled(true);
-		#if DETAILED_LOG
+#if DETAILED_LOG
 			bool decided = BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, prime, currentK, isPowerOfTwo, out divides, out var reason);
-		#else
+#else
 			bool decided = BitContradictionSolverWithAMultiplier.TryCheckDivisibilityFromOneOffsets(oneOffsetsSlice, prime, currentK, isPowerOfTwo, out divides);
-		#endif
+#endif
 		// BitContradictionSolverWithQMultiplier.SetDebugEnabled(false);
 		if (decided && divides)
-		{
+		{			
 			// Verify to avoid false positives on structurally admissible but non-dividing q.
 			bool structuralOk = ((divisor - BigInteger.One) % (((BigInteger)prime) << 1)) == BigInteger.Zero;
 			bool dividesExact = structuralOk && BigInteger.ModPow(2, prime, divisor) == BigInteger.One;
 			if (!dividesExact)
 			{
+				throw new InvalidOperationException($"We reported divisor q={divisor} as dividing {prime} but it doesn't divide it");
+
 				divides = false;
-				#if DETAILED_LOG
+#if DETAILED_LOG
 					reason = ContradictionReason.ParityUnreachable;
-				#endif
+#endif
 			}
 		}
 		if (decided && !divides)

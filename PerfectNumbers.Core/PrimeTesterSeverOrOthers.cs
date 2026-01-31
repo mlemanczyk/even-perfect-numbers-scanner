@@ -223,7 +223,7 @@ public sealed class PrimeTesterSeverOrOthers
 		int length = values.Length;
 
 		int acceleratorIndex = gpu.AcceleratorIndex;
-		gpu.EnsureCapacity(0, length);
+		gpu.EnsurePrimeOrderCalculatorCapacity(0, length);
 		var inputBufferView = gpu.InputView;
 		var resultBufferView = gpu.OutputByteView;
 		var kernelLauncher = gpu.SharesFactorKernelLauncher;

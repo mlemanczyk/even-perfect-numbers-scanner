@@ -23,7 +23,7 @@ public sealed class KernelContainer
 		ResidueAutomatonArgs, ArrayView<int>, ArrayView1D<ulong, Stride1D.Dense>>? Pow2ModOrder;
 
 	public Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<int, Stride1D.Dense>,
-		  #if DETAILED_LOG
+		  #if DETAILED_LOG || SELF_TEST
 			  ArrayView1D<ulong, Stride1D.Dense>,
 		  #endif
 		  ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>>? BitContradiction;

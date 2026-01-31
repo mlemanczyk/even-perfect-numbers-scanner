@@ -11,35 +11,6 @@ using PerfectNumbers.Core.Gpu.Accelerators;
 
 namespace PerfectNumbers.Core;
 
-public enum GpuKernelType
-{
-    Incremental,
-    Pow2Mod,
-}
-
-public enum CalculationMethod
-{
-    ByDivisor,
-    Divisor,
-    Incremental,
-    LucasLehmer,
-    Pow2Mod,
-    Residue,
-}
-
-public enum CacheStatus
-{
-    Disabled,
-    Enabled,
-}
-
-public enum OrderDevice
-{
-    Cpu,
-    Hybrid,
-    Gpu,
-}
-
 [EnumDependentTemplate(typeof(CalculationMethod))]
 [EnumDependentTemplate(typeof(CacheStatus))]
 [EnumDependentTemplate(typeof(OrderDevice))]

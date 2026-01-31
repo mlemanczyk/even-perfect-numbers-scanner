@@ -5,18 +5,6 @@ using PerfectNumbers.Core.Gpu;
 
 namespace EvenPerfectBitScanner;
 
-internal enum ByDivisorKIncrementMode
-{
-    Sequential,
-    Pow2Groups,
-    Predictive,
-    Percentile,
-    Additive,
-    TopDown,
-    BitContradiction,
-    BitTree,
-}
-
 internal readonly struct CliArguments
 {
     private const string DefaultCyclesPath = "divisor_cycles.bin";

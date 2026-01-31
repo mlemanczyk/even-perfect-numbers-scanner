@@ -5,6 +5,238 @@ using PerfectNumbers.Core.Gpu.Kernels;
 
 namespace PerfectNumbers.Core.Gpu.Accelerators;
 
+public static class PrimeOrderCalculatorAcceleratorCapacityProviders
+{
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	public static void EnsureCalculateOrderWideCapacity(this PrimeOrderCalculatorAccelerator gpu, int newSize)
+	{
+		if (newSize > gpu.Input.Length)
+		{
+			gpu.CalculateOrderWideExponentBuffer.Dispose();
+			gpu.CalculateOrderWideRemainderBuffer.Dispose();
+
+			var accelerator = gpu.Accelerator;
+			// lock (accelerator)
+			// {
+			gpu.CalculateOrderWideExponentBuffer = accelerator.Allocate1D<GpuUInt128>(newSize);
+			gpu.CalculateOrderWideRemainderBuffer = accelerator.Allocate1D<GpuUInt128>(newSize);
+			gpu.CalculateOrderWideExponentBufferView = gpu.CalculateOrderWideExponentBuffer.View;
+			gpu.CalculateOrderWideRemainderBufferView = gpu.CalculateOrderWideRemainderBuffer.View;
+			// }			
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	public static void EnsurePrimeOrderCalculatorCapacity(this PrimeOrderCalculatorAccelerator gpu, int factorsCount, int primeTesterCapacity)
+	{
+		Accelerator accelerator = gpu.Accelerator;
+
+		MemoryBuffer1D<KeyValuePair<ulong, int>, Stride1D.Dense> pow2ModEntriesToTestOnDevice = gpu.Pow2ModEntriesToTestOnDevice;
+		if (pow2ModEntriesToTestOnDevice.Length < factorsCount)
+		{
+			// lock (accelerator)
+			// {
+				pow2ModEntriesToTestOnDevice.Dispose();
+				pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
+				gpu.Pow2ModEntriesToTestOnDevice = pow2ModEntriesToTestOnDevice;
+				gpu.Pow2ModEntriesToTestOnDeviceView = pow2ModEntriesToTestOnDevice.View;
+			// }
+		}
+
+		MemoryBuffer1D<ulong, Stride1D.Dense> input = gpu.Input;
+		if (input.Length < primeTesterCapacity)
+		{
+			// lock (accelerator)
+			// {
+				input.Dispose();
+
+				input = accelerator.Allocate1D<ulong>(primeTesterCapacity);
+				gpu.Input = input;
+				gpu.InputView = input.View;
+			// }
+		}
+
+		MemoryBuffer1D<byte, Stride1D.Dense> outputByte = gpu.OutputByte;
+		if (outputByte.Length < primeTesterCapacity)
+		{
+			// lock (accelerator)
+			// {
+				outputByte.Dispose();
+
+				outputByte = accelerator.Allocate1D<byte>(primeTesterCapacity);
+				gpu.OutputByte = outputByte;
+				gpu.OutputByteView = outputByte.View;
+			// }
+		}
+
+		MemoryBuffer1D<int, Stride1D.Dense> outputInt = gpu.OutputInt;
+		if (outputInt.Length < primeTesterCapacity)
+		{
+			// lock (accelerator)
+			// {
+				outputInt.Dispose();
+
+				outputInt = accelerator.Allocate1D<int>(primeTesterCapacity);
+				gpu.OutputInt = outputInt;
+				gpu.OutputIntView = outputInt.View;
+			// }
+		}
+	}
+
+	public static void EnsurePartialFactorCapacity(this PrimeOrderCalculatorAccelerator gpu, int newSize)
+	{
+		var accelerator = gpu.Accelerator;
+
+		var outputUlong = gpu.OutputUlong;
+		if (newSize > outputUlong.Length)
+		{
+			outputUlong.Dispose();
+
+			outputUlong = accelerator.Allocate1D<ulong>(newSize);
+			gpu.OutputUlong = outputUlong;
+			gpu.OutputUlongView = outputUlong.View;
+		}
+
+		var outputInt = gpu.OutputInt;
+		if (newSize > outputInt.Length)
+		{
+			outputInt.Dispose();
+			
+			outputInt = accelerator.Allocate1D<int>(newSize);
+			gpu.OutputInt = outputInt;
+			gpu.OutputIntView = outputInt.View;
+		}
+	}
+
+	public static void EnsureSmallPrimeFactorSlotsCapacity(this PrimeOrderCalculatorAccelerator gpu, int newSize)
+	{
+		// Console.WriteLine($"Resizing GPU scratch buffer from pool ({buffer.SmallPrimeFactorPrimeSlots.Length} / {smallPrimeFactorSlotCount}), ({buffer.SpecialMaxFactors.Length}/{specialMaxFactorCapacity})");
+		var accelerator = gpu.Accelerator;
+		MemoryBuffer1D<ulong, Stride1D.Dense> outputUlong = gpu.OutputUlong;
+		if (outputUlong.Length < newSize)
+		{
+			// lock (accelerator)
+			// {
+				outputUlong.Dispose();
+
+				outputUlong = accelerator.Allocate1D<ulong>(newSize);
+				gpu.OutputUlong = outputUlong;
+				gpu.OutputUlongView = outputUlong.View;
+			// }
+		}
+
+		MemoryBuffer1D<int, Stride1D.Dense> outputInt = gpu.OutputInt;
+		if (outputInt.Length < newSize)
+		{
+			// lock (accelerator)
+			// {
+				outputInt.Dispose();
+
+				outputInt = accelerator.Allocate1D<int>(newSize);
+				gpu.OutputInt = outputInt;
+				gpu.OutputIntView = outputInt.View;
+			// }
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	public static void EnsureUlongInputOutputCapacity(this PrimeOrderCalculatorAccelerator gpu, int newSize)
+	{
+		var accelerator = gpu.Accelerator;
+		MemoryBuffer1D<ulong, Stride1D.Dense> buffer = gpu.Input;
+		if (buffer.Length < newSize)
+		{
+			// lock (accelerator)
+			// {
+				buffer.Dispose();
+
+				buffer = accelerator.Allocate1D<ulong>(newSize);
+				gpu.Input = buffer;
+				gpu.InputView = buffer.View;
+			// }
+		}
+
+		buffer = gpu.OutputUlong;
+		if (buffer.Length < newSize)
+		{
+			// lock (accelerator)
+			// {
+				buffer.Dispose();
+
+				buffer = accelerator.Allocate1D<ulong>(newSize);
+				gpu.OutputUlong = buffer;
+				gpu.OutputUlongView = buffer.View;
+			// }
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	public static BitContradictionBuffers EnsureBitContradictionCapacity(this PrimeOrderCalculatorAccelerator gpu, int maxBatchIndexWords, int maxQWords, int delta8CacheConcurrentThreads)
+	{
+		var accelerator = gpu.Accelerator;
+
+		MemoryBuffer1D<ulong, Stride1D.Dense> bufferUlong = gpu.Input;
+		if (bufferUlong.Length < maxBatchIndexWords)
+		{
+			// lock (accelerator)
+			// {
+				bufferUlong.Dispose();
+
+				bufferUlong = accelerator.Allocate1D<ulong>(maxBatchIndexWords);
+				gpu.Input = bufferUlong;
+
+			// }
+		}
+
+		MemoryBuffer1D<int, Stride1D.Dense> bufferInt = gpu.OutputInt;
+		maxQWords <<= 1;
+		if (bufferUlong.Length < maxQWords)
+		{
+			// lock (accelerator)
+			// {
+				bufferInt.Dispose();
+
+				bufferInt = accelerator.Allocate1D<int>(maxQWords);
+				gpu.OutputInt = bufferInt;
+			// }
+		}
+
+		bufferInt = gpu.StackIndexBuffer;
+		int requiredCapacity = BitContradictionKernels.GetDeltaCacheKeyLength(delta8CacheConcurrentThreads);
+		if (bufferInt.Length < requiredCapacity)
+		{
+			bufferInt.Dispose();
+			bufferInt = accelerator.Allocate1D<int>(requiredCapacity);
+			gpu.StackIndexBuffer = bufferInt;
+
+			bufferInt = gpu.StackExponentBuffer;
+			bufferInt.Dispose();
+			bufferInt = accelerator.Allocate1D<int>(BitContradictionKernels.GetDeltaCacheIntLength(delta8CacheConcurrentThreads));
+			gpu.StackExponentBuffer = bufferInt;
+		}
+
+		return new(
+			gpu.Input.View,
+			gpu.OutputInt.View,
+			gpu.StackIndexBuffer.View,
+			gpu.StackExponentBuffer.View
+		);
+	}
+}
+
+public readonly struct BitContradictionBuffers(
+	in ArrayView1D<ulong, Stride1D.Dense> batchIndexWords,
+	in ArrayView1D<int, Stride1D.Dense> foundQWords,
+	in ArrayView1D<int, Stride1D.Dense> delta8CacheKeys,
+	in ArrayView1D<int, Stride1D.Dense> delta8CacheValues
+)
+{
+	public readonly ArrayView1D<ulong, Stride1D.Dense> BatchIndexWordsView = batchIndexWords;
+	public readonly ArrayView1D<int,  Stride1D.Dense> FoundQWordsView = foundQWords;
+	public readonly ArrayView1D<int, Stride1D.Dense> Delta8CacheKeysView = delta8CacheKeys;
+	public readonly ArrayView1D<int, Stride1D.Dense> Delta8CacheValuesView = delta8CacheValues;
+}
+
 public sealed class PrimeOrderCalculatorAccelerator
 {
 	#region Pool
@@ -18,7 +250,7 @@ public sealed class PrimeOrderCalculatorAccelerator
 		var pool = _pool ??= new(PerfectNumberConstants.DefaultThreadPoolCapacity);
 		if (pool.TryPop(out var gpu))
 		{
-			gpu.EnsureCapacity(PerfectNumberConstants.DefaultFactorsBuffer, primeTesterCapacity);
+			gpu.EnsurePrimeOrderCalculatorCapacity(PerfectNumberConstants.DefaultFactorsBuffer, primeTesterCapacity);
 			return gpu;
 		}
 
@@ -137,8 +369,8 @@ public sealed class PrimeOrderCalculatorAccelerator
 
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> WorkFactorBuffer;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> CandidateBuffer;
-	public readonly MemoryBuffer1D<int, Stride1D.Dense> StackIndexBuffer;
-	public readonly MemoryBuffer1D<int, Stride1D.Dense> StackExponentBuffer;
+	public MemoryBuffer1D<int, Stride1D.Dense> StackIndexBuffer;
+	public MemoryBuffer1D<int, Stride1D.Dense> StackExponentBuffer;
 	public readonly MemoryBuffer1D<ulong, Stride1D.Dense> StackProductBuffer;
 
 	public OrderKernelBuffers CalculateOrderKernelBuffers;
@@ -148,14 +380,10 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public readonly ArrayView1D<int, Stride1D.Dense> StackExponentBufferView;
 	public readonly ArrayView1D<ulong, Stride1D.Dense> StackProductBufferView;
 
-
-
-
 	public MemoryBuffer1D<GpuUInt128, Stride1D.Dense> CalculateOrderWideExponentBuffer;
 	public MemoryBuffer1D<GpuUInt128, Stride1D.Dense> CalculateOrderWideRemainderBuffer;
 	public ArrayView1D<GpuUInt128, Stride1D.Dense> CalculateOrderWideExponentBufferView;
 	public ArrayView1D<GpuUInt128, Stride1D.Dense> CalculateOrderWideRemainderBufferView;
-
 
 	public Dictionary<ulong, int> Pow2ModEntriesToTestOnHost = [];
 
@@ -204,169 +432,6 @@ public sealed class PrimeOrderCalculatorAccelerator
 	public readonly Action<AcceleratorStream, Index1D, ulong, uint, ArrayView1D<uint, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<ulong, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>, ArrayView1D<ulong, Stride1D.Dense>> SmallPrimeFactorKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, ArrayView<ulong>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<uint>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<ulong>, ArrayView<byte>> SmallPrimeSieveKernelLauncher;
 	public readonly Action<AcceleratorStream, Index1D, ulong, ArrayView<ulong>, int, ulong, ArrayView<ulong>> SpecialMaxKernelLauncher;
-
-	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	public void EnsureCalculateOrderWideCapacity(int newSize)
-	{
-		if (newSize > Input.Length)
-		{
-			CalculateOrderWideExponentBuffer.Dispose();
-			CalculateOrderWideRemainderBuffer.Dispose();
-
-			var accelerator = Accelerator;
-			// lock (accelerator)
-			// {
-			CalculateOrderWideExponentBuffer = accelerator.Allocate1D<GpuUInt128>(newSize);
-			CalculateOrderWideRemainderBuffer = accelerator.Allocate1D<GpuUInt128>(newSize);
-			CalculateOrderWideExponentBufferView = CalculateOrderWideExponentBuffer.View;
-			CalculateOrderWideRemainderBufferView = CalculateOrderWideRemainderBuffer.View;
-			// }			
-		}
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	public void EnsureCapacity(int factorsCount, int primeTesterCapacity)
-	{
-		Accelerator accelerator = Accelerator;
-
-		MemoryBuffer1D<KeyValuePair<ulong, int>, Stride1D.Dense> pow2ModEntriesToTestOnDevice = Pow2ModEntriesToTestOnDevice;
-		if (pow2ModEntriesToTestOnDevice.Length < factorsCount)
-		{
-			// lock (accelerator)
-			// {
-				pow2ModEntriesToTestOnDevice.Dispose();
-				pow2ModEntriesToTestOnDevice = accelerator.Allocate1D<KeyValuePair<ulong, int>>(factorsCount);
-				Pow2ModEntriesToTestOnDevice = pow2ModEntriesToTestOnDevice;
-				Pow2ModEntriesToTestOnDeviceView = pow2ModEntriesToTestOnDevice.View;
-			// }
-		}
-
-		MemoryBuffer1D<ulong, Stride1D.Dense> input = Input;
-		if (input.Length < primeTesterCapacity)
-		{
-			// lock (accelerator)
-			// {
-				input.Dispose();
-
-				input = accelerator.Allocate1D<ulong>(primeTesterCapacity);
-				Input = input;
-				InputView = input.View;
-			// }
-		}
-
-		MemoryBuffer1D<byte, Stride1D.Dense> outputByte = OutputByte;
-		if (outputByte.Length < primeTesterCapacity)
-		{
-			// lock (accelerator)
-			// {
-				outputByte.Dispose();
-
-				outputByte = accelerator.Allocate1D<byte>(primeTesterCapacity);
-				OutputByte = outputByte;
-				OutputByteView = outputByte.View;
-			// }
-		}
-
-		MemoryBuffer1D<int, Stride1D.Dense> outputInt = OutputInt;
-		if (outputInt.Length < primeTesterCapacity)
-		{
-			// lock (accelerator)
-			// {
-				outputInt.Dispose();
-
-				outputInt = accelerator.Allocate1D<int>(primeTesterCapacity);
-				OutputInt = outputInt;
-				OutputIntView = outputInt.View;
-			// }
-		}
-	}
-
-	public void EnsurePartialFactorCapacity(int newSize)
-	{
-		var accelerator = Accelerator;
-
-		var outputUlong = OutputUlong;
-		if (newSize > outputUlong.Length)
-		{
-			outputUlong.Dispose();
-
-			outputUlong = accelerator.Allocate1D<ulong>(newSize);
-			OutputUlong = outputUlong;
-			OutputUlongView = outputUlong.View;
-		}
-
-		var outputInt = OutputInt;
-		if (newSize > outputInt.Length)
-		{
-			outputInt.Dispose();
-			
-			outputInt = accelerator.Allocate1D<int>(newSize);
-			OutputInt = outputInt;
-			OutputIntView = outputInt.View;
-		}
-	}
-
-	public void EnsureSmallPrimeFactorSlotsCapacity(int newSize)
-	{
-		// Console.WriteLine($"Resizing GPU scratch buffer from pool ({buffer.SmallPrimeFactorPrimeSlots.Length} / {smallPrimeFactorSlotCount}), ({buffer.SpecialMaxFactors.Length}/{specialMaxFactorCapacity})");
-		var accelerator = Accelerator;
-		MemoryBuffer1D<ulong, Stride1D.Dense> outputUlong = OutputUlong;
-		if (outputUlong.Length < newSize)
-		{
-			// lock (accelerator)
-			// {
-				outputUlong.Dispose();
-
-				outputUlong = accelerator.Allocate1D<ulong>(newSize);
-				OutputUlong = outputUlong;
-				OutputUlongView = outputUlong.View;
-			// }
-		}
-
-		MemoryBuffer1D<int, Stride1D.Dense> outputInt = OutputInt;
-		if (outputInt.Length < newSize)
-		{
-			// lock (accelerator)
-			// {
-				outputInt.Dispose();
-
-				outputInt = accelerator.Allocate1D<int>(newSize);
-				OutputInt = outputInt;
-				OutputIntView = outputInt.View;
-			// }
-		}
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	public void EnsureUlongInputOutputCapacity(int newSize)
-	{
-		var accelerator = Accelerator;
-		MemoryBuffer1D<ulong, Stride1D.Dense> buffer = Input;
-		if (buffer.Length < newSize)
-		{
-			// lock (accelerator)
-			// {
-				buffer.Dispose();
-
-				buffer = accelerator.Allocate1D<ulong>(newSize);
-				Input = buffer;
-				InputView = buffer.View;
-			// }
-		}
-
-		buffer = OutputUlong;
-		if (buffer.Length < newSize)
-		{
-			// lock (accelerator)
-			// {
-				buffer.Dispose();
-
-				buffer = accelerator.Allocate1D<ulong>(newSize);
-				OutputUlong = buffer;
-				OutputUlongView = buffer.View;
-			// }
-		}
-	}
 
 	public PrimeOrderCalculatorAccelerator(int acceleratorIndex, int factorsCount, int primeTesterCapacity, int smallPrimeFactorSlotCount, int specialMaxFactorCapacity)
 	{

@@ -42,7 +42,7 @@ namespace EvenPerfectBitScanner;
 internal static class Program
 {
 	// private static ThreadLocal<PrimeTester> PrimeTesters = null!;
-private static ThreadLocal<object>? MersenneTesters;
+	private static ThreadLocal<object>? MersenneTesters;
 	private const ulong InitialP = PerfectNumberConstants.BiggestKnownEvenPerfectP;
 	private static MersenneNumberDivisorGpuTester? _divisorTester;
 	private static UInt128 _divisor;
@@ -111,37 +111,31 @@ private static ThreadLocal<object>? MersenneTesters;
 				return;
 			}
 
-		Console.WriteLine("Initializing");
-		int gpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads * PerfectNumberConstants.ThreadsByAccelerator);
-		int threadCount = Math.Max(1, _cliArguments.ThreadCount);
+			Console.WriteLine("Initializing");
 
-		EnvironmentConfiguration.MinK = _cliArguments.MinK;
-		EnvironmentConfiguration.GpuBatchSize = Math.Max(1, _cliArguments.ScanBatchSize);
-		EnvironmentConfiguration.GpuRatio = _cliArguments.GpuRatio;
-		EnvironmentConfiguration.MersenneDevice = _cliArguments.MersenneDevice;
-		ComputationDevice orderDevice = _cliArguments.OrderDevice;
-		if (_cliArguments.MersenneDevice == ComputationDevice.Gpu &&
-			_cliArguments.ByDivisorKIncrementMode == ByDivisorKIncrementMode.BitContradiction)
-		{
-			orderDevice = ComputationDevice.Gpu;
-		}
+			EnvironmentConfiguration.ByDivisorKIncrementMode = _cliArguments.ByDivisorKIncrementMode;
+			EnvironmentConfiguration.ByDivisorSpecialRange = _cliArguments.ByDivisorSpecialRange;
+			EnvironmentConfiguration.CalculationMethod =
+				_cliArguments.UseByDivisor ? CalculationMethod.ByDivisor
+				: _cliArguments.UseDivisor ? CalculationMethod.Divisor
+				: _cliArguments.UseResidue ? CalculationMethod.Residue
+				: _cliArguments.UseLucas ? CalculationMethod.LucasLehmer
+				: _cliArguments.KernelType == GpuKernelType.Pow2Mod ? CalculationMethod.Pow2Mod
+				: CalculationMethod.Incremental;
+			EnvironmentConfiguration.GpuBatchSize = Math.Max(1, _cliArguments.ScanBatchSize);
+			EnvironmentConfiguration.GpuPrimeThreads = Math.Max(1, _cliArguments.GpuPrimeThreads * PerfectNumberConstants.ThreadsByAccelerator);
+			EnvironmentConfiguration.GpuRatio = _cliArguments.GpuRatio;
+			EnvironmentConfiguration.MersenneDevice = _cliArguments.MersenneDevice;
+			EnvironmentConfiguration.MinK = _cliArguments.MinK;
+			EnvironmentConfiguration.OrderDevice = _cliArguments.OrderDevice;
+			EnvironmentConfiguration.ThreadCount = Math.Max(1, _cliArguments.ThreadCount);
 
-		EnvironmentConfiguration.OrderDevice = orderDevice;
-		EnvironmentConfiguration.UsePow2GroupDivisors = _cliArguments.ByDivisorKIncrementMode == ByDivisorKIncrementMode.Pow2Groups;
-		EnvironmentConfiguration.ByDivisorSpecialRange = _cliArguments.ByDivisorSpecialRange;
+			EnvironmentConfiguration.Initialize();
 
-		bool useGpu = orderDevice == ComputationDevice.Hybrid || orderDevice == ComputationDevice.Gpu ||
-				_cliArguments.MersenneDevice == ComputationDevice.Hybrid || _cliArguments.MersenneDevice == ComputationDevice.Gpu;
-
-		EnvironmentConfiguration.RollingAccelerators = useGpu 
-			? Math.Min(Math.Min(PerfectNumberConstants.RollingAccelerators, gpuPrimeThreads), threadCount)
-			: 0;
-
-		EnvironmentConfiguration.Initialize();
-
-		PrimeOrderCalculatorAccelerator.SkipOrderTablesAndKernels = _cliArguments.MersenneDevice == ComputationDevice.Gpu &&
-			_cliArguments.UseByDivisor &&
-			_cliArguments.ByDivisorKIncrementMode == ByDivisorKIncrementMode.BitContradiction;
+			PrimeOrderCalculatorAccelerator.SkipOrderTablesAndKernels =
+				EnvironmentConfiguration.MersenneDevice == ComputationDevice.Gpu &&
+				EnvironmentConfiguration.CalculationMethod == CalculationMethod.ByDivisor &&
+				EnvironmentConfiguration.ByDivisorKIncrementMode == ByDivisorKIncrementMode.BitContradiction;
 
 			// NttGpuMath.GpuTransformBackend = _cliArguments.NttBackend;
 			// NttGpuMath.ReductionMode = _cliArguments.ModReductionMode;
@@ -151,6 +145,9 @@ private static ThreadLocal<object>? MersenneTesters;
 			ulong remainder = currentP % 6UL;
 			bool startPrimeProvided = _cliArguments.StartPrimeProvided;
 			int gpuPrimeBatch = Math.Max(1, _cliArguments.GpuPrimeBatch);
+			bool useGpu = EnvironmentConfiguration.UseGpu;
+			int threadCount = EnvironmentConfiguration.ThreadCount;
+			int gpuPrimeThreads = EnvironmentConfiguration.GpuPrimeThreads;
 			// int gpuPrimeThreads = SharedGpuContext.Device.MaxNumThreads;
 			Console.WriteLine("Setting up parameters");
 			UnboundedTaskScheduler.ConfigureThreadCount(threadCount);
@@ -606,16 +603,16 @@ private static ThreadLocal<object>? MersenneTesters;
 				EnvironmentConfiguration.ByDivisorPow2Minus1Repository ??= Pow2Minus1StateRepository.Open(Path.Combine(checksDir, "pow2minus1.faster"), pow2MinusLmdb, checksDir);
 				EnvironmentConfiguration.BitContradictionStateRepository ??= BitContradictionStateRepository.Open(checksDir);
 
-			if (kIncrementMode == ByDivisorKIncrementMode.Pow2Groups)
-			{
-				EnvironmentConfiguration.ByDivisorSpecialStateRepository = KStateRepository.Open(checksDir, "pow2groups.special.kstate.faster", Path.Combine(checksDir, "pow2groups.special.kstate.lmdb"), checksDir);
-				EnvironmentConfiguration.ByDivisorGroupsStateRepository = KStateRepository.Open(checksDir, "pow2groups.groups.kstate.faster", Path.Combine(checksDir, "pow2groups.groups.kstate.lmdb"), checksDir);
-			}
-			else
-			{
-				EnvironmentConfiguration.ByDivisorSpecialStateRepository = null;
-				EnvironmentConfiguration.ByDivisorGroupsStateRepository = null;
-			}
+				if (kIncrementMode == ByDivisorKIncrementMode.Pow2Groups)
+				{
+					EnvironmentConfiguration.ByDivisorSpecialStateRepository = KStateRepository.Open(checksDir, "pow2groups.special.kstate.faster", Path.Combine(checksDir, "pow2groups.special.kstate.lmdb"), checksDir);
+					EnvironmentConfiguration.ByDivisorGroupsStateRepository = KStateRepository.Open(checksDir, "pow2groups.groups.kstate.faster", Path.Combine(checksDir, "pow2groups.groups.kstate.lmdb"), checksDir);
+				}
+				else
+				{
+					EnvironmentConfiguration.ByDivisorSpecialStateRepository = null;
+					EnvironmentConfiguration.ByDivisorGroupsStateRepository = null;
+				}
 			}
 
 			bool useFilter = !testMode && !string.IsNullOrEmpty(filterFile);
@@ -1409,47 +1406,47 @@ private static ThreadLocal<object>? MersenneTesters;
 			// Windowed pow2mod kernel handles by-divisor scans.
 			ByDivisorKIncrementMode mode = _cliArguments.ByDivisorKIncrementMode;
 			if (EnvironmentConfiguration.UseCpuOrder)
-				{
-					return mode switch
-					{
-						ByDivisorKIncrementMode.Pow2Groups => _byDivisorCpuOrderTesterPow2.IsPrime(p, out detailedCheck, out _),
-						ByDivisorKIncrementMode.Predictive => _byDivisorCpuOrderTesterPredictive.IsPrime(p, out detailedCheck, out _),
-						ByDivisorKIncrementMode.Percentile => _byDivisorCpuOrderTesterPercentile.IsPrime(p, out detailedCheck, out _),
-						ByDivisorKIncrementMode.Additive => _byDivisorCpuOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
-						ByDivisorKIncrementMode.TopDown => _byDivisorCpuOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
-						ByDivisorKIncrementMode.BitContradiction => _byDivisorCpuOrderTesterBitContradiction.IsPrime(p, out detailedCheck, out _),
-						ByDivisorKIncrementMode.BitTree => _byDivisorCpuOrderTesterBitTree.IsPrime(p, out detailedCheck, out _),
-						_ => _byDivisorCpuOrderTester.IsPrime(p, out detailedCheck, out _),
-					};
-				}
-
-				if (EnvironmentConfiguration.UseHybridOrder)
-				{
-					return mode switch
-					{
-						ByDivisorKIncrementMode.Pow2Groups => _byDivisorHybridOrderTesterPow2.IsPrime(p, out detailedCheck, out _),
-						ByDivisorKIncrementMode.Predictive => _byDivisorHybridOrderTesterPredictive.IsPrime(p, out detailedCheck, out _),
-						ByDivisorKIncrementMode.Percentile => _byDivisorHybridOrderTesterPercentile.IsPrime(p, out detailedCheck, out _),
-						ByDivisorKIncrementMode.Additive => _byDivisorHybridOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
-						ByDivisorKIncrementMode.TopDown => _byDivisorHybridOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
-						ByDivisorKIncrementMode.BitContradiction => _byDivisorHybridOrderTesterBitContradiction.IsPrime(p, out detailedCheck, out _),
-						ByDivisorKIncrementMode.BitTree => _byDivisorHybridOrderTesterBitTree.IsPrime(p, out detailedCheck, out _),
-						_ => _byDivisorHybridOrderTester.IsPrime(p, out detailedCheck, out _),
-					};
-				}
-
+			{
 				return mode switch
 				{
-					ByDivisorKIncrementMode.Pow2Groups => _byDivisorGpuOrderTesterPow2.IsPrime(p, out detailedCheck, out _),
-					ByDivisorKIncrementMode.Predictive => _byDivisorGpuOrderTesterPredictive.IsPrime(p, out detailedCheck, out _),
-					ByDivisorKIncrementMode.Percentile => _byDivisorGpuOrderTesterPercentile.IsPrime(p, out detailedCheck, out _),
-					ByDivisorKIncrementMode.Additive => _byDivisorGpuOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
-					ByDivisorKIncrementMode.TopDown => _byDivisorGpuOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
-					ByDivisorKIncrementMode.BitContradiction => _byDivisorGpuOrderTesterBitContradiction.IsPrime(p, out detailedCheck, out _),
-					ByDivisorKIncrementMode.BitTree => _byDivisorGpuOrderTesterBitTree.IsPrime(p, out detailedCheck, out _),
-					_ => _byDivisorGpuOrderTester.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.Pow2Groups => _byDivisorCpuOrderTesterPow2.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.Predictive => _byDivisorCpuOrderTesterPredictive.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.Percentile => _byDivisorCpuOrderTesterPercentile.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.Additive => _byDivisorCpuOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.TopDown => _byDivisorCpuOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.BitContradiction => _byDivisorCpuOrderTesterBitContradiction.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.BitTree => _byDivisorCpuOrderTesterBitTree.IsPrime(p, out detailedCheck, out _),
+					_ => _byDivisorCpuOrderTester.IsPrime(p, out detailedCheck, out _),
 				};
 			}
+
+			if (EnvironmentConfiguration.UseHybridOrder)
+			{
+				return mode switch
+				{
+					ByDivisorKIncrementMode.Pow2Groups => _byDivisorHybridOrderTesterPow2.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.Predictive => _byDivisorHybridOrderTesterPredictive.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.Percentile => _byDivisorHybridOrderTesterPercentile.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.Additive => _byDivisorHybridOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.TopDown => _byDivisorHybridOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.BitContradiction => _byDivisorHybridOrderTesterBitContradiction.IsPrime(p, out detailedCheck, out _),
+					ByDivisorKIncrementMode.BitTree => _byDivisorHybridOrderTesterBitTree.IsPrime(p, out detailedCheck, out _),
+					_ => _byDivisorHybridOrderTester.IsPrime(p, out detailedCheck, out _),
+				};
+			}
+
+			return mode switch
+			{
+				ByDivisorKIncrementMode.Pow2Groups => _byDivisorGpuOrderTesterPow2.IsPrime(p, out detailedCheck, out _),
+				ByDivisorKIncrementMode.Predictive => _byDivisorGpuOrderTesterPredictive.IsPrime(p, out detailedCheck, out _),
+				ByDivisorKIncrementMode.Percentile => _byDivisorGpuOrderTesterPercentile.IsPrime(p, out detailedCheck, out _),
+				ByDivisorKIncrementMode.Additive => _byDivisorGpuOrderTesterAdditive.IsPrime(p, out detailedCheck, out _),
+				ByDivisorKIncrementMode.TopDown => _byDivisorGpuOrderTesterTopDown.IsPrime(p, out detailedCheck, out _),
+				ByDivisorKIncrementMode.BitContradiction => _byDivisorGpuOrderTesterBitContradiction.IsPrime(p, out detailedCheck, out _),
+				ByDivisorKIncrementMode.BitTree => _byDivisorGpuOrderTesterBitTree.IsPrime(p, out detailedCheck, out _),
+				_ => _byDivisorGpuOrderTester.IsPrime(p, out detailedCheck, out _),
+			};
+		}
 
 		detailedCheck = IsMersennePrime(gpu, p);
 		return detailedCheck;

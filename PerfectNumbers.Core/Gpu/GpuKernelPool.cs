@@ -125,7 +125,7 @@ public class GpuKernelPool
 			{
 				var loaded = accelerator.LoadAutoGroupedStreamKernel<
 					Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int, ArrayView1D<int, Stride1D.Dense>,
-					#if DETAILED_LOG
+					#if DETAILED_LOG || SELF_TEST
 						ArrayView1D<ulong, Stride1D.Dense>,
 					#endif
 					ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>
@@ -135,7 +135,7 @@ public class GpuKernelPool
 
 				return kernel.CreateLauncherDelegate<Action<AcceleratorStream, Index1D, ulong, ArrayView1D<ulong, Stride1D.Dense>, int,
 					ArrayView1D<int, Stride1D.Dense>,
-					#if DETAILED_LOG
+					#if DETAILED_LOG || SELF_TEST
 						ArrayView1D<ulong, Stride1D.Dense>,
 					#endif
 					ArrayView1D<int, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>>>();

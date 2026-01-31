@@ -9,13 +9,19 @@ public readonly struct ColumnBounds(int forcedOnes, int possibleOnes)
 	public readonly int PossibleOnes = possibleOnes;
 }
 
-public readonly struct CarryRange(long min, long max)
+public readonly struct CarryRange(long min, long max, byte mod4Mask = byte.MinValue)
 {
 	public readonly long Min = min;
 	public readonly long Max = max;
+	public readonly byte Mod4Mask = mod4Mask;
 
-	public static CarryRange Single(long value) => new(value, value);
-	public static readonly CarryRange Zero = Single(0);
+	public static CarryRange Single(long value) => new(value, value, byte.MinValue);
+	public static CarryRange Single(long value, byte mod4Mask) => new(value, value, mod4Mask);
+
+	public static readonly CarryRange Zero = Single(0, 0);
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool IsEmpty() => Min > Max || Mod4Mask == 0;
 }
 
 public enum ContradictionReason

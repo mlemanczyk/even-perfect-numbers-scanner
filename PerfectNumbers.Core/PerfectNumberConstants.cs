@@ -5,6 +5,7 @@ namespace PerfectNumbers.Core;
 public static class PerfectNumberConstants
 {
     public const ulong BiggestKnownEvenPerfectP = 136279841UL;
+	// public const int ConsoleInterval = 1;
 	public const int ConsoleInterval = 100_000;
 	public const int DefaultFactorsBuffer = 32;
 	public const int DefaultPoolCapacity = 10_240;
@@ -26,7 +27,10 @@ public static class PerfectNumberConstants
 	public const int PollardRhoMilliseconds = 100;
 	public const int ByDivisorMersenneTailCount = 8;
 	public const int ByDivisorMersenneBitLimit = 4096;
-	public const int BitContradictionGpuBatchCount = 134217728;
+	public const int BitContradictionGpuBatchCount = 16;
+	// public const int BitContradictionGpuBatchCount = 512;
+	// public const int BitContradictionGpuBatchCount = 131_072;
+	// public const int BitContradictionGpuBatchCount = 2_097_152;
 	public const int BitContradictionGpuThreads = 1;
     // TODO: Load these limits from the benchmark-driven configuration so CPU and GPU scans stay aligned with the optimal
     // divisor-cycle datasets we generate offline.
